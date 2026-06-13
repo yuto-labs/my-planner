@@ -1238,6 +1238,37 @@ button { cursor: pointer; font-family: inherit; }
 .settings-row:last-child { border-bottom: none; }
 .settings-row-label { font-size: 14px; font-weight: 600; }
 .settings-row-desc  { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.settings-link-card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.settings-link-card strong {
+  display: block;
+  font-size: 16px;
+  font-weight: 600;
+}
+.settings-link-card small {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.settings-link-card:active { background: var(--bg-hover); }
+.settings-link-arrow {
+  color: var(--text-dim);
+  font-size: 28px;
+  line-height: 1;
+}
 
 .api-key-wrap { display: flex; gap: 8px; }
 .api-key-wrap .input { flex: 1; font-family: monospace; font-size: 13px; letter-spacing: 1px; }

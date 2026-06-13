@@ -250,7 +250,7 @@ export function getCategoryColor(id) {
 const DEFAULT_SETTINGS = {
   apiKey: '',
   theme: 'auto',
-  aiEnabled: true,
+  aiEnabled: false,
   myScheduleColor: '#60A5FA',
 };
 

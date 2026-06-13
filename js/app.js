@@ -11,7 +11,7 @@ import { initHome }     from './modules/home.js';
 import { initCalendar, openCalendarAddFlow } from './modules/calendar.js';
 import { initTasks }    from './modules/tasks.js';
 import { initGoals }    from './modules/goals.js';
-import { initSettings } from './modules/settings.js';
+import { initSettings, initAISettings } from './modules/settings.js';
 import { initToday }    from './modules/today.js';
 import { initKnowledge, initKnowledgeDetail, openKnowledgeMemo, backFromKnowledgeDetail } from './modules/knowledge.js';
 import { initKnowledgeGraph } from './modules/knowledge-graph.js';
@@ -27,6 +27,7 @@ const MODULES = {
   tasks:             { title: 'Tasks',      init: initTasks },
   goals:             { title: 'Goals',      init: initGoals,          back: 'tasks' },
   settings:          { title: 'Settings',   init: initSettings },
+  'ai-settings':     { title: 'AI Settings', init: initAISettings,      back: 'settings' },
   today:             { title: 'Today',      init: initToday,          back: 'home' },
   knowledge:         { title: 'Knowledge Notes', init: initKnowledge },
   'knowledge-detail':{ title: 'Note',       init: initKnowledgeDetail, back: 'knowledge', backAction: backFromKnowledgeDetail },
@@ -409,7 +410,7 @@ function setupFAB() {
 
   // Show/hide based on view
   const updateFab = () => {
-    const hidden = ['home', 'settings', 'analytics', 'knowledge-graph', 'knowledge-detail', 'goals'];
+    const hidden = ['home', 'settings', 'ai-settings', 'analytics', 'knowledge-graph', 'knowledge-detail', 'goals'];
     fab.classList.toggle('hidden', hidden.includes(currentView));
     if (currentView === 'tasks') {
       fab.setAttribute('aria-label', 'AIスケジュールを開く');
