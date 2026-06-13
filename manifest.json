@@ -1,0 +1,20 @@
+{
+  "name": "マイプランナー",
+  "short_name": "プランナー",
+  "description": "自己管理・知識ベースアプリ",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f172a",
+  "theme_color": "#1e293b",
+  "lang": "ja",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "utilities"]
+}
