@@ -132,12 +132,13 @@ function render() {
     <!-- Filters -->
     <div class="tasks-filters">
       ${[
-        { key: 'all',     label: 'すべて' },
-        { key: 'pending', label: '未完了' },
-        { key: 'done',    label: '完了'   },
-        { key: 'large',   label: '大'     },
-        { key: 'medium',  label: '中'     },
-        { key: 'small',   label: '小'     },
+        { key: 'all',      label: 'すべて' },
+        { key: 'pending',  label: '未完了' },
+        { key: 'done',     label: '完了'   },
+        { key: 'abandoned',label: '諦めた' },
+        { key: 'large',    label: '大'     },
+        { key: 'medium',   label: '中'     },
+        { key: 'small',    label: '小'     },
       ].map(f =>
         `<button class="filter-btn${state.filter === f.key ? ' active' : ''}"
                  data-filter="${f.key}">${f.label}</button>`
@@ -851,11 +852,14 @@ function getSortedFilteredTasks() {
     return new Date(b.createdAt) - new Date(a.createdAt);
   });
 
-  if (filter === 'pending') return tasks.filter(t => !t.completed);
-  if (filter === 'done')    return tasks.filter(t =>  t.completed);
+  if (filter === 'abandoned') return tasks.filter(t => t.abandoned);
+  // 諦めたタスクは abandoned フィルター以外では非表示
+  const active = tasks.filter(t => !t.abandoned);
+  if (filter === 'pending') return active.filter(t => !t.completed);
+  if (filter === 'done')    return active.filter(t =>  t.completed);
   if (['large', 'medium', 'small'].includes(filter))
-    return tasks.filter(t => t.weight === filter);
-  return tasks;
+    return active.filter(t => t.weight === filter);
+  return active;
 }
 
 function renderTaskItem(task) {
@@ -894,8 +898,8 @@ function renderTaskItem(task) {
   const isGoal = task.taskType === 'goal';
 
   return `
-    <li class="task-item${task.completed ? ' completed' : ''}${isGoal ? ' task-item--goal' : ''}" data-task-id="${esc(task.id)}" draggable="true">
-      <button class="task-check${task.completed ? ' done' : ''}" data-action="toggle" aria-label="完了切り替え">
+    <li class="task-item${task.completed ? ' completed' : ''}${task.abandoned ? ' abandoned' : ''}${isGoal ? ' task-item--goal' : ''}" data-task-id="${esc(task.id)}" draggable="true">
+      <button class="task-check${task.completed ? ' done' : ''}" data-action="toggle" aria-label="完了切り替え" ${task.abandoned ? 'disabled' : ''}>
         <svg viewBox="0 0 24 24" fill="currentColor">
           <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
         </svg>
@@ -908,6 +912,10 @@ function renderTaskItem(task) {
         ${dueLabel}
         ${tagChips}
         ${isGoal ? `<button class="btn btn-ghost btn-sm task-decompose-btn" data-action="decompose" title="AIでサブタスクに分解">🤖</button>` : ''}
+        ${!task.abandoned
+          ? `<button class="task-abandon" data-action="abandon" aria-label="諦める" title="諦める">🏳</button>`
+          : `<button class="task-abandon task-abandon--undo" data-action="unabandon" aria-label="諦めを取り消す" title="諦めを取り消す">↩</button>`
+        }
         <button class="task-delete" data-action="delete" aria-label="削除">
           <svg viewBox="0 0 24 24" fill="currentColor">
             <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
@@ -925,8 +933,8 @@ function renderListInto(listEl) {
     const { filter } = state;
     listEl.innerHTML = `<li style="list-style:none">
       <div class="empty-state">
-        <div class="empty-state-icon">${filter === 'done' ? '✅' : '📝'}</div>
-        <div class="empty-state-text">${filter === 'done' ? '完了タスクはありません' : 'タスクがありません'}</div>
+        <div class="empty-state-icon">${filter === 'done' ? '✅' : filter === 'abandoned' ? '🏳' : '📝'}</div>
+        <div class="empty-state-text">${filter === 'done' ? '完了タスクはありません' : filter === 'abandoned' ? '諦めたタスクはありません' : 'タスクがありません'}</div>
         <div class="empty-state-sub">${(filter === 'all' || filter === 'pending') ? '上のフォームで追加しましょう' : ''}</div>
       </div>
     </li>`;
@@ -950,6 +958,8 @@ function wireTaskActions() {
 
     if (action === 'toggle')          handleToggle(taskId, li);
     else if (action === 'delete')     handleDelete(taskId, li);
+    else if (action === 'abandon')    handleAbandon(taskId, li);
+    else if (action === 'unabandon')  handleUnabandon(taskId, li);
     else if (action === 'edit-title') startTitleEdit(li, taskId);
     else if (action === 'decompose')  handleDecompose(taskId, e.target.closest('[data-action="decompose"]'));
   });
@@ -1139,6 +1149,32 @@ function handleDelete(taskId, li) {
     rerenderList();
     renderProgressBar();
   });
+}
+
+function handleAbandon(taskId, li) {
+  const task = getTasks().find(t => t.id === taskId);
+  if (!task) return;
+
+  li.classList.add('abandoned');
+  updateTask(taskId, { abandoned: true });
+  renderProgressBar();
+
+  undoToast(`「${task.title.slice(0, 20)}」を諦めました`, () => {
+    updateTask(taskId, { abandoned: false, abandonedAt: null });
+    rerenderList();
+    renderProgressBar();
+  });
+
+  setTimeout(() => {
+    if (state.filter !== 'abandoned') rerenderList();
+  }, 400);
+}
+
+function handleUnabandon(taskId, li) {
+  li.classList.remove('abandoned');
+  updateTask(taskId, { abandoned: false, abandonedAt: null });
+  rerenderList();
+  renderProgressBar();
 }
 
 // ---- Task edit modal (title + due date/time + tags + subtasks + memo) ----

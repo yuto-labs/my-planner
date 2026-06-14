@@ -109,6 +109,8 @@ export function addTask(task) {
     weight: 'medium',
     completed: false,
     completedAt: null,
+    abandoned: false,
+    abandonedAt: null,
     dueDate: null,
     dueTime: null,
     estimatedMinutes: null,
@@ -135,8 +137,10 @@ export function updateTask(id, updates) {
   const prev = tasks[idx];
   // Auto-set completedAt when completing
   const extra = {};
-  if (updates.completed === true  && !prev.completed)  extra.completedAt = now;
-  if (updates.completed === false && prev.completed)   extra.completedAt = null;
+  if (updates.completed === true  && !prev.completed)  extra.completedAt  = now;
+  if (updates.completed === false && prev.completed)   extra.completedAt  = null;
+  if (updates.abandoned === true  && !prev.abandoned)  extra.abandonedAt  = now;
+  if (updates.abandoned === false && prev.abandoned)   extra.abandonedAt  = null;
   tasks[idx] = { ...prev, ...updates, ...extra, updatedAt: now };
   saveTasks(tasks);
 

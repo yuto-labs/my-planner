@@ -1094,6 +1094,9 @@ button { cursor: pointer; font-family: inherit; }
 }
 .task-item.completed { opacity: 0.4; }
 .task-item.completed .task-title { text-decoration: line-through; color: var(--text-muted); }
+.task-item.abandoned { opacity: 0.45; }
+.task-item.abandoned .task-title { text-decoration: line-through; color: var(--text-dim); }
+.task-item.abandoned .task-check { opacity: 0.3; cursor: default; }
 
 .task-check {
   width: 22px; height: 22px;
@@ -1121,6 +1124,16 @@ button { cursor: pointer; font-family: inherit; }
 }
 .task-delete:active { color: var(--danger); background: rgba(240,96,122,0.10); }
 .task-delete svg { width: 16px; height: 16px; }
+.task-abandon {
+  width: 28px; height: 28px;
+  border: none; border-radius: var(--radius-xs);
+  background: transparent; color: var(--text-dim);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; cursor: pointer; flex-shrink: 0;
+  transition: all var(--transition);
+}
+.task-abandon:active { background: rgba(160,160,160,0.15); }
+.task-abandon--undo { font-size: 16px; color: var(--text-muted); }
 
 .weight-select { display: flex; gap: 4px; }
 .weight-btn {
