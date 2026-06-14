@@ -89,7 +89,7 @@ function renderMainSettings(container) {
 
   wireAppearance(container);
   wireCategories(container);
-  wireAccount(container, { hideWhenSignedIn: true });
+  wireAccount(container, { hideWhenSignedIn: true, sectionId: 'main-account-section' });
   container.querySelector('#open-ai-settings-btn')?.addEventListener('click', () => nav('ai-settings'));
 }
 
@@ -197,7 +197,7 @@ function renderAISettings(container) {
 
   wireAISettings(container);
   wireBackup(container);
-  wireAccount(container, { hideWhenSignedIn: false });
+  wireAccount(container, { hideWhenSignedIn: false, sectionId: 'ai-account-section' });
 }
 
 function renderCategoryRow(cat) {
@@ -287,7 +287,6 @@ function wireCategories(container) {
     saveCategories(cats);
   };
 
-  container.querySelector('#cat-list')?.addEventListener('change', saveCats);
   container.querySelector('#cat-list')?.addEventListener('input', saveCats);
 
   container.querySelector('#cat-list')?.addEventListener('click', e => {
@@ -513,7 +512,7 @@ function wireAccount(container, options = {}) {
 }
 
 async function refreshAccountStatus(container, options = {}) {
-  const section = container.querySelector('#main-account-section') || container.querySelector('#ai-account-section');
+  const section = options.sectionId ? container.querySelector(`#${options.sectionId}`) : null;
   const statusEl = container.querySelector('#sb-status');
   const signinWrap = container.querySelector('#sb-signin-wrap');
   const loggedinWrap = container.querySelector('#sb-loggedin-wrap');
