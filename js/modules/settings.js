@@ -471,12 +471,13 @@ function wireAccount(container, options = {}) {
       if (!session) throw new Error('Could not create a session.');
       toast('Signed in.', 'success');
       if (!isMigrated()) {
-        toast('クラウドにデータを同期中…', 'info');
+        toast('Syncing local data to cloud…', 'info');
         try {
           await migrateToSupabase(() => {});
-          toast('同期完了 ✓', 'success');
+          toast('Sync complete ✓', 'success');
         } catch (e) {
           console.warn('[Sync] auto-migrate failed:', e);
+          toast('Sync failed — tap "Move local data to cloud" in AI Settings to retry.', 'error');
         }
       }
       await refreshAccountStatus(container, options);

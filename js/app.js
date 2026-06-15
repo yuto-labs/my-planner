@@ -225,12 +225,16 @@ async function init() {
     const authResult = await handleAuthRedirect();
     const session = authResult.session || await getSession();
     if (session) {
+      const viewAtPullStart = currentView;
       pullAll().then(pulled => {
-        if (pulled && currentView) {
-          const v = currentView;
-          currentView = null;
-          navigate(v);
-        }
+        // Only re-render if: data actually changed, user hasn't navigated away,
+        // and user isn't actively typing (avoids wiping form input mid-session).
+        if (!pulled || !currentView || currentView !== viewAtPullStart) return;
+        const tag = document.activeElement?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
+        const v = currentView;
+        currentView = null;
+        navigate(v);
       }).catch(e => console.warn('[Sync] pullAll failed:', e));
     }
   } catch (e) {
