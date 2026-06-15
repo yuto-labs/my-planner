@@ -899,7 +899,8 @@ function renderTaskItem(task) {
 
   return `
     <li class="task-item${task.completed ? ' completed' : ''}${task.abandoned ? ' abandoned' : ''}${isGoal ? ' task-item--goal' : ''}" data-task-id="${esc(task.id)}" draggable="true">
-      <button class="task-check${task.completed ? ' done' : ''}" data-action="toggle" aria-label="完了切り替え" ${task.abandoned ? 'disabled' : ''}>
+      <button class="task-check${task.completed ? ' done' : ''}" data-action="toggle"
+        ${task.abandoned ? 'disabled aria-label="諦めたタスクは完了に変更できません" title="諦めたタスクは完了に変更できません"' : 'aria-label="完了切り替え"'}>
         <svg viewBox="0 0 24 24" fill="currentColor">
           <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
         </svg>
@@ -912,9 +913,11 @@ function renderTaskItem(task) {
         ${dueLabel}
         ${tagChips}
         ${isGoal ? `<button class="btn btn-ghost btn-sm task-decompose-btn" data-action="decompose" title="AIでサブタスクに分解">🤖</button>` : ''}
-        ${!task.abandoned
-          ? `<button class="task-abandon" data-action="abandon" aria-label="諦める" title="諦める">🏳</button>`
-          : `<button class="task-abandon task-abandon--undo" data-action="unabandon" aria-label="諦めを取り消す" title="諦めを取り消す">↩</button>`
+        ${task.abandoned
+          ? `<button class="task-abandon task-abandon--undo" data-action="unabandon" aria-label="諦めを取り消す" title="諦めを取り消す">↩</button>`
+          : !task.completed
+            ? `<button class="task-abandon" data-action="abandon" aria-label="諦める" title="諦める">🏳</button>`
+            : ''
         }
         <button class="task-delete" data-action="delete" aria-label="削除">
           <svg viewBox="0 0 24 24" fill="currentColor">
@@ -1153,7 +1156,7 @@ function handleDelete(taskId, li) {
 
 function handleAbandon(taskId, li) {
   const task = getTasks().find(t => t.id === taskId);
-  if (!task) return;
+  if (!task || task.completed) return;
 
   li.classList.add('abandoned');
   updateTask(taskId, { abandoned: true });
@@ -1171,10 +1174,17 @@ function handleAbandon(taskId, li) {
 }
 
 function handleUnabandon(taskId, li) {
+  const task = getTasks().find(t => t.id === taskId);
+  if (!task) return;
   li.classList.remove('abandoned');
   updateTask(taskId, { abandoned: false, abandonedAt: null });
   rerenderList();
   renderProgressBar();
+  undoToast(`「${task.title.slice(0, 20)}」を諦めリストから戻しました`, () => {
+    updateTask(taskId, { abandoned: true });
+    rerenderList();
+    renderProgressBar();
+  });
 }
 
 // ---- Task edit modal (title + due date/time + tags + subtasks + memo) ----

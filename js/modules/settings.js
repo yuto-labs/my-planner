@@ -89,7 +89,7 @@ function renderMainSettings(container) {
 
   wireAppearance(container);
   wireCategories(container);
-  wireAccount(container, { hideWhenSignedIn: true, sectionId: 'main-account-section' });
+  wireAccount(container, { hideWhenSignedIn: false, sectionId: 'main-account-section' });
   container.querySelector('#open-ai-settings-btn')?.addEventListener('click', () => nav('ai-settings'));
 }
 
@@ -471,7 +471,7 @@ function wireAccount(container, options = {}) {
       if (!session) throw new Error('Could not create a session.');
       toast('Signed in.', 'success');
       if (!isMigrated()) {
-        toast('Syncing local data to cloud…', 'info');
+        btn.textContent = 'Syncing…';
         try {
           await migrateToSupabase(() => {});
           toast('Sync complete ✓', 'success');
