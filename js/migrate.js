@@ -138,6 +138,8 @@ export function taskToRow(task, userId, isArchived) {
     sort_order:        0,
     task_type:         task.taskType          || 'normal',
     estimated_minutes: task.estimatedMinutes  || null,
+    abandoned:         task.abandoned         || false,
+    abandoned_at:      task.abandonedAt       || null,
     created_at:        task.createdAt         || _now(),
     updated_at:        task.updatedAt         || _now(),
   };
@@ -160,6 +162,8 @@ export function rowToTask(row) {
     archivedAt:       row.archived_at       || null,
     taskType:         row.task_type         || 'normal',
     estimatedMinutes: row.estimated_minutes || null,
+    abandoned:        row.abandoned         || false,
+    abandonedAt:      row.abandoned_at      || null,
     createdAt:        row.created_at        || _now(),
     updatedAt:        row.updated_at        || _now(),
   };

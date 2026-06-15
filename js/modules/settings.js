@@ -470,6 +470,15 @@ function wireAccount(container, options = {}) {
       const session = await verifyEmailOtp(email, code);
       if (!session) throw new Error('Could not create a session.');
       toast('Signed in.', 'success');
+      if (!isMigrated()) {
+        toast('クラウドにデータを同期中…', 'info');
+        try {
+          await migrateToSupabase(() => {});
+          toast('同期完了 ✓', 'success');
+        } catch (e) {
+          console.warn('[Sync] auto-migrate failed:', e);
+        }
+      }
       await refreshAccountStatus(container, options);
     } catch (e) {
       toast('Sign-in error: ' + e.message, 'error');

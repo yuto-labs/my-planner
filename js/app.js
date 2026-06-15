@@ -225,7 +225,13 @@ async function init() {
     const authResult = await handleAuthRedirect();
     const session = authResult.session || await getSession();
     if (session) {
-      pullAll().catch(e => console.warn('[Sync] pullAll failed:', e));
+      pullAll().then(pulled => {
+        if (pulled && currentView) {
+          const v = currentView;
+          currentView = null;
+          navigate(v);
+        }
+      }).catch(e => console.warn('[Sync] pullAll failed:', e));
     }
   } catch (e) {
     console.warn('[Sync] init failed:', e);
