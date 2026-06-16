@@ -4,6 +4,7 @@
 import {
   getTasks, getArchivedTasks, getKnowledgeMemos,
   isAiAvailable, getMonthlyReport, setMonthlyReport, getReviewSchedule,
+  getReviewLog,
 } from '../storage.js';
 import { generateAnalyticsSummary } from '../ai.js';
 import { esc, today } from '../utils.js';
@@ -125,6 +126,32 @@ function calcLearningSpeed() {
   const lastWeek = weeks[6].cnt;
   const monthAvg = Math.round(weeks.reduce((s, w) => s + w.cnt, 0) / 2);
   return { weeks, thisWeek, lastWeek, monthAvg };
+}
+
+function calcReviewSpeed() {
+  const log = getReviewLog();
+  const weeks = Array.from({ length: 8 }, (_, i) => {
+    const wb = weekBounds(i - 7);
+    const cnt = log.filter(e => e.date >= wb.s && e.date <= wb.e).length;
+    return { label: wb.s.slice(5), cnt };
+  });
+  const thisWeek = weeks[7].cnt;
+  const lastWeek = weeks[6].cnt;
+  const monthAvg = Math.round(weeks.reduce((s, w) => s + w.cnt, 0) / 2);
+  return { weeks, thisWeek, lastWeek, monthAvg };
+}
+
+function calcReviewByField() {
+  const log = getReviewLog();
+  const mb = monthBounds();
+  const thisMonth = log.filter(e => e.date >= mb.s && e.date <= mb.e);
+  const tagMap = {};
+  thisMonth.forEach(e => (e.tags || []).forEach(t => { tagMap[t] = (tagMap[t] || 0) + 1; }));
+  const total = Object.values(tagMap).reduce((s, n) => s + n, 0) || 1;
+  return Object.entries(tagMap)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([tag, cnt]) => ({ tag, cnt, pct: Math.round(cnt / total * 100) }));
 }
 
 function calcNeglectedTopics() {
@@ -296,19 +323,23 @@ function renderTasksTab() {
 
 /* ---- Knowledge tab ---- */
 function renderKnowledgeTab() {
-  const balance   = calcFieldBalance();
-  const speed     = calcLearningSpeed();
-  const neglected = calcNeglectedTopics();
-  const review    = calcReviewRate();
-  const db        = calcDepthBreadth();
+  const balance      = calcFieldBalance();
+  const addSpeed     = calcLearningSpeed();
+  const revSpeed     = calcReviewSpeed();
+  const revByField   = calcReviewByField();
+  const neglected    = calcNeglectedTopics();
+  const review       = calcReviewRate();
+  const db           = calcDepthBreadth();
 
-  const maxCnt     = balance[0]?.cnt || 1;
-  const maxWeekCnt = Math.max(...speed.weeks.map(w => w.cnt), 1);
+  const maxCnt        = balance[0]?.cnt || 1;
+  const maxRevField   = revByField[0]?.cnt || 1;
+  const maxRevWeekCnt = Math.max(...revSpeed.weeks.map(w => w.cnt), 1);
+  const maxAddWeekCnt = Math.max(...addSpeed.weeks.map(w => w.cnt), 1);
 
   return `
-    <!-- 分野バランス -->
+    <!-- 分野バランス（メモ数） -->
     <div class="analytics-section">
-      <div class="analytics-section-title">分野バランス（上位5タグ）</div>
+      <div class="analytics-section-title">分野バランス（メモ数・上位5）</div>
       ${balance.length === 0
         ? noData('タグ付きメモがまだありません')
         : `<div class="analytics-bar-list">
@@ -324,17 +355,57 @@ function renderKnowledgeTab() {
       }
     </div>
 
-    <!-- 学習速度 -->
+    <!-- 復習速度（直近8週間） -->
     <div class="analytics-section">
-      <div class="analytics-section-title">学習速度（直近8週間）</div>
+      <div class="analytics-section-title">復習速度（直近8週間）</div>
+      ${revSpeed.weeks.every(w => w.cnt === 0)
+        ? noData('まだ「学習した」ボタンを押したことがありません')
+        : `<div class="analytics-speed-stats">
+             <div class="analytics-speed-stat"><div class="analytics-speed-val" style="color:var(--success)">${revSpeed.thisWeek}</div><div class="analytics-speed-lbl">今週</div></div>
+             <div class="analytics-speed-stat"><div class="analytics-speed-val">${revSpeed.lastWeek}</div><div class="analytics-speed-lbl">先週</div></div>
+             <div class="analytics-speed-stat"><div class="analytics-speed-val">${revSpeed.monthAvg}</div><div class="analytics-speed-lbl">月平均</div></div>
+           </div>
+           <div class="analytics-chart-bars" style="padding-bottom:20px;gap:4px">
+             ${revSpeed.weeks.map(w => {
+               const h = w.cnt > 0 ? Math.round(w.cnt / maxRevWeekCnt * 48) : 2;
+               return `<div class="analytics-chart-col">
+                 <div class="analytics-chart-bar" style="height:${h}px;background:var(--success);opacity:0.8"></div>
+                 <div class="analytics-chart-day">${w.label}</div>
+               </div>`;
+             }).join('')}
+           </div>`
+      }
+    </div>
+
+    <!-- 分野別 復習回数（今月） -->
+    <div class="analytics-section">
+      <div class="analytics-section-title">分野別 復習回数（今月）</div>
+      ${revByField.length === 0
+        ? noData('今月の復習記録がまだありません')
+        : `<div class="analytics-bar-list">
+             ${revByField.map(d => `
+               <div class="analytics-bar-row">
+                 <div class="analytics-bar-label">${esc(d.tag)}</div>
+                 <div class="analytics-bar-track">
+                   <div class="analytics-bar-fill" style="width:${Math.round(d.cnt / maxRevField * 100)}%;background:var(--success)"></div>
+                 </div>
+                 <div class="analytics-bar-val">${d.cnt}回<span class="analytics-bar-pct"> (${d.pct}%)</span></div>
+               </div>`).join('')}
+           </div>`
+      }
+    </div>
+
+    <!-- メモ追加速度（直近8週間） -->
+    <div class="analytics-section">
+      <div class="analytics-section-title">メモ追加速度（直近8週間）</div>
       <div class="analytics-speed-stats">
-        <div class="analytics-speed-stat"><div class="analytics-speed-val">${speed.thisWeek}</div><div class="analytics-speed-lbl">今週</div></div>
-        <div class="analytics-speed-stat"><div class="analytics-speed-val">${speed.lastWeek}</div><div class="analytics-speed-lbl">先週</div></div>
-        <div class="analytics-speed-stat"><div class="analytics-speed-val">${speed.monthAvg}</div><div class="analytics-speed-lbl">月平均</div></div>
+        <div class="analytics-speed-stat"><div class="analytics-speed-val">${addSpeed.thisWeek}</div><div class="analytics-speed-lbl">今週</div></div>
+        <div class="analytics-speed-stat"><div class="analytics-speed-val">${addSpeed.lastWeek}</div><div class="analytics-speed-lbl">先週</div></div>
+        <div class="analytics-speed-stat"><div class="analytics-speed-val">${addSpeed.monthAvg}</div><div class="analytics-speed-lbl">月平均</div></div>
       </div>
       <div class="analytics-chart-bars" style="padding-bottom:20px;gap:4px">
-        ${speed.weeks.map(w => {
-          const h = w.cnt > 0 ? Math.round(w.cnt / maxWeekCnt * 48) : 2;
+        ${addSpeed.weeks.map(w => {
+          const h = w.cnt > 0 ? Math.round(w.cnt / maxAddWeekCnt * 48) : 2;
           return `<div class="analytics-chart-col">
             <div class="analytics-chart-bar" style="height:${h}px;background:var(--primary);opacity:0.75"></div>
             <div class="analytics-chart-day">${w.label}</div>

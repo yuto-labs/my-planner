@@ -8,7 +8,7 @@ import {
   getTermExplanation, setTermExplanation, isAiAvailable,
   scheduleFirstReview, getReviewEntry,
   getBatchSettings, addToPendingAIQueue, removeFromPendingAIQueue,
-  pushUndo, applyUndo,
+  pushUndo, applyUndo, addReviewLog, getReviewLog,
 } from '../storage.js';
 import {
   suggestKnowledgeTags, explainTerm, summarizeAndTagText,
@@ -886,6 +886,19 @@ function renderViewMode(container) {
         ${renderBlocksView(blocks)}
       </div>
 
+      <!-- 学習した ボタン -->
+      ${id ? (() => {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const todayCount = getReviewLog().filter(e => e.memoId === id && e.date === todayStr).length;
+        return `<div class="kn-learned-action">
+          <button class="kn-learned-btn" id="kn-learned-btn">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+            学習した
+          </button>
+          ${todayCount > 0 ? `<div class="kn-learned-count">今日 ${todayCount}回 復習済み</div>` : '<div class="kn-learned-hint">タップして復習を記録</div>'}
+        </div>`;
+      })() : ''}
+
       <!-- Related memos -->
       ${relatedMemos.length ? `
         <div class="kn-related-section">
@@ -928,6 +941,12 @@ function renderViewMode(container) {
   container.querySelector('#kn-delete-btn')?.addEventListener('click', () => {
     if (!edState.id) { nav('knowledge'); return; }
     confirmDelete(edState.id, container);
+  });
+
+  container.querySelector('#kn-learned-btn')?.addEventListener('click', () => {
+    addReviewLog(edState.id, edState.tags);
+    window.AppNav?.showToast('復習を記録しました ✓', 'success');
+    renderViewMode(container);
   });
 
   // Wire toggle blocks

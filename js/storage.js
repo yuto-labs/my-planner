@@ -512,6 +512,19 @@ export function deleteKnowledgeMemo(id) {
   _notifyDelete({ table: 'knowledge_memos', id });
 }
 
+// ---- Knowledge Review Log ----
+// Shape: [{ memoId: 'id', date: 'YYYY-MM-DD', tags: ['tag1', 'tag2'] }]
+const REVIEW_LOG_KEY = 'mp_knowledge_review_log';
+
+export function getReviewLog() { return load(REVIEW_LOG_KEY, []); }
+
+export function addReviewLog(memoId, tags) {
+  const log = getReviewLog();
+  log.push({ memoId, date: toDateStr_simple(new Date()), tags: tags || [] });
+  if (log.length > 500) log.splice(0, log.length - 500);
+  save(REVIEW_LOG_KEY, log);
+}
+
 // ---- Term explanation cache (persistent) ----
 
 export function getTermCache() { return load(TERM_KEY, {}); }
