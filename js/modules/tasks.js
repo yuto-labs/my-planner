@@ -131,18 +131,21 @@ function render() {
 
     <!-- Filters -->
     <div class="tasks-filters">
-      ${[
-        { key: 'all',      label: 'すべて' },
-        { key: 'pending',  label: '未完了' },
-        { key: 'done',     label: '完了'   },
-        { key: 'abandoned',label: '諦めた' },
-        { key: 'large',    label: '大'     },
-        { key: 'medium',   label: '中'     },
-        { key: 'small',    label: '小'     },
-      ].map(f =>
-        `<button class="filter-btn${state.filter === f.key ? ' active' : ''}"
-                 data-filter="${f.key}">${f.label}</button>`
-      ).join('')}
+      ${(() => {
+        const abandonedCount = getTasks().filter(t => t.abandoned).length;
+        return [
+          { key: 'all',      label: 'すべて' },
+          { key: 'pending',  label: '未完了' },
+          { key: 'done',     label: '完了'   },
+          { key: 'abandoned',label: '諦めた', badge: abandonedCount || 0 },
+          { key: 'large',    label: '大'     },
+          { key: 'medium',   label: '中'     },
+          { key: 'small',    label: '小'     },
+        ].map(f =>
+          `<button class="filter-btn${state.filter === f.key ? ' active' : ''}"
+                   data-filter="${f.key}">${f.label}${f.badge ? `<span class="filter-badge">${f.badge}</span>` : ''}</button>`
+        ).join('');
+      })()}
       ${getTasks().some(t => t.completed)
         ? `<button class="filter-btn tasks-clear-done" id="tasks-clear-done" title="完了済みを一括削除">🗑 クリア</button>`
         : ''}

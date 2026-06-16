@@ -236,6 +236,7 @@ function renderAccountSection() {
             pattern="[0-9]*" maxlength="8" placeholder="12345678"
             style="font-size:24px;letter-spacing:4px;text-align:center;font-weight:700">
           <button class="btn btn-primary btn-sm btn-full" id="sb-otp-verify-btn" style="margin-top:10px">Sign in</button>
+          <button class="btn btn-ghost btn-sm btn-full" id="sb-resend-btn" style="margin-top:6px">Resend code</button>
         </div>
       </div>
 
@@ -491,6 +492,10 @@ function wireAccount(container, options = {}) {
 
   container.querySelector('#sb-otp-input')?.addEventListener('keydown', e => {
     if (e.key === 'Enter') container.querySelector('#sb-otp-verify-btn')?.click();
+  });
+
+  container.querySelector('#sb-resend-btn')?.addEventListener('click', () => {
+    container.querySelector('#sb-signin-btn')?.click();
   });
 
   container.querySelector('#sb-signout-btn')?.addEventListener('click', async () => {
