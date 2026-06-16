@@ -1,5 +1,5 @@
 // ============================================================
-// archive.js — Completed task archive (auto-archived from previous days)
+// archive.js — Completed task archive (auto-archived after 7 days)
 // ============================================================
 
 import { getArchivedTasks, deleteArchivedByMonth } from '../storage.js';
@@ -18,7 +18,7 @@ function render(container) {
     container.innerHTML = `
       <div class="archive-page">
         <div class="archive-intro">
-          <p>完了したタスクは翌日0時に自動でここへ移動されます。</p>
+          <p>完了したタスクは7日後に自動でここへ移動されます。</p>
         </div>
         <div class="empty-state" style="padding-top:48px">
           <div class="empty-state-icon">📦</div>
@@ -43,7 +43,7 @@ function render(container) {
   container.innerHTML = `
     <div class="archive-page">
       <div class="archive-intro">
-        <p>完了したタスクの記録です。合計 <strong>${archived.length}</strong> 件</p>
+        <p>完了から7日を過ぎたタスクの記録です。合計 <strong>${archived.length}</strong> 件</p>
       </div>
       ${sortedMonths.map(ym => {
         const tasks = byMonth[ym].sort((a, b) =>

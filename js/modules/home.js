@@ -32,7 +32,7 @@ export function initHome(container) {
   const aiAvailable = isAiAvailable();
 
   const pending = allTasks
-    .filter(t => !t.completed)
+    .filter(t => !t.completed && !t.abandoned)
     .sort((a, b) => {
       const aHas = !!(a.dueDate);
       const bHas = !!(b.dueDate);
@@ -48,7 +48,7 @@ export function initHome(container) {
   const extraTasks = pending.slice(3);
 
   const tomorrowTasks = allTasks
-    .filter(t => !t.completed && t.dueDate === tomorrowStr)
+    .filter(t => !t.completed && !t.abandoned && t.dueDate === tomorrowStr)
     .sort((a, b) => weightOrder(a.weight) - weightOrder(b.weight));
 
   container.innerHTML = `

@@ -3,7 +3,7 @@
 // ============================================================
 
 import {
-  getTasks, addTask, updateTask, deleteTask, addFocusLog,
+  getTasks, addTask, updateTask, deleteTask,
   pushUndo, applyUndo, deleteCompletedTasks, reorderTask,
   addKnowledgeMemo, updateKnowledgeMemo, getApiKey,
   getTags, addTag,
@@ -130,26 +130,7 @@ function render() {
     <div class="tasks-progress-wrap" id="tasks-progress-wrap"></div>
 
     <!-- Filters -->
-    <div class="tasks-filters">
-      ${(() => {
-        const abandonedCount = getTasks().filter(t => t.abandoned).length;
-        return [
-          { key: 'all',      label: 'すべて' },
-          { key: 'pending',  label: '未完了' },
-          { key: 'done',     label: '完了'   },
-          { key: 'abandoned',label: '諦めた', badge: abandonedCount || 0 },
-          { key: 'large',    label: '大'     },
-          { key: 'medium',   label: '中'     },
-          { key: 'small',    label: '小'     },
-        ].map(f =>
-          `<button class="filter-btn${state.filter === f.key ? ' active' : ''}"
-                   data-filter="${f.key}">${f.label}${f.badge ? `<span class="filter-badge">${f.badge}</span>` : ''}</button>`
-        ).join('');
-      })()}
-      ${getTasks().some(t => t.completed)
-        ? `<button class="filter-btn tasks-clear-done" id="tasks-clear-done" title="完了済みを一括削除">🗑 クリア</button>`
-        : ''}
-    </div>
+    <div class="tasks-filters">${renderFiltersHTML()}</div>
 
     ${state.codexPanelOpen ? renderCodexPlannerPanel() : ''}
 
@@ -219,16 +200,7 @@ function render() {
   container.querySelector('#task-input')
     ?.addEventListener('keydown', e => { if (e.key === 'Enter') handleAdd(); });
 
-  // Filter buttons
-  container.querySelectorAll('.filter-btn[data-filter]').forEach(btn =>
-    btn.addEventListener('click', () => {
-      state.filter = btn.dataset.filter;
-      container.querySelectorAll('.filter-btn').forEach(b =>
-        b.classList.toggle('active', b.dataset.filter === state.filter)
-      );
-      rerenderList();
-    })
-  );
+  wireFilters(container);
 
   // Tag input for new task
   const _tagInput    = container.querySelector('#tasks-add-tag-input');
@@ -262,16 +234,6 @@ function render() {
   container.querySelector('#goto-archive-btn')?.addEventListener('click', () => nav('archive'));
 
   if (state.codexPanelOpen) wireCodexPlannerPanel(container);
-
-  // 完了済みクリアボタン
-  container.querySelector('#tasks-clear-done')?.addEventListener('click', () => {
-    const completed = getTasks().filter(t => t.completed);
-    if (!completed.length) return;
-    deleteCompletedTasks();
-    rerenderList();
-    renderProgressBar();
-    toast(`${completed.length}件の完了タスクを削除しました`, 'success');
-  });
 
   // Initial list render
   const listEl = container.querySelector('#task-list');
@@ -307,6 +269,67 @@ function renderProgressBar() {
       <span class="tasks-progress-label">${done} / ${total} 完了 (${pct}%)${subStr}</span>
     </div>
   `;
+}
+
+function getTaskCounts() {
+  const tasks = getTasks();
+  return {
+    pending: tasks.filter(t => !t.completed && !t.abandoned).length,
+    done: tasks.filter(t => t.completed).length,
+    abandoned: tasks.filter(t => t.abandoned).length,
+  };
+}
+
+function renderFiltersHTML() {
+  const counts = getTaskCounts();
+  return [
+    { key: 'all', label: 'すべて', badge: null },
+    { key: 'pending', label: '未完了', badge: counts.pending },
+    { key: 'done', label: '完了', badge: counts.done },
+    { key: 'abandoned', label: '諦めた', badge: counts.abandoned },
+    { key: 'large', label: '大', badge: null },
+    { key: 'medium', label: '中', badge: null },
+    { key: 'small', label: '小', badge: null },
+  ].map(f =>
+    `<button class="filter-btn${state.filter === f.key ? ' active' : ''}" data-filter="${f.key}">
+      ${f.label}${f.badge !== null ? `<span class="filter-badge">${f.badge}</span>` : ''}
+    </button>`
+  ).join('') + (counts.done > 0
+    ? `<button class="filter-btn tasks-clear-done" id="tasks-clear-done" title="完了済みを一括削除">🗑 クリア</button>`
+    : '');
+}
+
+function wireFilters(container) {
+  container.querySelectorAll('.filter-btn[data-filter]').forEach(btn =>
+    btn.addEventListener('click', () => {
+      state.filter = btn.dataset.filter;
+      container.querySelectorAll('.filter-btn').forEach(b =>
+        b.classList.toggle('active', b.dataset.filter === state.filter)
+      );
+      rerenderList();
+    })
+  );
+
+  container.querySelector('#tasks-clear-done')?.addEventListener('click', () => {
+    const completed = getTasks().filter(t => t.completed);
+    if (!completed.length) return;
+    deleteCompletedTasks();
+    refreshTaskUi(true);
+    toast(`${completed.length}件の完了タスクを削除しました`, 'success');
+  });
+}
+
+function updateFilterBar() {
+  const filters = state.container?.querySelector('.tasks-filters');
+  if (!filters) return;
+  filters.innerHTML = renderFiltersHTML();
+  wireFilters(state.container);
+}
+
+function refreshTaskUi(shouldRerenderList = false) {
+  renderProgressBar();
+  updateFilterBar();
+  if (shouldRerenderList) rerenderList();
 }
 
 // ---- Codex reschedule bridge ----
@@ -1101,20 +1124,18 @@ function handleToggle(taskId, li) {
     pushUndo({ type: 'complete_task', taskId, wasCompleted: false, completedAt });
     updateTask(taskId, { completed: true, completedAt });
 
-    renderProgressBar();
+    refreshTaskUi(false);
 
     undoToast(`「${task.title.slice(0, 20)}」を完了しました`, () => {
       applyUndo();
       rerenderList();
-      renderProgressBar();
-    });
+        refreshTaskUi(true);
+      });
 
-    // Move completed item to bottom after short delay (keeps the tick animation visible)
+    // Remove from filtered lists / move in all lists after a short tick animation.
     setTimeout(() => {
-      if (state.filter !== 'pending') rerenderList();
-    }, 400);
-
-    showFocusPicker(task);
+      refreshTaskUi(true);
+    }, 220);
 
     // Knowledge save prompt when task has a memo
     if (task.memo) {
@@ -1127,10 +1148,10 @@ function handleToggle(taskId, li) {
     li.querySelector('.task-check')?.classList.remove('done');
 
     updateTask(taskId, { completed: false, completedAt: null });
-    renderProgressBar();
+    refreshTaskUi(false);
 
     // Reinsert at correct sort position after short delay
-    setTimeout(() => rerenderList(), 300);
+    setTimeout(() => refreshTaskUi(true), 220);
   }
 }
 
@@ -1148,13 +1169,14 @@ function handleDelete(taskId, li) {
   // Persist
   pushUndo({ type: 'delete_task', task });
   deleteTask(taskId);
-  renderProgressBar();
+  refreshTaskUi(false);
 
   undoToast(`「${task.title.slice(0, 20)}」を削除しました`, () => {
     applyUndo();
-    rerenderList();
-    renderProgressBar();
+    refreshTaskUi(true);
   });
+
+  setTimeout(() => refreshTaskUi(true), 200);
 }
 
 function handleAbandon(taskId, li) {
@@ -1163,17 +1185,16 @@ function handleAbandon(taskId, li) {
 
   li.classList.add('abandoned');
   updateTask(taskId, { abandoned: true });
-  renderProgressBar();
+  refreshTaskUi(false);
 
   undoToast(`「${task.title.slice(0, 20)}」を諦めました`, () => {
     updateTask(taskId, { abandoned: false, abandonedAt: null });
-    rerenderList();
-    renderProgressBar();
+    refreshTaskUi(true);
   });
 
   setTimeout(() => {
-    if (state.filter !== 'abandoned') rerenderList();
-  }, 400);
+    refreshTaskUi(true);
+  }, 220);
 }
 
 function handleUnabandon(taskId, li) {
@@ -1181,18 +1202,16 @@ function handleUnabandon(taskId, li) {
   if (!task) return;
   li.classList.remove('abandoned');
   updateTask(taskId, { abandoned: false, abandonedAt: null });
-  renderProgressBar();
+  refreshTaskUi(false);
 
   undoToast(`「${task.title.slice(0, 20)}」を諦めリストから戻しました`, () => {
     updateTask(taskId, { abandoned: true });
-    rerenderList();
-    renderProgressBar();
+    refreshTaskUi(true);
   });
 
-  // 「諦めた」フィルター中はタスクが消えるべきなので遅延再描画
   setTimeout(() => {
-    if (state.filter === 'abandoned') rerenderList();
-  }, 400);
+    refreshTaskUi(true);
+  }, 220);
 }
 
 // ---- Task edit modal (title + due date/time + tags + subtasks + memo) ----
@@ -1495,54 +1514,6 @@ function showKnowledgeSavePrompt(task) {
   banner.querySelector('.kn-save-dismiss')?.addEventListener('click', () => {
     clearTimeout(timer);
     dismiss();
-  });
-}
-
-// ---- Focus picker (truly non-blocking) ----
-
-function showFocusPicker(task) {
-  // Remove any existing picker first
-  document.querySelector('.focus-picker')?.remove();
-
-  const picker = document.createElement('div');
-  picker.className = 'focus-picker';
-  picker.innerHTML = `
-    <div class="focus-picker-inner">
-      <div class="focus-picker-label">
-        「${esc(task.title.slice(0, 20))}」完了 ✓
-        <br><span>今の集中度は？（任意）</span>
-      </div>
-      <div class="focus-picker-btns">
-        <button class="focus-btn focus-btn--high" data-level="high">🔥 高</button>
-        <button class="focus-btn focus-btn--med"  data-level="medium">😊 中</button>
-        <button class="focus-btn focus-btn--low"  data-level="low">😴 低</button>
-        <button class="focus-btn focus-btn--skip" data-level="">スキップ</button>
-      </div>
-    </div>
-  `;
-
-  document.getElementById('app')?.appendChild(picker);
-
-  const dismiss = () => picker.remove();
-  const timer   = setTimeout(dismiss, 8000);
-
-  picker.querySelectorAll('[data-level]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      clearTimeout(timer);
-      const level = btn.dataset.level;
-      if (level) {
-        const now = new Date();
-        addFocusLog({
-          taskId:     task.id,
-          taskTitle:  task.title,
-          focusLevel: level,
-          hour:       now.getHours(),
-          dayOfWeek:  now.getDay(),
-        });
-        toast('集中度を記録しました ✓', 'success');
-      }
-      dismiss();
-    });
   });
 }
 

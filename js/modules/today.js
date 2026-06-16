@@ -38,7 +38,8 @@ function renderPage(container) {
   const schedItems = getScheduleItemsForDate(todayStr);
 
   // Today's page keeps the broad task list; other dates show tasks due on that day.
-  const dayTasks = isRealToday ? getTasks() : getTasks().filter(t => t.dueDate === todayStr);
+  const dayTasks = (isRealToday ? getTasks() : getTasks().filter(t => t.dueDate === todayStr))
+    .filter(t => !t.abandoned);
   const allTasks = dayTasks.sort((a, b) => {
     if (a.completed !== b.completed) return a.completed ? 1 : -1;
     const wo = { large: 0, medium: 1, small: 2 };

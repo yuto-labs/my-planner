@@ -590,21 +590,24 @@ export function setTermExplanation(term, explanation) {
 }
 
 // ---- Task Archive ----
-// Completed tasks from previous days are moved here by autoArchiveTasks()
+// Completed tasks older than the retention window are moved here by autoArchiveTasks()
 const ARCHIVE_KEY = 'mp_task_archive';
+const ARCHIVE_AFTER_DAYS = 7;
 
 export function getArchivedTasks()         { return load(ARCHIVE_KEY, []); }
 export function saveArchivedTasks(tasks)   { save(ARCHIVE_KEY, tasks); _notifySync('tasks_archive'); }
 
-/** Move completed tasks (completedAt < today) to the archive store */
+/** Move completed tasks older than ARCHIVE_AFTER_DAYS to the archive store */
 export function autoArchiveTasks() {
-  const todayStr = toDateStr_simple(new Date());
+  const cutoff = new Date();
+  cutoff.setHours(0, 0, 0, 0);
+  cutoff.setDate(cutoff.getDate() - ARCHIVE_AFTER_DAYS);
   const active   = load(KEY.TASKS, []);
   const toArchive = [];
   const remaining = [];
 
   active.forEach(t => {
-    if (t.completed && t.completedAt && t.completedAt.slice(0, 10) < todayStr) {
+    if (t.completed && t.completedAt && new Date(t.completedAt) < cutoff) {
       toArchive.push({ ...t, archivedAt: new Date().toISOString() });
     } else {
       remaining.push(t);

@@ -299,6 +299,7 @@ async function init() {
   // フォアグラウンド復帰時に最新データを pull → スケジュール差分を即反映
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
+    try { autoArchiveTasks(); } catch {}
     getSession().then(session => {
       if (!session) return;
       pullIfStale(30_000).then(pulled => {
