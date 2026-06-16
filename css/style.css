@@ -40,17 +40,17 @@
   --shadow-sm:    0 2px 12px rgba(0,0,0,0.40);
   --scrollbar:    rgba(255,255,255,0.10);
 
-  --primary:        #BEE6C8;
-  --primary-dark:   #93CAA3;
-  --primary-light:  #DEF4E4;
-  --success:        #8FD0A6;
-  --accent:         #A6DBB6;
-  --gradient:       linear-gradient(135deg, #BEE6C8 0%, #8FD0A6 100%);
-  --gradient-h:     linear-gradient(90deg,  #BEE6C8 0%, #8FD0A6 100%);
-  --primary-bg:     rgba(190,230,200,0.14);
-  --primary-border: rgba(190,230,200,0.30);
-  --success-bg:     rgba(143,208,166,0.14);
-  --success-border: rgba(143,208,166,0.28);
+  --primary:        #BEE6D8;
+  --primary-dark:   #94CCBE;
+  --primary-light:  #E1F5EE;
+  --success:        #94D3C1;
+  --accent:         #A9DDD1;
+  --gradient:       linear-gradient(135deg, #BEE6D8 0%, #94D3C1 100%);
+  --gradient-h:     linear-gradient(90deg,  #BEE6D8 0%, #94D3C1 100%);
+  --primary-bg:     rgba(190,230,216,0.15);
+  --primary-border: rgba(190,230,216,0.31);
+  --success-bg:     rgba(148,211,193,0.15);
+  --success-border: rgba(148,211,193,0.28);
 }
 
 /* ---- Light mode (media query) ---- */
@@ -59,8 +59,8 @@
     --bg:           #F2F1FD;
     --bg-card:      #FFFFFF;
     --bg-input:     #EEECFB;
-    --bg-hover:     rgba(141,200,162,0.06);
-    --bg-active:    rgba(141,200,162,0.11);
+    --bg-hover:     rgba(142,201,187,0.06);
+    --bg-active:    rgba(142,201,187,0.11);
 
     --text:         #1A1830;
     --text-muted:   rgba(26,24,48,0.68);
@@ -69,21 +69,21 @@
     --border:       rgba(0,0,0,0.07);
     --border-light: rgba(0,0,0,0.04);
 
-    --shadow:       0 8px 32px rgba(141,200,162,0.09);
-    --shadow-sm:    0 2px 12px rgba(141,200,162,0.06);
-    --scrollbar:    rgba(141,200,162,0.18);
+    --shadow:       0 8px 32px rgba(142,201,187,0.09);
+    --shadow-sm:    0 2px 12px rgba(142,201,187,0.06);
+    --scrollbar:    rgba(142,201,187,0.18);
 
-    --primary:        #8DC8A2;
-    --primary-dark:   #6EB487;
-    --primary-light:  #BEE6C8;
-    --success:        #69B98B;
-    --accent:         #9FD5B1;
-    --gradient:       linear-gradient(135deg, #8DC8A2 0%, #69B98B 100%);
-    --gradient-h:     linear-gradient(90deg,  #8DC8A2 0%, #69B98B 100%);
-    --primary-bg:     rgba(141,200,162,0.10);
-    --primary-border: rgba(141,200,162,0.24);
-    --success-bg:     rgba(105,185,139,0.10);
-    --success-border: rgba(105,185,139,0.22);
+    --primary:        #8EC9BB;
+    --primary-dark:   #6EB6A7;
+    --primary-light:  #BEE6D8;
+    --success:        #6DBAA9;
+    --accent:         #9FD8CB;
+    --gradient:       linear-gradient(135deg, #8EC9BB 0%, #6DBAA9 100%);
+    --gradient-h:     linear-gradient(90deg,  #8EC9BB 0%, #6DBAA9 100%);
+    --primary-bg:     rgba(142,201,187,0.10);
+    --primary-border: rgba(142,201,187,0.24);
+    --success-bg:     rgba(109,186,169,0.10);
+    --success-border: rgba(109,186,169,0.22);
   }
 }
 
@@ -92,27 +92,27 @@
   --bg:           #F2F1FD;
   --bg-card:      #FFFFFF;
   --bg-input:     #EEECFB;
-  --bg-hover:     rgba(141,200,162,0.06);
-  --bg-active:    rgba(141,200,162,0.11);
+  --bg-hover:     rgba(142,201,187,0.06);
+  --bg-active:    rgba(142,201,187,0.11);
   --text:         #1A1830;
   --text-muted:   rgba(26,24,48,0.68);
   --text-dim:     rgba(26,24,48,0.48);
   --border:       rgba(0,0,0,0.07);
   --border-light: rgba(0,0,0,0.04);
-  --shadow:       0 8px 32px rgba(141,200,162,0.09);
-  --shadow-sm:    0 2px 12px rgba(141,200,162,0.06);
-  --scrollbar:    rgba(141,200,162,0.18);
-  --primary:        #8DC8A2;
-  --primary-dark:   #6EB487;
-  --primary-light:  #BEE6C8;
-  --success:        #69B98B;
-  --accent:         #9FD5B1;
-  --gradient:       linear-gradient(135deg, #8DC8A2 0%, #69B98B 100%);
-  --gradient-h:     linear-gradient(90deg,  #8DC8A2 0%, #69B98B 100%);
-  --primary-bg:     rgba(141,200,162,0.10);
-  --primary-border: rgba(141,200,162,0.24);
-  --success-bg:     rgba(105,185,139,0.10);
-  --success-border: rgba(105,185,139,0.22);
+  --shadow:       0 8px 32px rgba(142,201,187,0.09);
+  --shadow-sm:    0 2px 12px rgba(142,201,187,0.06);
+  --scrollbar:    rgba(142,201,187,0.18);
+  --primary:        #8EC9BB;
+  --primary-dark:   #6EB6A7;
+  --primary-light:  #BEE6D8;
+  --success:        #6DBAA9;
+  --accent:         #9FD8CB;
+  --gradient:       linear-gradient(135deg, #8EC9BB 0%, #6DBAA9 100%);
+  --gradient-h:     linear-gradient(90deg,  #8EC9BB 0%, #6DBAA9 100%);
+  --primary-bg:     rgba(142,201,187,0.10);
+  --primary-border: rgba(142,201,187,0.24);
+  --success-bg:     rgba(109,186,169,0.10);
+  --success-border: rgba(109,186,169,0.22);
 }
 
 /* ============================================================
@@ -249,9 +249,9 @@ button { cursor: pointer; font-family: inherit; }
   font-weight: 500;
   letter-spacing: 0.04em;
   transition: color var(--transition);
-  padding: 6px 0;
+  padding: 8px 0 10px;
 }
-.nav-btn svg { width: 22px; height: 22px; transition: transform var(--transition); }
+.nav-btn svg { width: 23px; height: 23px; transition: transform var(--transition); }
 .nav-btn.active { color: var(--primary); }
 .nav-btn:active svg { transform: scale(0.86); }
 
@@ -285,7 +285,7 @@ button { cursor: pointer; font-family: inherit; }
 .hidden { display: none !important; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
 
-.page { padding: 20px 16px calc(20px + env(safe-area-inset-bottom)); }
+.page { padding: 22px 18px calc(28px + env(safe-area-inset-bottom)); }
 
 /* Section label: UPPERCASE · small · spaced */
 .section-label {
@@ -304,10 +304,10 @@ button { cursor: pointer; font-family: inherit; }
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 18px;
+  padding: 19px;
   box-shadow: var(--shadow-sm);
 }
-.card + .card { margin-top: 14px; }
+.card + .card { margin-top: 16px; }
 
 .card-title {
   font-family: var(--display-font);
@@ -332,6 +332,7 @@ button { cursor: pointer; font-family: inherit; }
   justify-content: center;
   gap: 6px;
   padding: 11px 20px;
+  min-height: 42px;
   border-radius: var(--radius-sm);
   border: none;
   font-size: 13px;
@@ -363,7 +364,7 @@ button { cursor: pointer; font-family: inherit; }
 .btn-danger:active { background: rgba(240,96,122,0.22); }
 
 .btn-icon {
-  width: 36px; height: 36px; padding: 0;
+  width: 40px; height: 40px; padding: 0;
   border-radius: var(--radius-sm);
   background: var(--bg-hover);
   color: var(--text-muted);
