@@ -4,7 +4,7 @@
 import {
   getTasks, getArchivedTasks, getKnowledgeMemos,
   isAiAvailable, getMonthlyReport, setMonthlyReport, getReviewSchedule,
-  getReviewLog,
+  getReviewLog, MASTERY_STAGE,
 } from '../storage.js';
 import { generateAnalyticsSummary } from '../ai.js';
 import { esc, today } from '../utils.js';
@@ -173,7 +173,7 @@ function calcNeglectedTopics() {
 
 function calcReviewRate() {
   const schedule = getReviewSchedule();
-  const entries  = Object.values(schedule).filter(e => e.stage < 3);
+  const entries  = Object.values(schedule).filter(e => e.stage < MASTERY_STAGE);
   if (!entries.length) return { rate: null, done: 0, total: 0 };
   const todayStr = today();
   const overdue  = entries.filter(e => e.nextReview <= todayStr).length;

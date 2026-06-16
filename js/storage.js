@@ -432,23 +432,29 @@ export function setMonthlyReport(yyyymm, report) {
 }
 
 // ---- Spaced Repetition Review Schedule ----
-// Shape: { [memoId]: { nextReview:'YYYY-MM-DD', stage:0|1|2|3, lastReview:'YYYY-MM-DD' } }
-// stage intervals: 0→1day, 1→7days, 2→30days, 3→archived
+// Shape: { [memoId]: { nextReview:'YYYY-MM-DD', stage:0-6, lastReview:'YYYY-MM-DD' } }
 const REVIEW_KEY = 'mp_reviews';
-const REVIEW_INTERVALS = [1, 7, 30, 90]; // legacy stage-based (kept for advanceReview)
 
-// Rating-based intervals (days) indexed by [stage 0-3]
+export const STAGE_COUNT     = 7;
+export const MASTERY_STAGE   = STAGE_COUNT - 1; // 6
+export const STAGE_INTERVALS = [1, 3, 7, 14, 30, 60, 90]; // base days per stage
+
+// Rating-based intervals (days) indexed by new stage [0-6]
 const RATING_INTERVALS = {
-  again: [1,  1,  3,  7],
-  hard:  [1,  4, 12, 30],
-  good:  [3,  7, 21, 60],
-  easy:  [7, 14, 45, 90],
+  //        s0  s1  s2   s3   s4   s5   s6
+  again:  [  1,  2,  3,   5,   7,  14,  21 ],
+  hard:   [  1,  3,  7,  14,  30,  60,  90 ],
+  good:   [  3,  7, 14,  30,  60,  90, 120 ],
+  easy:   [  7, 14, 30,  60,  90, 120, 180 ],
 };
+
+// Stage delta per rating
+const STAGE_DELTA = { again: -2, hard: 0, good: +1, easy: +2 };
 
 export function getReviewSchedule()              { return load(REVIEW_KEY, {}); }
 export function scheduleFirstReview(memoId) {
   const schedule = getReviewSchedule();
-  if (schedule[memoId]) return; // already scheduled
+  if (schedule[memoId]) return;
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   schedule[memoId] = { stage: 0, nextReview: toDateStr_simple(tomorrow), lastReview: null };
   save(REVIEW_KEY, schedule);
@@ -457,10 +463,10 @@ export function advanceReview(memoId) {
   const schedule = getReviewSchedule();
   const entry = schedule[memoId];
   const currentStage = entry ? entry.stage : -1;
-  if (currentStage >= 3) return;
+  if (currentStage >= MASTERY_STAGE) return;
   const newStage = currentStage + 1;
   const next = new Date();
-  next.setDate(next.getDate() + REVIEW_INTERVALS[newStage]);
+  next.setDate(next.getDate() + STAGE_INTERVALS[newStage]);
   schedule[memoId] = { stage: newStage, nextReview: toDateStr_simple(next), lastReview: toDateStr_simple(new Date()) };
   save(REVIEW_KEY, schedule);
 }
@@ -469,34 +475,50 @@ export function rateReview(memoId, rating) {
   const schedule = getReviewSchedule();
   const entry = schedule[memoId];
   const stage = entry?.stage ?? 0;
-  if (stage >= 3 && rating !== 'again') return; // 習得済みは again でのみリセット可
-  let newStage;
-  if (rating === 'again')      newStage = Math.max(0, stage - 1);
-  else if (rating === 'hard')  newStage = stage;
-  else                         newStage = Math.min(stage + 1, 3);
-  const intervalStage = Math.min(newStage, 3);
-  const interval = RATING_INTERVALS[rating][intervalStage];
+  if (stage >= MASTERY_STAGE && rating !== 'again') return;
+  const delta    = STAGE_DELTA[rating] ?? 1;
+  const newStage = Math.max(0, Math.min(stage + delta, MASTERY_STAGE));
+  const interval = RATING_INTERVALS[rating][newStage];
   const next = new Date();
   next.setDate(next.getDate() + interval);
-  schedule[memoId] = { stage: newStage, interval, nextReview: toDateStr_simple(next), lastReview: toDateStr_simple(new Date()) };
+  schedule[memoId] = {
+    stage: newStage, interval,
+    nextReview: newStage >= MASTERY_STAGE ? '9999-12-31' : toDateStr_simple(next),
+    lastReview: toDateStr_simple(new Date()),
+  };
   save(REVIEW_KEY, schedule);
 }
 
 export function previewReviewIntervals(memoId) {
   const entry = getReviewEntry(memoId);
   const stage = entry?.stage ?? 0;
-  const nextGoodStage = Math.min(stage + 1, 3);
   return {
-    again: RATING_INTERVALS.again[0],
-    hard:  RATING_INTERVALS.hard[stage],
-    good:  RATING_INTERVALS.good[nextGoodStage],
-    easy:  RATING_INTERVALS.easy[nextGoodStage],
+    again: RATING_INTERVALS.again[Math.max(0, stage + STAGE_DELTA.again)],
+    hard:  RATING_INTERVALS.hard[Math.min(stage, MASTERY_STAGE)],
+    good:  RATING_INTERVALS.good[Math.min(stage + STAGE_DELTA.good, MASTERY_STAGE)],
+    easy:  RATING_INTERVALS.easy[Math.min(stage + STAGE_DELTA.easy, MASTERY_STAGE)],
   };
 }
+
+export function setReviewStage(memoId, stage) {
+  const schedule = getReviewSchedule();
+  const newStage = Math.max(0, Math.min(stage, MASTERY_STAGE));
+  const next = new Date();
+  next.setDate(next.getDate() + STAGE_INTERVALS[newStage]);
+  schedule[memoId] = {
+    ...(schedule[memoId] || {}),
+    stage: newStage,
+    interval: STAGE_INTERVALS[newStage],
+    nextReview: newStage >= MASTERY_STAGE ? '9999-12-31' : toDateStr_simple(next),
+    lastReview: schedule[memoId]?.lastReview ?? null,
+  };
+  save(REVIEW_KEY, schedule);
+}
+
 export function getReviewsForDate(dateStr) {
   const schedule = getReviewSchedule();
   return Object.entries(schedule)
-    .filter(([, v]) => v.nextReview <= dateStr && v.stage < 3)
+    .filter(([, v]) => v.nextReview <= dateStr && v.stage < MASTERY_STAGE)
     .map(([memoId, v]) => ({ memoId, ...v }));
 }
 function toDateStr_simple(d) {

@@ -1956,9 +1956,9 @@ button { cursor: pointer; font-family: inherit; }
   align-items: center;
   gap: 8px;
 }
-.kn-srs-dots { display: flex; gap: 10px; align-items: center; }
+.kn-srs-dots { display: flex; gap: 7px; align-items: center; }
 .kn-srs-dot {
-  width: 11px; height: 11px;
+  width: 9px; height: 9px;
   border-radius: 50%;
   background: var(--border);
   transition: background var(--transition);
@@ -1978,6 +1978,21 @@ button { cursor: pointer; font-family: inherit; }
 }
 .kn-srs-dot--star.done { color: var(--success, #22c55e); }
 .kn-srs-status { font-size: 0.75rem; color: var(--text-dim); }
+.kn-stage-picker {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 10px;
+}
+.kn-stage-label { font-size: 0.75rem; color: var(--text-dim); white-space: nowrap; }
+.kn-stage-select {
+  font-size: 0.8rem;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  flex: 1;
+}
 .kn-learned-btn {
   display: flex;
   align-items: center;

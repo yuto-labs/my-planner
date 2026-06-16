@@ -7,7 +7,8 @@ import {
   addKnowledgeMemo, updateKnowledgeMemo, deleteKnowledgeMemo,
   getTermExplanation, setTermExplanation, isAiAvailable,
   scheduleFirstReview, advanceReview, getReviewEntry,
-  rateReview, previewReviewIntervals,
+  rateReview, previewReviewIntervals, setReviewStage,
+  MASTERY_STAGE, STAGE_COUNT, STAGE_INTERVALS,
   getBatchSettings, addToPendingAIQueue, removeFromPendingAIQueue,
   pushUndo, applyUndo, addReviewLog, getReviewLog,
 } from '../storage.js';
@@ -355,7 +356,7 @@ function renderMemoCard(m) {
   const entry = getReviewEntry(m.id);
   const todayForBadge = new Date().toISOString().slice(0, 10);
   let reviewBadge = '';
-  if (entry?.stage === 3) {
+  if (entry?.stage >= MASTERY_STAGE) {
     reviewBadge = '<span class="kn-review-badge kn-review-badge--done">🎓 習得済み</span>';
   } else if (!entry?.lastReview) {
     const ageMs = Date.now() - new Date(m.createdAt || 0).getTime();
@@ -894,15 +895,20 @@ function renderViewMode(container) {
         const todayStr   = new Date().toISOString().slice(0, 10);
         const srsEntry   = getReviewEntry(id);
         const stage      = srsEntry?.stage ?? 0;
-        const isMastered = stage >= 3;
+        const isMastered = stage >= MASTERY_STAGE;
         const isDue      = !srsEntry?.lastReview || (srsEntry.nextReview <= todayStr && !isMastered);
         const todayCount = getReviewLog().filter(e => e.memoId === id && e.date === todayStr).length;
         const ivs        = previewReviewIntervals(id);
         const fmtD = d => d === 1 ? '1日後' : d < 7 ? `${d}日後` : d < 30 ? `${Math.round(d/7)}週後` : `${Math.round(d/30)}ヶ月後`;
 
-        const dots = [0,1,2].map(i =>
+        const dots = Array.from({ length: MASTERY_STAGE }, (_, i) =>
           `<span class="kn-srs-dot${i < stage ? ' done' : i === stage && !isMastered ? ' current' : ''}"></span>`
         ).join('') + `<span class="kn-srs-dot kn-srs-dot--star${isMastered ? ' done' : ''}">★</span>`;
+
+        const stageOptions = STAGE_INTERVALS.map((days, i) => {
+          const label = i === MASTERY_STAGE ? `Lv.${i} — 習得済み ★` : `Lv.${i} — ${days}日後`;
+          return `<option value="${i}"${stage === i ? ' selected' : ''}>${label}</option>`;
+        }).join('');
 
         let statusText = isMastered ? 'すべてのステージ完了'
           : !srsEntry?.lastReview ? '初めての復習'
@@ -936,6 +942,10 @@ function renderViewMode(container) {
                  </button>
                </div>`
           }
+          <div class="kn-stage-picker">
+            <label class="kn-stage-label">ステージ変更</label>
+            <select class="kn-stage-select" id="kn-stage-select">${stageOptions}</select>
+          </div>
           ${todayCount > 0 ? `<div class="kn-learned-count">今日 ${todayCount}回 記録済み</div>` : ''}
         </div>`;
       })() : ''}
@@ -990,7 +1000,7 @@ function renderViewMode(container) {
       addReviewLog(edState.id, edState.tags);
       rateReview(edState.id, rating);
       const newEntry = getReviewEntry(edState.id);
-      if (newEntry?.stage >= 3 && rating !== 'again') {
+      if (newEntry?.stage >= MASTERY_STAGE && rating !== 'again') {
         window.AppNav?.showToast('🎓 習得済み！おめでとうございます', 'success');
       } else {
         const fmtD = d => d === 1 ? '1日後' : d < 7 ? `${d}日後` : d < 30 ? `${Math.round(d/7)}週後` : `${Math.round(d/30)}ヶ月後`;
@@ -999,6 +1009,12 @@ function renderViewMode(container) {
       }
       renderViewMode(container);
     });
+  });
+
+  container.querySelector('#kn-stage-select')?.addEventListener('change', e => {
+    setReviewStage(edState.id, parseInt(e.target.value, 10));
+    renderViewMode(container);
+    window.AppNav?.showToast(`ステージを Lv.${e.target.value} に変更しました`, 'success');
   });
 
   // Wire toggle blocks
