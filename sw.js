@@ -2,7 +2,7 @@
 // sw.js — Service Worker: Cache-first offline support v3
 // ============================================================
 
-const CACHE_VER  = 'v95';
+const CACHE_VER  = 'v96';
 const APP_CACHE  = `my-planner-app-${CACHE_VER}`;
 const CDN_CACHE  = `my-planner-cdn-${CACHE_VER}`;
 
@@ -83,6 +83,7 @@ self.addEventListener('fetch', event => {
   // ① Never cache Anthropic API calls or Supabase API calls
   if (url.hostname === 'api.anthropic.com') return;
   if (SUPABASE_SKIP.some(h => url.hostname.includes(h))) return;
+  if (url.origin === location.origin && url.pathname.startsWith('/api/')) return;
 
   // ② CDN resources: stale-while-revalidate
   if (CDN_HOSTS.some(h => url.hostname.includes(h))) {

@@ -5,7 +5,7 @@
 import {
   getTasks, addTask, updateTask, deleteTask,
   pushUndo, applyUndo, deleteCompletedTasks, reorderTask,
-  addKnowledgeMemo, updateKnowledgeMemo, getApiKey,
+  addKnowledgeMemo, updateKnowledgeMemo, isAiAvailable,
   getTags, addTag,
   getEvents, getScheduleItems, addScheduleItem, deleteScheduleItem,
 } from '../storage.js';
@@ -1143,7 +1143,7 @@ function handleAdd() {
 async function handleDecompose(taskId, btn) {
   const task = getTasks().find(t => t.id === taskId);
   if (!task) return;
-  if (!getApiKey()) { toast('APIキーを設定してください', 'error'); return; }
+  if (!isAiAvailable()) { toast('AI is currently unavailable.', 'error'); return; }
 
   const originalText = btn?.textContent || '🤖';
   if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
@@ -1574,10 +1574,9 @@ function showKnowledgeSavePrompt(task) {
       summary: task.memo.slice(0, 120),
     });
     // If API key set, kick off AI tag suggestion
-    const apiKey = getApiKey?.();
-    if (apiKey && task.memo.length > 10) {
+    if (isAiAvailable() && task.memo.length > 10) {
       import('../ai.js').then(({ suggestKnowledgeTags }) => {
-        suggestKnowledgeTags([task.memo]).then(aiTags => {
+        suggestKnowledgeTags(task.title || 'Task memo', task.memo).then(aiTags => {
           if (aiTags?.length) {
             updateKnowledgeMemo(newMemo.id, {
               tags: [...new Set([...(task.tags || []), ...aiTags])],

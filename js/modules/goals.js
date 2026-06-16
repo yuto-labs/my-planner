@@ -4,7 +4,7 @@
 
 import {
   getGoals, addGoal, updateGoal, deleteGoal,
-  getTasks, addTask, getApiKey, getKnowledgeMemos,
+  getTasks, addTask, isAiAvailable, getKnowledgeMemos,
 } from '../storage.js';
 import { splitGoalToTasks, predictGoalCompletionLocal } from '../ai.js';
 import { openKnowledgeMemo, openNewKnowledgeMemo, getKnowledgeSuggestionsForGoal } from './knowledge.js';
@@ -84,7 +84,7 @@ function renderGoalItem(goal) {
     : (goal.progress || 0);
 
   const dateLabel = goal.targetDate ? `📅 ${formatDate(goal.targetDate, 'short')}` : '';
-  const hasApiKey = !!getApiKey();
+  const hasAi = isAiAvailable();
 
   // Goal completion prediction (local, no API)
   const allTasks = getTasks();
@@ -154,7 +154,7 @@ function renderGoalItem(goal) {
       <!-- Related knowledge memos -->
       ${renderRelatedKnowledgeMemos(goal)}
 
-      <button class="goal-ai-btn" data-action="ai-split" ${!hasApiKey ? 'disabled title="設定でAPIキーを入力してください"' : ''}>
+      <button class="goal-ai-btn" data-action="ai-split" ${!hasAi ? 'disabled title="AI is currently unavailable"' : ''}>
         <svg viewBox="0 0 24 24" fill="currentColor">
           <path d="M21 3L3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z"/>
         </svg>
@@ -221,7 +221,7 @@ async function handleAISplit(goalId, itemEl) {
     toast('AIエラー: ' + e.message, 'error');
   } finally {
     btn.innerHTML = originalHTML;
-    btn.disabled = !getApiKey();
+    btn.disabled = !isAiAvailable();
   }
 }
 
@@ -414,7 +414,7 @@ async function handleAIKnowledgeSuggest(goalId, itemEl) {
     toast('AIエラー: ' + e.message, 'error');
   } finally {
     btn.innerHTML = prev;
-    btn.disabled = !getApiKey();
+    btn.disabled = !isAiAvailable();
   }
 }
 
@@ -440,7 +440,7 @@ function renderRelatedKnowledgeMemos(goal) {
           </div>
         </div>
       `).join('')}
-      <button class="goal-ai-btn" data-action="ai-knowledge" style="margin-top:6px" ${!getApiKey() ? 'disabled' : ''}>
+      <button class="goal-ai-btn" data-action="ai-knowledge" style="margin-top:6px" ${!isAiAvailable() ? 'disabled' : ''}>
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 3L3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z"/></svg>
         学習していないトピックを提案
       </button>

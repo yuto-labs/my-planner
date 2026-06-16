@@ -5,9 +5,9 @@
 import {
   getSettings, saveSettings, getCategories, saveCategories,
   exportBackup, importBackup, clearAiCache, DEFAULT_CATEGORIES,
-  getBatchSettings, saveBatchSettings, getPendingAIQueue, clearPendingAIQueue,
+  getBatchSettings, saveBatchSettings, getPendingAIQueue, clearPendingAIQueue, getAiRuntime,
 } from '../storage.js';
-import { processBatchQueue } from '../ai.js';
+import { processBatchQueue, refreshAiRuntimeStatus } from '../ai.js';
 import { esc, generateId } from '../utils.js';
 import {
   getSession, getUserEmail,
@@ -24,6 +24,9 @@ export function initSettings(container) {
 
 export function initAISettings(container) {
   renderAISettings(container);
+  refreshAiRuntimeStatus().then(() => {
+    if (container.isConnected) renderAISettings(container);
+  }).catch(() => {});
 }
 
 function renderMainSettings(container) {
@@ -97,6 +100,9 @@ function renderAISettings(container) {
   const settings = getSettings();
   const batchCfg = getBatchSettings();
   const pendingQueue = getPendingAIQueue();
+  const runtime = getAiRuntime();
+  const hasLegacyKey = !!(settings.apiKey || '').trim();
+  const serverReady = runtime.configured === true;
 
   container.innerHTML = `
     <div class="settings-page">
@@ -114,6 +120,31 @@ function renderAISettings(container) {
       </div>
 
       <div class="settings-section">
+        <div class="settings-heading">AI Provider</div>
+        <div class="analytics-info-box" style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <strong>Server AI</strong>
+            <span class="chip">Gemini</span>
+            <span class="chip" style="background:${serverReady ? 'rgba(50,212,154,0.14)' : 'rgba(245,197,66,0.14)'};color:${serverReady ? 'var(--success)' : 'var(--warning)'}">
+              ${serverReady ? 'Ready' : 'Not configured'}
+            </span>
+          </div>
+          <p class="text-sm text-muted">
+            AI runs through the deployed app server. Browser-side API keys are no longer required for normal use.
+          </p>
+          ${hasLegacyKey ? `
+            <p class="text-sm text-muted">
+              A legacy browser key is still saved on this device for fallback compatibility.
+            </p>
+          ` : ''}
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-ghost btn-sm" id="refresh-ai-status">Refresh status</button>
+            ${hasLegacyKey ? `<button class="btn btn-ghost btn-sm" id="clear-legacy-ai-key">Forget legacy key</button>` : ''}
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section">
         <div class="settings-heading">Backup</div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn btn-ghost" id="export-btn">
@@ -126,29 +157,10 @@ function renderAISettings(container) {
           </button>
         </div>
         <p class="text-sm text-muted" style="margin-top:8px">
-          Exported backups do not include the Anthropic API key.
+          Exported backups do not include any server-side AI secret.
         </p>
         <input type="file" id="import-file" accept=".json" class="hidden">
-      </div>
-
-      <div class="settings-section">
-        <div class="settings-heading">AI API Key</div>
-        <div class="form-group">
-          <label class="form-label">Anthropic API key</label>
-          <div class="api-key-wrap">
-            <input class="input" id="api-key-input" type="password"
-              value="${esc(settings.apiKey || '')}"
-              placeholder="sk-ant-api03-...">
-            <button class="btn btn-icon" id="api-key-toggle" title="Show / hide">
-              <svg id="eye-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
-            </button>
-          </div>
-          <p class="text-sm text-muted" style="margin-top:6px">
-            The key is stored only in this browser.
-          </p>
-        </div>
-        <button class="btn btn-primary" id="save-api-key" style="margin-top:4px">Save API key</button>
-        <button class="btn btn-ghost btn-sm" id="clear-ai-cache" style="margin-top:8px;margin-left:8px">Clear AI cache</button>
+        <button class="btn btn-ghost btn-sm" id="clear-ai-cache" style="margin-top:8px">Clear AI cache</button>
       </div>
 
       <div class="settings-section">
@@ -329,20 +341,25 @@ function wireCategories(container) {
 }
 
 function wireAISettings(container) {
-  const apiInput = container.querySelector('#api-key-input');
-  container.querySelector('#api-key-toggle')?.addEventListener('click', () => {
-    if (apiInput) apiInput.type = apiInput.type === 'password' ? 'text' : 'password';
-  });
-
   container.querySelector('#ai-enabled-toggle')?.addEventListener('change', e => {
     saveSettings({ aiEnabled: e.target.checked });
     toast(e.target.checked ? 'AI features are visible.' : 'AI features are hidden.', 'info');
   });
 
-  container.querySelector('#save-api-key')?.addEventListener('click', () => {
-    const key = apiInput?.value.trim() || '';
-    saveSettings({ apiKey: key });
-    toast('API key saved.', 'success');
+  container.querySelector('#refresh-ai-status')?.addEventListener('click', async () => {
+    try {
+      await refreshAiRuntimeStatus({ force: true });
+      renderAISettings(container);
+      toast('AI status refreshed.', 'success');
+    } catch (e) {
+      toast('Could not refresh AI status: ' + e.message, 'error');
+    }
+  });
+
+  container.querySelector('#clear-legacy-ai-key')?.addEventListener('click', () => {
+    saveSettings({ apiKey: '' });
+    renderAISettings(container);
+    toast('Legacy browser AI key removed.', 'info');
   });
 
   container.querySelector('#clear-ai-cache')?.addEventListener('click', () => {

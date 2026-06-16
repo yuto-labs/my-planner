@@ -13,6 +13,7 @@ const KEY = {
   CACHE:     'mp_ai_cache',
   AI_QUEUE:  'mp_pending_ai',   // items waiting for AI processing
   BATCH_CFG: 'mp_batch_config', // batch AI schedule settings
+  AI_RUNTIME:'mp_ai_runtime',
 };
 
 // ---- Sync hooks (wired by sync.js at startup) ----
@@ -257,14 +258,24 @@ const DEFAULT_SETTINGS = {
   aiEnabled: false,
   myScheduleColor: '#60A5FA',
 };
+const DEFAULT_AI_RUNTIME = {
+  provider: 'gemini',
+  mode: 'server',
+  configured: false,
+  checkedAt: 0,
+  message: '',
+};
 
 export function getSettings() { return { ...DEFAULT_SETTINGS, ...load(KEY.SETS, {}) }; }
 export function saveSettings(s) { save(KEY.SETS, { ...getSettings(), ...s }); }
 
 export function getApiKey() { return getSettings().apiKey || ''; }
+export function getAiRuntime() { return { ...DEFAULT_AI_RUNTIME, ...load(KEY.AI_RUNTIME, {}) }; }
+export function saveAiRuntime(patch) { save(KEY.AI_RUNTIME, { ...getAiRuntime(), ...patch }); }
 export function isAiAvailable() {
   const settings = getSettings();
-  return settings.aiEnabled !== false && !!settings.apiKey;
+  const runtime = getAiRuntime();
+  return settings.aiEnabled === true && (runtime.configured === true || !!settings.apiKey);
 }
 export function getMyScheduleColor() { return getSettings().myScheduleColor || DEFAULT_SETTINGS.myScheduleColor; }
 

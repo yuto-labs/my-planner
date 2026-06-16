@@ -2,8 +2,8 @@
 // app.js — Main SPA router & app shell
 // ============================================================
 
-import { getSettings, saveSettings, getBatchSettings, getPendingAIQueue, autoArchiveTasks, updateTask } from './storage.js';
-import { processBatchQueue } from './ai.js';
+import { getSettings, getBatchSettings, getPendingAIQueue, autoArchiveTasks, isAiAvailable } from './storage.js';
+import { processBatchQueue, refreshAiRuntimeStatus } from './ai.js';
 import { initSync, pullAll, pullIfStale } from './sync.js';
 import { getSession, handleAuthRedirect } from './supabase.js';
 import { today } from './utils.js';
@@ -221,6 +221,8 @@ function applyTheme(theme) {
 // ---- App init ----
 
 async function init() {
+  try { await refreshAiRuntimeStatus({ force: true }); } catch {}
+
   // Supabase sync: フックを登録して起動時 pull
   try {
     initSync();
@@ -342,7 +344,7 @@ function setupConnectivityMonitor() {
     }
   };
 
-  const updateStatus = () => {
+  const updateStatus = async () => {
     inject();
     const indicator = document.getElementById('offline-indicator');
     const isOnline = navigator.onLine;
@@ -350,10 +352,11 @@ function setupConnectivityMonitor() {
     if (indicator) indicator.classList.toggle('hidden', isOnline);
 
     if (isOnline) {
+      try { await refreshAiRuntimeStatus({ force: true }); } catch {}
       // When back online: process AI queue if in immediate mode
       const cfg = getBatchSettings();
       const queue = getPendingAIQueue();
-      if (queue.length && cfg.aiMode === 'immediate' && getApiKey()) {
+      if (queue.length && cfg.aiMode === 'immediate' && isAiAvailable()) {
         processBatchQueue((done, total) => {
           if (done === total && total > 0) {
             showToast(`オンライン復帰: ${total}件のAI処理を完了しました ✓`, 'success');
@@ -385,7 +388,7 @@ function setupBatchScheduler() {
     const queue = getPendingAIQueue();
     if (!queue.length) return;
 
-    if (!getApiKey() || !navigator.onLine) return;
+    if (!isAiAvailable() || !navigator.onLine) return;
 
     const now   = new Date();
     const todayStr = today();
@@ -407,11 +410,6 @@ function setupBatchScheduler() {
       showToast('バッチ処理エラー: ' + e.message, 'error');
     }
   }, 60_000); // check every minute
-}
-
-// Helper for getApiKey used in connectivity monitor
-function getApiKey() {
-  try { return JSON.parse(localStorage.getItem('mp_settings') || '{}').apiKey || ''; } catch { return ''; }
 }
 
 // ---- FAB (Floating Action Button) ----
@@ -537,6 +535,15 @@ function openFocusMode() {
   const task = tasks
     .filter(t => !t.completed && !t.abandoned)
     .sort((a, b) => {
+      const aHasDue = !!a.dueDate;
+      const bHasDue = !!b.dueDate;
+      if (aHasDue && bHasDue) {
+        const aDue = `${a.dueDate}T${a.dueTime || '23:59'}`;
+        const bDue = `${b.dueDate}T${b.dueTime || '23:59'}`;
+        if (aDue !== bDue) return aDue.localeCompare(bDue);
+      } else if (aHasDue !== bHasDue) {
+        return aHasDue ? -1 : 1;
+      }
       const wo = { large: 0, medium: 1, small: 2 };
       return (wo[a.weight] ?? 1) - (wo[b.weight] ?? 1);
     })[0];
@@ -553,7 +560,7 @@ function openFocusMode() {
           <div class="focus-overlay-weight weight-${task.weight || 'medium'}"></div>
         </div>
         <div class="focus-timer" id="focus-timer">00:00</div>
-        <button class="btn btn-primary focus-done-btn" id="focus-finish">終了</button>
+        <button class="btn btn-primary focus-done-btn" id="focus-finish">End session</button>
       ` : `<div class="focus-overlay-empty">未完了のタスクがありません 🎉</div>`}
       <button class="focus-close" id="focus-close">✕ 閉じる (Esc)</button>
     </div>
@@ -577,15 +584,8 @@ function openFocusMode() {
 
     overlay.querySelector('#focus-finish')?.addEventListener('click', () => {
       clearInterval(interval);
-      updateTask(task.id, { completed: true });
       closeFocusMode();
-      showToast(`「${task.title.slice(0, 20)}」を完了しました ✓`, 'success');
-      // 現在のビューがタスク関連なら再描画して完了状態を反映
-      if (['tasks', 'home', 'today'].includes(currentView)) {
-        const v = currentView;
-        currentView = null;
-        navigate(v);
-      }
+      showToast(`Focus session ended: ${task.title.slice(0, 20)}`, 'info');
     });
   }
 
