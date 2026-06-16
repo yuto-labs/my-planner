@@ -23,6 +23,7 @@ let state = {
   filter:      'all',    // 'all' | 'pending' | 'done' | 'large' | 'medium' | 'small'
   container:   null,
   addFormOpen: false,
+  addCustomTagOpen: false,
   addDueDate:  null,     // YYYY-MM-DD
   addDueTime:  null,     // HH:MM
   addEstimate: null,     // minutes
@@ -84,8 +85,8 @@ function render() {
   container.innerHTML = `
     <!-- Add form -->
     <div class="tasks-add">
-      <input class="input" id="task-input" placeholder="新しいタスクを入力…" type="text">
-      <button class="btn btn-primary" id="task-add-btn" style="flex-shrink:0">Add</button>
+      <input class="input" id="task-input" placeholder="タスク名" type="text">
+      <button class="btn btn-primary" id="task-add-btn" style="flex-shrink:0">保存</button>
     </div>
 
     <!-- Add form extras (type + weight + due date + due time) -->
@@ -111,7 +112,7 @@ function render() {
         ${state.addEstimate ? `⏱ ${formatDuration(state.addEstimate)}` : '⏱ 工数'}
       </button>
       <select class="input tasks-due-input" id="task-recurrence" title="繰り返し">
-        <option value="">繰り返しなし</option>
+        <option value="">なし</option>
         <option value="daily">毎日</option>
         <option value="weekdays">平日</option>
         <option value="weekly">毎週</option>
@@ -122,8 +123,14 @@ function render() {
     <!-- Tags row -->
     <div class="tasks-add-tags-row" id="tasks-add-tags-row">
       <span class="tasks-add-label">Tags:</span>
+      <div class="tasks-add-tag-toolbar">
+        <div class="tasks-preset-tags" id="tasks-preset-tags"></div>
+        <button class="btn btn-ghost btn-sm tasks-tag-add-btn" id="tasks-tag-add-btn" type="button">+ Tag</button>
+      </div>
       <div class="add-tag-chips-wrap" id="add-tag-chips"></div>
-      <input class="input tasks-tag-input" id="tasks-add-tag-input" placeholder="タグ追加 (Enter)" list="add-tag-dl">
+      <div class="tasks-tag-input-wrap${state.addCustomTagOpen ? ' open' : ''}" id="tasks-tag-input-wrap">
+        <input class="input tasks-tag-input" id="tasks-add-tag-input" placeholder="タグを追加 (Enter)" list="add-tag-dl">
+      </div>
       <datalist id="add-tag-dl">
         ${getTags().map(t => `<option value="${esc(t)}">`).join('')}
       </datalist>
@@ -156,7 +163,7 @@ function render() {
     toggle.className = `tasks-add-toggle${state.addFormOpen ? ' open' : ''}`;
     toggle.setAttribute('aria-expanded', state.addFormOpen ? 'true' : 'false');
     toggle.innerHTML = `
-      <span>新しいタスクを追加</span>
+      <span>＋ タスクを作成</span>
       <span class="tasks-add-toggle-arrow">${state.addFormOpen ? '-' : '+'}</span>
     `;
     addForm.parentNode.insertBefore(toggle, addForm);
@@ -254,13 +261,12 @@ function render() {
   // Tag input for new task
   const _tagInput    = container.querySelector('#tasks-add-tag-input');
   const _tagChipsEl  = container.querySelector('#add-tag-chips');
-  const _presetTags = document.createElement('div');
-  _presetTags.className = 'tasks-preset-tags';
-  _presetTags.id = 'tasks-preset-tags';
+  const _presetTags = container.querySelector('#tasks-preset-tags');
+  const _tagInputWrap = container.querySelector('#tasks-tag-input-wrap');
+  const _tagAddBtn = container.querySelector('#tasks-tag-add-btn');
   _presetTags.innerHTML = PRESET_TAGS.map(tag =>
     `<button class="task-tag-preset${state.addTags.includes(tag) ? ' active' : ''}" type="button" data-preset-tag="${esc(tag)}">${esc(tag)}</button>`
   ).join('');
-  _tagChipsEl?.parentNode.insertBefore(_presetTags, _tagChipsEl);
 
   const _renderAddTagChips = () => {
     if (!_tagChipsEl) return;
@@ -275,6 +281,19 @@ function render() {
     });
   };
   _renderAddTagChips();
+
+  const _applyCustomTagInputVisibility = () => {
+    if (!_tagInputWrap) return;
+    _tagInputWrap.classList.toggle('open', state.addCustomTagOpen);
+    if (_tagAddBtn) _tagAddBtn.textContent = state.addCustomTagOpen ? '閉じる' : '+ Tag';
+  };
+  _applyCustomTagInputVisibility();
+
+  _tagAddBtn?.addEventListener('click', () => {
+    state.addCustomTagOpen = !state.addCustomTagOpen;
+    _applyCustomTagInputVisibility();
+    if (state.addCustomTagOpen) _tagInput?.focus();
+  });
 
   _presetTags.querySelectorAll('[data-preset-tag]').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -295,7 +314,9 @@ function render() {
       if (val && !state.addTags.includes(val)) {
         state.addTags.push(val);
         addTag(val);
+        state.addCustomTagOpen = false;
         _renderAddTagChips();
+        _applyCustomTagInputVisibility();
       }
       _tagInput.value = '';
     }
@@ -1062,6 +1083,7 @@ function handleAdd() {
   state.addEstimate = null;
   state.addTags    = [];
   state.addTaskType = 'normal';
+  state.addCustomTagOpen = false;
   // Reset type buttons
   c.querySelectorAll('.type-btn').forEach(b => b.classList.toggle('selected', b.dataset.t === 'normal'));
   c.querySelector('#task-recurrence').value = '';

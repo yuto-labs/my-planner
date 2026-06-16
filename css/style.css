@@ -4291,24 +4291,46 @@ kbd {
    ============================================================ */
 .tasks-add-tags-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  flex-direction: column;
   flex-wrap: wrap;
   gap: 6px;
   padding: 6px 16px 4px;
 }
+
+.tasks-add-tag-toolbar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .add-tag-chips-wrap {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   align-items: center;
+  width: 100%;
+  min-height: 22px;
 }
+
+.tasks-tag-input-wrap {
+  width: 100%;
+  display: none;
+}
+
+.tasks-tag-input-wrap.open {
+  display: block;
+}
+
 .tasks-tag-input {
   font-size: 12px;
-  padding: 4px 10px;
-  height: 28px;
+  padding: 8px 12px;
+  height: 36px;
   min-width: 100px;
-  flex: 1;
-  max-width: 160px;
+  width: 100%;
+  max-width: 220px;
 }
 
 /* ============================================================
@@ -4361,7 +4383,8 @@ kbd {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
 }
 
 .task-tag-preset {
@@ -4379,6 +4402,12 @@ kbd {
   background: rgba(50, 212, 154, 0.14);
   border-color: rgba(50, 212, 154, 0.3);
   color: #32D49A;
+}
+
+.tasks-tag-add-btn {
+  white-space: nowrap;
+  align-self: flex-start;
+  min-height: 34px;
 }
 
 .tasks-add-estimate {
