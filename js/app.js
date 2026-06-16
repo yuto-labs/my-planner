@@ -2,7 +2,7 @@
 // app.js — Main SPA router & app shell
 // ============================================================
 
-import { getSettings, saveSettings, getBatchSettings, getPendingAIQueue, autoArchiveTasks } from './storage.js';
+import { getSettings, saveSettings, getBatchSettings, getPendingAIQueue, autoArchiveTasks, updateTask } from './storage.js';
 import { processBatchQueue } from './ai.js';
 import { initSync, pullAll, pullIfStale } from './sync.js';
 import { getSession, handleAuthRedirect } from './supabase.js';
@@ -301,7 +301,7 @@ async function init() {
     getSession().then(session => {
       if (!session) return;
       pullIfStale(30_000).then(pulled => {
-        if (pulled && ['home', 'today', 'calendar'].includes(currentView)) {
+        if (pulled && ['home', 'today', 'calendar', 'tasks', 'goals'].includes(currentView)) {
           // currentView に再ナビゲートすることで画面を再描画
           const v = currentView;
           currentView = null; // navigate() の同一ビュー早期リターンを回避
@@ -533,7 +533,7 @@ function openFocusMode() {
   let tasks = [];
   try { tasks = JSON.parse(localStorage.getItem('mp_tasks') || '[]'); } catch {}
   const task = tasks
-    .filter(t => !t.completed)
+    .filter(t => !t.completed && !t.abandoned)
     .sort((a, b) => {
       const wo = { large: 0, medium: 1, small: 2 };
       return (wo[a.weight] ?? 1) - (wo[b.weight] ?? 1);
@@ -575,8 +575,15 @@ function openFocusMode() {
 
     overlay.querySelector('#focus-finish')?.addEventListener('click', () => {
       clearInterval(interval);
+      updateTask(task.id, { completed: true });
       closeFocusMode();
-      showToast(`フォーカスを終了しました`, 'success');
+      showToast(`「${task.title.slice(0, 20)}」を完了しました ✓`, 'success');
+      // 現在のビューがタスク関連なら再描画して完了状態を反映
+      if (['tasks', 'home', 'today'].includes(currentView)) {
+        const v = currentView;
+        currentView = null;
+        navigate(v);
+      }
     });
   }
 
