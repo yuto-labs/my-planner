@@ -4312,6 +4312,127 @@ kbd {
 }
 
 /* ============================================================
+   53. TASK ADD TOGGLE / PRESET TAGS / ESTIMATE SLIDER
+   ============================================================ */
+.tasks-add-toggle {
+  width: calc(100% - 32px);
+  margin: 14px 16px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  transition: background .18s ease, border-color .18s ease, transform .18s ease;
+}
+
+.tasks-add-toggle:active {
+  transform: scale(0.995);
+}
+
+.tasks-add-toggle.open {
+  background: rgba(139, 131, 232, 0.12);
+  border-color: rgba(139, 131, 232, 0.28);
+}
+
+.tasks-add-toggle-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.tasks-add {
+  margin-top: 10px;
+}
+
+.tasks-preset-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.task-tag-preset {
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  transition: background .18s ease, border-color .18s ease, color .18s ease;
+}
+
+.task-tag-preset.active {
+  background: rgba(50, 212, 154, 0.14);
+  border-color: rgba(50, 212, 154, 0.3);
+  color: #32D49A;
+}
+
+.tasks-add-estimate {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.tasks-add-estimate-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.tasks-estimate-value {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.tasks-estimate-slider {
+  width: 100%;
+  accent-color: var(--primary);
+}
+
+.tasks-estimate-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  color: var(--text-weak);
+  font-size: 11px;
+}
+
+.tasks-estimate-scale span:last-child {
+  text-align: right;
+}
+
+@media (max-width: 640px) {
+  .tasks-add-toggle {
+    width: calc(100% - 24px);
+    margin: 12px 12px 0;
+  }
+
+  .tasks-add-estimate {
+    padding: 10px;
+  }
+}
+
+/* ============================================================
    53. TASKS ARCHIVE LINK
    ============================================================ */
 .tasks-archive-link {

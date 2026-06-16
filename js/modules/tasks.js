@@ -22,6 +22,7 @@ let openPlannerHandler = null;
 let state = {
   filter:      'all',    // 'all' | 'pending' | 'done' | 'large' | 'medium' | 'small'
   container:   null,
+  addFormOpen: false,
   addDueDate:  null,     // YYYY-MM-DD
   addDueTime:  null,     // HH:MM
   addEstimate: null,     // minutes
@@ -36,6 +37,9 @@ let state = {
   codexBreakEnd:    '',
   codexPanelOpen:  false,
 };
+
+const PRESET_TAGS = ['就活', '授業', '研究', '娯楽'];
+const ESTIMATE_PRESETS = [30, 60, 90, 120, 180, 240, 360, 480, 600, 720];
 
 // ---- Public ----
 
@@ -143,6 +147,38 @@ function render() {
     </div>
   `;
 
+  const addForm = container.querySelector('.tasks-add');
+  const addExtras = container.querySelector('.tasks-add-extras');
+  const addTagsRow = container.querySelector('.tasks-add-tags-row');
+  if (addForm && addExtras && addTagsRow) {
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.id = 'task-add-toggle';
+    toggle.className = `tasks-add-toggle${state.addFormOpen ? ' open' : ''}`;
+    toggle.setAttribute('aria-expanded', state.addFormOpen ? 'true' : 'false');
+    toggle.innerHTML = `
+      <span>新しいタスクを追加</span>
+      <span class="tasks-add-toggle-arrow">${state.addFormOpen ? '-' : '+'}</span>
+    `;
+    addForm.parentNode.insertBefore(toggle, addForm);
+
+    const applyAddFormVisibility = () => {
+      addForm.style.display = state.addFormOpen ? '' : 'none';
+      addExtras.style.display = state.addFormOpen ? '' : 'none';
+      addTagsRow.style.display = state.addFormOpen ? '' : 'none';
+      toggle.classList.toggle('open', state.addFormOpen);
+      toggle.setAttribute('aria-expanded', state.addFormOpen ? 'true' : 'false');
+      const arrow = toggle.querySelector('.tasks-add-toggle-arrow');
+      if (arrow) arrow.textContent = state.addFormOpen ? '-' : '+';
+    };
+    applyAddFormVisibility();
+    toggle.addEventListener('click', () => {
+      state.addFormOpen = !state.addFormOpen;
+      applyAddFormVisibility();
+      if (state.addFormOpen) container.querySelector('#task-input')?.focus();
+    });
+  }
+
   // --- Wire static controls ---
 
   // Type select
@@ -167,6 +203,7 @@ function render() {
   // Due date/time picker buttons
   const _dueDateBtn = container.querySelector('#task-due-date-btn');
   const _dueTimeBtn = container.querySelector('#task-due-time-btn');
+  const _estimateSelect = container.querySelector('#task-estimate');
 
   const _updateDueDateBtn = () => {
     if (!_dueDateBtn) return;
@@ -194,6 +231,38 @@ function render() {
     });
   });
 
+  if (_estimateSelect) {
+    _estimateSelect.style.display = 'none';
+    const sliderWrap = document.createElement('div');
+    sliderWrap.className = 'tasks-estimate-slider-wrap';
+    sliderWrap.innerHTML = `
+      <div class="tasks-estimate-slider-head">
+        <span class="tasks-add-label">工数:</span>
+        <span class="tasks-estimate-value" id="task-estimate-value">${formatEstimate(state.addEstimate) || '未設定'}</span>
+      </div>
+      <input
+        class="tasks-estimate-slider"
+        id="task-estimate-slider"
+        type="range"
+        min="0"
+        max="${ESTIMATE_PRESETS.length}"
+        step="1"
+        value="${estimateToSliderValue(state.addEstimate)}">
+      <div class="tasks-estimate-scale">
+        <span>短め</span>
+        <span>長め</span>
+      </div>
+    `;
+    _estimateSelect.parentNode.insertBefore(sliderWrap, _estimateSelect.nextSibling);
+    const slider = sliderWrap.querySelector('#task-estimate-slider');
+    const valueEl = sliderWrap.querySelector('#task-estimate-value');
+    slider?.addEventListener('input', () => {
+      state.addEstimate = sliderValueToEstimate(slider.value);
+      _estimateSelect.value = state.addEstimate ? String(state.addEstimate) : '';
+      if (valueEl) valueEl.textContent = formatEstimate(state.addEstimate) || '未設定';
+    });
+  }
+
   // Add button / Enter
   container.querySelector('#task-add-btn')
     ?.addEventListener('click', () => handleAdd());
@@ -205,6 +274,13 @@ function render() {
   // Tag input for new task
   const _tagInput    = container.querySelector('#tasks-add-tag-input');
   const _tagChipsEl  = container.querySelector('#add-tag-chips');
+  const _presetTags = document.createElement('div');
+  _presetTags.className = 'tasks-preset-tags';
+  _presetTags.id = 'tasks-preset-tags';
+  _presetTags.innerHTML = PRESET_TAGS.map(tag =>
+    `<button class="task-tag-preset${state.addTags.includes(tag) ? ' active' : ''}" type="button" data-preset-tag="${esc(tag)}">${esc(tag)}</button>`
+  ).join('');
+  _tagChipsEl?.parentNode.insertBefore(_presetTags, _tagChipsEl);
 
   const _renderAddTagChips = () => {
     if (!_tagChipsEl) return;
@@ -214,8 +290,23 @@ function render() {
     _tagChipsEl.querySelectorAll('[data-rm]').forEach(btn => {
       btn.onclick = () => { state.addTags = state.addTags.filter(x => x !== btn.dataset.rm); _renderAddTagChips(); };
     });
+    _presetTags.querySelectorAll('[data-preset-tag]').forEach(btn => {
+      btn.classList.toggle('active', state.addTags.includes(btn.dataset.presetTag));
+    });
   };
   _renderAddTagChips();
+
+  _presetTags.querySelectorAll('[data-preset-tag]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tag = btn.dataset.presetTag;
+      if (!tag) return;
+      state.addTags = state.addTags.includes(tag)
+        ? state.addTags.filter(x => x !== tag)
+        : [...state.addTags, tag];
+      addTag(tag);
+      _renderAddTagChips();
+    });
+  });
 
   _tagInput?.addEventListener('keydown', e => {
     if (e.key === 'Enter' || e.key === ',') {
@@ -806,6 +897,19 @@ function renderEstimateOptions(selected, emptyLabel = '未設定') {
   }).join('');
 }
 
+function estimateToSliderValue(minutes) {
+  const n = Number(minutes);
+  if (!n) return 0;
+  const idx = ESTIMATE_PRESETS.indexOf(n);
+  return idx >= 0 ? idx + 1 : ESTIMATE_PRESETS.length;
+}
+
+function sliderValueToEstimate(value) {
+  const idx = Number(value) - 1;
+  if (idx < 0) return null;
+  return ESTIMATE_PRESETS[idx] ?? ESTIMATE_PRESETS[ESTIMATE_PRESETS.length - 1];
+}
+
 function formatEstimate(minutes) {
   const n = Number(minutes);
   if (!n) return '';
@@ -1005,8 +1109,7 @@ function handleAdd() {
   const weight     = c.querySelector('.weight-btn.selected')?.dataset.w || 'medium';
   const dueDate    = state.addDueDate;
   const dueTime    = state.addDueTime;
-  const estimateRaw = c.querySelector('#task-estimate')?.value || '';
-  const estimatedMinutes = estimateRaw ? Number(estimateRaw) : null;
+  const estimatedMinutes = state.addEstimate ? Number(state.addEstimate) : null;
   const recurFreq  = c.querySelector('#task-recurrence')?.value || '';
   const recurrence = recurFreq ? { freq: recurFreq } : null;
   const tags       = [...state.addTags];
@@ -1031,6 +1134,11 @@ function handleAdd() {
   // Reset tag chips
   const _tce = c.querySelector('#add-tag-chips');
   if (_tce) _tce.innerHTML = '';
+  c.querySelectorAll('[data-preset-tag]').forEach(btn => btn.classList.remove('active'));
+  const _sv = c.querySelector('#task-estimate-value');
+  const _ss = c.querySelector('#task-estimate-slider');
+  if (_sv) _sv.textContent = '未設定';
+  if (_ss) _ss.value = String(estimateToSliderValue(null));
   input.focus();
 
   // Persist synchronously — addTask returns the new task object
