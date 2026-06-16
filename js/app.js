@@ -14,6 +14,7 @@ import { initGoals }    from './modules/goals.js';
 import { initSettings, initAISettings } from './modules/settings.js';
 import { initToday }    from './modules/today.js';
 import { initKnowledge, initKnowledgeDetail, openKnowledgeMemo, backFromKnowledgeDetail } from './modules/knowledge.js';
+import { initReview } from './modules/review.js';
 import { initKnowledgeGraph } from './modules/knowledge-graph.js';
 import { initAnalytics } from './modules/analytics.js';
 import { openSearch, closeSearch } from './modules/search.js';
@@ -33,6 +34,7 @@ const MODULES = {
   'knowledge-detail':{ title: 'Note',       init: initKnowledgeDetail, back: 'knowledge', backAction: backFromKnowledgeDetail },
   'knowledge-graph': { title: 'Knowledge Graph', init: initKnowledgeGraph, back: 'knowledge' },
   analytics:         { title: 'Analytics',  init: initAnalytics },
+  review:            { title: '復習セッション', init: initReview, back: 'home' },
   archive:           { title: 'Archive',    init: initArchive,         back: 'tasks' },
   tags:              { title: 'Tags',       init: initTagsPage },
 };

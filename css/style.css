@@ -4550,6 +4550,98 @@ kbd {
 .kn-review-badge--warn { background: rgba(245,197,66,0.2); color: #E5A800; }
 .kn-review-badge--urgent { background: rgba(240,96,122,0.18); color: var(--danger); }
 
+/* ---- Rating buttons (shared between review session and memo detail) ---- */
+.rv-btn {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 3px; padding: 10px 6px; border: none; border-radius: var(--radius);
+  font-size: 13px; font-weight: 700; cursor: pointer;
+  transition: opacity var(--transition), transform var(--transition);
+  flex: 1; min-width: 0;
+}
+.rv-btn:active { transform: scale(0.95); }
+.rv-btn-label { font-size: 13px; font-weight: 700; }
+.rv-btn-interval { font-size: 10px; font-weight: 500; opacity: 0.8; }
+.rv-btn--again { background: rgba(240,96,122,0.12); color: var(--danger); }
+.rv-btn--hard  { background: rgba(245,197,66,0.15); color: #c08000; }
+.rv-btn--good  { background: rgba(59,130,246,0.12); color: #3b82f6; }
+.rv-btn--easy  { background: rgba(34,197,94,0.12);  color: var(--success, #22c55e); }
+.rv-btn--again:hover { background: rgba(240,96,122,0.22); }
+.rv-btn--hard:hover  { background: rgba(245,197,66,0.28); }
+.rv-btn--good:hover  { background: rgba(59,130,246,0.22); }
+.rv-btn--easy:hover  { background: rgba(34,197,94,0.22); }
+
+/* Detail view rating layout */
+.kn-rating-btns {
+  display: flex; gap: 8px; width: 100%; padding: 0 4px;
+}
+.kn-rating-btns--early { opacity: 0.65; }
+.kn-rating-btns--reset { justify-content: center; }
+.kn-rating-btns--reset .rv-btn { flex: unset; padding: 10px 24px; }
+
+/* Home review card */
+.home-review-card { border-left: 3px solid var(--primary); }
+.home-review-inner {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.home-review-left { display: flex; align-items: center; gap: 12px; }
+.home-review-icon { font-size: 1.6rem; }
+.home-review-title { font-weight: 700; font-size: 0.95rem; }
+.home-review-sub { font-size: 0.78rem; color: var(--text-muted); margin-top: 2px; }
+.home-review-btn { white-space: nowrap; flex-shrink: 0; }
+
+/* Review session page */
+.rv-page {
+  display: flex; flex-direction: column; height: 100%;
+  max-width: 600px; margin: 0 auto; padding: 0 0 16px;
+}
+.rv-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 16px 4px;
+}
+.rv-count { font-size: 0.8rem; color: var(--text-muted); font-weight: 600; }
+.rv-progress-track {
+  height: 3px; background: var(--border); margin: 0 16px 12px;
+}
+.rv-progress-fill {
+  height: 100%; background: var(--primary); border-radius: 2px;
+  transition: width 0.3s ease;
+}
+.rv-card {
+  flex: 1; margin: 0 16px; padding: 24px 20px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 12px);
+  overflow-y: auto;
+}
+.rv-card--front {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; text-align: center; gap: 16px;
+}
+.rv-card--back { display: flex; flex-direction: column; gap: 12px; }
+.rv-tags { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.rv-title { font-size: 1.3rem; font-weight: 700; line-height: 1.4; margin: 0; }
+.rv-front-hint { font-size: 0.78rem; color: var(--text-dim); margin: 0; }
+.rv-divider { height: 1px; background: var(--border); }
+.rv-content { font-size: 0.9rem; }
+.rv-reveal-btn {
+  margin: 12px 16px 0; padding: 14px;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.rv-rating {
+  padding: 12px 16px 0;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.rv-rating-label { font-size: 0.75rem; color: var(--text-dim); text-align: center; }
+.rv-rating-btns { display: flex; gap: 8px; }
+.rv-page--back .rv-card { flex: 1; min-height: 0; }
+.rv-done {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 16px; height: 100%; padding: 32px 16px;
+  text-align: center;
+}
+.rv-done-icon { font-size: 3rem; }
+.rv-done-title { font-size: 1.3rem; font-weight: 700; }
+.rv-done-sub { color: var(--text-muted); }
+
 /* ============================================================
    58. KNOWLEDGE SAVE BANNER
    ============================================================ */

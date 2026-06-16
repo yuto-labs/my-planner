@@ -5,7 +5,7 @@
 import {
   getTasks, getEvents, isAiAvailable,
   getCategoryById, updateTask, getCategories, addEvent,
-  getScheduleItemsForDate, getMyScheduleColor,
+  getScheduleItemsForDate, getMyScheduleColor, getReviewsForDate,
 } from '../storage.js';
 import { parseNaturalLanguageEvent } from '../ai.js';
 import {
@@ -110,6 +110,24 @@ export function initHome(container) {
         ` : ''}
       </div>
 
+      <!-- 今日の復習 -->
+      ${(() => {
+        const dueCount = getReviewsForDate(todayStr).length;
+        if (!dueCount) return '';
+        return `<div class="card home-review-card" id="home-review-card">
+          <div class="home-review-inner">
+            <div class="home-review-left">
+              <div class="home-review-icon">🎴</div>
+              <div>
+                <div class="home-review-title">今日の復習</div>
+                <div class="home-review-sub">${dueCount}件のカードが待っています</div>
+              </div>
+            </div>
+            <button class="btn btn-primary home-review-btn" id="goto-review">開始 →</button>
+          </div>
+        </div>`;
+      })()}
+
       <!-- Today's schedule -->
       <div class="card" id="schedule-card">
         <div class="card-title">
@@ -130,6 +148,7 @@ export function initHome(container) {
 
   // Wire events
   container.querySelector('#goto-today')?.addEventListener('click', () => nav('today'));
+  container.querySelector('#goto-review')?.addEventListener('click', () => nav('review'));
 
   container.querySelectorAll('[data-task-id]').forEach(btn => {
     btn.addEventListener('click', () => {
