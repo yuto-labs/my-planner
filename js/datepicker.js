@@ -200,3 +200,98 @@ export function openTimePicker({ value, onConfirm, onClear }) {
   overlay.appendChild(popup);
   render();
 }
+
+// ---- Duration Picker ----
+
+export function formatDuration(minutes) {
+  const n = Number(minutes);
+  if (!n) return '';
+  const h = Math.floor(n / 60);
+  const m = n % 60;
+  if (h <= 0) return `${m}分`;
+  if (m <= 0) return `${h}時間`;
+  return `${h}時間${m}分`;
+}
+
+export function openDurationPicker({ value, onConfirm, onClear }) {
+  const overlay = _getOverlay();
+
+  const raw = Number(value) || 0;
+  let selH = Math.max(0, Math.min(24, Math.floor(raw / 60)));
+  let selM = raw % 60;
+  selM = Math.round(selM / 5) * 5;
+  if (selM >= 60) {
+    selM = 0;
+    selH = Math.min(24, selH + 1);
+  }
+  if (selH === 24) selM = 0;
+
+  const HOURS = Array.from({ length: 25 }, (_, i) => i);
+  const MINUTES = Array.from({ length: 12 }, (_, i) => i * 5);
+
+  const popup = document.createElement('div');
+  popup.className = 'dp-popup tp-popup';
+
+  const render = () => {
+    popup.innerHTML = `
+      <div class="dp-header-bar">
+        <span class="dp-title">工数を選択</span>
+        <button class="dp-x">✕</button>
+      </div>
+      <div class="tp-display">${formatDuration(selH * 60 + selM) || '未設定'}</div>
+      <div class="tp-cols">
+        <div class="tp-col">
+          <div class="tp-col-hd">時間</div>
+          <div class="tp-scroll">
+            ${HOURS.map(h => `<button class="tp-item${h===selH?' tp-sel':''}" data-dh="${h}">${h}</button>`).join('')}
+          </div>
+        </div>
+        <div class="tp-col">
+          <div class="tp-col-hd">分</div>
+          <div class="tp-scroll">
+            ${MINUTES.map(m => {
+              const disabled = selH === 24 && m !== 0;
+              return `<button class="tp-item${m===selM?' tp-sel':''}" data-dm="${m}" ${disabled ? 'disabled' : ''}>${_pad(m)}</button>`;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+      <div class="dp-footer">
+        ${raw ? `<button class="dp-sc dp-sc--clear">クリア</button>` : '<span></span>'}
+        <button class="dp-confirm-btn">決定</button>
+      </div>
+    `;
+
+    requestAnimationFrame(() => {
+      popup.querySelectorAll('.tp-sel').forEach(el =>
+        el.scrollIntoView({ block: 'center', behavior: 'instant' })
+      );
+    });
+
+    popup.querySelector('.dp-x').onclick = _close;
+    popup.querySelector('.dp-sc--clear')?.addEventListener('click', () => { onClear?.(); _close(); });
+    popup.querySelector('.dp-confirm-btn').onclick = () => {
+      const minutes = selH * 60 + selM;
+      onConfirm(minutes || null);
+      _close();
+    };
+    popup.querySelectorAll('[data-dh]').forEach(btn => {
+      btn.onclick = () => {
+        selH = Number(btn.dataset.dh);
+        if (selH === 24) selM = 0;
+        render();
+      };
+    });
+    popup.querySelectorAll('[data-dm]').forEach(btn => {
+      btn.onclick = () => {
+        if (btn.disabled) return;
+        selM = Number(btn.dataset.dm);
+        render();
+      };
+    });
+  };
+
+  overlay.onclick = e => { if (e.target === overlay) _close(); };
+  overlay.appendChild(popup);
+  render();
+}

@@ -11,7 +11,7 @@ import {
 } from '../storage.js';
 import { esc, today, tomorrow, formatDate, generateId, addDays, toDateStr, getEventsForDate } from '../utils.js';
 import { splitGoalToTasks } from '../ai.js';
-import { openDatePicker, openTimePicker, formatPickerDate } from '../datepicker.js';
+import { openDatePicker, openTimePicker, openDurationPicker, formatPickerDate, formatDuration } from '../datepicker.js';
 
 const toast     = (msg, type) => window.AppNav?.showToast(msg, type);
 const undoToast = (msg, cb)   => window.AppNav?.showUndoToast(msg, cb);
@@ -39,7 +39,6 @@ let state = {
 };
 
 const PRESET_TAGS = ['就活', '授業', '研究', '娯楽'];
-const ESTIMATE_PRESETS = [30, 60, 90, 120, 180, 240, 360, 480, 600, 720];
 
 // ---- Public ----
 
@@ -108,9 +107,9 @@ function render() {
       <button class="dp-trigger tasks-due-input" id="task-due-time-btn" title="時刻を選択">
         ${state.addDueTime ? '🕐 ' + state.addDueTime : '🕐 時刻'}
       </button>
-      <select class="input tasks-due-input" id="task-estimate" title="工数">
-        ${renderEstimateOptions(state.addEstimate, '工数なし')}
-      </select>
+      <button class="dp-trigger tasks-due-input" id="task-estimate-btn" title="工数を選択">
+        ${state.addEstimate ? `⏱ ${formatDuration(state.addEstimate)}` : '⏱ 工数'}
+      </button>
       <select class="input tasks-due-input" id="task-recurrence" title="繰り返し">
         <option value="">繰り返しなし</option>
         <option value="daily">毎日</option>
@@ -203,7 +202,7 @@ function render() {
   // Due date/time picker buttons
   const _dueDateBtn = container.querySelector('#task-due-date-btn');
   const _dueTimeBtn = container.querySelector('#task-due-time-btn');
-  const _estimateSelect = container.querySelector('#task-estimate');
+  const _estimateBtn = container.querySelector('#task-estimate-btn');
 
   const _updateDueDateBtn = () => {
     if (!_dueDateBtn) return;
@@ -231,37 +230,18 @@ function render() {
     });
   });
 
-  if (_estimateSelect) {
-    _estimateSelect.style.display = 'none';
-    const sliderWrap = document.createElement('div');
-    sliderWrap.className = 'tasks-estimate-slider-wrap';
-    sliderWrap.innerHTML = `
-      <div class="tasks-estimate-slider-head">
-        <span class="tasks-add-label">工数:</span>
-        <span class="tasks-estimate-value" id="task-estimate-value">${formatEstimate(state.addEstimate) || '未設定'}</span>
-      </div>
-      <input
-        class="tasks-estimate-slider"
-        id="task-estimate-slider"
-        type="range"
-        min="0"
-        max="${ESTIMATE_PRESETS.length}"
-        step="1"
-        value="${estimateToSliderValue(state.addEstimate)}">
-      <div class="tasks-estimate-scale">
-        <span>短め</span>
-        <span>長め</span>
-      </div>
-    `;
-    _estimateSelect.parentNode.insertBefore(sliderWrap, _estimateSelect.nextSibling);
-    const slider = sliderWrap.querySelector('#task-estimate-slider');
-    const valueEl = sliderWrap.querySelector('#task-estimate-value');
-    slider?.addEventListener('input', () => {
-      state.addEstimate = sliderValueToEstimate(slider.value);
-      _estimateSelect.value = state.addEstimate ? String(state.addEstimate) : '';
-      if (valueEl) valueEl.textContent = formatEstimate(state.addEstimate) || '未設定';
+  const _updateEstimateBtn = () => {
+    if (!_estimateBtn) return;
+    _estimateBtn.textContent = state.addEstimate ? `⏱ ${formatDuration(state.addEstimate)}` : '⏱ 工数';
+    _estimateBtn.classList.toggle('dp-trigger--set', !!state.addEstimate);
+  };
+  _estimateBtn?.addEventListener('click', () => {
+    openDurationPicker({
+      value: state.addEstimate,
+      onConfirm: minutes => { state.addEstimate = minutes; _updateEstimateBtn(); },
+      onClear: () => { state.addEstimate = null; _updateEstimateBtn(); },
     });
-  }
+  });
 
   // Add button / Enter
   container.querySelector('#task-add-btn')
@@ -875,48 +855,8 @@ function nextHalfHour() {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-function renderEstimateOptions(selected, emptyLabel = '未設定') {
-  const opts = [
-    ['', emptyLabel],
-    [30, '30分'],
-    [60, '1時間'],
-    [90, '1.5時間'],
-    [120, '2時間'],
-    [180, '3時間'],
-    [240, '4時間'],
-    [360, '6時間'],
-    [480, '8時間'],
-    [600, '10時間'],
-    [720, '12時間'],
-    [960, '16時間'],
-    [1440, '24時間'],
-  ];
-  return opts.map(([value, label]) => {
-    const isSelected = value === '' ? !selected : Number(selected) === value;
-    return `<option value="${value}" ${isSelected ? 'selected' : ''}>${label}</option>`;
-  }).join('');
-}
-
-function estimateToSliderValue(minutes) {
-  const n = Number(minutes);
-  if (!n) return 0;
-  const idx = ESTIMATE_PRESETS.indexOf(n);
-  return idx >= 0 ? idx + 1 : ESTIMATE_PRESETS.length;
-}
-
-function sliderValueToEstimate(value) {
-  const idx = Number(value) - 1;
-  if (idx < 0) return null;
-  return ESTIMATE_PRESETS[idx] ?? ESTIMATE_PRESETS[ESTIMATE_PRESETS.length - 1];
-}
-
 function formatEstimate(minutes) {
-  const n = Number(minutes);
-  if (!n) return '';
-  if (n < 60) return `${n}分`;
-  const h = Math.floor(n / 60);
-  const m = n % 60;
-  return m ? `${h}時間${m}分` : `${h}時間`;
+  return formatDuration(minutes);
 }
 
 function getEventsInPlanningPeriod(startDate, endDate) {
@@ -1125,7 +1065,6 @@ function handleAdd() {
   // Reset type buttons
   c.querySelectorAll('.type-btn').forEach(b => b.classList.toggle('selected', b.dataset.t === 'normal'));
   c.querySelector('#task-recurrence').value = '';
-  c.querySelector('#task-estimate').value = '';
   // Reset picker buttons
   const _db = c.querySelector('#task-due-date-btn');
   const _tb = c.querySelector('#task-due-time-btn');
@@ -1135,10 +1074,8 @@ function handleAdd() {
   const _tce = c.querySelector('#add-tag-chips');
   if (_tce) _tce.innerHTML = '';
   c.querySelectorAll('[data-preset-tag]').forEach(btn => btn.classList.remove('active'));
-  const _sv = c.querySelector('#task-estimate-value');
-  const _ss = c.querySelector('#task-estimate-slider');
-  if (_sv) _sv.textContent = '未設定';
-  if (_ss) _ss.value = String(estimateToSliderValue(null));
+  const _eb = c.querySelector('#task-estimate-btn');
+  if (_eb) { _eb.textContent = '⏱ 工数'; _eb.classList.remove('dp-trigger--set'); }
   input.focus();
 
   // Persist synchronously — addTask returns the new task object
@@ -1370,9 +1307,9 @@ function startTitleEdit(li, taskId) {
       </div>
 
       <label class="form-label">工数</label>
-      <select class="input" id="edit-task-estimate">
-        ${renderEstimateOptions(editEstimate)}
-      </select>
+      <button class="dp-trigger dp-trigger--full${editEstimate ? ' dp-trigger--set' : ''}" id="edit-task-estimate-btn">
+        ${editEstimate ? `⏱ ${formatDuration(editEstimate)}` : '⏱ 工数'}
+      </button>
 
       <!-- Tags -->
       <label class="form-label">タグ</label>
@@ -1504,6 +1441,7 @@ function startTitleEdit(li, taskId) {
   const titleInput = modal.querySelector('#edit-task-title');
   const dateBtn    = modal.querySelector('#edit-task-date-btn');
   const timeBtn    = modal.querySelector('#edit-task-time-btn');
+  const estimateBtn = modal.querySelector('#edit-task-estimate-btn');
 
   const _updDate = () => {
     dateBtn.textContent = editDueDate ? formatPickerDate(editDueDate) : '📅 日付';
@@ -1512,6 +1450,10 @@ function startTitleEdit(li, taskId) {
   const _updTime = () => {
     timeBtn.textContent = editDueTime ? '🕐 ' + editDueTime : '🕐 時刻';
     timeBtn.classList.toggle('dp-trigger--set', !!editDueTime);
+  };
+  const _updEstimate = () => {
+    estimateBtn.textContent = editEstimate ? `⏱ ${formatDuration(editEstimate)}` : '⏱ 工数';
+    estimateBtn.classList.toggle('dp-trigger--set', !!editEstimate);
   };
 
   dateBtn?.addEventListener('click', () => {
@@ -1528,6 +1470,13 @@ function startTitleEdit(li, taskId) {
       onClear:   () => { editDueTime = null; _updTime(); },
     });
   });
+  estimateBtn?.addEventListener('click', () => {
+    openDurationPicker({
+      value: editEstimate,
+      onConfirm: minutes => { editEstimate = minutes; _updEstimate(); },
+      onClear: () => { editEstimate = null; _updEstimate(); },
+    });
+  });
 
   const close = () => {
     _vvCleanup?.();
@@ -1540,8 +1489,7 @@ function startTitleEdit(li, taskId) {
     if (!newTitle) { toast('タスク名を入力してください', 'error'); return; }
 
     const newMemo = modal.querySelector('#edit-task-memo')?.value || '';
-    const newEstimateRaw = modal.querySelector('#edit-task-estimate')?.value || '';
-    const newEstimate = newEstimateRaw ? Number(newEstimateRaw) : null;
+    const newEstimate = editEstimate ? Number(editEstimate) : null;
 
     const changes = {};
     if (newTitle    !== task.title)                              changes.title    = newTitle;
