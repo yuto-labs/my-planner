@@ -459,17 +459,6 @@ export function scheduleFirstReview(memoId) {
   schedule[memoId] = { stage: 0, nextReview: toDateStr_simple(tomorrow), lastReview: null };
   save(REVIEW_KEY, schedule);
 }
-export function advanceReview(memoId) {
-  const schedule = getReviewSchedule();
-  const entry = schedule[memoId];
-  const currentStage = entry ? entry.stage : -1;
-  if (currentStage >= MASTERY_STAGE) return;
-  const newStage = currentStage + 1;
-  const next = new Date();
-  next.setDate(next.getDate() + STAGE_INTERVALS[newStage]);
-  schedule[memoId] = { stage: newStage, nextReview: toDateStr_simple(next), lastReview: toDateStr_simple(new Date()) };
-  save(REVIEW_KEY, schedule);
-}
 
 export function rateReview(memoId, rating) {
   const schedule = getReviewSchedule();

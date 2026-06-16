@@ -16,7 +16,7 @@ import {
   suggestKnowledgeTags, explainTerm, summarizeAndTagText,
   suggestUnstudiedTopics, formatKnowledgeMemo,
 } from '../ai.js';
-import { esc, generateId, today, formatDate, fmtDays } from '../utils.js';
+import { esc, generateId, today, formatDate, fmtDays, daysSince } from '../utils.js';
 
 const nav       = (view) => window.AppNav?.navigate(view);
 const toast     = (msg, type) => window.AppNav?.showToast(msg, type);
@@ -364,7 +364,7 @@ function renderMemoCard(m) {
       reviewBadge = '<span class="kn-review-badge kn-review-badge--new">未確認</span>';
     }
   } else if (entry.nextReview <= todayForBadge) {
-    const days = Math.floor((Date.now() - new Date(entry.lastReview).getTime()) / 86400000);
+    const days = daysSince(entry.lastReview);
     if (days >= 14) {
       reviewBadge = `<span class="kn-review-badge kn-review-badge--urgent">要復習 (${days}日)</span>`;
     } else {
@@ -908,9 +908,7 @@ function renderViewMode(container) {
           return `<option value="${i}"${stage === i ? ' selected' : ''}>${label}</option>`;
         }).join('');
 
-        const daysSinceLast = srsEntry?.lastReview
-          ? Math.floor((Date.now() - new Date(srsEntry.lastReview).getTime()) / 86400000)
-          : null;
+        const daysSinceLast = srsEntry?.lastReview ? daysSince(srsEntry.lastReview) : null;
         const daysUntilNext = srsEntry?.nextReview
           ? Math.ceil((new Date(srsEntry.nextReview) - Date.now()) / 86400000)
           : null;

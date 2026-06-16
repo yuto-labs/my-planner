@@ -263,3 +263,8 @@ export function debounce(fn, ms = 300) {
 export function fmtDays(d) {
   return d === 1 ? '1日後' : d < 7 ? `${d}日後` : d < 30 ? `${Math.round(d / 7)}週後` : `${Math.round(d / 30)}ヶ月後`;
 }
+
+// ---- Days elapsed since a date string ('YYYY-MM-DD') ----
+export function daysSince(dateStr) {
+  return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
+}
