@@ -6,9 +6,9 @@ import {
   getKnowledgeMemos, getKnowledgeMemoById,
   addKnowledgeMemo, updateKnowledgeMemo, deleteKnowledgeMemo,
   getTermExplanation, setTermExplanation, isAiAvailable,
-  scheduleFirstReview, advanceReview, getReviewEntry,
+  scheduleFirstReview, getReviewEntry,
   rateReview, previewReviewIntervals, setReviewStage,
-  MASTERY_STAGE, STAGE_COUNT, STAGE_INTERVALS,
+  MASTERY_STAGE, STAGE_INTERVALS,
   getBatchSettings, addToPendingAIQueue, removeFromPendingAIQueue,
   pushUndo, applyUndo, addReviewLog, getReviewLog,
 } from '../storage.js';
@@ -16,7 +16,7 @@ import {
   suggestKnowledgeTags, explainTerm, summarizeAndTagText,
   suggestUnstudiedTopics, formatKnowledgeMemo,
 } from '../ai.js';
-import { esc, generateId, today, formatDate } from '../utils.js';
+import { esc, generateId, today, formatDate, fmtDays } from '../utils.js';
 
 const nav       = (view) => window.AppNav?.navigate(view);
 const toast     = (msg, type) => window.AppNav?.showToast(msg, type);
@@ -899,8 +899,6 @@ function renderViewMode(container) {
         const isDue      = !srsEntry?.lastReview || (srsEntry.nextReview <= todayStr && !isMastered);
         const todayCount = getReviewLog().filter(e => e.memoId === id && e.date === todayStr).length;
         const ivs        = previewReviewIntervals(id);
-        const fmtD = d => d === 1 ? '1日後' : d < 7 ? `${d}日後` : d < 30 ? `${Math.round(d/7)}週後` : `${Math.round(d/30)}ヶ月後`;
-
         const dots = Array.from({ length: MASTERY_STAGE }, (_, i) =>
           `<span class="kn-srs-dot${i < stage ? ' done' : i === stage && !isMastered ? ' current' : ''}"></span>`
         ).join('') + `<span class="kn-srs-dot kn-srs-dot--star${isMastered ? ' done' : ''}">★</span>`;
@@ -910,10 +908,16 @@ function renderViewMode(container) {
           return `<option value="${i}"${stage === i ? ' selected' : ''}>${label}</option>`;
         }).join('');
 
+        const daysSinceLast = srsEntry?.lastReview
+          ? Math.floor((Date.now() - new Date(srsEntry.lastReview).getTime()) / 86400000)
+          : null;
+        const daysUntilNext = srsEntry?.nextReview
+          ? Math.ceil((new Date(srsEntry.nextReview) - Date.now()) / 86400000)
+          : null;
         let statusText = isMastered ? 'すべてのステージ完了'
           : !srsEntry?.lastReview ? '初めての復習'
-          : isDue ? (() => { const d = Math.floor((Date.now()-new Date(srsEntry.lastReview).getTime())/86400000); return `${d}日ぶりの復習`; })()
-          : `次回: ${Math.ceil((new Date(srsEntry.nextReview)-Date.now())/86400000)}日後`;
+          : isDue ? `${daysSinceLast}日ぶりの復習`
+          : `次回: ${daysUntilNext}日後`;
 
         return `<div class="kn-learned-action${isDue && !isMastered ? ' kn-learned-action--due' : ''}">
           <div class="kn-srs-progress">
@@ -924,21 +928,21 @@ function renderViewMode(container) {
             ? `<div class="kn-mastered-badge">🎓 習得済み</div>
                <div class="kn-rating-btns kn-rating-btns--reset">
                  <button class="rv-btn rv-btn--again kn-rate-btn" data-rating="again">
-                   <span class="rv-btn-label">もう一度</span><span class="rv-btn-interval">${fmtD(ivs.again)}</span>
+                   <span class="rv-btn-label">もう一度</span><span class="rv-btn-interval">${fmtDays(ivs.again)}</span>
                  </button>
                </div>`
             : `<div class="kn-rating-btns${isDue ? '' : ' kn-rating-btns--early'}">
                  <button class="rv-btn rv-btn--again kn-rate-btn" data-rating="again">
-                   <span class="rv-btn-label">もう一度</span><span class="rv-btn-interval">${fmtD(ivs.again)}</span>
+                   <span class="rv-btn-label">もう一度</span><span class="rv-btn-interval">${fmtDays(ivs.again)}</span>
                  </button>
                  <button class="rv-btn rv-btn--hard kn-rate-btn" data-rating="hard">
-                   <span class="rv-btn-label">難しい</span><span class="rv-btn-interval">${fmtD(ivs.hard)}</span>
+                   <span class="rv-btn-label">難しい</span><span class="rv-btn-interval">${fmtDays(ivs.hard)}</span>
                  </button>
                  <button class="rv-btn rv-btn--good kn-rate-btn" data-rating="good">
-                   <span class="rv-btn-label">普通</span><span class="rv-btn-interval">${fmtD(ivs.good)}</span>
+                   <span class="rv-btn-label">普通</span><span class="rv-btn-interval">${fmtDays(ivs.good)}</span>
                  </button>
                  <button class="rv-btn rv-btn--easy kn-rate-btn" data-rating="easy">
-                   <span class="rv-btn-label">簡単</span><span class="rv-btn-interval">${fmtD(ivs.easy)}</span>
+                   <span class="rv-btn-label">簡単</span><span class="rv-btn-interval">${fmtDays(ivs.easy)}</span>
                  </button>
                </div>`
           }
@@ -1003,8 +1007,7 @@ function renderViewMode(container) {
       if (newEntry?.stage >= MASTERY_STAGE && rating !== 'again') {
         window.AppNav?.showToast('🎓 習得済み！おめでとうございます', 'success');
       } else {
-        const fmtD = d => d === 1 ? '1日後' : d < 7 ? `${d}日後` : d < 30 ? `${Math.round(d/7)}週後` : `${Math.round(d/30)}ヶ月後`;
-        const days = newEntry?.interval ? fmtD(newEntry.interval) : null;
+        const days = newEntry?.interval ? fmtDays(newEntry.interval) : null;
         window.AppNav?.showToast(`記録しました ✓${days ? ` — 次回: ${days}` : ''}`, 'success');
       }
       renderViewMode(container);

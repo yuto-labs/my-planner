@@ -258,3 +258,8 @@ export function debounce(fn, ms = 300) {
   let t;
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
+
+// ---- SRS day formatter ----
+export function fmtDays(d) {
+  return d === 1 ? '1日後' : d < 7 ? `${d}日後` : d < 30 ? `${Math.round(d / 7)}週後` : `${Math.round(d / 30)}ヶ月後`;
+}

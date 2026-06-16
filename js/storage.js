@@ -448,8 +448,8 @@ const RATING_INTERVALS = {
   easy:   [  7, 14, 30,  60,  90, 120, 180 ],
 };
 
-// Stage delta per rating
-const STAGE_DELTA = { again: -2, hard: 0, good: +1, easy: +2 };
+// Stage delta per rating (easy = +1 stage but with longer interval than good)
+const STAGE_DELTA = { again: -2, hard: 0, good: +1, easy: +1 };
 
 export function getReviewSchedule()              { return load(REVIEW_KEY, {}); }
 export function scheduleFirstReview(memoId) {
@@ -506,11 +506,11 @@ export function setReviewStage(memoId, stage) {
   const next = new Date();
   next.setDate(next.getDate() + STAGE_INTERVALS[newStage]);
   schedule[memoId] = {
+    lastReview: null,              // default for new entries, overridden by spread below
     ...(schedule[memoId] || {}),
     stage: newStage,
     interval: STAGE_INTERVALS[newStage],
     nextReview: newStage >= MASTERY_STAGE ? '9999-12-31' : toDateStr_simple(next),
-    lastReview: schedule[memoId]?.lastReview ?? null,
   };
   save(REVIEW_KEY, schedule);
 }

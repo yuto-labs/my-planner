@@ -6,12 +6,9 @@ import {
   rateReview, addReviewLog, previewReviewIntervals,
 } from '../storage.js';
 import { renderBlocksView } from './knowledge.js';
-import { esc } from '../utils.js';
+import { esc, fmtDays } from '../utils.js';
 
 const nav = (view) => window.AppNav?.navigate(view);
-
-const fmtDays = d =>
-  d === 1 ? '1日後' : d < 7 ? `${d}日後` : d < 30 ? `${Math.round(d / 7)}週後` : `${Math.round(d / 30)}ヶ月後`;
 
 export function initReview(container) {
   const todayStr   = new Date().toISOString().slice(0, 10);
