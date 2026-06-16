@@ -225,11 +225,10 @@ async function init() {
     const authResult = await handleAuthRedirect();
     const session = authResult.session || await getSession();
     if (session) {
-      const viewAtPullStart = currentView;
       pullAll().then(pulled => {
-        // Only re-render if: data actually changed, user hasn't navigated away,
-        // and user isn't actively typing (avoids wiping form input mid-session).
-        if (!pulled || !currentView || currentView !== viewAtPullStart) return;
+        // Re-render current view with fresh data, but skip if user is actively
+        // typing (avoids wiping API key or other form input mid-entry).
+        if (!pulled || !currentView) return;
         const tag = document.activeElement?.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
         const v = currentView;
