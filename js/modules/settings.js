@@ -481,12 +481,17 @@ function wireAccount(container, options = {}) {
           toast('Sync failed — tap "Move local data to cloud" in AI Settings to retry.', 'error');
         }
       }
-      await refreshAccountStatus(container, options);
     } catch (e) {
       toast('Sign-in error: ' + e.message, 'error');
     } finally {
       btn.disabled = false;
       btn.textContent = 'Sign in';
+    }
+    // refreshAccountStatus は認証エラーと無関係なので外側 try-catch の外で実行
+    try {
+      await refreshAccountStatus(container, options);
+    } catch (e) {
+      console.warn('[Account] refreshAccountStatus failed:', e);
     }
   });
 

@@ -1181,13 +1181,18 @@ function handleUnabandon(taskId, li) {
   if (!task) return;
   li.classList.remove('abandoned');
   updateTask(taskId, { abandoned: false, abandonedAt: null });
-  rerenderList();
   renderProgressBar();
+
   undoToast(`「${task.title.slice(0, 20)}」を諦めリストから戻しました`, () => {
     updateTask(taskId, { abandoned: true });
     rerenderList();
     renderProgressBar();
   });
+
+  // 「諦めた」フィルター中はタスクが消えるべきなので遅延再描画
+  setTimeout(() => {
+    if (state.filter === 'abandoned') rerenderList();
+  }, 400);
 }
 
 // ---- Task edit modal (title + due date/time + tags + subtasks + memo) ----
