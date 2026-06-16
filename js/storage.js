@@ -447,8 +447,10 @@ export function scheduleFirstReview(memoId) {
 export function advanceReview(memoId) {
   const schedule = getReviewSchedule();
   const entry = schedule[memoId];
-  if (!entry) return;
-  const newStage = Math.min(entry.stage + 1, 3);
+  // エントリーがない場合は stage -1 扱い（初回復習 → stage 1 へ）
+  const currentStage = entry ? entry.stage : -1;
+  if (currentStage >= 3) return; // 習得済みは進めない
+  const newStage = currentStage + 1;
   const next = new Date();
   next.setDate(next.getDate() + REVIEW_INTERVALS[newStage]);
   schedule[memoId] = { stage: newStage, nextReview: toDateStr_simple(next), lastReview: toDateStr_simple(new Date()) };
