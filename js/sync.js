@@ -64,6 +64,8 @@ const CONFLICT_KEY = {
 
 // ---- Push デバウンスタイマー ----
 const _timers = {};
+const _deleteTimers = new Map();
+const DELETE_GRACE_MS = 5600;
 let _realtimeChannel = null;
 let _realtimeUserId = null;
 let _realtimePullTimer = null;
@@ -79,26 +81,8 @@ export function initSync() {
 
   // storage.js から削除通知を受け取る
   // payload: { table, id } または { table, name } (タグの場合)
-  registerSyncDeleteHook(async ({ table, id, name }) => {
-    const client = await getClient();
-    const userId = await getUserId();
-    if (!client || !userId) return;
-
-    try {
-      if (table === 'tags' && name) {
-        await client.from('tags')
-          .delete()
-          .eq('user_id', userId)
-          .eq('name', name);
-      } else if (id) {
-        await client.from(table)
-          .delete()
-          .eq('id', id)
-          .eq('user_id', userId);
-      }
-    } catch (e) {
-      console.warn(`[Sync] delete ${table} failed:`, e);
-    }
+  registerSyncDeleteHook(payload => {
+    _scheduleDelete(payload);
   });
 }
 
@@ -185,7 +169,7 @@ export async function pullAll(forceReplace = false) {
   const userId = await getUserId();
   if (!client || !userId) return false;
 
-  await Promise.allSettled([
+  const results = await Promise.allSettled([
     _pullTasks(client, userId, forceReplace),
     _pullEvents(client, userId, forceReplace),
     _pullGoals(client, userId, forceReplace),
@@ -194,7 +178,7 @@ export async function pullAll(forceReplace = false) {
     _pullTags(client, userId, forceReplace),
   ]);
 
-  return true;
+  return results.some(r => r.status === 'fulfilled' && r.value === true);
 }
 
 // ---- Pull helpers ----
@@ -207,12 +191,11 @@ async function _pullTasks(client, userId, forceReplace = false) {
   const remoteActive  = data.filter(r => !r.archived_at).map(rowToTask);
   const remoteArchive = data.filter(r =>  r.archived_at).map(rowToTask);
 
-  localStorage.setItem('mp_tasks', JSON.stringify(
-    forceReplace ? remoteActive : _merge(_ls('mp_tasks', []), remoteActive)
-  ));
-  localStorage.setItem('mp_task_archive', JSON.stringify(
-    forceReplace ? remoteArchive : _merge(_ls('mp_task_archive', []), remoteArchive)
-  ));
+  const nextActive = forceReplace ? remoteActive : _merge(_ls('mp_tasks', []), remoteActive);
+  const nextArchive = forceReplace ? remoteArchive : _merge(_ls('mp_task_archive', []), remoteArchive);
+  const changedActive = _writeIfChanged('mp_tasks', nextActive);
+  const changedArchive = _writeIfChanged('mp_task_archive', nextArchive);
+  return changedActive || changedArchive;
 }
 
 async function _pullEvents(client, userId, forceReplace = false) {
@@ -220,9 +203,7 @@ async function _pullEvents(client, userId, forceReplace = false) {
     .from('events').select('*').eq('user_id', userId);
   if (error || !data) return;
   const remote = data.map(rowToEvent);
-  localStorage.setItem('mp_events', JSON.stringify(
-    forceReplace ? remote : _merge(_ls('mp_events', []), remote)
-  ));
+  return _writeIfChanged('mp_events', forceReplace ? remote : _merge(_ls('mp_events', []), remote));
 }
 
 async function _pullGoals(client, userId, forceReplace = false) {
@@ -230,9 +211,7 @@ async function _pullGoals(client, userId, forceReplace = false) {
     .from('goals').select('*').eq('user_id', userId);
   if (error || !data) return;
   const remote = data.map(rowToGoal);
-  localStorage.setItem('mp_goals', JSON.stringify(
-    forceReplace ? remote : _merge(_ls('mp_goals', []), remote)
-  ));
+  return _writeIfChanged('mp_goals', forceReplace ? remote : _merge(_ls('mp_goals', []), remote));
 }
 
 async function _pullMemos(client, userId) {
@@ -250,7 +229,7 @@ async function _pullMemos(client, userId) {
     const lt = new Date(l.updatedAt || l.createdAt || 0).getTime();
     return lt > rt ? l : r;
   });
-  localStorage.setItem('mp_knowledge', JSON.stringify(result));
+  return _writeIfChanged('mp_knowledge', result);
 }
 
 async function _pullSchedule(client, userId) {
@@ -268,7 +247,7 @@ async function _pullSchedule(client, userId) {
     const lt = new Date(l.updatedAt || l.createdAt || 0).getTime();
     return lt > rt ? l : r;
   });
-  localStorage.setItem('mp_schedule', JSON.stringify(result));
+  return _writeIfChanged('mp_schedule', result);
 }
 
 async function _pullTags(client, userId, forceReplace = false) {
@@ -280,7 +259,7 @@ async function _pullTags(client, userId, forceReplace = false) {
   const merged = forceReplace
     ? [...new Set(remoteTags)].sort()
     : [...new Set([...localTags, ...remoteTags])].sort();
-  localStorage.setItem('mp_tags', JSON.stringify(merged));
+  return _writeIfChanged('mp_tags', merged);
 }
 
 // ---- Merge strategy: last-write-wins by updated_at ----
@@ -307,11 +286,72 @@ let _lastPullAt = 0;
 export async function pullIfStale(minAgeMs = 30_000, forceReplace = false) {
   if (Date.now() - _lastPullAt < minAgeMs) return false;
   const pulled = await pullAll(forceReplace);
-  if (pulled) _lastPullAt = Date.now();
+  _lastPullAt = Date.now();
   return pulled;
 }
 
 // ---- Utils ----
+
+function _scheduleDelete(payload) {
+  const key = _deleteKey(payload);
+  clearTimeout(_deleteTimers.get(key));
+  _deleteTimers.set(key, setTimeout(async () => {
+    _deleteTimers.delete(key);
+    if (!_isStillDeleted(payload)) return;
+
+    const client = await getClient();
+    const userId = await getUserId();
+    if (!client || !userId) return;
+
+    try {
+      if (payload.table === 'tags' && payload.name) {
+        await client.from('tags')
+          .delete()
+          .eq('user_id', userId)
+          .eq('name', payload.name);
+      } else if (payload.id) {
+        await client.from(payload.table)
+          .delete()
+          .eq('id', payload.id)
+          .eq('user_id', userId);
+      }
+    } catch (e) {
+      console.warn(`[Sync] delete ${payload.table} failed:`, e);
+    }
+  }, DELETE_GRACE_MS));
+}
+
+function _deleteKey({ table, id, name }) {
+  return `${table}:${id || name || ''}`;
+}
+
+function _isStillDeleted({ table, id, name }) {
+  if (table === 'tags') {
+    return !_ls('mp_tags', []).includes(name);
+  }
+
+  if (!id) return true;
+
+  if (table === 'tasks') {
+    return !_hasId('mp_tasks', id) && !_hasId('mp_task_archive', id);
+  }
+
+  const lsKey = LS_KEYS[table];
+  if (!lsKey) return true;
+  return !_hasId(lsKey, id);
+}
+
+function _hasId(key, id) {
+  return _ls(key, []).some(item => item?.id === id);
+}
+
+function _writeIfChanged(key, value) {
+  const next = JSON.stringify(value);
+  const prev = localStorage.getItem(key);
+  if (prev === next) return false;
+  localStorage.setItem(key, next);
+  return true;
+}
 
 function _ls(key, fb) {
   try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fb; }
