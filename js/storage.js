@@ -79,8 +79,7 @@ export const DEFAULT_CATEGORIES = [
 
 export const DEFAULT_ACCENT_RGB = { r: 190, g: 230, b: 216 };
 export const DEFAULT_THEME_TUNING = {
-  blackLevel: 55,
-  whiteLevel: 55,
+  toneLevel: 55,
   cardContrast: 50,
   glowIntensity: 35,
   accentVividness: 45,

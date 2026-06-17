@@ -75,28 +75,18 @@ function renderMainSettings(container) {
 
       <div class="settings-section">
         <div class="settings-heading">Theme</div>
-        <div style="display:flex;gap:8px">
-          ${[
-            { key: 'auto', label: 'Auto' },
-            { key: 'dark', label: 'Dark' },
-            { key: 'light', label: 'Light' },
-          ].map(t =>
-            `<button class="theme-btn${settings.theme === t.key ? ' active' : ''}" data-theme="${t.key}">${t.label}</button>`
-          ).join('')}
-        </div>
 
         <div class="theme-tuning-card">
           <div class="theme-tuning-top">
             <div>
               <strong>Theme tuning</strong>
-              <p class="text-sm text-muted">Adjust darkness, contrast, glow, and neon feel.</p>
+              <p class="text-sm text-muted">Slide from white to black, then tune contrast, glow, and vividness.</p>
             </div>
             <button class="btn btn-ghost btn-sm" id="theme-tuning-reset-btn" type="button">Reset</button>
           </div>
 
           <div class="accent-rgb-grid">
-            ${renderThemeSlider('Black', 'tune-black-level', tuning.blackLevel)}
-            ${renderThemeSlider('White', 'tune-white-level', tuning.whiteLevel)}
+            ${renderThemeSlider('Tone', 'tune-tone-level', tuning.toneLevel)}
             ${renderThemeSlider('Contrast', 'tune-card-contrast', tuning.cardContrast)}
             ${renderThemeSlider('Glow', 'tune-glow-intensity', tuning.glowIntensity)}
             ${renderThemeSlider('Vivid', 'tune-accent-vividness', tuning.accentVividness)}
@@ -308,18 +298,6 @@ function renderAccountSection() {
 }
 
 function wireAppearance(container) {
-  container.querySelectorAll('[data-theme]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const theme = btn.dataset.theme;
-      saveSettings({ theme });
-      window.AppTheme?.apply(theme);
-      container.querySelectorAll('[data-theme]').forEach(b =>
-        b.classList.toggle('active', b.dataset.theme === theme)
-      );
-      toast(`Theme changed to ${btn.textContent}`, 'info');
-    });
-  });
-
   container.querySelector('#my-schedule-color-input')?.addEventListener('input', e => {
     const color = e.target.value || '#60A5FA';
     saveSettings({ myScheduleColor: color });
@@ -331,8 +309,7 @@ function wireAppearance(container) {
     .map(id => container.querySelector(`#${id}`))
     .filter(Boolean);
   const tuneInputs = [
-    'tune-black-level',
-    'tune-white-level',
+    'tune-tone-level',
     'tune-card-contrast',
     'tune-glow-intensity',
     'tune-accent-vividness',
@@ -362,8 +339,7 @@ function wireAppearance(container) {
   const syncThemeTuningPreview = (tuning) => {
     const safe = normalizeThemeTuning(tuning);
     const items = [
-      ['#tune-black-level-value', safe.blackLevel],
-      ['#tune-white-level-value', safe.whiteLevel],
+      ['#tune-tone-level-value', safe.toneLevel],
       ['#tune-card-contrast-value', safe.cardContrast],
       ['#tune-glow-intensity-value', safe.glowIntensity],
       ['#tune-accent-vividness-value', safe.accentVividness],
@@ -394,8 +370,7 @@ function wireAppearance(container) {
   tuneInputs.forEach(input => {
     input.addEventListener('input', () => {
       applyThemeTuning({
-        blackLevel: container.querySelector('#tune-black-level')?.value,
-        whiteLevel: container.querySelector('#tune-white-level')?.value,
+        toneLevel: container.querySelector('#tune-tone-level')?.value,
         cardContrast: container.querySelector('#tune-card-contrast')?.value,
         glowIntensity: container.querySelector('#tune-glow-intensity')?.value,
         accentVividness: container.querySelector('#tune-accent-vividness')?.value,
@@ -414,8 +389,7 @@ function wireAppearance(container) {
 
   container.querySelector('#theme-tuning-reset-btn')?.addEventListener('click', () => {
     const safe = normalizeThemeTuning(DEFAULT_THEME_TUNING);
-    container.querySelector('#tune-black-level').value = String(safe.blackLevel);
-    container.querySelector('#tune-white-level').value = String(safe.whiteLevel);
+    container.querySelector('#tune-tone-level').value = String(safe.toneLevel);
     container.querySelector('#tune-card-contrast').value = String(safe.cardContrast);
     container.querySelector('#tune-glow-intensity').value = String(safe.glowIntensity);
     container.querySelector('#tune-accent-vividness').value = String(safe.accentVividness);
@@ -468,8 +442,7 @@ function normalizeThemeTuning(tuning) {
     return Math.max(0, Math.min(100, Math.round(n)));
   };
   return {
-    blackLevel: clamp(tuning?.blackLevel, DEFAULT_THEME_TUNING.blackLevel),
-    whiteLevel: clamp(tuning?.whiteLevel, DEFAULT_THEME_TUNING.whiteLevel),
+    toneLevel: clamp(tuning?.toneLevel, DEFAULT_THEME_TUNING.toneLevel),
     cardContrast: clamp(tuning?.cardContrast, DEFAULT_THEME_TUNING.cardContrast),
     glowIntensity: clamp(tuning?.glowIntensity, DEFAULT_THEME_TUNING.glowIntensity),
     accentVividness: clamp(tuning?.accentVividness, DEFAULT_THEME_TUNING.accentVividness),
