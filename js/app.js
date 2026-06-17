@@ -43,6 +43,7 @@ let currentView = null;
 let cleanupFn = null;
 let swUpdateIntervalId = null;
 let swReloading = false;
+let foregroundSyncIntervalId = null;
 
 // ---- Navigation ----
 
@@ -299,6 +300,7 @@ async function init() {
   // Start connectivity monitor + batch scheduler
   setupConnectivityMonitor();
   setupBatchScheduler();
+  setupForegroundSync();
 
   // Route to initial view
   const hash = window.location.hash.replace('#', '').trim() || 'home';
@@ -419,6 +421,19 @@ function setupConnectivityMonitor() {
   window.addEventListener('online',  updateStatus);
   window.addEventListener('offline', updateStatus);
   updateStatus();
+}
+
+function setupForegroundSync() {
+  if (foregroundSyncIntervalId) clearInterval(foregroundSyncIntervalId);
+  foregroundSyncIntervalId = setInterval(() => {
+    if (document.hidden) return;
+    getSession().then(session => {
+      if (!session) return;
+      pullIfStale(5000, true).then(pulled => {
+        if (pulled) refreshCurrentView({ preserveScroll: true });
+      }).catch(() => {});
+    }).catch(() => {});
+  }, 5000);
 }
 
 // ---- Batch AI scheduler ----
