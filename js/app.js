@@ -354,9 +354,8 @@ function applyTheme(theme) {
   const html = document.documentElement;
   const settings = getSettings();
   const tuning = settings.themeTuning || DEFAULT_THEME_TUNING;
-  const mode = resolveToneMode(tuning);
-  html.setAttribute('data-theme', mode);
-  applySurfaceTheme(mode, tuning);
+  html.setAttribute('data-theme', 'tone');
+  applySurfaceTheme(tuning);
   applyAccentTheme(settings.accentRgb || DEFAULT_ACCENT_RGB, tuning);
 }
 
@@ -460,61 +459,34 @@ function rgbToCss(rgb, alpha = 1) {
   return `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`;
 }
 
-function resolveToneMode(tuningInput) {
-  const tuning = normalizeThemeTuning(tuningInput);
-  return tuning.toneLevel < 50 ? 'light' : 'dark';
-}
-
-function applySurfaceTheme(mode, tuningInput) {
+function applySurfaceTheme(tuningInput) {
   const root = document.documentElement;
   const tuning = normalizeThemeTuning(tuningInput);
   const tone = tuning.toneLevel / 100;
+  const contrast = 3 + (tuning.cardContrast / 100) * 13;
+  const bgLight = 99 - tone * 97;
+  const cardLight = Math.min(100, bgLight + contrast);
+  const inputLight = Math.max(2, bgLight - (1.5 + tone * 1.8));
+  const textLight = 12 + tone * 80;
+  const glowAlpha = 0.04 + (tuning.glowIntensity / 100) * 0.22;
+  const darkAlpha = 0.03 + tone * 0.10;
+  const lightAlpha = 0.03 + tone * 0.07;
+  const shadowAlpha = 0.08 + tone * 0.52;
 
-  if (mode === 'light') {
-    const bgLight = 99 - tone * 10;
-    const contrast = 3 + (tuning.cardContrast / 100) * 8;
-    const cardLight = Math.min(100, bgLight + contrast);
-    const inputLight = Math.max(88, bgLight - 2);
-    const glowAlpha = 0.04 + (tuning.glowIntensity / 100) * 0.16;
-    const textDark = 16 - tone * 12;
-    root.style.setProperty('--bg', `hsl(255 52% ${bgLight.toFixed(1)}%)`);
-    root.style.setProperty('--bg-card', `hsl(0 0% ${cardLight.toFixed(1)}%)`);
-    root.style.setProperty('--bg-input', `hsl(255 44% ${inputLight.toFixed(1)}%)`);
-    root.style.setProperty('--text', `hsl(252 28% ${textDark.toFixed(1)}%)`);
-    root.style.setProperty('--text-muted', `rgba(26,24,48,${(0.52 + tone * 0.20).toFixed(3)})`);
-    root.style.setProperty('--text-dim', `rgba(26,24,48,${(0.28 + tone * 0.18).toFixed(3)})`);
-    root.style.setProperty('--bg-hover', `rgba(0,0,0,${(0.03 + tuning.cardContrast / 100 * 0.05).toFixed(3)})`);
-    root.style.setProperty('--bg-active', `rgba(0,0,0,${(0.05 + tuning.cardContrast / 100 * 0.08).toFixed(3)})`);
-    root.style.setProperty('--border', `rgba(0,0,0,${(0.05 + tuning.cardContrast / 100 * 0.07).toFixed(3)})`);
-    root.style.setProperty('--border-light', `rgba(0,0,0,${(0.03 + tuning.cardContrast / 100 * 0.04).toFixed(3)})`);
-    root.style.setProperty('--shadow', `0 8px 32px rgba(142,201,187,${(0.04 + glowAlpha * 0.35).toFixed(3)})`);
-    root.style.setProperty('--shadow-sm', `0 2px 12px rgba(142,201,187,${(0.03 + glowAlpha * 0.24).toFixed(3)})`);
-    root.style.setProperty('--scrollbar', `rgba(142,201,187,${(0.10 + tuning.cardContrast / 100 * 0.14).toFixed(3)})`);
-    root.style.setProperty('--surface-glass', `rgba(242,241,253,${(0.80 + tuning.cardContrast / 100 * 0.12).toFixed(3)})`);
-    root.style.setProperty('--home-glow', `rgba(190,230,216,${glowAlpha.toFixed(3)})`);
-    return;
-  }
-
-  const bgLight = 14 - tone * 12;
-  const contrast = 7 + (tuning.cardContrast / 100) * 9;
-  const cardLight = bgLight + contrast;
-  const inputLight = Math.max(2, bgLight - 1.5);
-  const glowAlpha = 0.06 + (tuning.glowIntensity / 100) * 0.22;
-  const textLight = 82 + tone * 16;
   root.style.setProperty('--bg', `hsl(240 24% ${bgLight.toFixed(1)}%)`);
-  root.style.setProperty('--bg-card', `hsl(241 34% ${cardLight.toFixed(1)}%)`);
-  root.style.setProperty('--bg-input', `hsl(242 42% ${inputLight.toFixed(1)}%)`);
+  root.style.setProperty('--bg-card', `hsl(241 28% ${cardLight.toFixed(1)}%)`);
+  root.style.setProperty('--bg-input', `hsl(242 26% ${inputLight.toFixed(1)}%)`);
   root.style.setProperty('--text', `hsl(250 32% ${textLight.toFixed(1)}%)`);
-  root.style.setProperty('--text-muted', `rgba(237,236,249,${(0.46 + tone * 0.28).toFixed(3)})`);
-  root.style.setProperty('--text-dim', `rgba(237,236,249,${(0.22 + tone * 0.24).toFixed(3)})`);
-  root.style.setProperty('--bg-hover', `rgba(255,255,255,${(0.03 + tuning.cardContrast / 100 * 0.04).toFixed(3)})`);
-  root.style.setProperty('--bg-active', `rgba(255,255,255,${(0.06 + tuning.cardContrast / 100 * 0.07).toFixed(3)})`);
-  root.style.setProperty('--border', `rgba(255,255,255,${(0.05 + tuning.cardContrast / 100 * 0.07).toFixed(3)})`);
-  root.style.setProperty('--border-light', `rgba(255,255,255,${(0.03 + tuning.cardContrast / 100 * 0.04).toFixed(3)})`);
-  root.style.setProperty('--shadow', `0 8px 32px rgba(0,0,0,${(0.30 + tone * 0.30).toFixed(3)})`);
-  root.style.setProperty('--shadow-sm', `0 2px 12px rgba(0,0,0,${(0.22 + tone * 0.22).toFixed(3)})`);
-  root.style.setProperty('--scrollbar', `rgba(255,255,255,${(0.08 + tuning.cardContrast / 100 * 0.08).toFixed(3)})`);
-  root.style.setProperty('--surface-glass', `rgba(13,13,21,${(0.82 + tuning.cardContrast / 100 * 0.12).toFixed(3)})`);
+  root.style.setProperty('--text-muted', `rgba(${Math.round(26 + tone * 211)}, ${Math.round(24 + tone * 212)}, ${Math.round(48 + tone * 201)}, ${(0.40 + tone * 0.26).toFixed(3)})`);
+  root.style.setProperty('--text-dim', `rgba(${Math.round(26 + tone * 211)}, ${Math.round(24 + tone * 212)}, ${Math.round(48 + tone * 201)}, ${(0.18 + tone * 0.22).toFixed(3)})`);
+  root.style.setProperty('--bg-hover', `rgba(${Math.round(255 - tone * 255)}, ${Math.round(255 - tone * 255)}, ${Math.round(255 - tone * 255)}, ${(0.02 + Math.abs(tone - 0.5) * 0.06 + tuning.cardContrast / 100 * 0.03).toFixed(3)})`);
+  root.style.setProperty('--bg-active', `rgba(${Math.round(255 - tone * 255)}, ${Math.round(255 - tone * 255)}, ${Math.round(255 - tone * 255)}, ${(0.04 + Math.abs(tone - 0.5) * 0.08 + tuning.cardContrast / 100 * 0.04).toFixed(3)})`);
+  root.style.setProperty('--border', `rgba(${Math.round(255 - tone * 255)}, ${Math.round(255 - tone * 255)}, ${Math.round(255 - tone * 255)}, ${(darkAlpha + tuning.cardContrast / 100 * 0.04).toFixed(3)})`);
+  root.style.setProperty('--border-light', `rgba(${Math.round(255 - tone * 255)}, ${Math.round(255 - tone * 255)}, ${Math.round(255 - tone * 255)}, ${(lightAlpha + tuning.cardContrast / 100 * 0.03).toFixed(3)})`);
+  root.style.setProperty('--shadow', `0 8px 32px rgba(0,0,0,${shadowAlpha.toFixed(3)})`);
+  root.style.setProperty('--shadow-sm', `0 2px 12px rgba(0,0,0,${(shadowAlpha * 0.72).toFixed(3)})`);
+  root.style.setProperty('--scrollbar', `rgba(${Math.round(255 - tone * 113)}, ${Math.round(255 - tone * 54)}, ${Math.round(255 - tone * 68)}, ${(0.10 + tuning.cardContrast / 100 * 0.10).toFixed(3)})`);
+  root.style.setProperty('--surface-glass', `rgba(${Math.round(242 - tone * 229)}, ${Math.round(241 - tone * 228)}, ${Math.round(253 - tone * 232)}, ${(0.78 + tuning.cardContrast / 100 * 0.14).toFixed(3)})`);
   root.style.setProperty('--home-glow', `rgba(190,230,216,${glowAlpha.toFixed(3)})`);
 }
 

@@ -417,7 +417,7 @@ function renderThemeSlider(label, id, value) {
         <span class="accent-rgb-label">${label}</span>
         <span class="accent-rgb-value" id="${id}-value">${value}</span>
       </span>
-      <input class="accent-rgb-slider" id="${id}" type="range" min="0" max="100" value="${value}">
+      <input class="accent-rgb-slider${id === 'tune-tone-level' ? ' tone-slider' : ''}" id="${id}" type="range" min="0" max="100" value="${value}">
     </label>
   `;
 }
