@@ -78,6 +78,12 @@ export const DEFAULT_CATEGORIES = [
 ];
 
 export const DEFAULT_ACCENT_RGB = { r: 190, g: 230, b: 216 };
+export const DEFAULT_THEME_TUNING = {
+  backgroundDepth: 50,
+  cardContrast: 50,
+  glowIntensity: 35,
+  accentVividness: 45,
+};
 
 // ---- Primitive helpers ----
 
@@ -302,6 +308,7 @@ const DEFAULT_SETTINGS = {
   aiEnabled: false,
   myScheduleColor: '#60A5FA',
   accentRgb: DEFAULT_ACCENT_RGB,
+  themeTuning: DEFAULT_THEME_TUNING,
 };
 const DEFAULT_AI_RUNTIME = {
   provider: 'gemini',

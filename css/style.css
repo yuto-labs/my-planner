@@ -39,6 +39,8 @@
   --shadow:       0 8px 32px rgba(0,0,0,0.55);
   --shadow-sm:    0 2px 12px rgba(0,0,0,0.40);
   --scrollbar:    rgba(255,255,255,0.10);
+  --surface-glass: rgba(13,13,21,0.88);
+  --home-glow:    rgba(190,230,200,0.14);
 
   --primary:        #BEE6D8;
   --primary-dark:   #94CCBE;
@@ -72,6 +74,8 @@
     --shadow:       0 8px 32px rgba(142,201,187,0.09);
     --shadow-sm:    0 2px 12px rgba(142,201,187,0.06);
     --scrollbar:    rgba(142,201,187,0.18);
+    --surface-glass: rgba(242,241,253,0.88);
+    --home-glow:    rgba(190,230,216,0.12);
 
     --primary:        #8EC9BB;
     --primary-dark:   #6EB6A7;
@@ -102,6 +106,8 @@
   --shadow:       0 8px 32px rgba(142,201,187,0.09);
   --shadow-sm:    0 2px 12px rgba(142,201,187,0.06);
   --scrollbar:    rgba(142,201,187,0.18);
+  --surface-glass: rgba(242,241,253,0.88);
+  --home-glow:    rgba(190,230,216,0.12);
   --primary:        #8EC9BB;
   --primary-dark:   #6EB6A7;
   --primary-light:  #BEE6D8;
@@ -160,22 +166,13 @@ button { cursor: pointer; font-family: inherit; }
 /* ---- Header ---- */
 #app-header {
   height: var(--header-h);
-  background: rgba(13,13,21,0.88);
+  background: var(--surface-glass);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   z-index: 10;
 }
-[data-theme="light"] #app-header {
-  background: rgba(242,241,253,0.88);
-}
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) #app-header {
-    background: rgba(242,241,253,0.88);
-  }
-}
-
 .header-inner {
   display: flex;
   align-items: center;
@@ -209,14 +206,14 @@ button { cursor: pointer; font-family: inherit; }
 #main-content[data-view="home"] {
   background:
     radial-gradient(ellipse 90% 45% at 50% -2%,
-      rgba(190,230,200,0.14) 0%, transparent 100%),
+      var(--home-glow) 0%, transparent 100%),
     var(--bg);
 }
 
 /* ---- Bottom navigation ---- */
 #bottom-nav {
   height: var(--nav-h);
-  background: rgba(14,14,28,0.92);
+  background: var(--surface-glass);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-top: 1px solid var(--border);
@@ -226,15 +223,6 @@ button { cursor: pointer; font-family: inherit; }
   z-index: 10;
   padding-bottom: env(safe-area-inset-bottom);
 }
-[data-theme="light"] #bottom-nav {
-  background: rgba(242,241,253,0.92);
-}
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) #bottom-nav {
-    background: rgba(242,241,253,0.92);
-  }
-}
-
 .nav-btn {
   flex: 1;
   display: flex;
@@ -1405,6 +1393,28 @@ button { cursor: pointer; font-family: inherit; }
 .accent-rgb-slider {
   width: 100%;
   accent-color: var(--primary);
+}
+.theme-tuning-card {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm);
+}
+.theme-tuning-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.theme-tuning-top strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
 }
 .my-schedule-color-row input[type="color"] {
   width: 42px;

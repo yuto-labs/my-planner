@@ -2,7 +2,7 @@
 // app.js 窶・Main SPA router & app shell
 // ============================================================
 
-import { getSettings, getBatchSettings, getPendingAIQueue, autoArchiveTasks, isAiAvailable, clearUserContentLocal, DEFAULT_ACCENT_RGB } from './storage.js';
+import { getSettings, getBatchSettings, getPendingAIQueue, autoArchiveTasks, isAiAvailable, clearUserContentLocal, DEFAULT_ACCENT_RGB, DEFAULT_THEME_TUNING } from './storage.js';
 import { processBatchQueue, refreshAiRuntimeStatus } from './ai.js';
 import { initSync, pullAll, pullIfStale, startRealtimeSync } from './sync.js';
 import { getSession, handleAuthRedirect, getActiveUserId, setActiveUserId } from './supabase.js';
@@ -355,7 +355,10 @@ function applyTheme(theme) {
   if (theme === 'dark') html.setAttribute('data-theme', 'dark');
   else if (theme === 'light') html.setAttribute('data-theme', 'light');
   else html.removeAttribute('data-theme'); // 'auto' 窶・follow OS
-  applyAccentTheme(getSettings().accentRgb || DEFAULT_ACCENT_RGB);
+  const settings = getSettings();
+  const tuning = settings.themeTuning || DEFAULT_THEME_TUNING;
+  applySurfaceTheme(resolveThemeMode(theme), tuning);
+  applyAccentTheme(settings.accentRgb || DEFAULT_ACCENT_RGB, tuning);
 }
 
 function clampRgb(value, fallback) {
@@ -372,6 +375,21 @@ function normalizeAccentRgb(rgb) {
   };
 }
 
+function clampPercent(value, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+function normalizeThemeTuning(tuning) {
+  return {
+    backgroundDepth: clampPercent(tuning?.backgroundDepth, DEFAULT_THEME_TUNING.backgroundDepth),
+    cardContrast: clampPercent(tuning?.cardContrast, DEFAULT_THEME_TUNING.cardContrast),
+    glowIntensity: clampPercent(tuning?.glowIntensity, DEFAULT_THEME_TUNING.glowIntensity),
+    accentVividness: clampPercent(tuning?.accentVividness, DEFAULT_THEME_TUNING.accentVividness),
+  };
+}
+
 function mixRgb(a, b, ratio) {
   const t = Math.max(0, Math.min(1, ratio));
   return {
@@ -381,29 +399,140 @@ function mixRgb(a, b, ratio) {
   };
 }
 
+function rgbToHsl(rgb) {
+  const r = normalizeAccentRgb(rgb).r / 255;
+  const g = normalizeAccentRgb(rgb).g / 255;
+  const b = normalizeAccentRgb(rgb).b / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h;
+  let s;
+  const l = (max + min) / 2;
+
+  if (max === min) {
+    h = 0;
+    s = 0;
+  } else {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      default: h = (r - g) / d + 4; break;
+    }
+    h /= 6;
+  }
+  return { h, s, l };
+}
+
+function hslToRgb(h, s, l) {
+  let r;
+  let g;
+  let b;
+  if (s === 0) {
+    r = g = b = l;
+  } else {
+    const hue2rgb = (p, q, t) => {
+      let tt = t;
+      if (tt < 0) tt += 1;
+      if (tt > 1) tt -= 1;
+      if (tt < 1 / 6) return p + (q - p) * 6 * tt;
+      if (tt < 1 / 2) return q;
+      if (tt < 2 / 3) return p + (q - p) * (2 / 3 - tt) * 6;
+      return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1 / 3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1 / 3);
+  }
+  return {
+    r: Math.round(r * 255),
+    g: Math.round(g * 255),
+    b: Math.round(b * 255),
+  };
+}
+
 function rgbToCss(rgb, alpha = 1) {
   const c = normalizeAccentRgb(rgb);
   if (alpha >= 1) return `rgb(${c.r}, ${c.g}, ${c.b})`;
   return `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`;
 }
 
-function applyAccentTheme(rgb) {
-  const root = document.documentElement;
-  const base = normalizeAccentRgb(rgb);
-  const lighter = mixRgb(base, { r: 255, g: 255, b: 255 }, 0.24);
-  const lightest = mixRgb(base, { r: 255, g: 255, b: 255 }, 0.5);
-  const darker = mixRgb(base, { r: 20, g: 24, b: 36 }, 0.18);
-  const success = mixRgb(base, { r: 130, g: 220, b: 235 }, 0.22);
+function resolveThemeMode(theme) {
+  if (theme === 'dark' || theme === 'light') return theme;
+  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
 
-  root.style.setProperty('--primary', rgbToCss(base));
+function applySurfaceTheme(mode, tuningInput) {
+  const root = document.documentElement;
+  const tuning = normalizeThemeTuning(tuningInput);
+
+  if (mode === 'light') {
+    const bgLight = 96 - (tuning.backgroundDepth / 100) * 9;
+    const contrast = 3 + (tuning.cardContrast / 100) * 8;
+    const cardLight = Math.min(100, bgLight + contrast);
+    const inputLight = Math.max(88, bgLight - 2);
+    const glowAlpha = 0.04 + (tuning.glowIntensity / 100) * 0.16;
+    root.style.setProperty('--bg', `hsl(255 52% ${bgLight.toFixed(1)}%)`);
+    root.style.setProperty('--bg-card', `hsl(0 0% ${cardLight.toFixed(1)}%)`);
+    root.style.setProperty('--bg-input', `hsl(255 44% ${inputLight.toFixed(1)}%)`);
+    root.style.setProperty('--bg-hover', `rgba(0,0,0,${(0.03 + tuning.cardContrast / 100 * 0.05).toFixed(3)})`);
+    root.style.setProperty('--bg-active', `rgba(0,0,0,${(0.05 + tuning.cardContrast / 100 * 0.08).toFixed(3)})`);
+    root.style.setProperty('--border', `rgba(0,0,0,${(0.05 + tuning.cardContrast / 100 * 0.07).toFixed(3)})`);
+    root.style.setProperty('--border-light', `rgba(0,0,0,${(0.03 + tuning.cardContrast / 100 * 0.04).toFixed(3)})`);
+    root.style.setProperty('--shadow', `0 8px 32px rgba(142,201,187,${(0.04 + glowAlpha * 0.35).toFixed(3)})`);
+    root.style.setProperty('--shadow-sm', `0 2px 12px rgba(142,201,187,${(0.03 + glowAlpha * 0.24).toFixed(3)})`);
+    root.style.setProperty('--scrollbar', `rgba(142,201,187,${(0.10 + tuning.cardContrast / 100 * 0.14).toFixed(3)})`);
+    root.style.setProperty('--surface-glass', `rgba(242,241,253,${(0.80 + tuning.cardContrast / 100 * 0.12).toFixed(3)})`);
+    root.style.setProperty('--home-glow', `rgba(190,230,216,${glowAlpha.toFixed(3)})`);
+    return;
+  }
+
+  const bgLight = 9 - (tuning.backgroundDepth / 100) * 5;
+  const contrast = 7 + (tuning.cardContrast / 100) * 9;
+  const cardLight = bgLight + contrast;
+  const inputLight = Math.max(2, bgLight - 1.5);
+  const glowAlpha = 0.06 + (tuning.glowIntensity / 100) * 0.22;
+  root.style.setProperty('--bg', `hsl(240 24% ${bgLight.toFixed(1)}%)`);
+  root.style.setProperty('--bg-card', `hsl(241 34% ${cardLight.toFixed(1)}%)`);
+  root.style.setProperty('--bg-input', `hsl(242 42% ${inputLight.toFixed(1)}%)`);
+  root.style.setProperty('--bg-hover', `rgba(255,255,255,${(0.03 + tuning.cardContrast / 100 * 0.04).toFixed(3)})`);
+  root.style.setProperty('--bg-active', `rgba(255,255,255,${(0.06 + tuning.cardContrast / 100 * 0.07).toFixed(3)})`);
+  root.style.setProperty('--border', `rgba(255,255,255,${(0.05 + tuning.cardContrast / 100 * 0.07).toFixed(3)})`);
+  root.style.setProperty('--border-light', `rgba(255,255,255,${(0.03 + tuning.cardContrast / 100 * 0.04).toFixed(3)})`);
+  root.style.setProperty('--shadow', `0 8px 32px rgba(0,0,0,${(0.38 + tuning.backgroundDepth / 100 * 0.22).toFixed(3)})`);
+  root.style.setProperty('--shadow-sm', `0 2px 12px rgba(0,0,0,${(0.28 + tuning.backgroundDepth / 100 * 0.18).toFixed(3)})`);
+  root.style.setProperty('--scrollbar', `rgba(255,255,255,${(0.08 + tuning.cardContrast / 100 * 0.08).toFixed(3)})`);
+  root.style.setProperty('--surface-glass', `rgba(13,13,21,${(0.82 + tuning.cardContrast / 100 * 0.12).toFixed(3)})`);
+  root.style.setProperty('--home-glow', `rgba(190,230,216,${glowAlpha.toFixed(3)})`);
+}
+
+function applyAccentTheme(rgb, tuningInput) {
+  const root = document.documentElement;
+  const tuning = normalizeThemeTuning(tuningInput);
+  const hsl = rgbToHsl(normalizeAccentRgb(rgb));
+  const vividness = tuning.accentVividness / 100;
+  const adjustedBase = hslToRgb(
+    hsl.h,
+    Math.max(0.08, Math.min(0.92, hsl.s * (0.62 + vividness * 0.85))),
+    Math.max(0.22, Math.min(0.84, hsl.l + (0.16 - vividness * 0.12))),
+  );
+  const lighter = mixRgb(adjustedBase, { r: 255, g: 255, b: 255 }, 0.34 - vividness * 0.16);
+  const lightest = mixRgb(adjustedBase, { r: 255, g: 255, b: 255 }, 0.58 - vividness * 0.18);
+  const darker = mixRgb(adjustedBase, { r: 20, g: 24, b: 36 }, 0.16 + vividness * 0.07);
+  const success = mixRgb(adjustedBase, { r: 130, g: 220, b: 235 }, 0.15 + vividness * 0.16);
+
+  root.style.setProperty('--primary', rgbToCss(adjustedBase));
   root.style.setProperty('--primary-dark', rgbToCss(darker));
   root.style.setProperty('--primary-light', rgbToCss(lightest));
   root.style.setProperty('--success', rgbToCss(success));
   root.style.setProperty('--accent', rgbToCss(lighter));
   root.style.setProperty('--gradient', `linear-gradient(135deg, ${rgbToCss(lighter)} 0%, ${rgbToCss(success)} 100%)`);
   root.style.setProperty('--gradient-h', `linear-gradient(90deg, ${rgbToCss(lighter)} 0%, ${rgbToCss(success)} 100%)`);
-  root.style.setProperty('--primary-bg', rgbToCss(base, 0.15));
-  root.style.setProperty('--primary-border', rgbToCss(base, 0.31));
+  root.style.setProperty('--primary-bg', rgbToCss(adjustedBase, 0.15 + vividness * 0.06));
+  root.style.setProperty('--primary-border', rgbToCss(adjustedBase, 0.24 + vividness * 0.12));
   root.style.setProperty('--success-bg', rgbToCss(success, 0.15));
   root.style.setProperty('--success-border', rgbToCss(success, 0.28));
 }

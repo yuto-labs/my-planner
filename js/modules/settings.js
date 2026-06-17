@@ -4,7 +4,7 @@
 
 import {
   getSettings, saveSettings, getCategories, saveCategories,
-  exportBackup, importBackup, clearAiCache, DEFAULT_CATEGORIES, DEFAULT_ACCENT_RGB,
+  exportBackup, importBackup, clearAiCache, DEFAULT_CATEGORIES, DEFAULT_ACCENT_RGB, DEFAULT_THEME_TUNING,
   getBatchSettings, saveBatchSettings, getPendingAIQueue, clearPendingAIQueue, getAiRuntime,
   clearUserContentLocal,
 } from '../storage.js';
@@ -35,6 +35,7 @@ function renderMainSettings(container) {
   const settings = getSettings();
   const categories = getCategories();
   const accent = normalizeAccentRgb(settings.accentRgb);
+  const tuning = normalizeThemeTuning(settings.themeTuning);
 
   container.innerHTML = `
     <div class="settings-page">
@@ -82,6 +83,23 @@ function renderMainSettings(container) {
           ].map(t =>
             `<button class="theme-btn${settings.theme === t.key ? ' active' : ''}" data-theme="${t.key}">${t.label}</button>`
           ).join('')}
+        </div>
+
+        <div class="theme-tuning-card">
+          <div class="theme-tuning-top">
+            <div>
+              <strong>Theme tuning</strong>
+              <p class="text-sm text-muted">Adjust darkness, contrast, glow, and neon feel.</p>
+            </div>
+            <button class="btn btn-ghost btn-sm" id="theme-tuning-reset-btn" type="button">Reset</button>
+          </div>
+
+          <div class="accent-rgb-grid">
+            ${renderThemeSlider('Background', 'tune-background-depth', tuning.backgroundDepth)}
+            ${renderThemeSlider('Contrast', 'tune-card-contrast', tuning.cardContrast)}
+            ${renderThemeSlider('Glow', 'tune-glow-intensity', tuning.glowIntensity)}
+            ${renderThemeSlider('Vivid', 'tune-accent-vividness', tuning.accentVividness)}
+          </div>
         </div>
       </div>
 
@@ -311,6 +329,12 @@ function wireAppearance(container) {
   const rgbInputs = ['accent-r', 'accent-g', 'accent-b']
     .map(id => container.querySelector(`#${id}`))
     .filter(Boolean);
+  const tuneInputs = [
+    'tune-background-depth',
+    'tune-card-contrast',
+    'tune-glow-intensity',
+    'tune-accent-vividness',
+  ].map(id => container.querySelector(`#${id}`)).filter(Boolean);
 
   const syncAccentPreview = (rgb) => {
     const safe = normalizeAccentRgb(rgb);
@@ -333,12 +357,44 @@ function wireAppearance(container) {
     syncAccentPreview(safe);
   };
 
+  const syncThemeTuningPreview = (tuning) => {
+    const safe = normalizeThemeTuning(tuning);
+    const items = [
+      ['#tune-background-depth-value', safe.backgroundDepth],
+      ['#tune-card-contrast-value', safe.cardContrast],
+      ['#tune-glow-intensity-value', safe.glowIntensity],
+      ['#tune-accent-vividness-value', safe.accentVividness],
+    ];
+    items.forEach(([selector, value]) => {
+      const el = container.querySelector(selector);
+      if (el) el.textContent = String(value);
+    });
+  };
+
+  const applyThemeTuning = (tuning) => {
+    const safe = normalizeThemeTuning(tuning);
+    saveSettings({ themeTuning: safe });
+    window.AppTheme?.apply(getSettings().theme || 'auto');
+    syncThemeTuningPreview(safe);
+  };
+
   rgbInputs.forEach(input => {
     input.addEventListener('input', () => {
       applyAccent({
         r: container.querySelector('#accent-r')?.value,
         g: container.querySelector('#accent-g')?.value,
         b: container.querySelector('#accent-b')?.value,
+      });
+    });
+  });
+
+  tuneInputs.forEach(input => {
+    input.addEventListener('input', () => {
+      applyThemeTuning({
+        backgroundDepth: container.querySelector('#tune-background-depth')?.value,
+        cardContrast: container.querySelector('#tune-card-contrast')?.value,
+        glowIntensity: container.querySelector('#tune-glow-intensity')?.value,
+        accentVividness: container.querySelector('#tune-accent-vividness')?.value,
       });
     });
   });
@@ -351,6 +407,16 @@ function wireAppearance(container) {
     applyAccent(safe);
     toast('Accent color reset.', 'info');
   });
+
+  container.querySelector('#theme-tuning-reset-btn')?.addEventListener('click', () => {
+    const safe = normalizeThemeTuning(DEFAULT_THEME_TUNING);
+    container.querySelector('#tune-background-depth').value = String(safe.backgroundDepth);
+    container.querySelector('#tune-card-contrast').value = String(safe.cardContrast);
+    container.querySelector('#tune-glow-intensity').value = String(safe.glowIntensity);
+    container.querySelector('#tune-accent-vividness').value = String(safe.accentVividness);
+    applyThemeTuning(safe);
+    toast('Theme tuning reset.', 'info');
+  });
 }
 
 function renderRgbSlider(label, id, value) {
@@ -358,6 +424,16 @@ function renderRgbSlider(label, id, value) {
     <label class="accent-rgb-item" for="${id}">
       <span class="accent-rgb-label">${label}</span>
       <input class="accent-rgb-slider" id="${id}" type="range" min="0" max="255" value="${value}">
+      <span class="accent-rgb-value" id="${id}-value">${value}</span>
+    </label>
+  `;
+}
+
+function renderThemeSlider(label, id, value) {
+  return `
+    <label class="accent-rgb-item" for="${id}">
+      <span class="accent-rgb-label">${label}</span>
+      <input class="accent-rgb-slider" id="${id}" type="range" min="0" max="100" value="${value}">
       <span class="accent-rgb-value" id="${id}-value">${value}</span>
     </label>
   `;
@@ -373,6 +449,20 @@ function normalizeAccentRgb(rgb) {
     r: clamp(rgb?.r, DEFAULT_ACCENT_RGB.r),
     g: clamp(rgb?.g, DEFAULT_ACCENT_RGB.g),
     b: clamp(rgb?.b, DEFAULT_ACCENT_RGB.b),
+  };
+}
+
+function normalizeThemeTuning(tuning) {
+  const clamp = (v, fallback) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(0, Math.min(100, Math.round(n)));
+  };
+  return {
+    backgroundDepth: clamp(tuning?.backgroundDepth, DEFAULT_THEME_TUNING.backgroundDepth),
+    cardContrast: clamp(tuning?.cardContrast, DEFAULT_THEME_TUNING.cardContrast),
+    glowIntensity: clamp(tuning?.glowIntensity, DEFAULT_THEME_TUNING.glowIntensity),
+    accentVividness: clamp(tuning?.accentVividness, DEFAULT_THEME_TUNING.accentVividness),
   };
 }
 
