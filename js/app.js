@@ -59,6 +59,11 @@ function hasOpenModal() {
   return !!overlay && !overlay.classList.contains('hidden') && !!overlay.children.length;
 }
 
+function hasOpenDatePicker() {
+  const overlay = document.getElementById('dp-picker-overlay');
+  return !!overlay && !overlay.classList.contains('hidden') && !!overlay.children.length;
+}
+
 function isEditableElement(el) {
   if (!el) return false;
   if (el.isContentEditable) return true;
@@ -66,9 +71,36 @@ function isEditableElement(el) {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
 }
 
+function hasUnsavedDraft() {
+  if (hasOpenDatePicker()) return true;
+
+  if (currentView === 'tasks') {
+    const taskInput = document.getElementById('task-input');
+    const recur = document.getElementById('task-recurrence');
+    const tagChips = document.getElementById('add-tag-chips');
+    if ((taskInput?.value || '').trim()) return true;
+    if ((recur?.value || '').trim()) return true;
+    if (tagChips?.children?.length) return true;
+    if (document.getElementById('task-due-date-btn')?.classList.contains('dp-trigger--set')) return true;
+    if (document.getElementById('task-due-time-btn')?.classList.contains('dp-trigger--set')) return true;
+    if (document.getElementById('task-estimate-btn')?.classList.contains('dp-trigger--set')) return true;
+  }
+
+  if (currentView === 'knowledge-detail' && document.querySelector('.kn-edit-page')) {
+    return true;
+  }
+
+  if (currentView === 'calendar' && hasOpenModal()) {
+    return true;
+  }
+
+  return false;
+}
+
 function isUserEditing() {
   const active = document.activeElement;
   if (isComposingText) return true;
+  if (hasUnsavedDraft()) return true;
   if (isEditableElement(active)) return true;
   if (hasOpenModal() && document.querySelector('#modal-overlay input, #modal-overlay textarea, #modal-overlay select, #modal-overlay [contenteditable="true"]')) {
     return true;
