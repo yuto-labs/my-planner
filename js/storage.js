@@ -627,31 +627,42 @@ export function getTrashItems() {
 
 export function saveTrashItems(items) {
   save(TRASH_KEY, items);
+  _notifySync('trash_items');
 }
 
 export function addTrashItem({ entityType, payload, title }) {
   if (!entityType || !payload) return null;
   const items = getTrashItems();
+  const stableId = `${entityType}:${payload.id || generateId()}`;
+  const existingIdx = items.findIndex(entry => entry.id === stableId);
   const item = {
-    id: generateId(),
+    id: stableId,
     entityType,
     entityId: payload.id || null,
     title: title || payload.title || 'Untitled',
     deletedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     payload,
   };
+  if (existingIdx >= 0) items.splice(existingIdx, 1);
   items.unshift(item);
   saveTrashItems(items);
   return item;
 }
 
 export function removeTrashItem(id) {
-  saveTrashItems(getTrashItems().filter(item => item.id !== id));
+  const items = getTrashItems();
+  const target = items.find(item => item.id === id);
+  saveTrashItems(items.filter(item => item.id !== id));
+  if (target) _notifyDelete({ table: 'trash_items', id: target.id });
 }
 
 export function removeTrashItemByEntity(entityType, entityId) {
   if (!entityType || !entityId) return;
-  saveTrashItems(getTrashItems().filter(item => !(item.entityType === entityType && item.entityId === entityId)));
+  const items = getTrashItems();
+  const removed = items.filter(item => item.entityType === entityType && item.entityId === entityId);
+  saveTrashItems(items.filter(item => !(item.entityType === entityType && item.entityId === entityId)));
+  removed.forEach(item => _notifyDelete({ table: 'trash_items', id: item.id }));
 }
 
 export function restoreTrashItem(id) {
@@ -687,9 +698,10 @@ export function restoreTrashItem(id) {
 }
 
 export function deleteTrashItemsByMonth(yyyymm) {
-  saveTrashItems(
-    getTrashItems().filter(item => !item.deletedAt || item.deletedAt.slice(0, 7) !== yyyymm)
-  );
+  const items = getTrashItems();
+  const removed = items.filter(item => item.deletedAt && item.deletedAt.slice(0, 7) === yyyymm);
+  saveTrashItems(items.filter(item => !item.deletedAt || item.deletedAt.slice(0, 7) !== yyyymm));
+  removed.forEach(item => _notifyDelete({ table: 'trash_items', id: item.id }));
 }
 
 // ---- Knowledge Review Log ----

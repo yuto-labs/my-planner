@@ -25,6 +25,7 @@ export async function migrateToSupabase(onProgress) {
     ['予定',               () => _uploadEvents(client, userId)],
     ['目標',               () => _uploadGoals(client, userId)],
     ['ナレッジメモ',        () => _uploadMemos(client, userId)],
+    ['Trash',               () => _uploadTrash(client, userId)],
     ['スケジュール',        () => _uploadSchedule(client, userId)],
     ['タグ',               () => _uploadTags(client, userId)],
     ['習慣ログ',           () => _uploadHabitLogs(client, userId)],
@@ -76,6 +77,11 @@ async function _uploadGoals(client, userId) {
 async function _uploadMemos(client, userId) {
   const rows = _ls('mp_knowledge', []).map(m => memoToRow(m, userId));
   await _upsert(client, 'knowledge_memos', rows);
+}
+
+async function _uploadTrash(client, userId) {
+  const rows = _ls('mp_trash', []).map(item => trashToRow(item, userId));
+  await _upsert(client, 'trash_items', rows);
 }
 
 async function _uploadSchedule(client, userId) {
@@ -255,6 +261,31 @@ export function rowToMemo(row) {
     summary:   row.summary || '',
     createdAt: row.created_at || _now(),
     updatedAt: row.updated_at || _now(),
+  };
+}
+
+export function trashToRow(item, userId) {
+  return {
+    id:          item.id,
+    user_id:     userId,
+    entity_type: item.entityType || 'item',
+    entity_id:   item.entityId || null,
+    title:       item.title || '',
+    payload:     item.payload || {},
+    deleted_at:  item.deletedAt || _now(),
+    updated_at:  item.updatedAt || item.deletedAt || _now(),
+  };
+}
+
+export function rowToTrash(row) {
+  return {
+    id:         row.id,
+    entityType: row.entity_type || 'item',
+    entityId:   row.entity_id || null,
+    title:      row.title || '',
+    payload:    row.payload || {},
+    deletedAt:  row.deleted_at || _now(),
+    updatedAt:  row.updated_at || row.deleted_at || _now(),
   };
 }
 

@@ -103,6 +103,24 @@ create policy "knowledge_memos: own data only" on knowledge_memos
   for all using (user_id = auth.uid());
 
 -- ================================================================
+-- TRASH ITEMS (deleted tasks, events, and notes)
+-- ================================================================
+create table if not exists trash_items (
+  id           text        primary key,
+  user_id      uuid        not null references auth.users(id) on delete cascade,
+  entity_type  text        not null,
+  entity_id    text,
+  title        text        not null default '',
+  payload      jsonb       not null default '{}'::jsonb,
+  deleted_at   timestamptz default now(),
+  updated_at   timestamptz default now()
+);
+
+alter table trash_items enable row level security;
+create policy "trash_items: own data only" on trash_items
+  for all using (user_id = auth.uid());
+
+-- ================================================================
 -- SCHEDULE ITEMS (マイスケジュール / 日課)
 -- ================================================================
 create table if not exists schedule_items (

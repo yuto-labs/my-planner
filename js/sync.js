@@ -16,6 +16,7 @@ import {
   eventToRow, rowToEvent,
   goalToRow,  rowToGoal,
   memoToRow,  rowToMemo,
+  trashToRow, rowToTrash,
   schedItemToRow, rowToSchedItem,
 } from './migrate.js';
 
@@ -26,6 +27,7 @@ const LS_KEYS = {
   events:           'mp_events',
   goals:            'mp_goals',
   knowledge_memos:  'mp_knowledge',
+  trash_items:      'mp_trash',
   schedule_items:   'mp_schedule',
   tags:             'mp_tags',
 };
@@ -37,6 +39,7 @@ const TO_ROW = {
   events:          (item, uid) => eventToRow(item, uid),
   goals:           (item, uid) => goalToRow(item, uid),
   knowledge_memos: (item, uid) => memoToRow(item, uid),
+  trash_items:     (item, uid) => trashToRow(item, uid),
   schedule_items:  (item, uid) => schedItemToRow(item, uid),
   tags:            (name, uid) => ({ user_id: uid, name }),
 };
@@ -48,6 +51,7 @@ const DB_TABLE = {
   events:          'events',
   goals:           'goals',
   knowledge_memos: 'knowledge_memos',
+  trash_items:     'trash_items',
   schedule_items:  'schedule_items',
   tags:            'tags',
 };
@@ -58,6 +62,7 @@ const CONFLICT_KEY = {
   events:          'id',
   goals:           'id',
   knowledge_memos: 'id',
+  trash_items:     'id',
   schedule_items:  'id',
   tags:            'user_id,name',
 };
@@ -95,7 +100,7 @@ export async function startRealtimeSync() {
   await stopRealtimeSync();
 
   const channel = client.channel(`planner-sync-${userId}`);
-  const tables = ['tasks', 'events', 'goals', 'knowledge_memos', 'schedule_items', 'tags'];
+  const tables = ['tasks', 'events', 'goals', 'knowledge_memos', 'trash_items', 'schedule_items', 'tags'];
 
   tables.forEach(table => {
     channel.on('postgres_changes', {
@@ -174,6 +179,7 @@ export async function pullAll(forceReplace = false) {
     _pullEvents(client, userId, forceReplace),
     _pullGoals(client, userId, forceReplace),
     _pullMemos(client, userId),
+    _pullTrash(client, userId, forceReplace),
     _pullSchedule(client, userId),
     _pullTags(client, userId, forceReplace),
   ]);
@@ -230,6 +236,14 @@ async function _pullMemos(client, userId) {
     return lt > rt ? l : r;
   });
   return _writeIfChanged('mp_knowledge', result);
+}
+
+async function _pullTrash(client, userId, forceReplace = false) {
+  const { data, error } = await client
+    .from('trash_items').select('*').eq('user_id', userId);
+  if (error || !data) return;
+  const remote = data.map(rowToTrash);
+  return _writeIfChanged('mp_trash', forceReplace ? remote : _merge(_ls('mp_trash', []), remote));
 }
 
 async function _pullSchedule(client, userId) {
@@ -334,6 +348,10 @@ function _isStillDeleted({ table, id, name }) {
 
   if (table === 'tasks') {
     return !_hasId('mp_tasks', id) && !_hasId('mp_task_archive', id);
+  }
+
+  if (table === 'trash_items') {
+    return !_hasId('mp_trash', id);
   }
 
   const lsKey = LS_KEYS[table];
