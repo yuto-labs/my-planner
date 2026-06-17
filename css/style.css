@@ -1374,10 +1374,11 @@ button { cursor: pointer; font-family: inherit; }
   gap: 10px;
 }
 .accent-rgb-item {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) 42px;
-  align-items: center;
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 8px 0;
 }
 .accent-rgb-label {
   font-size: 12px;
@@ -1389,10 +1390,17 @@ button { cursor: pointer; font-family: inherit; }
   font-weight: 700;
   color: var(--text);
   text-align: right;
+  align-self: flex-end;
 }
 .accent-rgb-slider {
   width: 100%;
   accent-color: var(--primary);
+}
+.accent-rgb-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 .theme-tuning-card {
   margin-top: 14px;

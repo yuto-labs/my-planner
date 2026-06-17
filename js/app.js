@@ -383,7 +383,8 @@ function clampPercent(value, fallback) {
 
 function normalizeThemeTuning(tuning) {
   return {
-    backgroundDepth: clampPercent(tuning?.backgroundDepth, DEFAULT_THEME_TUNING.backgroundDepth),
+    blackLevel: clampPercent(tuning?.blackLevel, DEFAULT_THEME_TUNING.blackLevel),
+    whiteLevel: clampPercent(tuning?.whiteLevel, DEFAULT_THEME_TUNING.whiteLevel),
     cardContrast: clampPercent(tuning?.cardContrast, DEFAULT_THEME_TUNING.cardContrast),
     glowIntensity: clampPercent(tuning?.glowIntensity, DEFAULT_THEME_TUNING.glowIntensity),
     accentVividness: clampPercent(tuning?.accentVividness, DEFAULT_THEME_TUNING.accentVividness),
@@ -470,14 +471,18 @@ function applySurfaceTheme(mode, tuningInput) {
   const tuning = normalizeThemeTuning(tuningInput);
 
   if (mode === 'light') {
-    const bgLight = 96 - (tuning.backgroundDepth / 100) * 9;
+    const bgLight = 92 + (tuning.whiteLevel / 100) * 7;
     const contrast = 3 + (tuning.cardContrast / 100) * 8;
     const cardLight = Math.min(100, bgLight + contrast);
     const inputLight = Math.max(88, bgLight - 2);
     const glowAlpha = 0.04 + (tuning.glowIntensity / 100) * 0.16;
+    const textDark = 12 - (tuning.blackLevel / 100) * 8;
     root.style.setProperty('--bg', `hsl(255 52% ${bgLight.toFixed(1)}%)`);
     root.style.setProperty('--bg-card', `hsl(0 0% ${cardLight.toFixed(1)}%)`);
     root.style.setProperty('--bg-input', `hsl(255 44% ${inputLight.toFixed(1)}%)`);
+    root.style.setProperty('--text', `hsl(252 28% ${textDark.toFixed(1)}%)`);
+    root.style.setProperty('--text-muted', `rgba(26,24,48,${(0.56 + tuning.blackLevel / 100 * 0.24).toFixed(3)})`);
+    root.style.setProperty('--text-dim', `rgba(26,24,48,${(0.36 + tuning.blackLevel / 100 * 0.22).toFixed(3)})`);
     root.style.setProperty('--bg-hover', `rgba(0,0,0,${(0.03 + tuning.cardContrast / 100 * 0.05).toFixed(3)})`);
     root.style.setProperty('--bg-active', `rgba(0,0,0,${(0.05 + tuning.cardContrast / 100 * 0.08).toFixed(3)})`);
     root.style.setProperty('--border', `rgba(0,0,0,${(0.05 + tuning.cardContrast / 100 * 0.07).toFixed(3)})`);
@@ -490,20 +495,24 @@ function applySurfaceTheme(mode, tuningInput) {
     return;
   }
 
-  const bgLight = 9 - (tuning.backgroundDepth / 100) * 5;
+  const bgLight = 10 - (tuning.blackLevel / 100) * 7;
   const contrast = 7 + (tuning.cardContrast / 100) * 9;
   const cardLight = bgLight + contrast;
   const inputLight = Math.max(2, bgLight - 1.5);
   const glowAlpha = 0.06 + (tuning.glowIntensity / 100) * 0.22;
+  const textLight = 88 + (tuning.whiteLevel / 100) * 10;
   root.style.setProperty('--bg', `hsl(240 24% ${bgLight.toFixed(1)}%)`);
   root.style.setProperty('--bg-card', `hsl(241 34% ${cardLight.toFixed(1)}%)`);
   root.style.setProperty('--bg-input', `hsl(242 42% ${inputLight.toFixed(1)}%)`);
+  root.style.setProperty('--text', `hsl(250 32% ${textLight.toFixed(1)}%)`);
+  root.style.setProperty('--text-muted', `rgba(237,236,249,${(0.52 + tuning.whiteLevel / 100 * 0.26).toFixed(3)})`);
+  root.style.setProperty('--text-dim', `rgba(237,236,249,${(0.30 + tuning.whiteLevel / 100 * 0.24).toFixed(3)})`);
   root.style.setProperty('--bg-hover', `rgba(255,255,255,${(0.03 + tuning.cardContrast / 100 * 0.04).toFixed(3)})`);
   root.style.setProperty('--bg-active', `rgba(255,255,255,${(0.06 + tuning.cardContrast / 100 * 0.07).toFixed(3)})`);
   root.style.setProperty('--border', `rgba(255,255,255,${(0.05 + tuning.cardContrast / 100 * 0.07).toFixed(3)})`);
   root.style.setProperty('--border-light', `rgba(255,255,255,${(0.03 + tuning.cardContrast / 100 * 0.04).toFixed(3)})`);
-  root.style.setProperty('--shadow', `0 8px 32px rgba(0,0,0,${(0.38 + tuning.backgroundDepth / 100 * 0.22).toFixed(3)})`);
-  root.style.setProperty('--shadow-sm', `0 2px 12px rgba(0,0,0,${(0.28 + tuning.backgroundDepth / 100 * 0.18).toFixed(3)})`);
+  root.style.setProperty('--shadow', `0 8px 32px rgba(0,0,0,${(0.38 + tuning.blackLevel / 100 * 0.22).toFixed(3)})`);
+  root.style.setProperty('--shadow-sm', `0 2px 12px rgba(0,0,0,${(0.28 + tuning.blackLevel / 100 * 0.18).toFixed(3)})`);
   root.style.setProperty('--scrollbar', `rgba(255,255,255,${(0.08 + tuning.cardContrast / 100 * 0.08).toFixed(3)})`);
   root.style.setProperty('--surface-glass', `rgba(13,13,21,${(0.82 + tuning.cardContrast / 100 * 0.12).toFixed(3)})`);
   root.style.setProperty('--home-glow', `rgba(190,230,216,${glowAlpha.toFixed(3)})`);

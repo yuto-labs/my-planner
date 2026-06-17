@@ -95,7 +95,8 @@ function renderMainSettings(container) {
           </div>
 
           <div class="accent-rgb-grid">
-            ${renderThemeSlider('Background', 'tune-background-depth', tuning.backgroundDepth)}
+            ${renderThemeSlider('Black', 'tune-black-level', tuning.blackLevel)}
+            ${renderThemeSlider('White', 'tune-white-level', tuning.whiteLevel)}
             ${renderThemeSlider('Contrast', 'tune-card-contrast', tuning.cardContrast)}
             ${renderThemeSlider('Glow', 'tune-glow-intensity', tuning.glowIntensity)}
             ${renderThemeSlider('Vivid', 'tune-accent-vividness', tuning.accentVividness)}
@@ -330,7 +331,8 @@ function wireAppearance(container) {
     .map(id => container.querySelector(`#${id}`))
     .filter(Boolean);
   const tuneInputs = [
-    'tune-background-depth',
+    'tune-black-level',
+    'tune-white-level',
     'tune-card-contrast',
     'tune-glow-intensity',
     'tune-accent-vividness',
@@ -360,7 +362,8 @@ function wireAppearance(container) {
   const syncThemeTuningPreview = (tuning) => {
     const safe = normalizeThemeTuning(tuning);
     const items = [
-      ['#tune-background-depth-value', safe.backgroundDepth],
+      ['#tune-black-level-value', safe.blackLevel],
+      ['#tune-white-level-value', safe.whiteLevel],
       ['#tune-card-contrast-value', safe.cardContrast],
       ['#tune-glow-intensity-value', safe.glowIntensity],
       ['#tune-accent-vividness-value', safe.accentVividness],
@@ -391,7 +394,8 @@ function wireAppearance(container) {
   tuneInputs.forEach(input => {
     input.addEventListener('input', () => {
       applyThemeTuning({
-        backgroundDepth: container.querySelector('#tune-background-depth')?.value,
+        blackLevel: container.querySelector('#tune-black-level')?.value,
+        whiteLevel: container.querySelector('#tune-white-level')?.value,
         cardContrast: container.querySelector('#tune-card-contrast')?.value,
         glowIntensity: container.querySelector('#tune-glow-intensity')?.value,
         accentVividness: container.querySelector('#tune-accent-vividness')?.value,
@@ -410,7 +414,8 @@ function wireAppearance(container) {
 
   container.querySelector('#theme-tuning-reset-btn')?.addEventListener('click', () => {
     const safe = normalizeThemeTuning(DEFAULT_THEME_TUNING);
-    container.querySelector('#tune-background-depth').value = String(safe.backgroundDepth);
+    container.querySelector('#tune-black-level').value = String(safe.blackLevel);
+    container.querySelector('#tune-white-level').value = String(safe.whiteLevel);
     container.querySelector('#tune-card-contrast').value = String(safe.cardContrast);
     container.querySelector('#tune-glow-intensity').value = String(safe.glowIntensity);
     container.querySelector('#tune-accent-vividness').value = String(safe.accentVividness);
@@ -422,9 +427,11 @@ function wireAppearance(container) {
 function renderRgbSlider(label, id, value) {
   return `
     <label class="accent-rgb-item" for="${id}">
-      <span class="accent-rgb-label">${label}</span>
+      <span class="accent-rgb-head">
+        <span class="accent-rgb-label">${label}</span>
+        <span class="accent-rgb-value" id="${id}-value">${value}</span>
+      </span>
       <input class="accent-rgb-slider" id="${id}" type="range" min="0" max="255" value="${value}">
-      <span class="accent-rgb-value" id="${id}-value">${value}</span>
     </label>
   `;
 }
@@ -432,9 +439,11 @@ function renderRgbSlider(label, id, value) {
 function renderThemeSlider(label, id, value) {
   return `
     <label class="accent-rgb-item" for="${id}">
-      <span class="accent-rgb-label">${label}</span>
+      <span class="accent-rgb-head">
+        <span class="accent-rgb-label">${label}</span>
+        <span class="accent-rgb-value" id="${id}-value">${value}</span>
+      </span>
       <input class="accent-rgb-slider" id="${id}" type="range" min="0" max="100" value="${value}">
-      <span class="accent-rgb-value" id="${id}-value">${value}</span>
     </label>
   `;
 }
@@ -459,7 +468,8 @@ function normalizeThemeTuning(tuning) {
     return Math.max(0, Math.min(100, Math.round(n)));
   };
   return {
-    backgroundDepth: clamp(tuning?.backgroundDepth, DEFAULT_THEME_TUNING.backgroundDepth),
+    blackLevel: clamp(tuning?.blackLevel, DEFAULT_THEME_TUNING.blackLevel),
+    whiteLevel: clamp(tuning?.whiteLevel, DEFAULT_THEME_TUNING.whiteLevel),
     cardContrast: clamp(tuning?.cardContrast, DEFAULT_THEME_TUNING.cardContrast),
     glowIntensity: clamp(tuning?.glowIntensity, DEFAULT_THEME_TUNING.glowIntensity),
     accentVividness: clamp(tuning?.accentVividness, DEFAULT_THEME_TUNING.accentVividness),
