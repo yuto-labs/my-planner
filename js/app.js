@@ -1,11 +1,11 @@
-// ============================================================
-// app.js — Main SPA router & app shell
+﻿// ============================================================
+// app.js 窶・Main SPA router & app shell
 // ============================================================
 
-import { getSettings, getBatchSettings, getPendingAIQueue, autoArchiveTasks, isAiAvailable } from './storage.js';
+import { getSettings, getBatchSettings, getPendingAIQueue, autoArchiveTasks, isAiAvailable, clearUserContentLocal } from './storage.js';
 import { processBatchQueue, refreshAiRuntimeStatus } from './ai.js';
-import { initSync, pullAll, pullIfStale } from './sync.js';
-import { getSession, handleAuthRedirect } from './supabase.js';
+import { initSync, pullAll, pullIfStale, startRealtimeSync } from './sync.js';
+import { getSession, handleAuthRedirect, getActiveUserId, setActiveUserId } from './supabase.js';
 import { today } from './utils.js';
 import { initHome }     from './modules/home.js';
 import { initCalendar, openCalendarAddFlow } from './modules/calendar.js';
@@ -34,7 +34,7 @@ const MODULES = {
   'knowledge-detail':{ title: 'Note',       init: initKnowledgeDetail, back: 'knowledge', backAction: backFromKnowledgeDetail },
   'knowledge-graph': { title: 'Knowledge Graph', init: initKnowledgeGraph, back: 'knowledge' },
   analytics:         { title: 'Analytics',  init: initAnalytics },
-  review:            { title: '復習セッション', init: initReview, back: 'home' },
+  review:            { title: '蠕ｩ鄙偵そ繝・す繝ｧ繝ｳ', init: initReview, back: 'home' },
   archive:           { title: 'Archive',    init: initArchive,         back: 'tasks' },
   tags:              { title: 'Tags',       init: initTagsPage },
 };
@@ -97,6 +97,15 @@ export function navigate(view, options = {}) {
   document.dispatchEvent(new CustomEvent('appNavigated', { detail: { view } }));
 }
 
+export function refreshCurrentView(options = {}) {
+  if (!currentView) return;
+  const tag = document.activeElement?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
+  const v = currentView;
+  currentView = null;
+  navigate(v, options);
+}
+
 // ---- Toast ----
 
 let toastTimer = null;
@@ -112,14 +121,14 @@ export function showToast(message, type = 'info') {
 
 /**
  * Toast with an undo button. Stays for 5s.
- * onUndo() is called if user taps "取り消し".
+ * onUndo() is called if user taps "蜿悶ｊ豸医＠".
  */
 export function showUndoToast(message, onUndo) {
   const container = document.getElementById('toast-container');
   if (!container) return;
   const toast = document.createElement('div');
   toast.className = 'toast toast-info toast--undo';
-  toast.innerHTML = `<span>${message}</span><button class="toast-undo-btn">取り消し</button>`;
+  toast.innerHTML = `<span>${message}</span><button class="toast-undo-btn">蜿悶ｊ豸医＠</button>`;
   container.appendChild(toast);
 
   const timer = setTimeout(() => toast.remove(), 5000);
@@ -145,7 +154,7 @@ export function openModal({ title, body, footer, onClose, wide = false }) {
   modal.innerHTML = `
     <div class="modal-header">
       <span class="modal-title">${title}</span>
-      <button class="modal-close" aria-label="閉じる">
+      <button class="modal-close" aria-label="Close">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
       </button>
     </div>
@@ -194,7 +203,7 @@ export function confirm(message, opts = {}) {
 
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'btn btn-ghost btn-sm';
-    cancelBtn.textContent = opts.cancelLabel || 'キャンセル';
+    cancelBtn.textContent = opts.cancelLabel || 'Cancel';
 
     const okBtn = document.createElement('button');
     okBtn.className = 'btn btn-primary btn-sm';
@@ -204,7 +213,7 @@ export function confirm(message, opts = {}) {
     footer.appendChild(cancelBtn);
     footer.appendChild(okBtn);
 
-    const close = openModal({ title: opts.title || '確認', body, footer });
+    const close = openModal({ title: opts.title || 'Confirm', body, footer });
 
     cancelBtn.onclick = () => { close(); resolve(false); };
     okBtn.onclick = () => { close(); resolve(true); };
@@ -217,7 +226,7 @@ function applyTheme(theme) {
   const html = document.documentElement;
   if (theme === 'dark') html.setAttribute('data-theme', 'dark');
   else if (theme === 'light') html.setAttribute('data-theme', 'light');
-  else html.removeAttribute('data-theme'); // 'auto' — follow OS
+  else html.removeAttribute('data-theme'); // 'auto' 窶・follow OS
 }
 
 // ---- App init ----
@@ -225,21 +234,22 @@ function applyTheme(theme) {
 async function init() {
   try { await refreshAiRuntimeStatus({ force: true }); } catch {}
 
-  // Supabase sync: フックを登録して起動時 pull
+  // Supabase sync: 繝輔ャ繧ｯ繧堤匳骭ｲ縺励※襍ｷ蜍墓凾 pull
   try {
     initSync();
     const authResult = await handleAuthRedirect();
     const session = authResult.session || await getSession();
     if (session) {
-      pullAll().then(pulled => {
-        // Re-render current view with fresh data, but skip if user is actively
-        // typing (avoids wiping API key or other form input mid-entry).
+      const nextUserId = session.user?.id || null;
+      const prevUserId = getActiveUserId();
+      if (prevUserId && nextUserId && prevUserId !== nextUserId) {
+        clearUserContentLocal();
+      }
+      setActiveUserId(nextUserId);
+      startRealtimeSync().catch(e => console.warn('[Sync] realtime start failed:', e));
+      pullAll(true).then(pulled => {
         if (!pulled || !currentView) return;
-        const tag = document.activeElement?.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
-        const v = currentView;
-        currentView = null;
-        navigate(v);
+        refreshCurrentView();
       }).catch(e => console.warn('[Sync] pullAll failed:', e));
     }
   } catch (e) {
@@ -300,22 +310,21 @@ async function init() {
     if (h !== currentView) navigate(MODULES[h] ? h : 'home');
   });
 
-  // フォアグラウンド復帰時に最新データを pull → スケジュール差分を即反映
+  // 繝輔か繧｢繧ｰ繝ｩ繧ｦ繝ｳ繝牙ｾｩ蟶ｰ譎ゅ↓譛譁ｰ繝・・繧ｿ繧・pull 竊・繧ｹ繧ｱ繧ｸ繝･繝ｼ繝ｫ蟾ｮ蛻・ｒ蜊ｳ蜿肴丐
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
     try { autoArchiveTasks(); } catch {}
     try { navigator.serviceWorker?.getRegistration?.().then(reg => reg?.update?.()).catch(() => {}); } catch {}
     getSession().then(session => {
       if (!session) return;
-      pullIfStale(30_000).then(pulled => {
-        if (pulled && ['home', 'today', 'calendar', 'tasks', 'goals'].includes(currentView)) {
-          // currentView に再ナビゲートすることで画面を再描画
-          const v = currentView;
-          currentView = null; // navigate() の同一ビュー早期リターンを回避
-          navigate(v);
-        }
+      pullIfStale(30_000, true).then(pulled => {
+        if (pulled) refreshCurrentView({ preserveScroll: true });
       }).catch(() => {});
     }).catch(() => {});
+  });
+
+  document.addEventListener('sync:updated', () => {
+    refreshCurrentView({ preserveScroll: true });
   });
 }
 
@@ -353,8 +362,8 @@ async function setupServiceWorkerAutoUpdate() {
   }, 60 * 1000);
 }
 
-// Expose to global (for modules to call — avoids circular imports)
-window.AppNav = { navigate, showToast, showUndoToast, openSearch, closeSearch, openModal };
+// Expose to global (for modules to call 窶・avoids circular imports)
+window.AppNav = { navigate, refreshCurrentView, showToast, showUndoToast, openSearch, closeSearch, openModal };
 window.AppTheme = { apply: applyTheme };
 // Knowledge graph uses this to open memos without circular import
 window._knNav = (id) => { openKnowledgeMemo(id); };
@@ -375,7 +384,7 @@ function setupConnectivityMonitor() {
           <path d="M24 8.98A16.88 16.88 0 0 0 12 4C7.31 4 3.07 5.9 0 8.98L12 21 24 8.98zM2.92 9.07C5.51 7.08 8.67 6 12 6s6.49 1.08 9.08 3.07L12 18.17 2.92 9.07zm0 0"/>
           <line x1="2" y1="2" x2="22" y2="22" stroke="currentColor" stroke-width="2"/>
         </svg>
-        オフライン
+        繧ｪ繝輔Λ繧､繝ｳ
       `;
       document.getElementById('app-header')?.appendChild(el);
     }
@@ -396,13 +405,13 @@ function setupConnectivityMonitor() {
       if (queue.length && cfg.aiMode === 'immediate' && isAiAvailable()) {
         processBatchQueue((done, total) => {
           if (done === total && total > 0) {
-            showToast(`オンライン復帰: ${total}件のAI処理を完了しました ✓`, 'success');
+            showToast(`Online again: completed ${total} AI jobs.`, 'success');
           }
         }).catch(e => console.warn('[Batch] auto-process failed:', e));
       }
-      // オンライン復帰時に Supabase から最新データを pull
+      // 繧ｪ繝ｳ繝ｩ繧､繝ｳ蠕ｩ蟶ｰ譎ゅ↓ Supabase 縺九ｉ譛譁ｰ繝・・繧ｿ繧・pull
       getSession().then(session => {
-        if (session) pullAll().catch(() => {});
+        if (session) pullAll(true).catch(() => {});
       }).catch(() => {});
     }
   };
@@ -413,7 +422,7 @@ function setupConnectivityMonitor() {
 }
 
 // ---- Batch AI scheduler ----
-// Fires every minute; when wall-clock matches batch time → run once per day
+// Fires every minute; when wall-clock matches batch time 竊・run once per day
 
 let _batchRanToday = '';
 
@@ -438,13 +447,13 @@ function setupBatchScheduler() {
     if (nowH !== bh || nowM !== bm) return;
 
     _batchRanToday = todayStr;
-    showToast(`AIバッチ処理を開始します (${queue.length}件)…`, 'info');
+    showToast(`Starting AI batch (${queue.length} items)...`, 'info');
 
     try {
       const result = await processBatchQueue();
-      showToast(`バッチ処理完了: ${result.processed}件を処理しました ✓`, 'success');
+      showToast(`Batch complete: processed ${result.processed} items.`, 'success');
     } catch (e) {
-      showToast('バッチ処理エラー: ' + e.message, 'error');
+      showToast('Batch error: ' + e.message, 'error');
     }
   }, 60_000); // check every minute
 }
@@ -460,12 +469,12 @@ function setupFAB() {
     const hidden = ['home', 'settings', 'ai-settings', 'analytics', 'knowledge-graph', 'knowledge-detail', 'goals'];
     fab.classList.toggle('hidden', hidden.includes(currentView));
     if (currentView === 'tasks') {
-      fab.setAttribute('aria-label', 'AIスケジュールを開く');
-      fab.title = 'AIスケジュールを開く';
+      fab.setAttribute('aria-label', 'Open AI planner');
+      fab.title = 'Open AI planner';
       fab.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M7 2v2H5c-1.1 0-2 .9-2 2v13c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-2V2h-2v2H9V2H7zm12 8H5V8h14v2zm-8 3h2v2h-2v-2zm4 0h2v2h-2v-2zm-8 0h2v2H7v-2z"/></svg>';
     } else {
-      fab.setAttribute('aria-label', '追加');
-      fab.title = '追加';
+      fab.setAttribute('aria-label', '霑ｽ蜉');
+      fab.title = '霑ｽ蜉';
       fab.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" width="26" height="26"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
     }
   };
@@ -543,15 +552,15 @@ function showShortcutsHelp() {
   const body = document.createElement('div');
   body.innerHTML = `
     <table class="shortcuts-table">
-      <tr><td><kbd>/</kbd></td><td>検索を開く</td></tr>
-      <tr><td><kbd>N</kbd></td><td>新しいタスクを追加</td></tr>
-      <tr><td><kbd>F</kbd></td><td>フォーカスモード</td></tr>
-      <tr><td><kbd>1〜5</kbd></td><td>各画面に移動</td></tr>
-      <tr><td><kbd>?</kbd></td><td>このヘルプを表示</td></tr>
-      <tr><td><kbd>Esc</kbd></td><td>モーダル/検索を閉じる</td></tr>
+      <tr><td><kbd>/</kbd></td><td>Open search</td></tr>
+      <tr><td><kbd>N</kbd></td><td>Add a new task</td></tr>
+      <tr><td><kbd>F</kbd></td><td>Focus mode</td></tr>
+      <tr><td><kbd>1-5</kbd></td><td>Move between views</td></tr>
+      <tr><td><kbd>?</kbd></td><td>Show this help</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Close modal or search</td></tr>
     </table>
   `;
-  openModal({ title: '⌨️ キーボードショートカット', body });
+  openModal({ title: 'Keyboard shortcuts', body });
 }
 
 // ---- Focus mode ----
@@ -589,7 +598,7 @@ function openFocusMode() {
   overlay.className = 'focus-overlay';
   overlay.innerHTML = `
     <div class="focus-overlay-inner">
-      <div class="focus-overlay-label">フォーカスモード</div>
+      <div class="focus-overlay-label">Focus mode</div>
       ${task ? `
         <div class="focus-overlay-task">
           <div class="focus-overlay-title">${task.title.replace(/</g, '&lt;')}</div>
@@ -598,8 +607,8 @@ function openFocusMode() {
         </div>
         <div class="focus-timer" id="focus-timer">00:00</div>
         <button class="btn btn-primary focus-done-btn" id="focus-finish">End session</button>
-      ` : `<div class="focus-overlay-empty">未完了のタスクがありません 🎉</div>`}
-      <button class="focus-close" id="focus-close">✕ 閉じる (Esc)</button>
+      ` : `<div class="focus-overlay-empty">No active tasks right now.</div>`}
+      <button class="focus-close" id="focus-close">Close (Esc)</button>
     </div>
   `;
 
@@ -640,3 +649,5 @@ function closeFocusMode() {
 window.AppFocus = { open: openFocusMode, close: closeFocusMode };
 
 document.addEventListener('DOMContentLoaded', init);
+
+

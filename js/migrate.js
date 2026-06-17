@@ -5,7 +5,7 @@
 // 既存の localStorage データは一切消去しない。
 // ============================================================
 
-import { getClient, getUserId, setMigrated } from './supabase.js';
+import { getClient, getUserId, setMigratedForCurrentUser } from './supabase.js';
 
 // ---- Public: run migration ----
 
@@ -38,7 +38,7 @@ export async function migrateToSupabase(onProgress) {
   }
 
   onProgress?.('完了', 100);
-  setMigrated();
+  await setMigratedForCurrentUser();
 }
 
 // ---- Upload helpers ----

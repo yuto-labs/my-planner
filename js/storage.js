@@ -16,6 +16,40 @@ const KEY = {
   AI_RUNTIME:'mp_ai_runtime',
 };
 
+const USER_CONTENT_KEYS = [
+  KEY.EVENTS,
+  KEY.TASKS,
+  KEY.GOALS,
+  KEY.CATS,
+  KEY.CACHE,
+  KEY.AI_QUEUE,
+  SCHED_KEY_SAFE(),
+  FOCUS_LOG_KEY_SAFE(),
+  HABIT_LOG_KEY_SAFE(),
+  ENERGY_INSIGHT_KEY_SAFE(),
+  MONTHLY_REPORT_KEY_SAFE(),
+  REVIEW_KEY_SAFE(),
+  KNOWLEDGE_KEY_SAFE(),
+  REVIEW_LOG_KEY_SAFE(),
+  ARCHIVE_KEY_SAFE(),
+  TAGS_KEY_SAFE(),
+  HABITS_KEY_SAFE(),
+  HABIT_DONE_KEY_SAFE(),
+];
+
+function SCHED_KEY_SAFE() { return 'mp_schedule'; }
+function FOCUS_LOG_KEY_SAFE() { return 'mp_focus_logs'; }
+function HABIT_LOG_KEY_SAFE() { return 'mp_habit_logs'; }
+function ENERGY_INSIGHT_KEY_SAFE() { return 'mp_energy_insight'; }
+function MONTHLY_REPORT_KEY_SAFE() { return 'mp_monthly_reports'; }
+function REVIEW_KEY_SAFE() { return 'mp_reviews'; }
+function KNOWLEDGE_KEY_SAFE() { return 'mp_knowledge'; }
+function REVIEW_LOG_KEY_SAFE() { return 'mp_knowledge_review_log'; }
+function ARCHIVE_KEY_SAFE() { return 'mp_task_archive'; }
+function TAGS_KEY_SAFE() { return 'mp_tags'; }
+function HABITS_KEY_SAFE() { return 'mp_habits2'; }
+function HABIT_DONE_KEY_SAFE() { return 'mp_habit2_done'; }
+
 // ---- Sync hooks (wired by sync.js at startup) ----
 // storage.js は sync.js を import しない (循環防止)
 // sync.js 側が registerSyncHook / registerSyncDeleteHook で登録する
@@ -734,6 +768,12 @@ export function importBackup(jsonStr) {
   if (data.habitDone) save(HABIT_DONE_KEY, data.habitDone);
   if (data.focusLogs) saveFocusLogs(data.focusLogs);
   // don't overwrite API key on import
+}
+
+export function clearUserContentLocal() {
+  USER_CONTENT_KEYS.forEach(key => {
+    try { localStorage.removeItem(key); } catch {}
+  });
 }
 
 // ---- Habits (streak-based habit tracker) ----

@@ -64,6 +64,9 @@ const CONFLICT_KEY = {
 
 // ---- Push デバウンスタイマー ----
 const _timers = {};
+let _realtimeChannel = null;
+let _realtimeUserId = null;
+let _realtimePullTimer = null;
 
 // ---- init ----
 
@@ -99,6 +102,59 @@ export function initSync() {
   });
 }
 
+export async function startRealtimeSync() {
+  const client = await getClient();
+  const userId = await getUserId();
+  if (!client || !userId || !client.channel) return false;
+  if (_realtimeChannel && _realtimeUserId === userId) return true;
+
+  await stopRealtimeSync();
+
+  const channel = client.channel(`planner-sync-${userId}`);
+  const tables = ['tasks', 'events', 'goals', 'knowledge_memos', 'schedule_items', 'tags'];
+
+  tables.forEach(table => {
+    channel.on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table,
+      filter: `user_id=eq.${userId}`,
+    }, () => {
+      clearTimeout(_realtimePullTimer);
+      _realtimePullTimer = setTimeout(async () => {
+        const pulled = await pullAll(true);
+        if (pulled) {
+          document.dispatchEvent(new CustomEvent('sync:updated', {
+            detail: { source: 'realtime', table },
+          }));
+        }
+      }, 300);
+    });
+  });
+
+  channel.subscribe();
+  _realtimeChannel = channel;
+  _realtimeUserId = userId;
+  return true;
+}
+
+export async function stopRealtimeSync() {
+  clearTimeout(_realtimePullTimer);
+  _realtimePullTimer = null;
+  if (!_realtimeChannel) {
+    _realtimeUserId = null;
+    return;
+  }
+  try {
+    const client = await getClient();
+    await client?.removeChannel?.(_realtimeChannel);
+  } catch (e) {
+    console.warn('[Sync] stopRealtimeSync failed:', e);
+  }
+  _realtimeChannel = null;
+  _realtimeUserId = null;
+}
+
 // ---- Push ----
 
 async function _pushTable(tableKey) {
@@ -124,18 +180,18 @@ async function _pushTable(tableKey) {
 
 // ---- Pull (起動時 + オンライン復帰時) ----
 
-export async function pullAll() {
+export async function pullAll(forceReplace = false) {
   const client = await getClient();
   const userId = await getUserId();
   if (!client || !userId) return false;
 
   await Promise.allSettled([
-    _pullTasks(client, userId),
-    _pullEvents(client, userId),
-    _pullGoals(client, userId),
+    _pullTasks(client, userId, forceReplace),
+    _pullEvents(client, userId, forceReplace),
+    _pullGoals(client, userId, forceReplace),
     _pullMemos(client, userId),
     _pullSchedule(client, userId),
-    _pullTags(client, userId),
+    _pullTags(client, userId, forceReplace),
   ]);
 
   return true;
@@ -143,7 +199,7 @@ export async function pullAll() {
 
 // ---- Pull helpers ----
 
-async function _pullTasks(client, userId) {
+async function _pullTasks(client, userId, forceReplace = false) {
   const { data, error } = await client
     .from('tasks').select('*').eq('user_id', userId);
   if (error || !data) return;
@@ -151,29 +207,31 @@ async function _pullTasks(client, userId) {
   const remoteActive  = data.filter(r => !r.archived_at).map(rowToTask);
   const remoteArchive = data.filter(r =>  r.archived_at).map(rowToTask);
 
-  localStorage.setItem('mp_tasks',        JSON.stringify(
-    _merge(_ls('mp_tasks', []),        remoteActive)
+  localStorage.setItem('mp_tasks', JSON.stringify(
+    forceReplace ? remoteActive : _merge(_ls('mp_tasks', []), remoteActive)
   ));
   localStorage.setItem('mp_task_archive', JSON.stringify(
-    _merge(_ls('mp_task_archive', []), remoteArchive)
+    forceReplace ? remoteArchive : _merge(_ls('mp_task_archive', []), remoteArchive)
   ));
 }
 
-async function _pullEvents(client, userId) {
+async function _pullEvents(client, userId, forceReplace = false) {
   const { data, error } = await client
     .from('events').select('*').eq('user_id', userId);
   if (error || !data) return;
+  const remote = data.map(rowToEvent);
   localStorage.setItem('mp_events', JSON.stringify(
-    _merge(_ls('mp_events', []), data.map(rowToEvent))
+    forceReplace ? remote : _merge(_ls('mp_events', []), remote)
   ));
 }
 
-async function _pullGoals(client, userId) {
+async function _pullGoals(client, userId, forceReplace = false) {
   const { data, error } = await client
     .from('goals').select('*').eq('user_id', userId);
   if (error || !data) return;
+  const remote = data.map(rowToGoal);
   localStorage.setItem('mp_goals', JSON.stringify(
-    _merge(_ls('mp_goals', []), data.map(rowToGoal))
+    forceReplace ? remote : _merge(_ls('mp_goals', []), remote)
   ));
 }
 
@@ -213,13 +271,15 @@ async function _pullSchedule(client, userId) {
   localStorage.setItem('mp_schedule', JSON.stringify(result));
 }
 
-async function _pullTags(client, userId) {
+async function _pullTags(client, userId, forceReplace = false) {
   const { data, error } = await client
     .from('tags').select('name').eq('user_id', userId);
   if (error || !data) return;
   const remoteTags = data.map(r => r.name);
   const localTags  = _ls('mp_tags', []);
-  const merged = [...new Set([...localTags, ...remoteTags])].sort();
+  const merged = forceReplace
+    ? [...new Set(remoteTags)].sort()
+    : [...new Set([...localTags, ...remoteTags])].sort();
   localStorage.setItem('mp_tags', JSON.stringify(merged));
 }
 
@@ -244,9 +304,9 @@ function _merge(local, remote) {
 
 let _lastPullAt = 0;
 
-export async function pullIfStale(minAgeMs = 30_000) {
+export async function pullIfStale(minAgeMs = 30_000, forceReplace = false) {
   if (Date.now() - _lastPullAt < minAgeMs) return false;
-  const pulled = await pullAll();
+  const pulled = await pullAll(forceReplace);
   if (pulled) _lastPullAt = Date.now();
   return pulled;
 }

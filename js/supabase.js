@@ -7,6 +7,7 @@
 
 const CONFIG_KEY  = 'mp_supabase_config';   // { url, anonKey }
 const MIGRATE_KEY = 'mp_supabase_migrated'; // 'true' when done
+const ACTIVE_USER_KEY = 'mp_active_user_id';
 const DEFAULT_CONFIG = {
   url: 'https://nhgbvlovptelaqcurobv.supabase.co',
   anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5oZ2J2bG92cHRlbGFxY3Vyb2J2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMTY2NzcsImV4cCI6MjA5NjU5MjY3N30.Vgsy9--B3d5FoxoHpvjC00OPPzE2WUwzP8GV2LE4-p4',
@@ -36,6 +37,28 @@ export function isMigrated() {
 
 export function setMigrated() {
   localStorage.setItem(MIGRATE_KEY, 'true');
+}
+
+export async function isMigratedForCurrentUser() {
+  const userId = await getUserId();
+  if (!userId) return isMigrated();
+  return localStorage.getItem(`${MIGRATE_KEY}:${userId}`) === 'true'
+    || localStorage.getItem(MIGRATE_KEY) === 'true';
+}
+
+export async function setMigratedForCurrentUser() {
+  const userId = await getUserId();
+  if (userId) localStorage.setItem(`${MIGRATE_KEY}:${userId}`, 'true');
+  localStorage.setItem(MIGRATE_KEY, 'true');
+}
+
+export function getActiveUserId() {
+  return localStorage.getItem(ACTIVE_USER_KEY) || null;
+}
+
+export function setActiveUserId(userId) {
+  if (userId) localStorage.setItem(ACTIVE_USER_KEY, userId);
+  else localStorage.removeItem(ACTIVE_USER_KEY);
 }
 
 // ---- Client (lazy-loaded from CDN ESM) ----
@@ -204,6 +227,7 @@ export async function signOut() {
   const client = await getClient();
   if (client) await client.auth.signOut();
   _client = null;
+  setActiveUserId(null);
 }
 
 // ---- Connection test ----

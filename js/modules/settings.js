@@ -6,14 +6,16 @@ import {
   getSettings, saveSettings, getCategories, saveCategories,
   exportBackup, importBackup, clearAiCache, DEFAULT_CATEGORIES,
   getBatchSettings, saveBatchSettings, getPendingAIQueue, clearPendingAIQueue, getAiRuntime,
+  clearUserContentLocal,
 } from '../storage.js';
 import { processBatchQueue, refreshAiRuntimeStatus } from '../ai.js';
 import { esc, generateId } from '../utils.js';
 import {
   getSession, getUserEmail,
-  signInWithEmail, verifyEmailOtp, signOut, isMigrated,
+  signInWithEmail, verifyEmailOtp, signOut, isMigratedForCurrentUser, setActiveUserId,
 } from '../supabase.js';
 import { migrateToSupabase } from '../migrate.js';
+import { pullAll, startRealtimeSync, stopRealtimeSync } from '../sync.js';
 
 const toast = (msg, type) => window.AppNav?.showToast(msg, type);
 const nav = (view) => window.AppNav?.navigate(view);
@@ -487,8 +489,9 @@ function wireAccount(container, options = {}) {
     try {
       const session = await verifyEmailOtp(email, code);
       if (!session) throw new Error('Could not create a session.');
+      setActiveUserId(session.user?.id || null);
       toast('Signed in.', 'success');
-      if (!isMigrated()) {
+      if (!await isMigratedForCurrentUser()) {
         btn.textContent = 'Syncing…';
         try {
           await migrateToSupabase(() => {});
@@ -497,7 +500,11 @@ function wireAccount(container, options = {}) {
           console.warn('[Sync] auto-migrate failed:', e);
           toast('Sync failed — tap "Move local data to cloud" in AI Settings to retry.', 'error');
         }
+      } else {
+        await pullAll(true);
       }
+      await startRealtimeSync();
+      window.AppNav?.refreshCurrentView?.({ preserveScroll: true });
     } catch (e) {
       toast('Sign-in error: ' + e.message, 'error');
     } finally {
@@ -521,9 +528,12 @@ function wireAccount(container, options = {}) {
   });
 
   container.querySelector('#sb-signout-btn')?.addEventListener('click', async () => {
+    await stopRealtimeSync();
     await signOut();
+    clearUserContentLocal();
     toast('Signed out.', 'info');
     await refreshAccountStatus(container, options);
+    window.AppNav?.refreshCurrentView?.({ preserveScroll: true });
   });
 
   container.querySelector('#sb-migrate-btn')?.addEventListener('click', async () => {
@@ -569,7 +579,7 @@ async function refreshAccountStatus(container, options = {}) {
       }
       signinWrap?.classList.add('hidden');
       loggedinWrap?.classList.remove('hidden');
-      if (!isMigrated()) migrateArea?.classList.remove('hidden');
+      if (!await isMigratedForCurrentUser()) migrateArea?.classList.remove('hidden');
       else migrateArea?.classList.add('hidden');
     } else {
       if (section) section.classList.remove('hidden');
