@@ -35,7 +35,7 @@ const MODULES = {
   'knowledge-graph': { title: 'Knowledge Graph', init: initKnowledgeGraph, back: 'knowledge' },
   analytics:         { title: 'Analytics',  init: initAnalytics },
   review:            { title: '蠕ｩ鄙偵そ繝・す繝ｧ繝ｳ', init: initReview, back: 'home' },
-  archive:           { title: 'Archive',    init: initArchive,         back: 'tasks' },
+  archive:           { title: 'Trash',      init: initArchive,         back: 'tasks' },
   tags:              { title: 'Tags',       init: initTagsPage },
 };
 
@@ -412,8 +412,8 @@ async function init() {
   // Wire settings gear button in header
   document.getElementById('header-settings-btn')?.addEventListener('click', () => navigate('settings'));
 
-  // Wire focus mode button in header
-  document.getElementById('header-focus-btn')?.addEventListener('click', openFocusMode);
+  // Wire trash button in header
+  document.getElementById('header-trash-btn')?.addEventListener('click', () => navigate('archive'));
 
   // FAB
   setupFAB();
@@ -421,8 +421,6 @@ async function init() {
   // Keyboard shortcuts
   setupKeyboardShortcuts();
 
-  // Focus mode
-  setupFocusMode();
   setupEditActivityGuard();
 
   // Start connectivity monitor + batch scheduler
@@ -689,11 +687,6 @@ function setupKeyboardShortcuts() {
           setTimeout(() => document.getElementById('task-input')?.focus(), 120);
         }
         break;
-      case 'f':
-      case 'F':
-        e.preventDefault();
-        openFocusMode();
-        break;
       case '?':
         e.preventDefault();
         showShortcutsHelp();
@@ -713,7 +706,6 @@ function showShortcutsHelp() {
     <table class="shortcuts-table">
       <tr><td><kbd>/</kbd></td><td>Open search</td></tr>
       <tr><td><kbd>N</kbd></td><td>Add a new task</td></tr>
-      <tr><td><kbd>F</kbd></td><td>Focus mode</td></tr>
       <tr><td><kbd>1-5</kbd></td><td>Move between views</td></tr>
       <tr><td><kbd>?</kbd></td><td>Show this help</td></tr>
       <tr><td><kbd>Esc</kbd></td><td>Close modal or search</td></tr>
@@ -721,91 +713,6 @@ function showShortcutsHelp() {
   `;
   openModal({ title: 'Keyboard shortcuts', body });
 }
-
-// ---- Focus mode ----
-
-let _focusModeEl = null;
-
-function setupFocusMode() {
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && _focusModeEl) closeFocusMode();
-  });
-}
-
-function openFocusMode() {
-  if (_focusModeEl) return;
-  // Get the top pending task
-  let tasks = [];
-  try { tasks = JSON.parse(localStorage.getItem('mp_tasks') || '[]'); } catch {}
-  const task = tasks
-    .filter(t => !t.completed && !t.abandoned)
-    .sort((a, b) => {
-      const aHasDue = !!a.dueDate;
-      const bHasDue = !!b.dueDate;
-      if (aHasDue && bHasDue) {
-        const aDue = `${a.dueDate}T${a.dueTime || '23:59'}`;
-        const bDue = `${b.dueDate}T${b.dueTime || '23:59'}`;
-        if (aDue !== bDue) return aDue.localeCompare(bDue);
-      } else if (aHasDue !== bHasDue) {
-        return aHasDue ? -1 : 1;
-      }
-      const wo = { large: 0, medium: 1, small: 2 };
-      return (wo[a.weight] ?? 1) - (wo[b.weight] ?? 1);
-    })[0];
-
-  const overlay = document.createElement('div');
-  overlay.className = 'focus-overlay';
-  overlay.innerHTML = `
-    <div class="focus-overlay-inner">
-      <div class="focus-overlay-label">Focus mode</div>
-      ${task ? `
-        <div class="focus-overlay-task">
-          <div class="focus-overlay-title">${task.title.replace(/</g, '&lt;')}</div>
-          ${task.dueDate ? `<div class="focus-overlay-due">${task.dueDate}</div>` : ''}
-          <div class="focus-overlay-weight weight-${task.weight || 'medium'}"></div>
-        </div>
-        <div class="focus-timer" id="focus-timer">00:00</div>
-        <button class="btn btn-primary focus-done-btn" id="focus-finish">End session</button>
-      ` : `<div class="focus-overlay-empty">No active tasks right now.</div>`}
-      <button class="focus-close" id="focus-close">Close (Esc)</button>
-    </div>
-  `;
-
-  document.getElementById('app').appendChild(overlay);
-  _focusModeEl = overlay;
-
-  // Timer
-  if (task) {
-    let sec = 0;
-    const timerEl = overlay.querySelector('#focus-timer');
-    const interval = setInterval(() => {
-      if (!overlay.isConnected) { clearInterval(interval); return; }
-      sec++;
-      const m = String(Math.floor(sec / 60)).padStart(2, '0');
-      const s = String(sec % 60).padStart(2, '0');
-      timerEl.textContent = `${m}:${s}`;
-    }, 1000);
-    overlay._timer = interval;
-
-    overlay.querySelector('#focus-finish')?.addEventListener('click', () => {
-      clearInterval(interval);
-      closeFocusMode();
-      showToast(`Focus session ended: ${task.title.slice(0, 20)}`, 'info');
-    });
-  }
-
-  overlay.querySelector('#focus-close')?.addEventListener('click', closeFocusMode);
-}
-
-function closeFocusMode() {
-  if (!_focusModeEl) return;
-  if (_focusModeEl._timer) clearInterval(_focusModeEl._timer);
-  _focusModeEl.classList.add('focus-overlay--closing');
-  setTimeout(() => { _focusModeEl?.remove(); _focusModeEl = null; }, 280);
-}
-
-// Expose focusMode globally so header button can use it
-window.AppFocus = { open: openFocusMode, close: closeFocusMode };
 
 document.addEventListener('DOMContentLoaded', init);
 
