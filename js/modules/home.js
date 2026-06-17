@@ -9,7 +9,7 @@ import {
 } from '../storage.js';
 import { parseNaturalLanguageEvent } from '../ai.js';
 import {
-  esc, today, tomorrow, toDateStr, formatDate, formatTime, getGreeting,
+  esc, today, tomorrow, toDateStr, formatDate, formatTime, getGreeting, getGreetingPeriod,
   getEventsForDate,
 } from '../utils.js';
 
@@ -20,6 +20,7 @@ export function initHome(container) {
   const todayStr  = today();
   const tomorrowStr = tomorrow();
   const greeting  = getGreeting();
+  const greetingPeriod = getGreetingPeriod();
 
   const allTasks  = getTasks();
   const allEvents = getEvents();
@@ -56,7 +57,10 @@ export function initHome(container) {
       <!-- Greeting -->
       <div class="home-greeting">
         <div class="home-date">${formatDate(new Date(), 'medium')}</div>
-        <div class="home-greeting-text">${esc(greeting)}</div>
+        <div class="home-greeting-row">
+          <span class="home-greeting-icon" aria-hidden="true">${renderGreetingIcon(greetingPeriod)}</span>
+          <div class="home-greeting-text">${esc(greeting)}</div>
+        </div>
       </div>
 
       ${aiAvailable ? `
@@ -187,6 +191,30 @@ export function initHome(container) {
     tasks.style.display = isOpen ? 'none' : 'flex';
     header.classList.toggle('open', !isOpen);
   });
+}
+
+function renderGreetingIcon(period) {
+  if (period === 'morning') {
+    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="4"></circle>
+      <path d="M12 2v2.5M12 19.5V22M4.93 4.93l1.77 1.77M17.3 17.3l1.77 1.77M2 12h2.5M19.5 12H22M4.93 19.07l1.77-1.77M17.3 6.7l1.77-1.77"></path>
+    </svg>`;
+  }
+  if (period === 'day') {
+    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M7 18h9.5a4.5 4.5 0 0 0 .6-8.96A5.5 5.5 0 0 0 6.5 10.5 3.5 3.5 0 0 0 7 18Z"></path>
+    </svg>`;
+  }
+  if (period === 'evening') {
+    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 16h18"></path>
+      <path d="M6 16a6 6 0 0 1 12 0"></path>
+      <path d="M12 5v2.5M5 12l1.5.5M19 12l-1.5.5"></path>
+    </svg>`;
+  }
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"></path>
+  </svg>`;
 }
 
 // ---- Helpers ----

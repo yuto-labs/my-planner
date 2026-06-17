@@ -1,5 +1,5 @@
 // ============================================================
-// utils.js — Date helpers, formatting, misc utilities
+// utils.js - Date helpers, formatting, misc utilities
 // ============================================================
 
 export function generateId() {
@@ -40,12 +40,12 @@ export function toTimeStr(date) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-/** Returns value suitable for datetime-local input (in LOCAL time) */
+/** Returns value suitable for datetime-local input (in local time) */
 export function toDateTimeLocal(isoStr) {
   if (!isoStr) return '';
   const d = new Date(isoStr);
   if (isNaN(d)) return '';
-  const y  = d.getFullYear();
+  const y = d.getFullYear();
   const mo = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
   const hh = String(d.getHours()).padStart(2, '0');
@@ -59,7 +59,7 @@ export function fromDateTimeLocal(str) {
   return new Date(str).toISOString();
 }
 
-/** YYYY-MM-DD → Date object (local midnight) */
+/** YYYY-MM-DD -> Date object (local midnight) */
 export function parseDate(str) {
   if (!str) return null;
   const [y, m, d] = str.split('-').map(Number);
@@ -67,7 +67,8 @@ export function parseDate(str) {
 }
 
 export function sameDay(a, b) {
-  const da = new Date(a), db = new Date(b);
+  const da = new Date(a);
+  const db = new Date(b);
   return da.getFullYear() === db.getFullYear()
     && da.getMonth() === db.getMonth()
     && da.getDate() === db.getDate();
@@ -95,7 +96,7 @@ export function endOfMonth(date = new Date()) {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0);
 }
 
-/** Get this week's start and end (Sun–Sat) */
+/** Get this week's start and end (Sun-Sat) */
 export function thisWeekRange() {
   const start = startOfWeek();
   const end = addDays(start, 6);
@@ -132,7 +133,6 @@ export function formatDate(dateOrStr, style = 'short') {
 
 export function formatTime(isoStr) {
   if (!isoStr) return '';
-  // Special sentinel for "end of day" display in multi-day events
   if (typeof isoStr === 'string' && isoStr.includes('T24:00')) return '24:00';
   const d = new Date(isoStr);
   if (isNaN(d.getTime())) return '';
@@ -146,13 +146,13 @@ export function formatTime(isoStr) {
  */
 export function getEventsForDate(events, dateStr) {
   return events
-    .filter(ev => {
+    .filter((ev) => {
       if (!ev.start) return false;
       const sd = toDateStr(new Date(ev.start));
       const ed = ev.end ? _effectiveEventEndDateStr(ev) : sd;
       return sd <= dateStr && ed >= dateStr;
     })
-    .map(ev => _clampEventForDay(ev, dateStr))
+    .map((ev) => _clampEventForDay(ev, dateStr))
     .sort((a, b) => (a._displayStart || a.start || '').localeCompare(b._displayStart || b.start || ''));
 }
 
@@ -185,32 +185,49 @@ function _clampEventForDay(ev, dateStr) {
   const sd = toDateStr(new Date(ev.start));
   const actualEd = toDateStr(new Date(ev.end));
   const ed = _effectiveEventEndDateStr(ev);
-  if (sd === actualEd) return ev; // same-day, no clamping needed
+  if (sd === actualEd) return ev;
 
-  const isFirst  = sd === dateStr;
-  const isLast   = ed === dateStr;
+  const isFirst = sd === dateStr;
+  const isLast = ed === dateStr;
   const isMiddle = !isFirst && !isLast;
 
   if (isMiddle) {
     return { ...ev, _multiDay: true, _isAllDay: true };
   }
   if (isFirst) {
-    // Show: original start → 24:00
-    return { ...ev, _multiDay: true, _isFirstDay: true,
-             _displayStart: ev.start, _displayEnd: `${dateStr}T24:00:00` };
+    return {
+      ...ev,
+      _multiDay: true,
+      _isFirstDay: true,
+      _displayStart: ev.start,
+      _displayEnd: `${dateStr}T24:00:00`,
+    };
   }
-  // Last day: 0:00 → original end
-  return { ...ev, _multiDay: true, _isLastDay: true,
-           _displayStart: `${dateStr}T00:00:00`, _displayEnd: ev.end };
+  return {
+    ...ev,
+    _multiDay: true,
+    _isLastDay: true,
+    _displayStart: `${dateStr}T00:00:00`,
+    _displayEnd: ev.end,
+  };
 }
 
 export function getGreeting() {
   const h = new Date().getHours();
-  if (h < 5) return 'おやすみなさい 🌙';
-  if (h < 10) return 'おはようございます ☀️';
-  if (h < 17) return 'こんにちは 🌤';
-  if (h < 21) return 'こんばんは 🌆';
-  return 'お疲れさまです 🌙';
+  if (h < 5) return 'おやすみなさい';
+  if (h < 10) return 'おはようございます';
+  if (h < 17) return 'こんにちは';
+  if (h < 21) return 'こんばんは';
+  return 'お疲れさまです';
+}
+
+export function getGreetingPeriod() {
+  const h = new Date().getHours();
+  if (h < 5) return 'night';
+  if (h < 10) return 'morning';
+  if (h < 17) return 'day';
+  if (h < 21) return 'evening';
+  return 'night';
 }
 
 // ---- Event generation for recurring events ----
@@ -218,13 +235,13 @@ export function getGreeting() {
 /**
  * Given a master recurring event, generate all instances between start and end dates.
  * Instances list in storage should just be individual events with recurringId set.
- * This is used if you want on-the-fly generation (not used in this v1 — we store individually).
+ * This is used if you want on-the-fly generation (not used in this v1 - we store individually).
  */
 export function getRecurringInstances(masterEvent, windowStart, windowEnd) {
   const instances = [];
   if (!masterEvent.recurring) return instances;
 
-  const { type, days, endDate } = masterEvent.recurring;
+  const { type, endDate } = masterEvent.recurring;
   const until = endDate ? new Date(endDate) : windowEnd;
   let cursor = new Date(masterEvent.start);
 
@@ -244,8 +261,13 @@ export function getRecurringInstances(masterEvent, windowStart, windowEnd) {
     } else if (type === 'weekly') {
       cursor = addDays(cursor, 7);
     } else if (type === 'monthly') {
-      cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, cursor.getDate(),
-        cursor.getHours(), cursor.getMinutes());
+      cursor = new Date(
+        cursor.getFullYear(),
+        cursor.getMonth() + 1,
+        cursor.getDate(),
+        cursor.getHours(),
+        cursor.getMinutes(),
+      );
     } else {
       break;
     }
@@ -256,7 +278,10 @@ export function getRecurringInstances(masterEvent, windowStart, windowEnd) {
 // ---- Debounce ----
 export function debounce(fn, ms = 300) {
   let t;
-  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+  return (...args) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...args), ms);
+  };
 }
 
 // ---- SRS day formatter ----
