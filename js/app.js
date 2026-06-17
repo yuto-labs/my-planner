@@ -44,6 +44,99 @@ let cleanupFn = null;
 let swUpdateIntervalId = null;
 let swReloading = false;
 let foregroundSyncIntervalId = null;
+let editIdleTimer = null;
+let lastEditAt = 0;
+let isComposingText = false;
+let pendingSyncRefresh = false;
+let pendingForcedPull = false;
+
+function markUserEditing() {
+  lastEditAt = Date.now();
+}
+
+function hasOpenModal() {
+  const overlay = document.getElementById('modal-overlay');
+  return !!overlay && !overlay.classList.contains('hidden') && !!overlay.children.length;
+}
+
+function isEditableElement(el) {
+  if (!el) return false;
+  if (el.isContentEditable) return true;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+}
+
+function isUserEditing() {
+  const active = document.activeElement;
+  if (isComposingText) return true;
+  if (isEditableElement(active)) return true;
+  if (hasOpenModal() && document.querySelector('#modal-overlay input, #modal-overlay textarea, #modal-overlay select, #modal-overlay [contenteditable="true"]')) {
+    return true;
+  }
+  return (Date.now() - lastEditAt) < 1500;
+}
+
+function flushDeferredSyncWork() {
+  if (isUserEditing()) return;
+  const shouldPull = pendingForcedPull;
+  const shouldRefresh = pendingSyncRefresh || shouldPull;
+  pendingForcedPull = false;
+  pendingSyncRefresh = false;
+  if (shouldPull) {
+    getSession().then(session => {
+      if (!session) return;
+      pullAll(true).then(pulled => {
+        if (pulled && shouldRefresh) refreshCurrentView({ preserveScroll: true });
+      }).catch(() => {});
+    }).catch(() => {});
+    return;
+  }
+  if (shouldRefresh) refreshCurrentView({ preserveScroll: true });
+}
+
+function scheduleDeferredSyncWork() {
+  clearTimeout(editIdleTimer);
+  editIdleTimer = setTimeout(flushDeferredSyncWork, 1700);
+}
+
+function deferSyncWhileEditing({ needsPull = false } = {}) {
+  pendingSyncRefresh = true;
+  pendingForcedPull = pendingForcedPull || needsPull;
+  scheduleDeferredSyncWork();
+}
+
+function setupEditActivityGuard() {
+  const markAndDefer = () => {
+    markUserEditing();
+    scheduleDeferredSyncWork();
+  };
+
+  document.addEventListener('focusin', e => {
+    if (isEditableElement(e.target)) markAndDefer();
+  });
+
+  document.addEventListener('input', e => {
+    if (isEditableElement(e.target)) markAndDefer();
+  });
+
+  document.addEventListener('compositionstart', e => {
+    if (!isEditableElement(e.target)) return;
+    isComposingText = true;
+    markAndDefer();
+  });
+
+  document.addEventListener('compositionend', e => {
+    if (!isEditableElement(e.target)) return;
+    isComposingText = false;
+    markAndDefer();
+  });
+
+  document.addEventListener('focusout', e => {
+    if (!isEditableElement(e.target)) return;
+    markUserEditing();
+    scheduleDeferredSyncWork();
+  });
+}
 
 // ---- Navigation ----
 
@@ -100,8 +193,10 @@ export function navigate(view, options = {}) {
 
 export function refreshCurrentView(options = {}) {
   if (!currentView) return;
-  const tag = document.activeElement?.tagName;
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
+  if (isUserEditing()) {
+    deferSyncWhileEditing();
+    return;
+  }
   const v = currentView;
   currentView = null;
   navigate(v, options);
@@ -296,6 +391,7 @@ async function init() {
 
   // Focus mode
   setupFocusMode();
+  setupEditActivityGuard();
 
   // Start connectivity monitor + batch scheduler
   setupConnectivityMonitor();
@@ -317,6 +413,10 @@ async function init() {
     if (document.hidden) return;
     try { autoArchiveTasks(); } catch {}
     try { navigator.serviceWorker?.getRegistration?.().then(reg => reg?.update?.()).catch(() => {}); } catch {}
+    if (isUserEditing()) {
+      deferSyncWhileEditing({ needsPull: true });
+      return;
+    }
     getSession().then(session => {
       if (!session) return;
       pullIfStale(30_000, true).then(pulled => {
@@ -326,6 +426,10 @@ async function init() {
   });
 
   document.addEventListener('sync:updated', () => {
+    if (isUserEditing()) {
+      deferSyncWhileEditing();
+      return;
+    }
     refreshCurrentView({ preserveScroll: true });
   });
 }
@@ -412,6 +516,10 @@ function setupConnectivityMonitor() {
         }).catch(e => console.warn('[Batch] auto-process failed:', e));
       }
       // 繧ｪ繝ｳ繝ｩ繧､繝ｳ蠕ｩ蟶ｰ譎ゅ↓ Supabase 縺九ｉ譛譁ｰ繝・・繧ｿ繧・pull
+      if (isUserEditing()) {
+        deferSyncWhileEditing({ needsPull: true });
+        return;
+      }
       getSession().then(session => {
         if (session) pullAll(true).catch(() => {});
       }).catch(() => {});
@@ -427,6 +535,10 @@ function setupForegroundSync() {
   if (foregroundSyncIntervalId) clearInterval(foregroundSyncIntervalId);
   foregroundSyncIntervalId = setInterval(() => {
     if (document.hidden) return;
+    if (isUserEditing()) {
+      deferSyncWhileEditing({ needsPull: true });
+      return;
+    }
     getSession().then(session => {
       if (!session) return;
       pullIfStale(3000, true).then(pulled => {
