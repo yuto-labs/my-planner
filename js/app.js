@@ -122,14 +122,14 @@ export function showToast(message, type = 'info') {
 
 /**
  * Toast with an undo button. Stays for 5s.
- * onUndo() is called if user taps "蜿悶ｊ豸医＠".
+ * onUndo() is called if user taps "元に戻す".
  */
 export function showUndoToast(message, onUndo) {
   const container = document.getElementById('toast-container');
   if (!container) return;
   const toast = document.createElement('div');
   toast.className = 'toast toast-info toast--undo';
-  toast.innerHTML = `<span>${message}</span><button class="toast-undo-btn">蜿悶ｊ豸医＠</button>`;
+  toast.innerHTML = `<span>${message}</span><button class="toast-undo-btn">元に戻す</button>`;
   container.appendChild(toast);
 
   const timer = setTimeout(() => toast.remove(), 5000);
