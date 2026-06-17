@@ -2,7 +2,7 @@
 // sw.js — Service Worker: Cache-first offline support v3
 // ============================================================
 
-const CACHE_VER  = 'v96';
+const CACHE_VER  = 'v97';
 const APP_CACHE  = `my-planner-app-${CACHE_VER}`;
 const CDN_CACHE  = `my-planner-cdn-${CACHE_VER}`;
 
@@ -11,7 +11,8 @@ const APP_ASSETS = [
   './',
   './index.html',
   './manifest.json',
-  './icon.svg',
+  './icon-192.png',
+  './icon-512.png',
   './css/style.css',
   './js/app.js',
   './js/storage.js',
