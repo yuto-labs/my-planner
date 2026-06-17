@@ -305,11 +305,34 @@ function renderList() {
     </div>
   `;
 
-  // Wire search
+  // Wire search (IME-safe: avoid rerendering on every composition keystroke)
   const searchEl = container.querySelector('#kn-search');
-  searchEl?.addEventListener('input', () => {
+  let searchTimer = null;
+  let composing = false;
+  const applySearch = () => {
+    if (!searchEl) return;
     listState.search = searchEl.value;
     renderList();
+    requestAnimationFrame(() => {
+      const next = container.querySelector('#kn-search');
+      if (!next) return;
+      next.focus();
+      const end = next.value.length;
+      try { next.setSelectionRange(end, end); } catch {}
+    });
+  };
+  searchEl?.addEventListener('compositionstart', () => {
+    composing = true;
+  });
+  searchEl?.addEventListener('compositionend', () => {
+    composing = false;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(applySearch, 0);
+  });
+  searchEl?.addEventListener('input', () => {
+    if (composing) return;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(applySearch, 120);
   });
 
   // Wire AI input sheet

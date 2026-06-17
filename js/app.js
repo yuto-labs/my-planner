@@ -429,11 +429,11 @@ function setupForegroundSync() {
     if (document.hidden) return;
     getSession().then(session => {
       if (!session) return;
-      pullIfStale(5000, true).then(pulled => {
+      pullIfStale(3000, true).then(pulled => {
         if (pulled) refreshCurrentView({ preserveScroll: true });
       }).catch(() => {});
     }).catch(() => {});
-  }, 5000);
+  }, 3000);
 }
 
 // ---- Batch AI scheduler ----
