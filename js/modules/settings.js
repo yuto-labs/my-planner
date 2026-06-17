@@ -4,7 +4,7 @@
 
 import {
   getSettings, saveSettings, getCategories, saveCategories,
-  exportBackup, importBackup, clearAiCache, DEFAULT_CATEGORIES,
+  exportBackup, importBackup, clearAiCache, DEFAULT_CATEGORIES, DEFAULT_ACCENT_RGB,
   getBatchSettings, saveBatchSettings, getPendingAIQueue, clearPendingAIQueue, getAiRuntime,
   clearUserContentLocal,
 } from '../storage.js';
@@ -34,9 +34,29 @@ export function initAISettings(container) {
 function renderMainSettings(container) {
   const settings = getSettings();
   const categories = getCategories();
+  const accent = normalizeAccentRgb(settings.accentRgb);
 
   container.innerHTML = `
     <div class="settings-page">
+      <div class="settings-section">
+        <div class="settings-heading">Accent Color</div>
+        <div class="accent-preview-card" id="accent-preview-card"
+          style="--accent-preview: rgb(${accent.r}, ${accent.g}, ${accent.b})">
+          <div class="accent-preview-swatch"></div>
+          <div class="accent-preview-text">
+            <strong>RGB ${accent.r}, ${accent.g}, ${accent.b}</strong>
+            <span>Buttons, progress bars, highlights, and key accents</span>
+          </div>
+          <button class="btn btn-ghost btn-sm" id="accent-reset-btn" type="button">Reset</button>
+        </div>
+
+        <div class="accent-rgb-grid">
+          ${renderRgbSlider('R', 'accent-r', accent.r)}
+          ${renderRgbSlider('G', 'accent-g', accent.g)}
+          ${renderRgbSlider('B', 'accent-b', accent.b)}
+        </div>
+      </div>
+
       <div class="settings-section">
         <div class="settings-heading">My Schedule</div>
         <div class="my-schedule-color-row">
@@ -287,6 +307,73 @@ function wireAppearance(container) {
     const preview = container.querySelector('.my-schedule-color-preview');
     if (preview) preview.style.setProperty('--schedule-color', color);
   });
+
+  const rgbInputs = ['accent-r', 'accent-g', 'accent-b']
+    .map(id => container.querySelector(`#${id}`))
+    .filter(Boolean);
+
+  const syncAccentPreview = (rgb) => {
+    const safe = normalizeAccentRgb(rgb);
+    const preview = container.querySelector('#accent-preview-card');
+    if (preview) preview.style.setProperty('--accent-preview', `rgb(${safe.r}, ${safe.g}, ${safe.b})`);
+    const text = preview?.querySelector('strong');
+    if (text) text.textContent = `RGB ${safe.r}, ${safe.g}, ${safe.b}`;
+    const rVal = container.querySelector('#accent-r-value');
+    const gVal = container.querySelector('#accent-g-value');
+    const bVal = container.querySelector('#accent-b-value');
+    if (rVal) rVal.textContent = String(safe.r);
+    if (gVal) gVal.textContent = String(safe.g);
+    if (bVal) bVal.textContent = String(safe.b);
+  };
+
+  const applyAccent = (rgb) => {
+    const safe = normalizeAccentRgb(rgb);
+    saveSettings({ accentRgb: safe });
+    window.AppTheme?.apply(getSettings().theme || 'auto');
+    syncAccentPreview(safe);
+  };
+
+  rgbInputs.forEach(input => {
+    input.addEventListener('input', () => {
+      applyAccent({
+        r: container.querySelector('#accent-r')?.value,
+        g: container.querySelector('#accent-g')?.value,
+        b: container.querySelector('#accent-b')?.value,
+      });
+    });
+  });
+
+  container.querySelector('#accent-reset-btn')?.addEventListener('click', () => {
+    const safe = normalizeAccentRgb(DEFAULT_ACCENT_RGB);
+    container.querySelector('#accent-r').value = String(safe.r);
+    container.querySelector('#accent-g').value = String(safe.g);
+    container.querySelector('#accent-b').value = String(safe.b);
+    applyAccent(safe);
+    toast('Accent color reset.', 'info');
+  });
+}
+
+function renderRgbSlider(label, id, value) {
+  return `
+    <label class="accent-rgb-item" for="${id}">
+      <span class="accent-rgb-label">${label}</span>
+      <input class="accent-rgb-slider" id="${id}" type="range" min="0" max="255" value="${value}">
+      <span class="accent-rgb-value" id="${id}-value">${value}</span>
+    </label>
+  `;
+}
+
+function normalizeAccentRgb(rgb) {
+  const clamp = (v, fallback) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(0, Math.min(255, Math.round(n)));
+  };
+  return {
+    r: clamp(rgb?.r, DEFAULT_ACCENT_RGB.r),
+    g: clamp(rgb?.g, DEFAULT_ACCENT_RGB.g),
+    b: clamp(rgb?.b, DEFAULT_ACCENT_RGB.b),
+  };
 }
 
 function wireCategories(container) {

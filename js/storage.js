@@ -77,6 +77,8 @@ export const DEFAULT_CATEGORIES = [
   { id: 'other',    name: 'その他', color: '#8B83E8' },
 ];
 
+export const DEFAULT_ACCENT_RGB = { r: 190, g: 230, b: 216 };
+
 // ---- Primitive helpers ----
 
 function load(key, fallback) {
@@ -299,6 +301,7 @@ const DEFAULT_SETTINGS = {
   theme: 'auto',
   aiEnabled: false,
   myScheduleColor: '#60A5FA',
+  accentRgb: DEFAULT_ACCENT_RGB,
 };
 const DEFAULT_AI_RUNTIME = {
   provider: 'gemini',

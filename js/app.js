@@ -2,7 +2,7 @@
 // app.js 窶・Main SPA router & app shell
 // ============================================================
 
-import { getSettings, getBatchSettings, getPendingAIQueue, autoArchiveTasks, isAiAvailable, clearUserContentLocal } from './storage.js';
+import { getSettings, getBatchSettings, getPendingAIQueue, autoArchiveTasks, isAiAvailable, clearUserContentLocal, DEFAULT_ACCENT_RGB } from './storage.js';
 import { processBatchQueue, refreshAiRuntimeStatus } from './ai.js';
 import { initSync, pullAll, pullIfStale, startRealtimeSync } from './sync.js';
 import { getSession, handleAuthRedirect, getActiveUserId, setActiveUserId } from './supabase.js';
@@ -355,6 +355,57 @@ function applyTheme(theme) {
   if (theme === 'dark') html.setAttribute('data-theme', 'dark');
   else if (theme === 'light') html.setAttribute('data-theme', 'light');
   else html.removeAttribute('data-theme'); // 'auto' 窶・follow OS
+  applyAccentTheme(getSettings().accentRgb || DEFAULT_ACCENT_RGB);
+}
+
+function clampRgb(value, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.min(255, Math.round(n)));
+}
+
+function normalizeAccentRgb(rgb) {
+  return {
+    r: clampRgb(rgb?.r, DEFAULT_ACCENT_RGB.r),
+    g: clampRgb(rgb?.g, DEFAULT_ACCENT_RGB.g),
+    b: clampRgb(rgb?.b, DEFAULT_ACCENT_RGB.b),
+  };
+}
+
+function mixRgb(a, b, ratio) {
+  const t = Math.max(0, Math.min(1, ratio));
+  return {
+    r: Math.round(a.r + (b.r - a.r) * t),
+    g: Math.round(a.g + (b.g - a.g) * t),
+    b: Math.round(a.b + (b.b - a.b) * t),
+  };
+}
+
+function rgbToCss(rgb, alpha = 1) {
+  const c = normalizeAccentRgb(rgb);
+  if (alpha >= 1) return `rgb(${c.r}, ${c.g}, ${c.b})`;
+  return `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`;
+}
+
+function applyAccentTheme(rgb) {
+  const root = document.documentElement;
+  const base = normalizeAccentRgb(rgb);
+  const lighter = mixRgb(base, { r: 255, g: 255, b: 255 }, 0.24);
+  const lightest = mixRgb(base, { r: 255, g: 255, b: 255 }, 0.5);
+  const darker = mixRgb(base, { r: 20, g: 24, b: 36 }, 0.18);
+  const success = mixRgb(base, { r: 130, g: 220, b: 235 }, 0.22);
+
+  root.style.setProperty('--primary', rgbToCss(base));
+  root.style.setProperty('--primary-dark', rgbToCss(darker));
+  root.style.setProperty('--primary-light', rgbToCss(lightest));
+  root.style.setProperty('--success', rgbToCss(success));
+  root.style.setProperty('--accent', rgbToCss(lighter));
+  root.style.setProperty('--gradient', `linear-gradient(135deg, ${rgbToCss(lighter)} 0%, ${rgbToCss(success)} 100%)`);
+  root.style.setProperty('--gradient-h', `linear-gradient(90deg, ${rgbToCss(lighter)} 0%, ${rgbToCss(success)} 100%)`);
+  root.style.setProperty('--primary-bg', rgbToCss(base, 0.15));
+  root.style.setProperty('--primary-border', rgbToCss(base, 0.31));
+  root.style.setProperty('--success-bg', rgbToCss(success, 0.15));
+  root.style.setProperty('--success-border', rgbToCss(success, 0.28));
 }
 
 // ---- App init ----
