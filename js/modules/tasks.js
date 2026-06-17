@@ -152,7 +152,7 @@ function render() {
 
     <!-- Archive link -->
     <div class="tasks-archive-link">
-      <button class="btn btn-ghost btn-sm" id="goto-archive-btn">📦 アーカイブを見る</button>
+      <button class="btn btn-ghost btn-sm" id="goto-archive-btn">🗑 Trash を見る</button>
     </div>
   `;
 

@@ -4649,6 +4649,39 @@ kbd {
   text-overflow: ellipsis;
 }
 .archive-task-date { font-size: 11px; color: var(--text-muted); flex-shrink: 0; white-space: nowrap; }
+.archive-trash-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.trash-type-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  border: 1px solid var(--border-light);
+  color: var(--text-muted);
+  background: rgba(255,255,255,.04);
+}
+.trash-type-task  { color: var(--success); background: rgba(50,212,154,.12); }
+.trash-type-event { color: var(--accent-2); background: rgba(139,131,232,.12); }
+.trash-type-memo  { color: #f5c542; background: rgba(245,197,66,.12); }
+.archive-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.archive-action-btn {
+  min-width: 84px;
+}
+.archive-action-btn--danger {
+  color: #ff8b8b;
+}
 
 /* ============================================================
    56. TAG PAGE

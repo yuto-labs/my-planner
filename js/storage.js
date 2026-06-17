@@ -32,6 +32,7 @@ const USER_CONTENT_KEYS = [
   KNOWLEDGE_KEY_SAFE(),
   REVIEW_LOG_KEY_SAFE(),
   ARCHIVE_KEY_SAFE(),
+  TRASH_KEY_SAFE(),
   TAGS_KEY_SAFE(),
   HABITS_KEY_SAFE(),
   HABIT_DONE_KEY_SAFE(),
@@ -46,6 +47,7 @@ function REVIEW_KEY_SAFE() { return 'mp_reviews'; }
 function KNOWLEDGE_KEY_SAFE() { return 'mp_knowledge'; }
 function REVIEW_LOG_KEY_SAFE() { return 'mp_knowledge_review_log'; }
 function ARCHIVE_KEY_SAFE() { return 'mp_task_archive'; }
+function TRASH_KEY_SAFE() { return 'mp_trash'; }
 function TAGS_KEY_SAFE() { return 'mp_tags'; }
 function HABITS_KEY_SAFE() { return 'mp_habits2'; }
 function HABIT_DONE_KEY_SAFE() { return 'mp_habit2_done'; }
@@ -116,7 +118,10 @@ export function updateEvent(id, updates) {
 }
 
 export function deleteEvent(id) {
-  saveEvents(getEvents().filter(e => e.id !== id));
+  const events = getEvents();
+  const target = events.find(e => e.id === id);
+  if (target) addTrashItem({ entityType: 'event', payload: target, title: target.title });
+  saveEvents(events.filter(e => e.id !== id));
   _notifyDelete({ table: 'events', id });
 }
 
@@ -192,7 +197,10 @@ export function updateTask(id, updates) {
 }
 
 export function deleteTask(id) {
-  saveTasks(getTasks().filter(t => t.id !== id));
+  const tasks = getTasks();
+  const target = tasks.find(t => t.id === id);
+  if (target) addTrashItem({ entityType: 'task', payload: target, title: target.title });
+  saveTasks(tasks.filter(t => t.id !== id));
   _notifyDelete({ table: 'tasks', id });
 }
 
@@ -598,13 +606,90 @@ export function updateKnowledgeMemo(id, updates) {
 }
 
 export function deleteKnowledgeMemo(id) {
-  saveKnowledgeMemos(getKnowledgeMemos().filter(m => m.id !== id));
+  const memos = getKnowledgeMemos();
+  const target = memos.find(m => m.id === id);
+  if (target) addTrashItem({ entityType: 'memo', payload: target, title: target.title });
+  saveKnowledgeMemos(memos.filter(m => m.id !== id));
   const schedule = getReviewSchedule();
   if (schedule[id]) {
     delete schedule[id];
     save(REVIEW_KEY, schedule);
   }
   _notifyDelete({ table: 'knowledge_memos', id });
+}
+
+// ---- Trash ----
+const TRASH_KEY = 'mp_trash';
+
+export function getTrashItems() {
+  return load(TRASH_KEY, []);
+}
+
+export function saveTrashItems(items) {
+  save(TRASH_KEY, items);
+}
+
+export function addTrashItem({ entityType, payload, title }) {
+  if (!entityType || !payload) return null;
+  const items = getTrashItems();
+  const item = {
+    id: generateId(),
+    entityType,
+    entityId: payload.id || null,
+    title: title || payload.title || 'Untitled',
+    deletedAt: new Date().toISOString(),
+    payload,
+  };
+  items.unshift(item);
+  saveTrashItems(items);
+  return item;
+}
+
+export function removeTrashItem(id) {
+  saveTrashItems(getTrashItems().filter(item => item.id !== id));
+}
+
+export function removeTrashItemByEntity(entityType, entityId) {
+  if (!entityType || !entityId) return;
+  saveTrashItems(getTrashItems().filter(item => !(item.entityType === entityType && item.entityId === entityId)));
+}
+
+export function restoreTrashItem(id) {
+  const items = getTrashItems();
+  const item = items.find(entry => entry.id === id);
+  if (!item) return null;
+
+  if (item.entityType === 'task') {
+    const tasks = getTasks();
+    if (!tasks.find(t => t.id === item.entityId)) {
+      tasks.push(item.payload);
+      tasks.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+      saveTasks(tasks);
+    }
+  } else if (item.entityType === 'event') {
+    const events = getEvents();
+    if (!events.find(e => e.id === item.entityId)) {
+      events.push(item.payload);
+      saveEvents(events);
+    }
+  } else if (item.entityType === 'memo') {
+    const memos = getKnowledgeMemos();
+    if (!memos.find(m => m.id === item.entityId)) {
+      memos.push(item.payload);
+      saveKnowledgeMemos(memos);
+    }
+  } else {
+    return null;
+  }
+
+  removeTrashItem(id);
+  return item;
+}
+
+export function deleteTrashItemsByMonth(yyyymm) {
+  saveTrashItems(
+    getTrashItems().filter(item => !item.deletedAt || item.deletedAt.slice(0, 7) !== yyyymm)
+  );
 }
 
 // ---- Knowledge Review Log ----
@@ -743,7 +828,7 @@ export function getReviewEntry(memoId) {
 export function exportBackup() {
   const { apiKey: _, ...safeSettings } = getSettings();
   return JSON.stringify({
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     events: getEvents(),
     tasks: getTasks(),
@@ -751,6 +836,7 @@ export function exportBackup() {
     categories: getCategories(),
     settings: safeSettings,
     memos: getKnowledgeMemos(),
+    trash: getTrashItems(),
     habits: getHabits(),
     habitDone: load(HABIT_DONE_KEY, {}),
     focusLogs: getFocusLogs(),
@@ -764,6 +850,7 @@ export function importBackup(jsonStr) {
   if (data.goals)     saveGoals(data.goals);
   if (data.categories) saveCategories(data.categories);
   if (data.memos)     saveKnowledgeMemos(data.memos);
+  if (data.trash)     saveTrashItems(data.trash);
   if (data.habits)    saveHabits(data.habits);
   if (data.habitDone) save(HABIT_DONE_KEY, data.habitDone);
   if (data.focusLogs) saveFocusLogs(data.focusLogs);
@@ -892,6 +979,7 @@ export function applyUndo() {
       tasks.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
       saveTasks(tasks);
     }
+    removeTrashItemByEntity('task', action.task.id);
   } else if (action.type === 'complete_task') {
     updateTask(action.taskId, { completed: action.wasCompleted, completedAt: action.completedAt ?? null });
     removeFocusLogsAfter(action.taskId, action.completedAt);
@@ -901,12 +989,14 @@ export function applyUndo() {
       events.push(action.event);
       saveEvents(events);
     }
+    removeTrashItemByEntity('event', action.event.id);
   } else if (action.type === 'delete_memo') {
     const memos = getKnowledgeMemos();
     if (!memos.find(m => m.id === action.memo.id)) {
       memos.push(action.memo);
       save(KNOWLEDGE_KEY, memos);
     }
+    removeTrashItemByEntity('memo', action.memo.id);
   }
 
   return action.type;
