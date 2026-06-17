@@ -23,10 +23,13 @@ let state = {
   filter:      'all',    // 'all' | 'pending' | 'done' | 'large' | 'medium' | 'small'
   container:   null,
   addFormOpen: false,
+  addTitle:    '',
+  addWeight:   'medium',
   addCustomTagOpen: false,
   addDueDate:  null,     // YYYY-MM-DD
   addDueTime:  null,     // HH:MM
   addEstimate: null,     // minutes
+  addRecurrence: '',
   addTags:     [],       // string[]
   addTaskType: 'normal', // 'normal' | 'goal'
   codexStartDate: null,
@@ -85,7 +88,7 @@ function render() {
   container.innerHTML = `
     <!-- Add form -->
     <div class="tasks-add">
-      <input class="input" id="task-input" placeholder="タスク名" type="text">
+      <input class="input" id="task-input" placeholder="タスク名" type="text" value="${esc(state.addTitle)}">
       <button class="btn btn-primary" id="task-add-btn" style="flex-shrink:0">保存</button>
     </div>
 
@@ -98,9 +101,9 @@ function render() {
       </div>
       <span class="tasks-add-label">Priority:</span>
       <div class="weight-select" id="weight-select">
-        <button class="weight-btn" data-w="large">大</button>
-        <button class="weight-btn selected" data-w="medium">中</button>
-        <button class="weight-btn" data-w="small">小</button>
+        <button class="weight-btn${state.addWeight === 'large' ? ' selected' : ''}" data-w="large">大</button>
+        <button class="weight-btn${state.addWeight === 'medium' ? ' selected' : ''}" data-w="medium">中</button>
+        <button class="weight-btn${state.addWeight === 'small' ? ' selected' : ''}" data-w="small">小</button>
       </div>
       <button class="dp-trigger tasks-due-input" id="task-due-date-btn" title="期日を選択">
         ${state.addDueDate ? formatPickerDate(state.addDueDate) : '📅 日付'}
@@ -112,11 +115,11 @@ function render() {
         ${state.addEstimate ? `⏱ ${formatDuration(state.addEstimate)}` : '⏱ 工数'}
       </button>
       <select class="input tasks-due-input" id="task-recurrence" title="繰り返し">
-        <option value="">なし</option>
-        <option value="daily">毎日</option>
-        <option value="weekdays">平日</option>
-        <option value="weekly">毎週</option>
-        <option value="monthly">毎月</option>
+        <option value=""${state.addRecurrence === '' ? ' selected' : ''}>なし</option>
+        <option value="daily"${state.addRecurrence === 'daily' ? ' selected' : ''}>毎日</option>
+        <option value="weekdays"${state.addRecurrence === 'weekdays' ? ' selected' : ''}>平日</option>
+        <option value="weekly"${state.addRecurrence === 'weekly' ? ' selected' : ''}>毎週</option>
+        <option value="monthly"${state.addRecurrence === 'monthly' ? ' selected' : ''}>毎月</option>
       </select>
     </div>
 
@@ -203,6 +206,7 @@ function render() {
     btn.addEventListener('click', () => {
       weightWrap.querySelectorAll('.weight-btn').forEach(b => b.classList.remove('selected'));
       btn.classList.add('selected');
+      state.addWeight = btn.dataset.w || 'medium';
     })
   );
 
@@ -254,7 +258,11 @@ function render() {
   container.querySelector('#task-add-btn')
     ?.addEventListener('click', () => handleAdd());
   container.querySelector('#task-input')
+    ?.addEventListener('input', e => { state.addTitle = e.target.value; });
+  container.querySelector('#task-input')
     ?.addEventListener('keydown', e => { if (e.key === 'Enter') handleAdd(); });
+  container.querySelector('#task-recurrence')
+    ?.addEventListener('change', e => { state.addRecurrence = e.target.value || ''; });
 
   wireFilters(container);
 
@@ -1064,23 +1072,26 @@ function wireTaskActions() {
 function handleAdd() {
   const c     = state.container;
   const input = c.querySelector('#task-input');
-  const title = input?.value?.trim();
+  const title = (state.addTitle || input?.value || '').trim();
   if (!title) { input?.focus(); return; }
 
-  const weight     = c.querySelector('.weight-btn.selected')?.dataset.w || 'medium';
+  const weight     = state.addWeight || c.querySelector('.weight-btn.selected')?.dataset.w || 'medium';
   const dueDate    = state.addDueDate;
   const dueTime    = state.addDueTime;
   const estimatedMinutes = state.addEstimate ? Number(state.addEstimate) : null;
-  const recurFreq  = c.querySelector('#task-recurrence')?.value || '';
+  const recurFreq  = state.addRecurrence || c.querySelector('#task-recurrence')?.value || '';
   const recurrence = recurFreq ? { freq: recurFreq } : null;
   const tags       = [...state.addTags];
   const taskType   = state.addTaskType;
 
   // Clear form immediately for instant feel
   input.value = '';
+  state.addTitle = '';
+  state.addWeight = 'medium';
   state.addDueDate = null;
   state.addDueTime = null;
   state.addEstimate = null;
+  state.addRecurrence = '';
   state.addTags    = [];
   state.addTaskType = 'normal';
   state.addCustomTagOpen = false;
