@@ -495,15 +495,18 @@ function applyAccentTheme(rgb, tuningInput) {
   const tuning = normalizeThemeTuning(tuningInput);
   const hsl = rgbToHsl(normalizeAccentRgb(rgb));
   const vividness = tuning.accentVividness / 100;
+  const neutralness = Math.max(0, 1 - (hsl.s / 0.28));
+  const lightnessLift = 0.16 - vividness * 0.12 - neutralness * 0.12;
   const adjustedBase = hslToRgb(
     hsl.h,
-    Math.max(0.08, Math.min(0.92, hsl.s * (0.62 + vividness * 0.85))),
-    Math.max(0.22, Math.min(0.84, hsl.l + (0.16 - vividness * 0.12))),
+    Math.max(0.04, Math.min(0.92, hsl.s * (0.62 + vividness * 0.85))),
+    Math.max(0.16, Math.min(0.8, hsl.l + lightnessLift)),
   );
-  const lighter = mixRgb(adjustedBase, { r: 255, g: 255, b: 255 }, 0.34 - vividness * 0.16);
-  const lightest = mixRgb(adjustedBase, { r: 255, g: 255, b: 255 }, 0.58 - vividness * 0.18);
-  const darker = mixRgb(adjustedBase, { r: 20, g: 24, b: 36 }, 0.16 + vividness * 0.07);
-  const success = mixRgb(adjustedBase, { r: 130, g: 220, b: 235 }, 0.15 + vividness * 0.16);
+  const lighter = mixRgb(adjustedBase, { r: 255, g: 255, b: 255 }, 0.34 - vividness * 0.16 - neutralness * 0.18);
+  const lightest = mixRgb(adjustedBase, { r: 255, g: 255, b: 255 }, 0.58 - vividness * 0.18 - neutralness * 0.28);
+  const darker = mixRgb(adjustedBase, { r: 20, g: 24, b: 36 }, 0.16 + vividness * 0.07 + neutralness * 0.08);
+  const successTarget = neutralness > 0.45 ? { r: 168, g: 176, b: 186 } : { r: 130, g: 220, b: 235 };
+  const success = mixRgb(adjustedBase, successTarget, 0.15 + vividness * 0.16 - neutralness * 0.08);
 
   root.style.setProperty('--primary', rgbToCss(adjustedBase));
   root.style.setProperty('--primary-dark', rgbToCss(darker));
@@ -512,10 +515,10 @@ function applyAccentTheme(rgb, tuningInput) {
   root.style.setProperty('--accent', rgbToCss(lighter));
   root.style.setProperty('--gradient', `linear-gradient(135deg, ${rgbToCss(lighter)} 0%, ${rgbToCss(success)} 100%)`);
   root.style.setProperty('--gradient-h', `linear-gradient(90deg, ${rgbToCss(lighter)} 0%, ${rgbToCss(success)} 100%)`);
-  root.style.setProperty('--primary-bg', rgbToCss(adjustedBase, 0.15 + vividness * 0.06));
-  root.style.setProperty('--primary-border', rgbToCss(adjustedBase, 0.24 + vividness * 0.12));
-  root.style.setProperty('--success-bg', rgbToCss(success, 0.15));
-  root.style.setProperty('--success-border', rgbToCss(success, 0.28));
+  root.style.setProperty('--primary-bg', rgbToCss(adjustedBase, 0.12 + vividness * 0.05 - neutralness * 0.04));
+  root.style.setProperty('--primary-border', rgbToCss(adjustedBase, 0.18 + vividness * 0.10 - neutralness * 0.05));
+  root.style.setProperty('--success-bg', rgbToCss(success, 0.12 - neutralness * 0.03));
+  root.style.setProperty('--success-border', rgbToCss(success, 0.22 - neutralness * 0.05));
 }
 
 // ---- App init ----
