@@ -41,6 +41,8 @@ const MODULES = {
 
 let currentView = null;
 let cleanupFn = null;
+let swUpdateIntervalId = null;
+let swReloading = false;
 
 // ---- Navigation ----
 
@@ -253,7 +255,7 @@ async function init() {
 
   // Register service worker (relative path works whether served from root or subdirectory)
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    setupServiceWorkerAutoUpdate().catch(() => {});
   }
 
   // Show UI
@@ -302,6 +304,7 @@ async function init() {
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
     try { autoArchiveTasks(); } catch {}
+    try { navigator.serviceWorker?.getRegistration?.().then(reg => reg?.update?.()).catch(() => {}); } catch {}
     getSession().then(session => {
       if (!session) return;
       pullIfStale(30_000).then(pulled => {
@@ -314,6 +317,40 @@ async function init() {
       }).catch(() => {});
     }).catch(() => {});
   });
+}
+
+async function setupServiceWorkerAutoUpdate() {
+  const registration = await navigator.serviceWorker.register('./sw.js');
+  const markWaitingWorker = (worker) => {
+    if (!worker) return;
+    worker.postMessage({ type: 'SKIP_WAITING' });
+  };
+
+  if (registration.waiting) markWaitingWorker(registration.waiting);
+
+  registration.addEventListener('updatefound', () => {
+    const installing = registration.installing;
+    if (!installing) return;
+    installing.addEventListener('statechange', () => {
+      if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+        markWaitingWorker(registration.waiting || installing);
+      }
+    });
+  });
+
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (swReloading) return;
+    swReloading = true;
+    showToast('Updated to the latest version.', 'success');
+    setTimeout(() => window.location.reload(), 120);
+  });
+
+  try { await registration.update(); } catch {}
+
+  if (swUpdateIntervalId) clearInterval(swUpdateIntervalId);
+  swUpdateIntervalId = setInterval(() => {
+    registration.update().catch(() => {});
+  }, 60 * 1000);
 }
 
 // Expose to global (for modules to call — avoids circular imports)
