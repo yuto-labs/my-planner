@@ -70,7 +70,9 @@ const CONFLICT_KEY = {
 // ---- Push デバウンスタイマー ----
 const _timers = {};
 const _deleteTimers = new Map();
-const DELETE_GRACE_MS = 5600;
+const DELETE_GRACE_MS = 250;
+const DELETE_TOMBSTONE_KEY = 'mp_sync_pending_deletes';
+const DELETE_TOMBSTONE_TTL_MS = 10 * 60 * 1000;
 let _realtimeChannel = null;
 let _realtimeUserId = null;
 let _realtimePullTimer = null;
@@ -194,8 +196,8 @@ async function _pullTasks(client, userId, forceReplace = false) {
     .from('tasks').select('*').eq('user_id', userId);
   if (error || !data) return;
 
-  const remoteActive  = data.filter(r => !r.archived_at).map(rowToTask);
-  const remoteArchive = data.filter(r =>  r.archived_at).map(rowToTask);
+  const remoteActive  = _filterPendingDeletes('tasks', data.filter(r => !r.archived_at).map(rowToTask));
+  const remoteArchive = _filterPendingDeletes('tasks', data.filter(r =>  r.archived_at).map(rowToTask));
 
   const nextActive = forceReplace ? remoteActive : _merge(_ls('mp_tasks', []), remoteActive);
   const nextArchive = forceReplace ? remoteArchive : _merge(_ls('mp_task_archive', []), remoteArchive);
@@ -208,7 +210,7 @@ async function _pullEvents(client, userId, forceReplace = false) {
   const { data, error } = await client
     .from('events').select('*').eq('user_id', userId);
   if (error || !data) return;
-  const remote = data.map(rowToEvent);
+  const remote = _filterPendingDeletes('events', data.map(rowToEvent));
   return _writeIfChanged('mp_events', forceReplace ? remote : _merge(_ls('mp_events', []), remote));
 }
 
@@ -216,7 +218,7 @@ async function _pullGoals(client, userId, forceReplace = false) {
   const { data, error } = await client
     .from('goals').select('*').eq('user_id', userId);
   if (error || !data) return;
-  const remote = data.map(rowToGoal);
+  const remote = _filterPendingDeletes('goals', data.map(rowToGoal));
   return _writeIfChanged('mp_goals', forceReplace ? remote : _merge(_ls('mp_goals', []), remote));
 }
 
@@ -226,7 +228,7 @@ async function _pullMemos(client, userId) {
   if (error || !data) return;
   // Remote is authoritative for existence: memos absent from remote were deleted on another device.
   // Prefer local version only when it's newer (unsent edits).
-  const remote = data.map(rowToMemo);
+  const remote = _filterPendingDeletes('knowledge_memos', data.map(rowToMemo));
   const local  = _ls('mp_knowledge', []);
   const result = remote.map(r => {
     const l = local.find(li => li.id === r.id);
@@ -242,7 +244,7 @@ async function _pullTrash(client, userId, forceReplace = false) {
   const { data, error } = await client
     .from('trash_items').select('*').eq('user_id', userId);
   if (error || !data) return;
-  const remote = data.map(rowToTrash);
+  const remote = _filterPendingDeletes('trash_items', data.map(rowToTrash));
   return _writeIfChanged('mp_trash', forceReplace ? remote : _merge(_ls('mp_trash', []), remote));
 }
 
@@ -252,7 +254,7 @@ async function _pullSchedule(client, userId) {
   if (error || !data) return;
   // Remote is authoritative for existence: items absent from remote were deleted on another device.
   // Prefer local version only when it's newer (unsent edits).
-  const remote = data.map(rowToSchedItem);
+  const remote = _filterPendingDeletes('schedule_items', data.map(rowToSchedItem));
   const local  = _ls('mp_schedule', []);
   const result = remote.map(r => {
     const l = local.find(li => li.id === r.id);
@@ -268,7 +270,7 @@ async function _pullTags(client, userId, forceReplace = false) {
   const { data, error } = await client
     .from('tags').select('name').eq('user_id', userId);
   if (error || !data) return;
-  const remoteTags = data.map(r => r.name);
+  const remoteTags = _filterPendingTagDeletes(data.map(r => r.name));
   const localTags  = _ls('mp_tags', []);
   const merged = forceReplace
     ? [...new Set(remoteTags)].sort()
@@ -307,11 +309,15 @@ export async function pullIfStale(minAgeMs = 30_000, forceReplace = false) {
 // ---- Utils ----
 
 function _scheduleDelete(payload) {
+  _markPendingDelete(payload);
   const key = _deleteKey(payload);
   clearTimeout(_deleteTimers.get(key));
   _deleteTimers.set(key, setTimeout(async () => {
     _deleteTimers.delete(key);
-    if (!_isStillDeleted(payload)) return;
+    if (!_isStillDeleted(payload)) {
+      _clearPendingDelete(payload);
+      return;
+    }
 
     const client = await getClient();
     const userId = await getUserId();
@@ -329,8 +335,11 @@ function _scheduleDelete(payload) {
           .eq('id', payload.id)
           .eq('user_id', userId);
       }
+      _clearPendingDelete(payload);
     } catch (e) {
       console.warn(`[Sync] delete ${payload.table} failed:`, e);
+      if (_isStillDeleted(payload)) _scheduleDelete(payload);
+      else _clearPendingDelete(payload);
     }
   }, DELETE_GRACE_MS));
 }
@@ -361,6 +370,66 @@ function _isStillDeleted({ table, id, name }) {
 
 function _hasId(key, id) {
   return _ls(key, []).some(item => item?.id === id);
+}
+
+function _getPendingDeletes() {
+  const now = Date.now();
+  const all = _ls(DELETE_TOMBSTONE_KEY, []);
+  const filtered = all.filter(entry => {
+    if (!entry?.table) return false;
+    if ((entry.expiresAt || 0) < now) return false;
+    if (!_isStillDeleted(entry)) return false;
+    return true;
+  });
+  if (JSON.stringify(filtered) !== JSON.stringify(all)) {
+    localStorage.setItem(DELETE_TOMBSTONE_KEY, JSON.stringify(filtered));
+  }
+  return filtered;
+}
+
+function _savePendingDeletes(entries) {
+  localStorage.setItem(DELETE_TOMBSTONE_KEY, JSON.stringify(entries));
+}
+
+function _markPendingDelete(payload) {
+  const entries = _getPendingDeletes();
+  const key = _deleteKey(payload);
+  const next = {
+    table: payload.table,
+    id: payload.id || null,
+    name: payload.name || null,
+    expiresAt: Date.now() + DELETE_TOMBSTONE_TTL_MS,
+  };
+  const idx = entries.findIndex(entry => _deleteKey(entry) === key);
+  if (idx >= 0) entries[idx] = next;
+  else entries.push(next);
+  _savePendingDeletes(entries);
+}
+
+function _clearPendingDelete(payload) {
+  const key = _deleteKey(payload);
+  const entries = _getPendingDeletes().filter(entry => _deleteKey(entry) !== key);
+  _savePendingDeletes(entries);
+}
+
+function _filterPendingDeletes(table, items) {
+  const deletedIds = new Set(
+    _getPendingDeletes()
+      .filter(entry => entry.table === table && entry.id)
+      .map(entry => entry.id)
+  );
+  if (!deletedIds.size) return items;
+  return items.filter(item => !deletedIds.has(item.id));
+}
+
+function _filterPendingTagDeletes(tags) {
+  const deletedNames = new Set(
+    _getPendingDeletes()
+      .filter(entry => entry.table === 'tags' && entry.name)
+      .map(entry => entry.name)
+  );
+  if (!deletedNames.size) return tags;
+  return tags.filter(name => !deletedNames.has(name));
 }
 
 function _writeIfChanged(key, value) {
