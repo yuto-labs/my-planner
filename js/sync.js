@@ -73,6 +73,8 @@ const _deleteTimers = new Map();
 const DELETE_GRACE_MS = 250;
 const DELETE_TOMBSTONE_KEY = 'mp_sync_pending_deletes';
 const DELETE_TOMBSTONE_TTL_MS = 10 * 60 * 1000;
+const RECENT_UPSERT_KEY = 'mp_sync_recent_upserts';
+const RECENT_UPSERT_TTL_MS = 3 * 60 * 1000;
 let _realtimeChannel = null;
 let _realtimeUserId = null;
 let _realtimePullTimer = null;
@@ -82,6 +84,7 @@ let _realtimePullTimer = null;
 export function initSync() {
   // storage.js から書き込み通知を受け取る
   registerSyncHook((table) => {
+    _markRecentUpserts(table);
     clearTimeout(_timers[table]);
     _timers[table] = setTimeout(() => _pushTable(table), 800);
   });
@@ -199,8 +202,8 @@ async function _pullTasks(client, userId, forceReplace = false) {
   const remoteActive  = _filterPendingDeletes('tasks', data.filter(r => !r.archived_at).map(rowToTask));
   const remoteArchive = _filterPendingDeletes('tasks', data.filter(r =>  r.archived_at).map(rowToTask));
 
-  const nextActive = forceReplace ? remoteActive : _merge(_ls('mp_tasks', []), remoteActive);
-  const nextArchive = forceReplace ? remoteArchive : _merge(_ls('mp_task_archive', []), remoteArchive);
+  const nextActive = forceReplace ? _mergeRecentLocalItems('tasks', 'mp_tasks', remoteActive) : _merge(_ls('mp_tasks', []), remoteActive);
+  const nextArchive = forceReplace ? _mergeRecentLocalItems('tasks_archive', 'mp_task_archive', remoteArchive) : _merge(_ls('mp_task_archive', []), remoteArchive);
   const changedActive = _writeIfChanged('mp_tasks', nextActive);
   const changedArchive = _writeIfChanged('mp_task_archive', nextArchive);
   return changedActive || changedArchive;
@@ -211,7 +214,7 @@ async function _pullEvents(client, userId, forceReplace = false) {
     .from('events').select('*').eq('user_id', userId);
   if (error || !data) return;
   const remote = _filterPendingDeletes('events', data.map(rowToEvent));
-  return _writeIfChanged('mp_events', forceReplace ? remote : _merge(_ls('mp_events', []), remote));
+  return _writeIfChanged('mp_events', forceReplace ? _mergeRecentLocalItems('events', 'mp_events', remote) : _merge(_ls('mp_events', []), remote));
 }
 
 async function _pullGoals(client, userId, forceReplace = false) {
@@ -219,7 +222,7 @@ async function _pullGoals(client, userId, forceReplace = false) {
     .from('goals').select('*').eq('user_id', userId);
   if (error || !data) return;
   const remote = _filterPendingDeletes('goals', data.map(rowToGoal));
-  return _writeIfChanged('mp_goals', forceReplace ? remote : _merge(_ls('mp_goals', []), remote));
+  return _writeIfChanged('mp_goals', forceReplace ? _mergeRecentLocalItems('goals', 'mp_goals', remote) : _merge(_ls('mp_goals', []), remote));
 }
 
 async function _pullMemos(client, userId) {
@@ -237,7 +240,7 @@ async function _pullMemos(client, userId) {
     const lt = new Date(l.updatedAt || l.createdAt || 0).getTime();
     return lt > rt ? l : r;
   });
-  return _writeIfChanged('mp_knowledge', result);
+  return _writeIfChanged('mp_knowledge', _appendRecentLocalItems('knowledge_memos', 'mp_knowledge', result));
 }
 
 async function _pullTrash(client, userId, forceReplace = false) {
@@ -245,7 +248,7 @@ async function _pullTrash(client, userId, forceReplace = false) {
     .from('trash_items').select('*').eq('user_id', userId);
   if (error || !data) return;
   const remote = _filterPendingDeletes('trash_items', data.map(rowToTrash));
-  return _writeIfChanged('mp_trash', forceReplace ? remote : _merge(_ls('mp_trash', []), remote));
+  return _writeIfChanged('mp_trash', forceReplace ? _mergeRecentLocalItems('trash_items', 'mp_trash', remote) : _merge(_ls('mp_trash', []), remote));
 }
 
 async function _pullSchedule(client, userId) {
@@ -263,7 +266,7 @@ async function _pullSchedule(client, userId) {
     const lt = new Date(l.updatedAt || l.createdAt || 0).getTime();
     return lt > rt ? l : r;
   });
-  return _writeIfChanged('mp_schedule', result);
+  return _writeIfChanged('mp_schedule', _appendRecentLocalItems('schedule_items', 'mp_schedule', result));
 }
 
 async function _pullTags(client, userId, forceReplace = false) {
@@ -273,7 +276,7 @@ async function _pullTags(client, userId, forceReplace = false) {
   const remoteTags = _filterPendingTagDeletes(data.map(r => r.name));
   const localTags  = _ls('mp_tags', []);
   const merged = forceReplace
-    ? [...new Set(remoteTags)].sort()
+    ? _mergeRecentLocalTags(remoteTags)
     : [...new Set([...localTags, ...remoteTags])].sort();
   return _writeIfChanged('mp_tags', merged);
 }
@@ -430,6 +433,85 @@ function _filterPendingTagDeletes(tags) {
   );
   if (!deletedNames.size) return tags;
   return tags.filter(name => !deletedNames.has(name));
+}
+
+function _getRecentUpserts() {
+  const now = Date.now();
+  const all = _ls(RECENT_UPSERT_KEY, []);
+  const filtered = all.filter(entry => {
+    if (!entry?.table) return false;
+    if ((entry.expiresAt || 0) < now) return false;
+    if (!_isStillPresent(entry)) return false;
+    return true;
+  });
+  if (JSON.stringify(filtered) !== JSON.stringify(all)) {
+    localStorage.setItem(RECENT_UPSERT_KEY, JSON.stringify(filtered));
+  }
+  return filtered;
+}
+
+function _saveRecentUpserts(entries) {
+  localStorage.setItem(RECENT_UPSERT_KEY, JSON.stringify(entries));
+}
+
+function _markRecentUpserts(tableKey) {
+  const entries = _getRecentUpserts();
+  const expiresAt = Date.now() + RECENT_UPSERT_TTL_MS;
+
+  if (tableKey === 'tags') {
+    const names = _ls('mp_tags', []);
+    const survivors = entries.filter(entry => entry.table !== 'tags');
+    names.forEach(name => {
+      survivors.push({ table: 'tags', name, expiresAt });
+    });
+    _saveRecentUpserts(survivors);
+    return;
+  }
+
+  const lsKey = LS_KEYS[tableKey];
+  if (!lsKey) return;
+  const items = _ls(lsKey, []);
+  const survivors = entries.filter(entry => entry.table !== tableKey);
+  items.forEach(item => {
+    if (!item?.id) return;
+    survivors.push({ table: tableKey, id: item.id, expiresAt });
+  });
+  _saveRecentUpserts(survivors);
+}
+
+function _isStillPresent(entry) {
+  if (entry.table === 'tags') {
+    return _ls('mp_tags', []).includes(entry.name);
+  }
+  const lsKey = LS_KEYS[entry.table];
+  if (!lsKey || !entry.id) return false;
+  return _hasId(lsKey, entry.id);
+}
+
+function _appendRecentLocalItems(tableKey, lsKey, remoteItems) {
+  const recentIds = new Set(
+    _getRecentUpserts()
+      .filter(entry => entry.table === tableKey && entry.id)
+      .map(entry => entry.id)
+  );
+  if (!recentIds.size) return remoteItems;
+  const localItems = _ls(lsKey, []);
+  const remoteIds = new Set(remoteItems.map(item => item.id));
+  const appended = localItems.filter(item => item?.id && recentIds.has(item.id) && !remoteIds.has(item.id));
+  return appended.length ? [...remoteItems, ...appended] : remoteItems;
+}
+
+function _mergeRecentLocalItems(tableKey, lsKey, remoteItems) {
+  return _appendRecentLocalItems(tableKey, lsKey, remoteItems);
+}
+
+function _mergeRecentLocalTags(remoteTags) {
+  const recentNames = new Set(
+    _getRecentUpserts()
+      .filter(entry => entry.table === 'tags' && entry.name)
+      .map(entry => entry.name)
+  );
+  return [...new Set([...remoteTags, ..._ls('mp_tags', []).filter(name => recentNames.has(name))])].sort();
 }
 
 function _writeIfChanged(key, value) {
