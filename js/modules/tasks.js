@@ -993,6 +993,9 @@ function renderTaskItem(task) {
   const tagChips = (task.tags || []).slice(0, 2)
     .map(t => `<span class="task-tag-chip task-tag-chip--sm">${esc(t)}</span>`)
     .join('');
+  const metaInline = [subChip, estimateChip, memoIcon, recurIcon, dueLabel, tagChips]
+    .filter(Boolean)
+    .join('');
 
   const isGoal = task.taskType === 'goal';
 
@@ -1006,11 +1009,11 @@ function renderTaskItem(task) {
       </button>
       <span class="weight-dot weight-${task.weight || 'medium'}"></span>
       ${isGoal ? '<span class="task-goal-icon">🎯</span>' : ''}
-      <span class="task-title" data-action="edit-title">${esc(task.title)}</span>
-      ${subChip}${estimateChip}${memoIcon}${recurIcon}
+      <div class="task-main">
+        <span class="task-title" data-action="edit-title">${esc(task.title)}</span>
+        ${metaInline ? `<div class="task-inline-meta">${metaInline}</div>` : ''}
+      </div>
       <div class="task-meta">
-        ${dueLabel}
-        ${tagChips}
         ${isGoal ? `<button class="btn btn-ghost btn-sm task-decompose-btn" data-action="decompose" title="AIでサブタスクに分解">🤖</button>` : ''}
         ${task.abandoned
           ? `<button class="task-abandon task-abandon--undo" data-action="unabandon" aria-label="諦めを取り消す" title="諦めを取り消す">↩</button>`

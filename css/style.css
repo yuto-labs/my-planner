@@ -1110,7 +1110,7 @@ button { cursor: pointer; font-family: inherit; }
 }
 .task-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   padding: 13px 14px;
   background: var(--bg-card);
@@ -1137,8 +1137,36 @@ button { cursor: pointer; font-family: inherit; }
 }
 .task-check.done { background: var(--success); border-color: var(--success); color: #0D0D15; }
 .task-check svg { width: 12px; height: 12px; }
-.task-title { flex: 1; font-size: 13px; }
-.task-meta { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.task-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.task-title {
+  display: block;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.task-inline-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.task-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin-left: auto;
+}
 .task-due { font-size: 11px; color: var(--text-dim); }
 .task-delete {
   width: 36px; height: 36px;
