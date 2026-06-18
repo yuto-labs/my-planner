@@ -354,8 +354,9 @@ function applyTheme(theme) {
   const html = document.documentElement;
   const settings = getSettings();
   const tuning = settings.themeTuning || DEFAULT_THEME_TUNING;
-  html.setAttribute('data-theme', 'tone');
-  applySurfaceTheme(tuning);
+  const mode = theme === 'light' ? 'light' : 'dark';
+  html.setAttribute('data-theme', mode);
+  applySurfaceTheme(mode, tuning);
   applyAccentTheme(settings.accentRgb || DEFAULT_ACCENT_RGB, tuning);
 }
 
@@ -459,34 +460,86 @@ function rgbToCss(rgb, alpha = 1) {
   return `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`;
 }
 
-function applySurfaceTheme(tuningInput) {
+function applySurfaceTheme(mode, tuningInput) {
   const root = document.documentElement;
   const tuning = normalizeThemeTuning(tuningInput);
   const tone = tuning.toneLevel / 100;
-  const contrast = 3 + (tuning.cardContrast / 100) * 13;
-  const bgLight = 99 - tone * 97;
-  const cardLight = Math.min(100, bgLight + contrast);
-  const inputLight = Math.max(2, bgLight - (1.5 + tone * 1.8));
-  const textLight = 12 + tone * 80;
+  const contrastStrength = tuning.cardContrast / 100;
   const glowAlpha = 0.04 + (tuning.glowIntensity / 100) * 0.22;
-  const darkAlpha = 0.03 + tone * 0.10;
-  const lightAlpha = 0.03 + tone * 0.07;
-  const shadowAlpha = 0.08 + tone * 0.52;
+  let bgLight;
+  let cardLight;
+  let inputLight;
+  let textLight;
+  let textMutedAlpha;
+  let textDimAlpha;
+  let hoverAlpha;
+  let activeAlpha;
+  let borderAlpha;
+  let borderLightAlpha;
+  let shadowAlpha;
+  let scrollbarAlpha;
+  let glassAlpha;
 
-  root.style.setProperty('--bg', `hsl(240 24% ${bgLight.toFixed(1)}%)`);
-  root.style.setProperty('--bg-card', `hsl(241 28% ${cardLight.toFixed(1)}%)`);
-  root.style.setProperty('--bg-input', `hsl(242 26% ${inputLight.toFixed(1)}%)`);
-  root.style.setProperty('--text', `hsl(250 32% ${textLight.toFixed(1)}%)`);
-  root.style.setProperty('--text-muted', `rgba(${Math.round(26 + tone * 211)}, ${Math.round(24 + tone * 212)}, ${Math.round(48 + tone * 201)}, ${(0.40 + tone * 0.26).toFixed(3)})`);
-  root.style.setProperty('--text-dim', `rgba(${Math.round(26 + tone * 211)}, ${Math.round(24 + tone * 212)}, ${Math.round(48 + tone * 201)}, ${(0.18 + tone * 0.22).toFixed(3)})`);
-  root.style.setProperty('--bg-hover', `rgba(${Math.round(255 - tone * 255)}, ${Math.round(255 - tone * 255)}, ${Math.round(255 - tone * 255)}, ${(0.02 + Math.abs(tone - 0.5) * 0.06 + tuning.cardContrast / 100 * 0.03).toFixed(3)})`);
-  root.style.setProperty('--bg-active', `rgba(${Math.round(255 - tone * 255)}, ${Math.round(255 - tone * 255)}, ${Math.round(255 - tone * 255)}, ${(0.04 + Math.abs(tone - 0.5) * 0.08 + tuning.cardContrast / 100 * 0.04).toFixed(3)})`);
-  root.style.setProperty('--border', `rgba(${Math.round(255 - tone * 255)}, ${Math.round(255 - tone * 255)}, ${Math.round(255 - tone * 255)}, ${(darkAlpha + tuning.cardContrast / 100 * 0.04).toFixed(3)})`);
-  root.style.setProperty('--border-light', `rgba(${Math.round(255 - tone * 255)}, ${Math.round(255 - tone * 255)}, ${Math.round(255 - tone * 255)}, ${(lightAlpha + tuning.cardContrast / 100 * 0.03).toFixed(3)})`);
-  root.style.setProperty('--shadow', `0 8px 32px rgba(0,0,0,${shadowAlpha.toFixed(3)})`);
-  root.style.setProperty('--shadow-sm', `0 2px 12px rgba(0,0,0,${(shadowAlpha * 0.72).toFixed(3)})`);
-  root.style.setProperty('--scrollbar', `rgba(${Math.round(255 - tone * 113)}, ${Math.round(255 - tone * 54)}, ${Math.round(255 - tone * 68)}, ${(0.10 + tuning.cardContrast / 100 * 0.10).toFixed(3)})`);
-  root.style.setProperty('--surface-glass', `rgba(${Math.round(242 - tone * 229)}, ${Math.round(241 - tone * 228)}, ${Math.round(253 - tone * 232)}, ${(0.78 + tuning.cardContrast / 100 * 0.14).toFixed(3)})`);
+  if (mode === 'light') {
+    bgLight = 99.2 - tone * 5.4;
+    cardLight = Math.max(92, Math.min(100, bgLight + 1.8 + contrastStrength * 3.2));
+    inputLight = Math.max(88, bgLight - (3.8 + contrastStrength * 2.6));
+    textLight = Math.max(14, 19 + tone * 10);
+    textMutedAlpha = 0.54 + contrastStrength * 0.18;
+    textDimAlpha = 0.28 + contrastStrength * 0.18;
+    hoverAlpha = 0.035 + contrastStrength * 0.03;
+    activeAlpha = 0.065 + contrastStrength * 0.04;
+    borderAlpha = 0.06 + contrastStrength * 0.05;
+    borderLightAlpha = 0.035 + contrastStrength * 0.035;
+    shadowAlpha = 0.07 + contrastStrength * 0.09;
+    scrollbarAlpha = 0.14 + contrastStrength * 0.08;
+    glassAlpha = 0.84 + contrastStrength * 0.08;
+
+    root.style.setProperty('--bg', `hsl(240 24% ${bgLight.toFixed(1)}%)`);
+    root.style.setProperty('--bg-card', `hsl(0 0% ${cardLight.toFixed(1)}%)`);
+    root.style.setProperty('--bg-input', `hsl(242 26% ${inputLight.toFixed(1)}%)`);
+    root.style.setProperty('--text', `hsl(250 28% ${textLight.toFixed(1)}%)`);
+    root.style.setProperty('--text-muted', `rgba(26, 24, 48, ${textMutedAlpha.toFixed(3)})`);
+    root.style.setProperty('--text-dim', `rgba(26, 24, 48, ${textDimAlpha.toFixed(3)})`);
+    root.style.setProperty('--bg-hover', `rgba(142, 201, 187, ${hoverAlpha.toFixed(3)})`);
+    root.style.setProperty('--bg-active', `rgba(142, 201, 187, ${activeAlpha.toFixed(3)})`);
+    root.style.setProperty('--border', `rgba(0, 0, 0, ${borderAlpha.toFixed(3)})`);
+    root.style.setProperty('--border-light', `rgba(0, 0, 0, ${borderLightAlpha.toFixed(3)})`);
+    root.style.setProperty('--shadow', `0 8px 32px rgba(40, 54, 68, ${shadowAlpha.toFixed(3)})`);
+    root.style.setProperty('--shadow-sm', `0 2px 12px rgba(40, 54, 68, ${(shadowAlpha * 0.72).toFixed(3)})`);
+    root.style.setProperty('--scrollbar', `rgba(142, 201, 187, ${scrollbarAlpha.toFixed(3)})`);
+    root.style.setProperty('--surface-glass', `rgba(242, 241, 253, ${glassAlpha.toFixed(3)})`);
+  } else {
+    bgLight = 10.5 - tone * 7.2;
+    cardLight = Math.max(8, Math.min(20, bgLight + 5.2 + contrastStrength * 5.2));
+    inputLight = Math.max(3, bgLight - (1.2 + contrastStrength * 1.8));
+    textLight = Math.min(96, 88 + contrastStrength * 8 - tone * 3);
+    textMutedAlpha = 0.56 + contrastStrength * 0.18;
+    textDimAlpha = 0.32 + contrastStrength * 0.16;
+    hoverAlpha = 0.032 + contrastStrength * 0.03;
+    activeAlpha = 0.06 + contrastStrength * 0.04;
+    borderAlpha = 0.055 + contrastStrength * 0.045;
+    borderLightAlpha = 0.035 + contrastStrength * 0.03;
+    shadowAlpha = 0.34 + contrastStrength * 0.20 + tone * 0.10;
+    scrollbarAlpha = 0.09 + contrastStrength * 0.08;
+    glassAlpha = 0.82 + contrastStrength * 0.10;
+
+    root.style.setProperty('--bg', `hsl(240 24% ${bgLight.toFixed(1)}%)`);
+    root.style.setProperty('--bg-card', `hsl(241 28% ${cardLight.toFixed(1)}%)`);
+    root.style.setProperty('--bg-input', `hsl(242 26% ${inputLight.toFixed(1)}%)`);
+    root.style.setProperty('--text', `hsl(250 32% ${textLight.toFixed(1)}%)`);
+    root.style.setProperty('--text-muted', `rgba(237, 236, 249, ${textMutedAlpha.toFixed(3)})`);
+    root.style.setProperty('--text-dim', `rgba(237, 236, 249, ${textDimAlpha.toFixed(3)})`);
+    root.style.setProperty('--bg-hover', `rgba(255, 255, 255, ${hoverAlpha.toFixed(3)})`);
+    root.style.setProperty('--bg-active', `rgba(255, 255, 255, ${activeAlpha.toFixed(3)})`);
+    root.style.setProperty('--border', `rgba(255, 255, 255, ${borderAlpha.toFixed(3)})`);
+    root.style.setProperty('--border-light', `rgba(255, 255, 255, ${borderLightAlpha.toFixed(3)})`);
+    root.style.setProperty('--shadow', `0 8px 32px rgba(0, 0, 0, ${shadowAlpha.toFixed(3)})`);
+    root.style.setProperty('--shadow-sm', `0 2px 12px rgba(0, 0, 0, ${(shadowAlpha * 0.72).toFixed(3)})`);
+    root.style.setProperty('--scrollbar', `rgba(255, 255, 255, ${scrollbarAlpha.toFixed(3)})`);
+    root.style.setProperty('--surface-glass', `rgba(13, 13, 21, ${glassAlpha.toFixed(3)})`);
+  }
+
   root.style.setProperty('--home-glow', `rgba(190,230,216,${glowAlpha.toFixed(3)})`);
 }
 

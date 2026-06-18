@@ -79,10 +79,23 @@ function renderMainSettings(container) {
         <div class="theme-tuning-card">
           <div class="theme-tuning-top">
             <div>
-              <strong>Theme tuning</strong>
-              <p class="text-sm text-muted">Slide from white to black, then tune contrast, glow, and vividness.</p>
+              <strong>Theme mode</strong>
+              <p class="text-sm text-muted">Choose a base mode, then fine-tune tone, contrast, glow, and vividness.</p>
             </div>
             <button class="btn btn-ghost btn-sm" id="theme-tuning-reset-btn" type="button">Reset</button>
+          </div>
+
+          <div class="batch-mode-select" style="margin-bottom:14px">
+            <button class="batch-mode-btn${settings.theme === 'light' ? ' active' : ''}" data-theme-mode="light" type="button">
+              <div class="batch-mode-icon">White</div>
+              <div class="batch-mode-label">White</div>
+              <div class="batch-mode-sub">Bright base with soft surfaces.</div>
+            </button>
+            <button class="batch-mode-btn${settings.theme !== 'light' ? ' active' : ''}" data-theme-mode="dark" type="button">
+              <div class="batch-mode-icon">Dark</div>
+              <div class="batch-mode-label">Dark</div>
+              <div class="batch-mode-sub">Deeper base for lower-glare viewing.</div>
+            </button>
           </div>
 
           <div class="accent-rgb-grid">
@@ -353,7 +366,7 @@ function wireAppearance(container) {
   const applyThemeTuning = (tuning) => {
     const safe = normalizeThemeTuning(tuning);
     saveSettings({ themeTuning: safe });
-    window.AppTheme?.apply(getSettings().theme || 'auto');
+    window.AppTheme?.apply(getSettings().theme || 'dark');
     syncThemeTuningPreview(safe);
   };
 
@@ -395,6 +408,18 @@ function wireAppearance(container) {
     container.querySelector('#tune-accent-vividness').value = String(safe.accentVividness);
     applyThemeTuning(safe);
     toast('Theme tuning reset.', 'info');
+  });
+
+  container.querySelectorAll('[data-theme-mode]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const mode = btn.dataset.themeMode === 'light' ? 'light' : 'dark';
+      saveSettings({ theme: mode });
+      window.AppTheme?.apply(mode);
+      container.querySelectorAll('[data-theme-mode]').forEach(other => {
+        other.classList.toggle('active', other.dataset.themeMode === mode);
+      });
+      toast(`Theme changed to ${mode}.`, 'info');
+    });
   });
 }
 
