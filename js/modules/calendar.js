@@ -67,8 +67,25 @@ function _setupSwipe(container) {
   let _sx = 0, _sy = 0, _dx = 0;
   let _tracking = false;
   let _settling = false;
+  let _allowSwipe = false;
   const isActiveCalendar = () => container.dataset.view === 'calendar' && state.container === container;
   const view = () => container.querySelector('#cal-view');
+  const SWIPE_BLOCK_SELECTOR = [
+    '.cal-toolbar',
+    '.cal-cell',
+    '.cal-event-chip',
+    '.cal-more',
+    '.cal-week-col-head',
+    '.cal-hour-slot',
+    '.cal-timed-event',
+    '.cal-day-sheet',
+    '.modal',
+    'button',
+    'input',
+    'textarea',
+    'select',
+    '[contenteditable="true"]',
+  ].join(',');
   const clearDrag = () => {
     const v = view();
     if (v) {
@@ -80,6 +97,7 @@ function _setupSwipe(container) {
     _dx = 0;
     _tracking = false;
     _settling = false;
+    _allowSwipe = false;
   };
   const hasSwipeBlocker = () => {
     if (document.querySelector('.cal-day-sheet')) return true;
@@ -93,6 +111,13 @@ function _setupSwipe(container) {
     if (!isActiveCalendar()) return;
     if (hasSwipeBlocker()) return;
     if (_swipeLocked || _settling) return;
+    const target = e.target instanceof Element ? e.target : null;
+    const edgeInset = Math.max(24, Math.round(window.innerWidth * 0.07));
+    const x = e.touches[0].clientX;
+    const fromEdge = x <= edgeInset || x >= (window.innerWidth - edgeInset);
+    const blockedTarget = !!target?.closest?.(SWIPE_BLOCK_SELECTOR);
+    _allowSwipe = fromEdge && !blockedTarget;
+    if (!_allowSwipe) return;
     _sx = e.touches[0].clientX;
     _sy = e.touches[0].clientY;
     _dx = 0;
@@ -101,6 +126,7 @@ function _setupSwipe(container) {
   const onTouchMove = e => {
     if (!isActiveCalendar()) return;
     if (hasSwipeBlocker()) { clearDrag(); return; }
+    if (!_allowSwipe) return;
     if (_swipeLocked || _settling) return;
     const x = e.touches[0].clientX;
     const y = e.touches[0].clientY;
@@ -108,7 +134,7 @@ function _setupSwipe(container) {
     const dy = Math.abs(y - _sy);
 
     if (!_tracking) {
-      if (Math.abs(dx) < 10 || Math.abs(dx) < dy * 1.35) return;
+      if (Math.abs(dx) < 18 || Math.abs(dx) < dy * 1.8) return;
       _tracking = true;
     }
 
@@ -127,12 +153,13 @@ function _setupSwipe(container) {
   const onTouchEnd = e => {
     if (!isActiveCalendar()) return;
     if (hasSwipeBlocker()) { clearDrag(); return; }
+    if (!_allowSwipe) return;
     if (_swipeLocked) return;               // one swipe = one move
     const dx = _tracking ? _dx : e.changedTouches[0].clientX - _sx;
     const dy = Math.abs(e.changedTouches[0].clientY - _sy);
     const v = view();
-    const threshold = Math.min(96, window.innerWidth * 0.24);
-    const shouldMove = Math.abs(dx) > Math.abs(dy) * 1.35 && Math.abs(dx) > threshold;
+    const threshold = Math.min(120, window.innerWidth * 0.28);
+    const shouldMove = Math.abs(dx) > Math.abs(dy) * 1.8 && Math.abs(dx) > threshold;
 
     if (!_tracking && !shouldMove) return;
     if (!v) { clearDrag(); return; }
