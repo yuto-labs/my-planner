@@ -33,7 +33,9 @@ let _swipeLocked  = false; // true while slide animation plays — blocks consec
 
 export function initCalendar(container) {
   state.container = container;
-  state.cursor = new Date();
+  if (!(state.cursor instanceof Date) || Number.isNaN(state.cursor.getTime())) {
+    state.cursor = new Date();
+  }
   const cleanupSwipe = _setupSwipe(container); // register touch listeners for this mount only
   render();
   // Return cleanup: remove calendar-only DOM/listeners when navigating away
@@ -79,8 +81,17 @@ function _setupSwipe(container) {
     _tracking = false;
     _settling = false;
   };
+  const hasSwipeBlocker = () => {
+    if (document.querySelector('.cal-day-sheet')) return true;
+    const modalOverlay = document.getElementById('modal-overlay');
+    if (modalOverlay && !modalOverlay.classList.contains('hidden') && modalOverlay.children.length) return true;
+    const pickerOverlay = document.getElementById('dp-picker-overlay');
+    if (pickerOverlay && !pickerOverlay.classList.contains('hidden') && pickerOverlay.children.length) return true;
+    return false;
+  };
   const onTouchStart = e => {
     if (!isActiveCalendar()) return;
+    if (hasSwipeBlocker()) return;
     if (_swipeLocked || _settling) return;
     _sx = e.touches[0].clientX;
     _sy = e.touches[0].clientY;
@@ -89,6 +100,7 @@ function _setupSwipe(container) {
   };
   const onTouchMove = e => {
     if (!isActiveCalendar()) return;
+    if (hasSwipeBlocker()) { clearDrag(); return; }
     if (_swipeLocked || _settling) return;
     const x = e.touches[0].clientX;
     const y = e.touches[0].clientY;
@@ -114,6 +126,7 @@ function _setupSwipe(container) {
   };
   const onTouchEnd = e => {
     if (!isActiveCalendar()) return;
+    if (hasSwipeBlocker()) { clearDrag(); return; }
     if (_swipeLocked) return;               // one swipe = one move
     const dx = _tracking ? _dx : e.changedTouches[0].clientX - _sx;
     const dy = Math.abs(e.changedTouches[0].clientY - _sy);

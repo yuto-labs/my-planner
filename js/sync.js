@@ -74,7 +74,7 @@ const DELETE_GRACE_MS = 250;
 const DELETE_TOMBSTONE_KEY = 'mp_sync_pending_deletes';
 const DELETE_TOMBSTONE_TTL_MS = 10 * 60 * 1000;
 const RECENT_UPSERT_KEY = 'mp_sync_recent_upserts';
-const RECENT_UPSERT_TTL_MS = 3 * 60 * 1000;
+const RECENT_UPSERT_TTL_MS = 20 * 1000;
 let _realtimeChannel = null;
 let _realtimeUserId = null;
 let _realtimePullTimer = null;
@@ -457,6 +457,7 @@ function _saveRecentUpserts(entries) {
 function _markRecentUpserts(tableKey) {
   const entries = _getRecentUpserts();
   const expiresAt = Date.now() + RECENT_UPSERT_TTL_MS;
+  const threshold = Date.now() - RECENT_UPSERT_TTL_MS;
 
   if (tableKey === 'tags') {
     const names = _ls('mp_tags', []);
@@ -474,6 +475,8 @@ function _markRecentUpserts(tableKey) {
   const survivors = entries.filter(entry => entry.table !== tableKey);
   items.forEach(item => {
     if (!item?.id) return;
+    const touchedAt = new Date(item.updatedAt || item.createdAt || 0).getTime();
+    if (!Number.isFinite(touchedAt) || touchedAt < threshold) return;
     survivors.push({ table: tableKey, id: item.id, expiresAt });
   });
   _saveRecentUpserts(survivors);

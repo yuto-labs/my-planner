@@ -64,6 +64,10 @@ function hasOpenDatePicker() {
   return !!overlay && !overlay.classList.contains('hidden') && !!overlay.children.length;
 }
 
+function hasOpenCalendarSheet() {
+  return !!document.querySelector('.cal-day-sheet');
+}
+
 function isEditableElement(el) {
   if (!el) return false;
   if (el.isContentEditable) return true;
@@ -90,7 +94,7 @@ function hasUnsavedDraft() {
     return true;
   }
 
-  if (currentView === 'calendar' && hasOpenModal()) {
+  if (currentView === 'calendar' && (hasOpenModal() || hasOpenDatePicker() || hasOpenCalendarSheet())) {
     return true;
   }
 
