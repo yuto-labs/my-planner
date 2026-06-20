@@ -75,6 +75,7 @@ const DELETE_TOMBSTONE_KEY = 'mp_sync_pending_deletes';
 const DELETE_TOMBSTONE_TTL_MS = 10 * 60 * 1000;
 const RECENT_UPSERT_KEY = 'mp_sync_recent_upserts';
 const RECENT_UPSERT_TTL_MS = 20 * 1000;
+const PUSH_RETRY_MS = 2500;
 let _realtimeChannel = null;
 let _realtimeUserId = null;
 let _realtimePullTimer = null;
@@ -86,7 +87,10 @@ export function initSync() {
   registerSyncHook((table) => {
     _markRecentUpserts(table);
     clearTimeout(_timers[table]);
-    _timers[table] = setTimeout(() => _pushTable(table), 800);
+    _timers[table] = setTimeout(() => {
+      _timers[table] = null;
+      _pushTable(table);
+    }, 800);
   });
 
   // storage.js から削除通知を受け取る
@@ -149,6 +153,10 @@ export async function stopRealtimeSync() {
   _realtimeUserId = null;
 }
 
+export function hasPendingSyncWork() {
+  return Object.values(_timers).some(Boolean) || _deleteTimers.size > 0;
+}
+
 // ---- Push ----
 
 async function _pushTable(tableKey) {
@@ -169,7 +177,14 @@ async function _pushTable(tableKey) {
   const { error } = await client.from(dbTable)
     .upsert(rows, { onConflict: conflict });
 
-  if (error) console.warn(`[Sync] push ${tableKey} failed:`, error.message);
+  if (error) {
+    console.warn(`[Sync] push ${tableKey} failed:`, error.message);
+    _schedulePushRetry(tableKey);
+    return false;
+  }
+
+  _clearRecentUpsertsForTable(tableKey);
+  return true;
 }
 
 // ---- Pull (起動時 + オンライン復帰時) ----
@@ -183,9 +198,9 @@ export async function pullAll(forceReplace = false) {
     _pullTasks(client, userId, forceReplace),
     _pullEvents(client, userId, forceReplace),
     _pullGoals(client, userId, forceReplace),
-    _pullMemos(client, userId),
+    _pullMemos(client, userId, forceReplace),
     _pullTrash(client, userId, forceReplace),
-    _pullSchedule(client, userId),
+    _pullSchedule(client, userId, forceReplace),
     _pullTags(client, userId, forceReplace),
   ]);
 
@@ -202,8 +217,8 @@ async function _pullTasks(client, userId, forceReplace = false) {
   const remoteActive  = _filterPendingDeletes('tasks', data.filter(r => !r.archived_at).map(rowToTask));
   const remoteArchive = _filterPendingDeletes('tasks', data.filter(r =>  r.archived_at).map(rowToTask));
 
-  const nextActive = forceReplace ? _mergeRecentLocalItems('tasks', 'mp_tasks', remoteActive) : _merge(_ls('mp_tasks', []), remoteActive);
-  const nextArchive = forceReplace ? _mergeRecentLocalItems('tasks_archive', 'mp_task_archive', remoteArchive) : _merge(_ls('mp_task_archive', []), remoteArchive);
+  const nextActive = forceReplace ? _mergeProtectedLocalItems('tasks', 'mp_tasks', remoteActive) : _merge(_ls('mp_tasks', []), remoteActive);
+  const nextArchive = forceReplace ? _mergeProtectedLocalItems('tasks_archive', 'mp_task_archive', remoteArchive) : _merge(_ls('mp_task_archive', []), remoteArchive);
   const changedActive = _writeIfChanged('mp_tasks', nextActive);
   const changedArchive = _writeIfChanged('mp_task_archive', nextArchive);
   return changedActive || changedArchive;
@@ -214,7 +229,7 @@ async function _pullEvents(client, userId, forceReplace = false) {
     .from('events').select('*').eq('user_id', userId);
   if (error || !data) return;
   const remote = _filterPendingDeletes('events', data.map(rowToEvent));
-  return _writeIfChanged('mp_events', forceReplace ? _mergeRecentLocalItems('events', 'mp_events', remote) : _merge(_ls('mp_events', []), remote));
+  return _writeIfChanged('mp_events', forceReplace ? _mergeProtectedLocalItems('events', 'mp_events', remote) : _merge(_ls('mp_events', []), remote));
 }
 
 async function _pullGoals(client, userId, forceReplace = false) {
@@ -222,25 +237,17 @@ async function _pullGoals(client, userId, forceReplace = false) {
     .from('goals').select('*').eq('user_id', userId);
   if (error || !data) return;
   const remote = _filterPendingDeletes('goals', data.map(rowToGoal));
-  return _writeIfChanged('mp_goals', forceReplace ? _mergeRecentLocalItems('goals', 'mp_goals', remote) : _merge(_ls('mp_goals', []), remote));
+  return _writeIfChanged('mp_goals', forceReplace ? _mergeProtectedLocalItems('goals', 'mp_goals', remote) : _merge(_ls('mp_goals', []), remote));
 }
 
-async function _pullMemos(client, userId) {
+async function _pullMemos(client, userId, forceReplace = false) {
   const { data, error } = await client
     .from('knowledge_memos').select('*').eq('user_id', userId);
   if (error || !data) return;
-  // Remote is authoritative for existence: memos absent from remote were deleted on another device.
-  // Prefer local version only when it's newer (unsent edits).
   const remote = _filterPendingDeletes('knowledge_memos', data.map(rowToMemo));
-  const local  = _ls('mp_knowledge', []);
-  const result = remote.map(r => {
-    const l = local.find(li => li.id === r.id);
-    if (!l) return r;
-    const rt = new Date(r.updatedAt || r.createdAt || 0).getTime();
-    const lt = new Date(l.updatedAt || l.createdAt || 0).getTime();
-    return lt > rt ? l : r;
-  });
-  return _writeIfChanged('mp_knowledge', _appendRecentLocalItems('knowledge_memos', 'mp_knowledge', result));
+  return _writeIfChanged('mp_knowledge', forceReplace
+    ? _mergeProtectedLocalItems('knowledge_memos', 'mp_knowledge', remote)
+    : _merge(_ls('mp_knowledge', []), remote));
 }
 
 async function _pullTrash(client, userId, forceReplace = false) {
@@ -248,25 +255,17 @@ async function _pullTrash(client, userId, forceReplace = false) {
     .from('trash_items').select('*').eq('user_id', userId);
   if (error || !data) return;
   const remote = _filterPendingDeletes('trash_items', data.map(rowToTrash));
-  return _writeIfChanged('mp_trash', forceReplace ? _mergeRecentLocalItems('trash_items', 'mp_trash', remote) : _merge(_ls('mp_trash', []), remote));
+  return _writeIfChanged('mp_trash', forceReplace ? _mergeProtectedLocalItems('trash_items', 'mp_trash', remote) : _merge(_ls('mp_trash', []), remote));
 }
 
-async function _pullSchedule(client, userId) {
+async function _pullSchedule(client, userId, forceReplace = false) {
   const { data, error } = await client
     .from('schedule_items').select('*').eq('user_id', userId);
   if (error || !data) return;
-  // Remote is authoritative for existence: items absent from remote were deleted on another device.
-  // Prefer local version only when it's newer (unsent edits).
   const remote = _filterPendingDeletes('schedule_items', data.map(rowToSchedItem));
-  const local  = _ls('mp_schedule', []);
-  const result = remote.map(r => {
-    const l = local.find(li => li.id === r.id);
-    if (!l) return r;
-    const rt = new Date(r.updatedAt || r.createdAt || 0).getTime();
-    const lt = new Date(l.updatedAt || l.createdAt || 0).getTime();
-    return lt > rt ? l : r;
-  });
-  return _writeIfChanged('mp_schedule', _appendRecentLocalItems('schedule_items', 'mp_schedule', result));
+  return _writeIfChanged('mp_schedule', forceReplace
+    ? _mergeProtectedLocalItems('schedule_items', 'mp_schedule', remote)
+    : _merge(_ls('mp_schedule', []), remote));
 }
 
 async function _pullTags(client, userId, forceReplace = false) {
@@ -504,8 +503,24 @@ function _appendRecentLocalItems(tableKey, lsKey, remoteItems) {
   return appended.length ? [...remoteItems, ...appended] : remoteItems;
 }
 
-function _mergeRecentLocalItems(tableKey, lsKey, remoteItems) {
-  return _appendRecentLocalItems(tableKey, lsKey, remoteItems);
+function _mergeProtectedLocalItems(tableKey, lsKey, remoteItems) {
+  const localItems = _ls(lsKey, []);
+  const localById = new Map(localItems.filter(item => item?.id).map(item => [item.id, item]));
+  const recentIds = new Set(
+    _getRecentUpserts()
+      .filter(entry => entry.table === tableKey && entry.id)
+      .map(entry => entry.id)
+  );
+
+  const merged = remoteItems.map(remote => {
+    const local = localById.get(remote.id);
+    if (!local) return remote;
+    return _updatedTs(local) >= _updatedTs(remote) ? local : remote;
+  });
+
+  const remoteIds = new Set(remoteItems.map(item => item.id));
+  const appended = localItems.filter(item => item?.id && recentIds.has(item.id) && !remoteIds.has(item.id));
+  return appended.length ? [...merged, ...appended] : merged;
 }
 
 function _mergeRecentLocalTags(remoteTags) {
@@ -515,6 +530,25 @@ function _mergeRecentLocalTags(remoteTags) {
       .map(entry => entry.name)
   );
   return [...new Set([...remoteTags, ..._ls('mp_tags', []).filter(name => recentNames.has(name))])].sort();
+}
+
+function _updatedTs(item) {
+  const ts = new Date(item?.updatedAt || item?.createdAt || 0).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function _schedulePushRetry(tableKey) {
+  clearTimeout(_timers[tableKey]);
+  _timers[tableKey] = setTimeout(() => {
+    _timers[tableKey] = null;
+    _pushTable(tableKey);
+  }, PUSH_RETRY_MS);
+}
+
+function _clearRecentUpsertsForTable(tableKey) {
+  if (!LS_KEYS[tableKey] && tableKey !== 'tags') return;
+  const entries = _getRecentUpserts().filter(entry => entry.table !== tableKey);
+  _saveRecentUpserts(entries);
 }
 
 function _writeIfChanged(key, value) {

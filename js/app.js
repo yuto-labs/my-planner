@@ -4,7 +4,7 @@
 
 import { getSettings, getBatchSettings, getPendingAIQueue, autoArchiveTasks, isAiAvailable, clearUserContentLocal, DEFAULT_ACCENT_RGB, DEFAULT_THEME_TUNING } from './storage.js';
 import { processBatchQueue, refreshAiRuntimeStatus } from './ai.js';
-import { initSync, pullAll, pullIfStale, startRealtimeSync } from './sync.js';
+import { initSync, pullAll, pullIfStale, startRealtimeSync, hasPendingSyncWork } from './sync.js';
 import { getSession, handleAuthRedirect, getActiveUserId, setActiveUserId } from './supabase.js';
 import { today } from './utils.js';
 import { initHome }     from './modules/home.js';
@@ -113,7 +113,10 @@ function isUserEditing() {
 }
 
 function flushDeferredSyncWork() {
-  if (isUserEditing()) return;
+  if (isUserEditing() || hasPendingSyncWork()) {
+    scheduleDeferredSyncWork();
+    return;
+  }
   const shouldPull = pendingForcedPull;
   const shouldRefresh = pendingSyncRefresh || shouldPull;
   pendingForcedPull = false;
@@ -596,10 +599,14 @@ async function init() {
       }
       setActiveUserId(nextUserId);
       startRealtimeSync().catch(e => console.warn('[Sync] realtime start failed:', e));
-      pullAll(true).then(pulled => {
-        if (!pulled || !currentView) return;
-        refreshCurrentView();
-      }).catch(e => console.warn('[Sync] pullAll failed:', e));
+      if (hasPendingSyncWork()) {
+        deferSyncWhileEditing({ needsPull: true });
+      } else {
+        pullAll(true).then(pulled => {
+          if (!pulled || !currentView) return;
+          refreshCurrentView();
+        }).catch(e => console.warn('[Sync] pullAll failed:', e));
+      }
     }
   } catch (e) {
     console.warn('[Sync] init failed:', e);
@@ -664,7 +671,7 @@ async function init() {
     if (document.hidden) return;
     try { autoArchiveTasks(); } catch {}
     try { navigator.serviceWorker?.getRegistration?.().then(reg => reg?.update?.()).catch(() => {}); } catch {}
-    if (isUserEditing()) {
+    if (isUserEditing() || hasPendingSyncWork()) {
       deferSyncWhileEditing({ needsPull: true });
       return;
     }
@@ -677,7 +684,7 @@ async function init() {
   });
 
   document.addEventListener('sync:updated', () => {
-    if (isUserEditing()) {
+    if (isUserEditing() || hasPendingSyncWork()) {
       deferSyncWhileEditing();
       return;
     }
@@ -767,7 +774,7 @@ function setupConnectivityMonitor() {
         }).catch(e => console.warn('[Batch] auto-process failed:', e));
       }
       // 繧ｪ繝ｳ繝ｩ繧､繝ｳ蠕ｩ蟶ｰ譎ゅ↓ Supabase 縺九ｉ譛譁ｰ繝・・繧ｿ繧・pull
-      if (isUserEditing()) {
+      if (isUserEditing() || hasPendingSyncWork()) {
         deferSyncWhileEditing({ needsPull: true });
         return;
       }
@@ -786,7 +793,7 @@ function setupForegroundSync() {
   if (foregroundSyncIntervalId) clearInterval(foregroundSyncIntervalId);
   foregroundSyncIntervalId = setInterval(() => {
     if (document.hidden) return;
-    if (isUserEditing()) {
+    if (isUserEditing() || hasPendingSyncWork()) {
       deferSyncWhileEditing({ needsPull: true });
       return;
     }
