@@ -5463,3 +5463,59 @@ kbd {
 }
 .kn-ai-related-section.hidden { display: none; }
 
+/* ============================================================
+   87. CALENDAR HOLIDAYS
+   ============================================================ */
+.cal-cell.holiday .cal-cell-num {
+  color: var(--danger);
+}
+.cal-cell.today.holiday .cal-cell-num {
+  color: #0D0D15;
+}
+.cal-cell-holiday-name {
+  font-size: 8px;
+  line-height: 1.2;
+  color: color-mix(in srgb, var(--danger) 86%, var(--text));
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0 1px 2px;
+}
+.cal-week-col-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 6px;
+}
+.cal-week-day-label {
+  display: block;
+}
+.cal-week-col-head.holiday:not(.today) .day-num,
+.cal-week-col-head.holiday {
+  color: color-mix(in srgb, var(--danger) 86%, var(--text));
+}
+.cal-week-holiday-name {
+  display: block;
+  max-width: 100%;
+  margin-top: 2px;
+  padding: 0 3px;
+  font-size: 8px;
+  line-height: 1.15;
+  color: color-mix(in srgb, var(--danger) 86%, var(--text));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cal-day-sheet-date-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.cal-day-sheet-holiday {
+  font-size: 11px;
+  color: color-mix(in srgb, var(--danger) 86%, var(--text));
+}
+

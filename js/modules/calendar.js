@@ -15,6 +15,7 @@ import {
   sameDay, generateId, getEventsForDate,
 } from '../utils.js';
 import { openDatePicker, openTimePicker, formatPickerDate } from '../datepicker.js';
+import { getHolidayInfo } from '../holidays.js';
 
 const nav       = (view) => window.AppNav?.navigate(view);
 const toast     = (msg, type) => window.AppNav?.showToast(msg, type);
@@ -71,15 +72,10 @@ function _setupSwipe(container) {
   const isActiveCalendar = () => container.dataset.view === 'calendar' && state.container === container;
   const view = () => container.querySelector('#cal-view');
   const SWIPE_BLOCK_SELECTOR = [
-    '.cal-toolbar',
-    '.cal-cell',
-    '.cal-event-chip',
-    '.cal-more',
-    '.cal-week-col-head',
-    '.cal-hour-slot',
-    '.cal-timed-event',
     '.cal-day-sheet',
     '.modal',
+    '.dp-popup',
+    '.tp-popup',
     'button',
     'input',
     'textarea',
@@ -112,11 +108,8 @@ function _setupSwipe(container) {
     if (hasSwipeBlocker()) return;
     if (_swipeLocked || _settling) return;
     const target = e.target instanceof Element ? e.target : null;
-    const edgeInset = Math.max(24, Math.round(window.innerWidth * 0.07));
-    const x = e.touches[0].clientX;
-    const fromEdge = x <= edgeInset || x >= (window.innerWidth - edgeInset);
     const blockedTarget = !!target?.closest?.(SWIPE_BLOCK_SELECTOR);
-    _allowSwipe = fromEdge && !blockedTarget;
+    _allowSwipe = !blockedTarget;
     if (!_allowSwipe) return;
     _sx = e.touches[0].clientX;
     _sy = e.touches[0].clientY;
@@ -134,7 +127,7 @@ function _setupSwipe(container) {
     const dy = Math.abs(y - _sy);
 
     if (!_tracking) {
-      if (Math.abs(dx) < 18 || Math.abs(dx) < dy * 1.8) return;
+      if (Math.abs(dx) < 12 || Math.abs(dx) < dy * 1.15) return;
       _tracking = true;
     }
 
@@ -158,8 +151,8 @@ function _setupSwipe(container) {
     const dx = _tracking ? _dx : e.changedTouches[0].clientX - _sx;
     const dy = Math.abs(e.changedTouches[0].clientY - _sy);
     const v = view();
-    const threshold = Math.min(120, window.innerWidth * 0.28);
-    const shouldMove = Math.abs(dx) > Math.abs(dy) * 1.8 && Math.abs(dx) > threshold;
+    const threshold = Math.max(56, Math.min(96, window.innerWidth * 0.16));
+    const shouldMove = Math.abs(dx) > Math.abs(dy) * 1.25 && Math.abs(dx) > threshold;
 
     if (!_tracking && !shouldMove) return;
     if (!v) { clearDrag(); return; }
@@ -351,6 +344,7 @@ function renderMonth() {
       const isOther  = d.getMonth() !== cursor.getMonth();
       const isSun    = col === 0;
       const isSat    = col === 6;
+      const holidayInfo = getHolidayInfo(dateStr);
 
       const dayEvents = eventsByDate.get(dateStr) ?? [];
 
@@ -370,9 +364,11 @@ function renderMonth() {
       if (isOther) classes += ' other-month';
       if (isSun)   classes += ' sunday';
       if (isSat)   classes += ' saturday';
+      if (holidayInfo) classes += ' holiday';
 
       html += `<div class="${classes}" data-date="${dateStr}">
         <div class="cal-cell-num">${d.getDate()}</div>
+        ${holidayInfo ? `<div class="cal-cell-holiday-name" title="${esc(holidayInfo.name)}">${esc(holidayInfo.name)}</div>` : ''}
         ${chips}${moreHtml}
       </div>`;
 
@@ -456,8 +452,9 @@ function renderTimeGrid(numDays = 7) {
           const ds = toDateStr(d);
           const isToday = ds === todayStr;
           const wd = dayLabels[d.getDay()];
-          const cls = `cal-week-col-head${isToday?' today':''} ${d.getDay()===0?'sunday':d.getDay()===6?'saturday':''}`;
-          const inner = `<span class="day-num">${d.getDate()}</span>${wd}`;
+          const holidayInfo = getHolidayInfo(ds);
+          const cls = `cal-week-col-head${isToday?' today':''} ${d.getDay()===0?'sunday':d.getDay()===6?'saturday':''}${holidayInfo?' holiday':''}`;
+          const inner = `<span class="day-num">${d.getDate()}</span><span class="cal-week-day-label">${wd}</span>${holidayInfo ? `<span class="cal-week-holiday-name">${esc(holidayInfo.name)}</span>` : ''}`;
           return numDays === 7
             ? `<button type="button" class="${cls}" data-week-start="${ds}" aria-label="${ds}から1週間を表示">${inner}</button>`
             : `<div class="${cls}">${inner}</div>`;
@@ -637,6 +634,7 @@ function openDaySheet(dateStr) {
   const dayNames = ['日','月','火','水','木','金','土'];
   const dayTitle = `${date.getMonth()+1}月${date.getDate()}日（${dayNames[date.getDay()]}）`;
 
+  const holidayInfo = getHolidayInfo(dateStr);
   const events    = getEvents();
   const dayEvents = getEventsForDate(events, dateStr).sort((a, b) =>
     new Date(a._displayStart ?? a.start).getTime() -
@@ -649,7 +647,10 @@ function openDaySheet(dateStr) {
     <div class="cal-day-sheet-panel">
       <div class="cal-day-sheet-handle"></div>
       <div class="cal-day-sheet-header">
-        <span class="cal-day-sheet-date">${dayTitle}</span>
+        <div class="cal-day-sheet-date-wrap">
+          <span class="cal-day-sheet-date">${dayTitle}</span>
+          ${holidayInfo ? `<span class="cal-day-sheet-holiday">${esc(holidayInfo.name)}</span>` : ''}
+        </div>
         <button class="cal-day-sheet-close" aria-label="閉じる">
           <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
             <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
