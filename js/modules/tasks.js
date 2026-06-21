@@ -20,7 +20,7 @@ const nav       = (view)      => window.AppNav?.navigate(view);
 let openPlannerHandler = null;
 
 let state = {
-  filter:      'all',    // 'all' | 'pending' | 'done' | 'large' | 'medium' | 'small'
+  filter:      'pending',    // 'all' | 'pending' | 'done' | 'large' | 'medium' | 'small'
   container:   null,
   addFormOpen: false,
   addTitle:    '',
@@ -383,19 +383,19 @@ function getTaskCounts() {
 function renderFiltersHTML() {
   const counts = getTaskCounts();
   return [
-    { key: 'all', label: 'すべて', badge: null },
     { key: 'pending', label: '未完了', badge: counts.pending },
     { key: 'done', label: '完了', badge: counts.done },
     { key: 'abandoned', label: '諦めた', badge: counts.abandoned },
     { key: 'large', label: '大', badge: null },
     { key: 'medium', label: '中', badge: null },
     { key: 'small', label: '小', badge: null },
+    { key: 'all', label: 'ALL', badge: null },
   ].map(f =>
     `<button class="filter-btn${state.filter === f.key ? ' active' : ''}" data-filter="${f.key}">
       ${f.label}${f.badge !== null ? `<span class="filter-badge">${f.badge}</span>` : ''}
     </button>`
   ).join('') + (counts.done > 0
-    ? `<button class="filter-btn tasks-clear-done" id="tasks-clear-done" title="完了済みを一括削除">🗑 クリア</button>`
+    ? `<button class="filter-btn tasks-clear-done" id="tasks-clear-done" title="完了済みタスクを一括削除">🗑 クリア</button>`
     : '');
 }
 
@@ -940,41 +940,27 @@ function getSortedFilteredTasks() {
   const { filter } = state;
   let tasks = getTasks();
 
-  // Sort: incomplete first → weight → dueDate → createdAt desc
   const wo = { large: 0, medium: 1, small: 2 };
   const dueSortValue = (task) => {
     if (!task.dueDate) return Number.POSITIVE_INFINITY;
     return new Date(`${task.dueDate}T${task.dueTime || '23:59'}:00`).getTime();
   };
-  const sortByDeadline = (a, b) => {
+  tasks.sort((a, b) => {
     const ad = dueSortValue(a);
     const bd = dueSortValue(b);
     if (ad !== bd) return ad - bd;
     if (a.completed !== b.completed) return a.completed ? 1 : -1;
     if (wo[a.weight] !== wo[b.weight]) return wo[a.weight] - wo[b.weight];
     return new Date(b.createdAt) - new Date(a.createdAt);
-  };
-  const sortDefault = (a, b) => {
-    if (a.completed !== b.completed) return a.completed ? 1 : -1;
-    if (wo[a.weight] !== wo[b.weight]) return wo[a.weight] - wo[b.weight];
-    if (a.dueDate && b.dueDate) {
-      const ad = dueSortValue(a);
-      const bd = dueSortValue(b);
-      if (ad !== bd) return ad - bd;
-    }
-    if (a.dueDate) return -1;
-    if (b.dueDate) return 1;
-    return new Date(b.createdAt) - new Date(a.createdAt);
-  };
-  tasks.sort(filter === 'all' ? sortByDeadline : sortDefault);
+  });
 
   if (filter === 'abandoned') return tasks.filter(t => t.abandoned);
-  // 諦めたタスクは abandoned フィルター以外では非表示
   const active = tasks.filter(t => !t.abandoned);
   if (filter === 'pending') return active.filter(t => !t.completed);
-  if (filter === 'done')    return active.filter(t =>  t.completed);
-  if (['large', 'medium', 'small'].includes(filter))
+  if (filter === 'done') return active.filter(t => t.completed);
+  if (['large', 'medium', 'small'].includes(filter)) {
     return active.filter(t => t.weight === filter);
+  }
   return active;
 }
 
