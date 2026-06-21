@@ -942,14 +942,31 @@ function getSortedFilteredTasks() {
 
   // Sort: incomplete first → weight → dueDate → createdAt desc
   const wo = { large: 0, medium: 1, small: 2 };
-  tasks.sort((a, b) => {
+  const dueSortValue = (task) => {
+    if (!task.dueDate) return Number.POSITIVE_INFINITY;
+    return new Date(`${task.dueDate}T${task.dueTime || '23:59'}:00`).getTime();
+  };
+  const sortByDeadline = (a, b) => {
+    const ad = dueSortValue(a);
+    const bd = dueSortValue(b);
+    if (ad !== bd) return ad - bd;
     if (a.completed !== b.completed) return a.completed ? 1 : -1;
     if (wo[a.weight] !== wo[b.weight]) return wo[a.weight] - wo[b.weight];
-    if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
+    return new Date(b.createdAt) - new Date(a.createdAt);
+  };
+  const sortDefault = (a, b) => {
+    if (a.completed !== b.completed) return a.completed ? 1 : -1;
+    if (wo[a.weight] !== wo[b.weight]) return wo[a.weight] - wo[b.weight];
+    if (a.dueDate && b.dueDate) {
+      const ad = dueSortValue(a);
+      const bd = dueSortValue(b);
+      if (ad !== bd) return ad - bd;
+    }
     if (a.dueDate) return -1;
     if (b.dueDate) return 1;
     return new Date(b.createdAt) - new Date(a.createdAt);
-  });
+  };
+  tasks.sort(filter === 'all' ? sortByDeadline : sortDefault);
 
   if (filter === 'abandoned') return tasks.filter(t => t.abandoned);
   // 諦めたタスクは abandoned フィルター以外では非表示
