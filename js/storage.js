@@ -406,6 +406,7 @@ export function saveScheduleItems(items) { save(SCHED_KEY, items); _notifySync('
 
 export function addScheduleItem(item) {
   const items = getScheduleItems();
+  const now = new Date().toISOString();
   const newItem = {
     title: '',
     startTime: '09:00',
@@ -413,7 +414,8 @@ export function addScheduleItem(item) {
     date: null, // null = every day, 'YYYY-MM-DD' = specific day only
     ...item,
     id: item.id || generateId(),
-    createdAt: new Date().toISOString(),
+    createdAt: item.createdAt || now,
+    updatedAt: now,
   };
   items.push(newItem);
   saveScheduleItems(items);
@@ -424,7 +426,7 @@ export function updateScheduleItem(id, updates) {
   const items = getScheduleItems();
   const idx = items.findIndex(i => i.id === id);
   if (idx < 0) return null;
-  items[idx] = { ...items[idx], ...updates };
+  items[idx] = { ...items[idx], ...updates, updatedAt: new Date().toISOString() };
   saveScheduleItems(items);
   return items[idx];
 }
