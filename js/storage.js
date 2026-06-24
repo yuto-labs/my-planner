@@ -110,7 +110,14 @@ export function saveEvents(events) { save(KEY.EVENTS, events); _notifySync('even
 export function addEvent(ev) {
   const events = getEvents();
   const now = new Date().toISOString();
-  const newEv = { ...ev, id: ev.id || generateId(), createdAt: ev.createdAt || now, updatedAt: now };
+  const newEv = {
+    memo: '',
+    tags: [],
+    ...ev,
+    id: ev.id || generateId(),
+    createdAt: ev.createdAt || now,
+    updatedAt: now,
+  };
   events.push(newEv);
   saveEvents(events);
   return newEv;
@@ -167,6 +174,7 @@ export function addTask(task) {
     subtasks: [],     // [{ id, title, completed, createdAt }]
     memo: '',         // free-form text memo
     tags: [],         // string array
+    highlightColor: null,
     ...task,
     id: task.id || generateId(),
     createdAt: new Date().toISOString(),
