@@ -95,8 +95,8 @@ function render() {
   container.innerHTML = `
     <!-- Add form -->
     <div class="tasks-add">
-      <input class="input" id="task-input" placeholder="繧ｿ繧ｹ繧ｯ蜷・ type="text" value="${esc(state.addTitle)}">
-      <button class="btn btn-primary" id="task-add-btn" style="flex-shrink:0">菫晏ｭ・/button>
+      <input class="input" id="task-input" placeholder="タスク名" type="text" value="${esc(state.addTitle)}">
+      <button class="btn btn-primary" id="task-add-btn" style="flex-shrink:0">追加</button>
     </div>
 
     <!-- Add form extras (type + weight + due date + due time) -->
@@ -139,7 +139,7 @@ function render() {
       </div>
       <div class="add-tag-chips-wrap" id="add-tag-chips"></div>
       <div class="tasks-tag-input-wrap${state.addCustomTagOpen ? ' open' : ''}" id="tasks-tag-input-wrap">
-        <input class="input tasks-tag-input" id="tasks-add-tag-input" placeholder="繧ｿ繧ｰ繧定ｿｽ蜉 (Enter)" list="add-tag-dl">
+        <input class="input tasks-tag-input" id="tasks-add-tag-input" placeholder="タグを追加 (Enter)" list="add-tag-dl">
       </div>
       <datalist id="add-tag-dl">
         ${getTags().map(t => `<option value="${esc(t)}">`).join('')}
@@ -159,7 +159,7 @@ function render() {
 
     <!-- Archive link -->
     <div class="tasks-archive-link">
-      <button class="btn btn-ghost btn-sm" id="goto-archive-btn">卵 Trash 繧定ｦ九ｋ</button>
+      <button class="btn btn-ghost btn-sm" id="goto-archive-btn">🗑 Trash を見る</button>
     </div>
   `;
 
@@ -173,7 +173,7 @@ function render() {
     toggle.className = `tasks-add-toggle${state.addFormOpen ? ' open' : ''}`;
     toggle.setAttribute('aria-expanded', state.addFormOpen ? 'true' : 'false');
     toggle.innerHTML = `
-      <span>・・繧ｿ繧ｹ繧ｯ繧剃ｽ懈・</span>
+      <span>+ 新しいタスクを追加</span>
       <span class="tasks-add-toggle-arrow">${state.addFormOpen ? '-' : '+'}</span>
     `;
     addForm.parentNode.insertBefore(toggle, addForm);
@@ -229,7 +229,7 @@ function render() {
   };
   const _updateDueTimeBtn = () => {
     if (!_dueTimeBtn) return;
-    _dueTimeBtn.textContent = state.addDueTime ? '武 ' + state.addDueTime : '🕐 時刻';
+    _dueTimeBtn.textContent = state.addDueTime ? '🕐 ' + state.addDueTime : '🕐 時刻';
     _dueTimeBtn.classList.toggle('dp-trigger--set', !!state.addDueTime);
   };
 
@@ -250,7 +250,7 @@ function render() {
 
   const _updateEstimateBtn = () => {
     if (!_estimateBtn) return;
-    _estimateBtn.textContent = state.addEstimate ? `竢ｱ ${formatDuration(state.addEstimate)}` : '竢ｱ 蟾･謨ｰ';
+    _estimateBtn.textContent = state.addEstimate ? `⏱ ${formatDuration(state.addEstimate)}` : '⏱ 工数';
     _estimateBtn.classList.toggle('dp-trigger--set', !!state.addEstimate);
   };
   _estimateBtn?.addEventListener('click', () => {
@@ -286,7 +286,7 @@ function render() {
   const _renderAddTagChips = () => {
     if (!_tagChipsEl) return;
     _tagChipsEl.innerHTML = state.addTags.map(t =>
-      `<span class="task-tag-chip">${esc(t)}<button class="tag-chip-x" data-rm="${esc(t)}">笨・/button></span>`
+      `<span class="task-tag-chip">${esc(t)}<button class="tag-chip-x" data-rm="${esc(t)}">✕</button></span>`
     ).join('');
     _tagChipsEl.querySelectorAll('[data-rm]').forEach(btn => {
       btn.onclick = () => { state.addTags = state.addTags.filter(x => x !== btn.dataset.rm); _renderAddTagChips(); };
@@ -368,12 +368,12 @@ function renderProgressBar() {
     subTotal  += subs.length;
     subDone   += subs.filter(s => s.completed).length;
   });
-  const subStr = subTotal > 0 ? ` ﾂｷ 繧ｵ繝悶ち繧ｹ繧ｯ ${subDone}/${subTotal}` : '';
+  const subStr = subTotal > 0 ? ` ・ サブタスク ${subDone}/${subTotal}` : '';
 
   wrap.innerHTML = `
     <div class="tasks-progress">
       <div class="tasks-progress-bar" style="width:${pct}%"></div>
-      <span class="tasks-progress-label">${done} / ${total} 螳御ｺ・(${pct}%)${subStr}</span>
+      <span class="tasks-progress-label">${done} / ${total} 完了 (${pct}%)${subStr}</span>
     </div>
   `;
 }
@@ -402,7 +402,7 @@ function renderFiltersHTML() {
       ${f.label}${f.badge !== null ? `<span class="filter-badge">${f.badge}</span>` : ''}
     </button>`
   ).join('') + (counts.done > 0
-    ? `<button class="filter-btn tasks-clear-done" id="tasks-clear-done" title="螳御ｺ・ｸ医∩繧ｿ繧ｹ繧ｯ繧剃ｸ諡ｬ蜑企勁">卵 繧ｯ繝ｪ繧｢</button>`
+    ? `<button class="filter-btn tasks-clear-done" id="tasks-clear-done" title="完了タスクを一括削除">🗑 クリア</button>`
     : '');
 }
 
@@ -422,7 +422,7 @@ function wireFilters(container) {
     if (!completed.length) return;
     deleteCompletedTasks();
     refreshTaskUi(true);
-    toast(`${completed.length}莉ｶ縺ｮ螳御ｺ・ち繧ｹ繧ｯ繧貞炎髯､縺励∪縺励◆`, 'success');
+    toast(`${completed.length}件の完了タスクを削除しました`, 'success');
   });
 }
 
@@ -450,18 +450,19 @@ function renderCodexPlannerPanel() {
     <section class="codex-plan-card">
       <div class="codex-plan-head">
         <div>
-          <div class="codex-plan-kicker">螟夜ΚAI繧ｹ繧ｱ繧ｸ繝･繝ｼ繝ｫ</div>
-          <h3 class="codex-plan-title">繧ｿ繧ｹ繧ｯ繧剃ｽ懈･ｭ譎る俣縺ｫ蜀埼・蛻・/h3>
+          <div class="codex-plan-kicker">Planner AI Schedule</div>
+          <h3 class="codex-plan-title">タスクを活動時間に再配分</h3>
         </div>
-        <button class="btn btn-ghost btn-sm" id="codex-close-btn" type="button">髢峨§繧・/button>
+        <button class="btn btn-ghost btn-sm" id="codex-close-btn" type="button">閉じる</button>
       </div>
       <p class="codex-plan-desc">
-        謖・ｮ壽悄髢薙・譛ｪ螳御ｺ・ち繧ｹ繧ｯ縺ｨ莠亥ｮ壹□縺代ｒ繧ｳ繝斐・縺励∪縺吶・I縺ｫ縺ｯ縲∬ｦ狗峩縺励ｄ菴咏區繧貞・繧後★縲∝ｮ滉ｽ懈･ｭ縺縺代ｒ隧ｰ繧√※繝槭う繧ｹ繧ｱ繧ｸ繝･繝ｼ繝ｫ譯医ｒ菴懊ｉ縺帙∪縺吶・      </p>
+        未完了の通常タスクと既存予定をコピーします。AIにはこのJSONを渡して、マイスケジュール用の作業ブロックだけを返してもらいます。
+      </p>
       <div class="codex-plan-controls">
-        <button class="dp-trigger" id="codex-start-date-btn">髢句ｧ区律 ${formatPickerDate(defaultStart)}</button>
-        <button class="dp-trigger" id="codex-end-date-btn">邨ゆｺ・律 ${formatPickerDate(defaultEnd)}</button>
-        <button class="dp-trigger" id="codex-start-time-btn">髢句ｧ区凾蛻ｻ ${state.codexStartTime}</button>
-        <button class="dp-trigger" id="codex-end-time-btn">邨ゆｺ・凾蛻ｻ ${state.codexEndTime}</button>
+        <button class="dp-trigger" id="codex-start-date-btn">開始日 ${formatPickerDate(defaultStart)}</button>
+        <button class="dp-trigger" id="codex-end-date-btn">終了日 ${formatPickerDate(defaultEnd)}</button>
+        <button class="dp-trigger" id="codex-start-time-btn">開始時刻 ${state.codexStartTime}</button>
+        <button class="dp-trigger" id="codex-end-time-btn">終了時刻 ${state.codexEndTime}</button>
         <select class="input codex-plan-select" id="codex-buffer-pct" title="余裕時間">
           <option value="0" ${state.codexBufferPct === 0 ? 'selected' : ''}>余裕なし</option>
           <option value="10" ${state.codexBufferPct === 10 ? 'selected' : ''}>余裕 10%</option>
@@ -472,12 +473,12 @@ function renderCodexPlannerPanel() {
         <button class="dp-trigger" id="codex-break-end-btn">休憩終了 ${state.codexBreakEnd || 'なし'}</button>
       </div>
       <div class="codex-plan-actions">
-        <button class="btn btn-primary" id="codex-copy-btn">AI逕ｨ縺ｫ繧ｳ繝斐・</button>
-        <button class="btn btn-ghost" id="codex-apply-btn">AI譯医ｒ蜿肴丐</button>
+        <button class="btn btn-primary" id="codex-copy-btn">AI用にコピー</button>
+        <button class="btn btn-ghost" id="codex-apply-btn">AI案を反映</button>
       </div>
-      <textarea class="codex-plan-textarea" id="codex-export-text" readonly placeholder="繧ｳ繝斐・縺励◆繝・・繧ｿ縺後％縺薙↓蜃ｺ縺ｾ縺・></textarea>
-      <textarea class="codex-plan-textarea" id="codex-import-text" placeholder="Claude / GPT / Codex 縺瑚ｿ斐＠縺・JSON 繧定ｲｼ繧贋ｻ倥￠"></textarea>
-      <p class="codex-plan-note">蜿肴丐蜈医・繝槭う繧ｹ繧ｱ繧ｸ繝･繝ｼ繝ｫ縺ｧ縺吶ゅち繧ｹ繧ｯ譛ｬ菴薙・邱蛻・ｄ繝｡繝｢縺ｯ螟画峩縺励∪縺帙ｓ縲・/p>
+      <textarea class="codex-plan-textarea" id="codex-export-text" readonly placeholder="コピーしたJSONがここに出ます"></textarea>
+      <textarea class="codex-plan-textarea" id="codex-import-text" placeholder="Claude / GPT / Codex が返したJSONを貼り付け"></textarea>
+      <p class="codex-plan-note">反映先はマイスケジュールです。タスク本体の締切やメモは変更しません。</p>
     </section>
   `;
 }
@@ -496,8 +497,8 @@ function wireCodexPlannerPanel(container) {
       onConfirm: d => {
         state.codexStartDate = d;
         if (state.codexEndDate && state.codexEndDate < d) state.codexEndDate = d;
-        startDateBtn.textContent = `髢句ｧ区律 ${formatPickerDate(state.codexStartDate)}`;
-        if (endDateBtn) endDateBtn.textContent = `邨ゆｺ・律 ${formatPickerDate(state.codexEndDate)}`;
+        startDateBtn.textContent = `開始日 ${formatPickerDate(state.codexStartDate)}`;
+        if (endDateBtn) endDateBtn.textContent = `終了日 ${formatPickerDate(state.codexEndDate)}`;
       },
     });
   });
@@ -507,13 +508,13 @@ function wireCodexPlannerPanel(container) {
       onConfirm: d => {
         state.codexEndDate = d;
         if (state.codexStartDate && state.codexStartDate > d) state.codexStartDate = d;
-        if (startDateBtn) startDateBtn.textContent = `髢句ｧ区律 ${formatPickerDate(state.codexStartDate)}`;
-        endDateBtn.textContent = `邨ゆｺ・律 ${formatPickerDate(state.codexEndDate)}`;
+        if (startDateBtn) startDateBtn.textContent = `開始日 ${formatPickerDate(state.codexStartDate)}`;
+        endDateBtn.textContent = `終了日 ${formatPickerDate(state.codexEndDate)}`;
       },
     });
   });
-  startTimeBtn?.addEventListener('click', () => openCodexTimePicker('codexStartTime', startTimeBtn, '髢句ｧ区凾蛻ｻ'));
-  endTimeBtn?.addEventListener('click', () => openCodexTimePicker('codexEndTime', endTimeBtn, '邨ゆｺ・凾蛻ｻ'));
+  startTimeBtn?.addEventListener('click', () => openCodexTimePicker('codexStartTime', startTimeBtn, '開始時刻'));
+  endTimeBtn?.addEventListener('click', () => openCodexTimePicker('codexEndTime', endTimeBtn, '終了時刻'));
   breakStartBtn?.addEventListener('click', () => openCodexTimePicker('codexBreakStart', breakStartBtn, '休憩開始', true));
   breakEndBtn?.addEventListener('click', () => openCodexTimePicker('codexBreakEnd', breakEndBtn, '休憩終了', true));
   container.querySelector('#codex-buffer-pct')?.addEventListener('change', e => {
@@ -619,7 +620,7 @@ function applyCodexPlan(container) {
   const input = container.querySelector('#codex-import-text');
   const raw = input?.value?.trim();
   if (!raw) {
-    toast('Codex譯医・JSON繧定ｲｼ繧贋ｻ倥￠縺ｦ縺上□縺輔＞', 'error');
+    toast('Codex / GPT / Claude のJSONを貼り付けてください', 'error');
     return;
   }
 
@@ -627,38 +628,38 @@ function applyCodexPlan(container) {
   try {
     plan = JSON.parse(raw);
   } catch {
-    toast('JSON縺ｨ縺励※隱ｭ繧√∪縺帙ｓ縺ｧ縺励◆', 'error');
+    toast('JSONとして読み込めませんでした', 'error');
     return;
   }
 
   const blocks = normalizeCodexScheduleItems(plan);
   if (!blocks.length) {
-    toast('scheduleItems 縺瑚ｦ九▽縺九ｊ縺ｾ縺帙ｓ縺ｧ縺励◆', 'error');
+    toast('scheduleItems が見つかりませんでした', 'error');
     return;
   }
 
   const normalTasksById = new Map(getTasks().filter(isNormalTask).map(t => [t.id, t]));
   const nonNormalRefs = blocks.filter(b => b.taskId && !normalTasksById.has(b.taskId));
   if (nonNormalRefs.length) {
-    toast(`騾壼ｸｸ繧ｿ繧ｹ繧ｯ莉･螟悶√∪縺溘・蟄伜惠縺励↑縺・ち繧ｹ繧ｯ縺・${nonNormalRefs.length} 莉ｶ縺ゅｊ縺ｾ縺吶ょ渚譏繧呈ｭ｢繧√∪縺励◆`, 'error');
+    toast(`通常タスクではない参照が ${nonNormalRefs.length} 件あります。内容を確認してください`, 'error');
     return;
   }
 
   const outsideWindow = blocks.filter(blockOutsidePlanningWindow);
   if (outsideWindow.length) {
-    toast(`豢ｻ蜍墓凾髢灘､悶√∪縺溘・蟇ｾ雎｡譛滄剞繧定ｶ・∴繧区｡医′ ${outsideWindow.length} 莉ｶ縺ゅｊ縺ｾ縺吶ょ渚譏繧呈ｭ｢繧√∪縺励◆`, 'error');
+    toast(`活動時間外、または対象期間外の予定が ${outsideWindow.length} 件あります。内容を確認してください`, 'error');
     return;
   }
 
   const breakOverlaps = blocks.filter(blockOverlapsBreak);
   if (breakOverlaps.length) {
-    toast(`莨第・譎る俣縺ｨ驥阪↑繧区｡医′ ${breakOverlaps.length} 莉ｶ縺ゅｊ縺ｾ縺吶ょ渚譏繧呈ｭ｢繧√∪縺励◆`, 'error');
+    toast(`休憩時間と重なる予定が ${breakOverlaps.length} 件あります。内容を確認してください`, 'error');
     return;
   }
 
   const overlaps = blocks.filter(blockOverlapsCalendar);
   if (overlaps.length) {
-    toast(`繧ｫ繝ｬ繝ｳ繝繝ｼ莠亥ｮ壹→驥阪↑繧区｡医′ ${overlaps.length} 莉ｶ縺ゅｊ縺ｾ縺吶ょ渚譏繧呈ｭ｢繧√∪縺励◆`, 'error');
+    toast(`カレンダー予定と重なる予定が ${overlaps.length} 件あります。内容を確認してください`, 'error');
     return;
   }
 
@@ -690,7 +691,7 @@ function applyCodexPlan(container) {
   input.value = '';
   rerenderList();
   renderProgressBar();
-  toast(`${blocks.length}莉ｶ繧偵・繧､繧ｹ繧ｱ繧ｸ繝･繝ｼ繝ｫ縺ｫ蜿肴丐縺励∪縺励◆`, 'success');
+  toast(`${blocks.length}件をマイスケジュールに反映しました`, 'success');
 }
 
 function normalizeCodexScheduleItems(plan) {
@@ -985,7 +986,7 @@ function renderTaskItem(task) {
   }
 
   const recurIcon = task.recurrence
-    ? `<span class="task-recur-icon" title="${esc(recurrenceLabel(task.recurrence))}">煤</span>` : '';
+    ? `<span class="task-recur-icon" title="${esc(recurrenceLabel(task.recurrence))}">🔁</span>` : '';
 
   const estimateChip = task.estimatedMinutes
     ? `<span class="task-estimate-chip" title="蟾･謨ｰ">${formatEstimate(task.estimatedMinutes)}</span>`
@@ -995,11 +996,11 @@ function renderTaskItem(task) {
   const subs    = task.subtasks || [];
   const subDone = subs.filter(s => s.completed).length;
   const subChip = subs.length > 0
-    ? `<span class="task-sub-chip${subDone === subs.length ? ' done' : ''}" title="繧ｵ繝悶ち繧ｹ繧ｯ">${subDone}/${subs.length}</span>`
+    ? `<span class="task-sub-chip${subDone === subs.length ? ' done' : ''}" title="サブタスク">${subDone}/${subs.length}</span>`
     : '';
 
   // Memo indicator
-  const memoIcon = task.memo ? `<span class="task-memo-dot" title="繝｡繝｢縺ゅｊ">統</span>` : '';
+  const memoIcon = task.memo ? `<span class="task-memo-dot" title="メモあり">📝</span>` : '';
 
   // Tag chips (up to 2)
   const tagChips = (task.tags || []).slice(0, 2)
@@ -1014,23 +1015,23 @@ function renderTaskItem(task) {
   return `
     <li class="task-item${task.completed ? ' completed' : ''}${task.abandoned ? ' abandoned' : ''}${isGoal ? ' task-item--goal' : ''}${task.highlightColor ? ' task-item--highlight' : ''}" data-task-id="${esc(task.id)}" draggable="true"${highlightStyle}>
       <button class="task-check${task.completed ? ' done' : ''}" data-action="toggle"
-        ${task.abandoned ? 'disabled aria-label="隲ｦ繧√◆繧ｿ繧ｹ繧ｯ縺ｯ螳御ｺ・↓螟画峩縺ｧ縺阪∪縺帙ｓ" title="隲ｦ繧√◆繧ｿ繧ｹ繧ｯ縺ｯ螳御ｺ・↓螟画峩縺ｧ縺阪∪縺帙ｓ"' : 'aria-label="螳御ｺ・・繧頑崛縺・'}>
+        ${task.abandoned ? 'disabled aria-label="諦めたタスクは完了にできません" title="諦めたタスクは完了にできません"' : 'aria-label="完了を切り替え"'}>
         <svg viewBox="0 0 24 24" fill="currentColor">
           <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
         </svg>
       </button>
       <span class="weight-dot weight-${task.weight || 'medium'}"></span>
-      ${isGoal ? '<span class="task-goal-icon">識</span>' : ''}
+      ${isGoal ? '<span class="task-goal-icon">🎯</span>' : ''}
       <div class="task-main">
         <span class="task-title" data-action="edit-title">${esc(task.title)}</span>
         ${metaInline ? `<div class="task-inline-meta">${metaInline}</div>` : ''}
       </div>
       <div class="task-meta">
-        ${isGoal ? `<button class="btn btn-ghost btn-sm task-decompose-btn" data-action="decompose" title="AI縺ｧ繧ｵ繝悶ち繧ｹ繧ｯ縺ｫ蛻・ｧ｣">､・/button>` : ''}
+        ${isGoal ? `<button class="btn btn-ghost btn-sm task-decompose-btn" data-action="decompose" title="AIでサブタスクに分解">🤖</button>` : ''}
         ${task.abandoned
-          ? `<button class="task-abandon task-abandon--undo" data-action="unabandon" aria-label="隲ｦ繧√ｒ蜿悶ｊ豸医☆" title="隲ｦ繧√ｒ蜿悶ｊ豸医☆">竊ｩ</button>`
+          ? `<button class="task-abandon task-abandon--undo" data-action="unabandon" aria-label="諦めたを戻す" title="諦めたを戻す">↺</button>`
           : !task.completed
-            ? `<button class="task-abandon" data-action="abandon" aria-label="隲ｦ繧√ｋ" title="隲ｦ繧√ｋ">承</button>`
+            ? `<button class="task-abandon" data-action="abandon" aria-label="諦める" title="諦める">✕</button>`
             : ''
         }
         <button class="task-delete" data-action="delete" aria-label="蜑企勁">
@@ -1123,7 +1124,7 @@ function handleAdd() {
   if (_tce) _tce.innerHTML = '';
   c.querySelectorAll('[data-preset-tag]').forEach(btn => btn.classList.remove('active'));
   const _eb = c.querySelector('#task-estimate-btn');
-  if (_eb) { _eb.textContent = '竢ｱ 蟾･謨ｰ'; _eb.classList.remove('dp-trigger--set'); }
+  if (_eb) { _eb.textContent = '⏱ 工数'; _eb.classList.remove('dp-trigger--set'); }
   input.focus();
 
   // Persist synchronously 窶・addTask returns the new task object
@@ -1163,7 +1164,7 @@ function handleAdd() {
   }
 
   renderProgressBar();
-  toast(`縲・{title}縲阪ｒ霑ｽ蜉縺励∪縺励◆`, 'success');
+  toast(`「${title}」を追加しました`, 'success');
 }
 
 async function handleDecompose(taskId, btn) {
@@ -1172,7 +1173,7 @@ async function handleDecompose(taskId, btn) {
   if (!isAiAvailable()) { toast('AI is currently unavailable.', 'error'); return; }
 
   const originalText = btn?.textContent || '🤖 AI';
-  if (btn) { btn.textContent = '竢ｳ'; btn.disabled = true; }
+  if (btn) { btn.textContent = '処理中'; btn.disabled = true; }
 
   try {
     const result = await splitGoalToTasks({
@@ -1183,7 +1184,7 @@ async function handleDecompose(taskId, btn) {
       description: '',
     });
     const subtasks = result?.tasks || [];
-    if (!subtasks.length) { toast('繧ｵ繝悶ち繧ｹ繧ｯ繧堤函謌舌〒縺阪∪縺帙ｓ縺ｧ縺励◆', 'error'); return; }
+    if (!subtasks.length) { toast('サブタスクが空なので分解できません', 'error'); return; }
 
     subtasks.forEach(st => {
       addTask({ title: st.title, weight: st.weight || 'medium', dueDate: st.dueDate || task.dueDate, tags: task.tags || [] });
@@ -1192,9 +1193,9 @@ async function handleDecompose(taskId, btn) {
     rerenderList();
     renderProgressBar();
     const advice = result?.advice ? ` ${result.advice}` : '';
-    toast(`${subtasks.length}莉ｶ縺ｮ繧ｵ繝悶ち繧ｹ繧ｯ繧定ｿｽ蜉縺励∪縺励◆ 笨・{advice}`, 'success');
+    toast(`${subtasks.length}件のサブタスクを追加しました ${advice}`, 'success');
   } catch (e) {
-    toast('AI蛻・ｧ｣繧ｨ繝ｩ繝ｼ: ' + e.message, 'error');
+    toast('AI分解エラー: ' + e.message, 'error');
   } finally {
     if (btn) { btn.textContent = originalText; btn.disabled = false; }
   }
@@ -1219,7 +1220,7 @@ function handleToggle(taskId, li) {
 
     refreshTaskUi(false);
 
-    undoToast(`縲・{task.title.slice(0, 20)}縲阪ｒ螳御ｺ・＠縺ｾ縺励◆`, () => {
+  undoToast(`「${task.title.slice(0, 20)}」を完了にしました`, () => {
       applyUndo();
       rerenderList();
         refreshTaskUi(true);
@@ -1264,7 +1265,7 @@ function handleDelete(taskId, li) {
   deleteTask(taskId);
   refreshTaskUi(false);
 
-  undoToast(`縲・{task.title.slice(0, 20)}縲阪ｒ蜑企勁縺励∪縺励◆`, () => {
+  undoToast(`「${task.title.slice(0, 20)}」を削除しました`, () => {
     applyUndo();
     refreshTaskUi(true);
   });
@@ -1280,7 +1281,7 @@ function handleAbandon(taskId, li) {
   updateTask(taskId, { abandoned: true });
   refreshTaskUi(false);
 
-  undoToast(`縲・{task.title.slice(0, 20)}縲阪ｒ隲ｦ繧√∪縺励◆`, () => {
+  undoToast(`「${task.title.slice(0, 20)}」を諦めたにしました`, () => {
     updateTask(taskId, { abandoned: false, abandonedAt: null });
     refreshTaskUi(true);
   });
@@ -1297,7 +1298,7 @@ function handleUnabandon(taskId, li) {
   updateTask(taskId, { abandoned: false, abandonedAt: null });
   refreshTaskUi(false);
 
-  undoToast(`縲・{task.title.slice(0, 20)}縲阪ｒ隲ｦ繧√Μ繧ｹ繝医°繧画綾縺励∪縺励◆`, () => {
+  undoToast(`「${task.title.slice(0, 20)}」の諦めたを戻しました`, () => {
     updateTask(taskId, { abandoned: true });
     refreshTaskUi(true);
   });
@@ -1605,9 +1606,9 @@ function showKnowledgeSavePrompt(task) {
   const banner = document.createElement('div');
   banner.className = 'kn-save-banner';
   banner.innerHTML = `
-    <span class="kn-save-text">統 繝｡繝｢繧偵リ繝ｬ繝・ず縺ｫ菫晏ｭ倥＠縺ｾ縺吶°・・/span>
-    <button class="btn btn-primary btn-sm kn-save-yes">菫晏ｭ・/button>
-    <button class="kn-save-dismiss" aria-label="髢峨§繧・>笨・/button>
+    <span class="kn-save-text">📝 メモをナレッジに保存しますか？</span>
+    <button class="btn btn-primary btn-sm kn-save-yes">保存</button>
+    <button class="kn-save-dismiss" aria-label="閉じる">✕</button>
   `;
   document.body.appendChild(banner);
 
@@ -1707,10 +1708,10 @@ function wireDragDrop(listEl) {
 function recurrenceLabel(r) {
   if (!r) return '';
   switch (r.freq) {
-    case 'daily':    return '豈取律';
+    case 'daily':    return '毎日';
     case 'weekdays': return '平日毎日';
-    case 'weekly':   return '豈朱ｱ';
-    case 'monthly':  return '豈取怦';
+    case 'weekly':   return '毎週';
+    case 'monthly':  return '毎月';
     default: return '';
   }
 }
