@@ -989,7 +989,7 @@ function renderTaskItem(task) {
     ? `<span class="task-recur-icon" title="${esc(recurrenceLabel(task.recurrence))}">🔁</span>` : '';
 
   const estimateChip = task.estimatedMinutes
-    ? `<span class="task-estimate-chip" title="蟾･謨ｰ">${formatEstimate(task.estimatedMinutes)}</span>`
+    ? `<span class="task-estimate-chip" title="工数">${formatEstimate(task.estimatedMinutes)}</span>`
     : '';
 
   // Subtask progress chip

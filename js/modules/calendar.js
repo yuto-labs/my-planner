@@ -202,7 +202,7 @@ function render() {
       <div class="cal-title-wrap">
         <button class="cal-title" id="cal-title-btn">${getViewTitle()}</button>
       </div>
-      <button class="cal-nav-arrow" id="cal-next-btn" aria-label="谺｡縺ｸ">&#8250;</button>
+      <button class="cal-nav-arrow" id="cal-next-btn" aria-label="次へ">&#8250;</button>
       <div class="cal-mode-tabs">
         ${['month','week','day'].map(m =>
           `<button class="cal-mode-btn${mode===m?' active':''}" data-mode="${m}">
@@ -456,7 +456,7 @@ function renderTimeGrid(numDays = 7) {
           const cls = `cal-week-col-head${isToday?' today':''} ${d.getDay()===0?'sunday':d.getDay()===6?'saturday':''}${holidayInfo?' holiday':''}`;
           const inner = `<span class="day-num">${d.getDate()}</span><span class="cal-week-day-label">${wd}</span>${holidayInfo ? `<span class="cal-week-holiday-name">${esc(holidayInfo.name)}</span>` : ''}`;
           return numDays === 7
-            ? `<button type="button" class="${cls}" data-week-start="${ds}" aria-label="${ds}縺九ｉ1騾ｱ髢薙ｒ陦ｨ遉ｺ">${inner}</button>`
+            ? `<button type="button" class="${cls}" data-week-start="${ds}" aria-label="${ds}から1週間を表示">${inner}</button>`
             : `<div class="${cls}">${inner}</div>`;
         }).join('')}
       </div>
@@ -562,9 +562,9 @@ function openYearMonthPicker() {
   el.innerHTML = `
     <div class="cal-ymp-panel">
       <div class="cal-ymp-toolbar">
-        <button class="cal-ymp-cancel">繧ｭ繝｣繝ｳ繧ｻ繝ｫ</button>
-        <span class="cal-ymp-label">蟷ｴ譛医ｒ驕ｸ謚・/span>
-        <button class="cal-ymp-ok">豎ｺ螳・/button>
+        <button class="cal-ymp-cancel">キャンセル</button>
+        <span class="cal-ymp-label">年と月を選択</span>
+        <button class="cal-ymp-ok">決定</button>
       </div>
       <div class="cal-ymp-wrap">
         <div class="cal-ymp-drums">
@@ -651,7 +651,7 @@ function openDaySheet(dateStr) {
           <span class="cal-day-sheet-date">${dayTitle}</span>
           ${holidayInfo ? `<span class="cal-day-sheet-holiday">${esc(holidayInfo.name)}</span>` : ''}
         </div>
-        <button class="cal-day-sheet-close" aria-label="髢峨§繧・>
+        <button class="cal-day-sheet-close" aria-label="閉じる">
           <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
             <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
           </svg>
@@ -662,8 +662,8 @@ function openDaySheet(dateStr) {
           const color   = getCategoryColor(e.categoryId);
           const startSrc = e._displayStart ?? e.start;
           const endSrc   = e._displayEnd   ?? e.end;
-          const timeStr = e._isAllDay ? '邨よ律' : (startSrc ? formatTime(startSrc) : '');
-          const endStr  = (!e._isAllDay && endSrc) ? `縲・{formatTime(endSrc)}` : '';
+          const timeStr = e._isAllDay ? '終日' : (startSrc ? formatTime(startSrc) : '');
+          const endStr  = (!e._isAllDay && endSrc) ? `〜${formatTime(endSrc)}` : '';
           return `<div class="cal-sheet-ev" data-ev-id="${esc(e.id)}" style="--ev-color:${color}">
             <div class="cal-sheet-ev-bar"></div>
             <div class="cal-sheet-ev-body">
@@ -671,9 +671,9 @@ function openDaySheet(dateStr) {
               <div class="cal-sheet-ev-title">${esc(e.title)}</div>
             </div>
           </div>`;
-        }).join('') : '<p class="cal-sheet-empty">莠亥ｮ壹・縺ゅｊ縺ｾ縺帙ｓ</p>'}
+        }).join('') : '<p class="cal-sheet-empty">予定はありません</p>'}
       </div>
-      <button class="cal-day-sheet-add" aria-label="莠亥ｮ壹ｒ霑ｽ蜉">
+      <button class="cal-day-sheet-add" aria-label="予定を追加">
         <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22">
           <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
         </svg>
@@ -1194,25 +1194,25 @@ async function handleDelete(event) {
     // Show choice: this only vs all future
     const body = document.createElement('div');
     body.innerHTML = `
-      <p style="margin-bottom:12px">郢ｰ繧願ｿ斐＠莠亥ｮ壹ｒ蜑企勁縺励∪縺吶・/p>
+      <p style="margin-bottom:12px">繰り返し予定を削除します。</p>
       <div style="display:flex;flex-direction:column;gap:10px">
-        <button class="btn btn-ghost" id="del-this">縺薙・莠亥ｮ壹・縺ｿ蜑企勁</button>
-        <button class="btn btn-danger" id="del-future">縺薙・莠亥ｮ壹→莉雁ｾ後☆縺ｹ縺ｦ蜑企勁</button>
+        <button class="btn btn-ghost" id="del-this">この予定のみ削除</button>
+        <button class="btn btn-danger" id="del-future">この予定と今後すべて削除</button>
       </div>
     `;
 
-    const closeChoice = openModalGlobal({ title: '蜑企勁縺ｮ遽・峇', body, footer: null });
+    const closeChoice = openModalGlobal({ title: '削除の確認', body, footer: null });
 
     body.querySelector('#del-this').onclick = () => {
       deleteEvent(event.id);
-      toast('蜑企勁縺励∪縺励◆', 'success');
+      toast('削除しました', 'success');
       closeChoice();
       closeModalGlobal();
       render();
     };
     body.querySelector('#del-future').onclick = () => {
       deleteFutureRecurring(event.recurringId, event.start);
-      toast('蜑企勁縺励∪縺励◆', 'success');
+      toast('削除しました', 'success');
       closeChoice();
       render();
     };
@@ -1235,14 +1235,14 @@ async function handleNLInput(input, btn) {
   const text = input?.value?.trim();
   if (!text) return;
 
-  btn.textContent = '窶ｦ';
+  btn.textContent = '…';
   btn.disabled = true;
   input.disabled = true;
 
   try {
     const cats = getCategories();
     const parsed = await parseNaturalLanguageEvent(text, cats);
-    if (!parsed || !parsed.start) throw new Error('隗｣譫舌〒縺阪∪縺帙ｓ縺ｧ縺励◆');
+    if (!parsed || !parsed.start) throw new Error('解釈できませんでした');
 
     const cat = cats.find(c => c.name === parsed.categoryName) || cats[cats.length - 1];
     addEvent({
@@ -1255,12 +1255,12 @@ async function handleNLInput(input, btn) {
     });
 
     input.value = '';
-    toast(`縲・{parsed.title || text}縲阪ｒ霑ｽ蜉縺励∪縺励◆ 笨ｨ`, 'success');
+    toast(`「${parsed.title || text}」を追加しました`, 'success');
     render();
   } catch (e) {
-    toast('AI隗｣譫舌お繝ｩ繝ｼ: ' + e.message, 'error');
+    toast('AI解釈エラー: ' + e.message, 'error');
   } finally {
-    btn.textContent = '霑ｽ蜉';
+    btn.textContent = '追加';
     btn.disabled = false;
     input.disabled = false;
   }
@@ -1281,7 +1281,7 @@ function openModalGlobal(opts) {
   modal.innerHTML = `
     <div class="modal-header">
       <span class="modal-title">${opts.title || ''}</span>
-      <button class="modal-close" aria-label="髢峨§繧・>
+      <button class="modal-close" aria-label="閉じる">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
       </button>
     </div>
@@ -1326,7 +1326,7 @@ function confirmGlobal(message, opts = {}) {
 
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'btn btn-ghost btn-sm';
-    cancelBtn.textContent = '繧ｭ繝｣繝ｳ繧ｻ繝ｫ';
+    cancelBtn.textContent = 'キャンセル';
 
     const okBtn = document.createElement('button');
     okBtn.className = opts.danger ? 'btn btn-danger btn-sm' : 'btn btn-primary btn-sm';
