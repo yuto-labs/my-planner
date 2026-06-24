@@ -1,11 +1,11 @@
-// ============================================================
-// calendar.js — Calendar: month / week / day views + event CRUD
+﻿// ============================================================
+// calendar.js 窶・Calendar: month / week / day views + event CRUD
 // ============================================================
 
 import {
   getEvents, addEvent, updateEvent, deleteEvent, deleteFutureRecurring,
   getCategories, getCategoryById, getCategoryColor, getApiKey,
-  pushUndo, applyUndo, getTags, addTag, getScheduleItemsForDate,
+  pushUndo, applyUndo, getScheduleItemsForDate,
   getMyScheduleColor,
 } from '../storage.js';
 import { parseNaturalLanguageEvent } from '../ai.js';
@@ -25,12 +25,12 @@ const undoToast = (msg, cb)   => window.AppNav?.showUndoToast(msg, cb);
 let state = {
   mode: 'month',         // 'month' | 'week' | 'day'
   cursor: new Date(),    // current view date
-  weekStartDate: null,   // YYYY-MM-DD | null — custom week start for week view only
+  weekStartDate: null,   // YYYY-MM-DD | null 窶・custom week start for week view only
   container: null,
 };
-let _slideDir     = null;  // 'next' | 'prev' | null — swipe animation direction
+let _slideDir     = null;  // 'next' | 'prev' | null 窶・swipe animation direction
 let _selectedDate = null;  // currently highlighted date string (single-tap)
-let _swipeLocked  = false; // true while slide animation plays — blocks consecutive swipes
+let _swipeLocked  = false; // true while slide animation plays 窶・blocks consecutive swipes
 
 export function initCalendar(container) {
   state.container = container;
@@ -62,7 +62,7 @@ export function openCalendarAddFlow() {
 }
 
 // Swipe listeners live on the container element for the lifetime of the view.
-// They must NOT be inside render() — render() is called on every navigation
+// They must NOT be inside render() 窶・render() is called on every navigation
 // and would accumulate duplicate listeners on the same DOM node.
 function _setupSwipe(container) {
   let _sx = 0, _sy = 0, _dx = 0;
@@ -198,15 +198,15 @@ function render() {
   container.innerHTML = `
     <!-- Toolbar: title + mode tabs -->
     <div class="cal-toolbar">
-      <button class="cal-nav-arrow" id="cal-prev-btn" aria-label="前へ">&#8249;</button>
+      <button class="cal-nav-arrow" id="cal-prev-btn" aria-label="蜑阪∈">&#8249;</button>
       <div class="cal-title-wrap">
         <button class="cal-title" id="cal-title-btn">${getViewTitle()}</button>
       </div>
-      <button class="cal-nav-arrow" id="cal-next-btn" aria-label="次へ">&#8250;</button>
+      <button class="cal-nav-arrow" id="cal-next-btn" aria-label="谺｡縺ｸ">&#8250;</button>
       <div class="cal-mode-tabs">
         ${['month','week','day'].map(m =>
           `<button class="cal-mode-btn${mode===m?' active':''}" data-mode="${m}">
-            ${m==='month'?'月':m==='week'?'週':'日'}
+            ${m === 'month' ? '月' : m === 'week' ? '週' : '日'}
           </button>`
         ).join('')}
       </div>
@@ -214,7 +214,7 @@ function render() {
     <div id="cal-view"></div>
   `;
 
-  // Title tap: month → drum-roll year/month picker; other modes → go to today
+  // Title tap: month 竊・drum-roll year/month picker; other modes 竊・go to today
   container.querySelector('#cal-title-btn').onclick = () => {
     if (state.mode === 'month') openYearMonthPicker();
     else {
@@ -247,7 +247,7 @@ function render() {
       view.classList.add(cls);
       view.addEventListener('animationend', () => {
         view.classList.remove(cls);
-        _swipeLocked = false; // unlock here — exactly when animation ends
+        _swipeLocked = false; // unlock here 窶・exactly when animation ends
       }, { once: true });
       // Safety fallback: unlock after 350ms even if animationend misfires
       setTimeout(() => { _swipeLocked = false; }, 350);
@@ -264,7 +264,7 @@ function getViewTitle() {
   if (mode === 'week') {
     const ws = getWeekStartDate(cursor);
     const we = addDays(ws, 6);
-    return `${formatDate(ws, 'short')} – ${formatDate(we, 'short')}`;
+    return `${formatDate(ws, 'short')} 窶・${formatDate(we, 'short')}`;
   }
   return formatDate(cursor, 'medium');
 }
@@ -315,7 +315,7 @@ function renderMonth() {
   const gridStart = startOfWeek(monthStart);
   const todayStr  = today();
 
-  // Pre-build events map: dateStr → clamped events[] — avoids 42× filter in the grid loop
+  // Pre-build events map: dateStr 竊・clamped events[] 窶・avoids 42ﾃ・filter in the grid loop
   const eventsByDate = new Map();
   {
     let dTemp = new Date(gridStart);
@@ -326,7 +326,7 @@ function renderMonth() {
     }
   }
 
-  const dayLabels = ['日','月','火','水','木','金','土'];
+  const dayLabels = ['日', '月', '火', '水', '木', '金', '土'];
 
   let html = `
     <div class="cal-month">
@@ -385,7 +385,7 @@ function renderMonth() {
       ?.classList.add('cal-cell--selected');
   }
 
-  // Cell tap: 1st tap → highlight; 2nd tap on same date → open day sheet
+  // Cell tap: 1st tap 竊・highlight; 2nd tap on same date 竊・open day sheet
   view.querySelectorAll('.cal-cell').forEach(cell => {
     cell.addEventListener('click', (e) => {
       if (e.target.classList.contains('cal-event-chip')) return;
@@ -441,7 +441,7 @@ function renderTimeGrid(numDays = 7) {
   const SLOT_H = 56; // px per hour
   const START_H = 0;
 
-  const dayLabels = ['日','月','火','水','木','金','土'];
+  const dayLabels = ['日', '月', '火', '水', '木', '金', '土'];
 
   // Header
   let html = `
@@ -456,7 +456,7 @@ function renderTimeGrid(numDays = 7) {
           const cls = `cal-week-col-head${isToday?' today':''} ${d.getDay()===0?'sunday':d.getDay()===6?'saturday':''}${holidayInfo?' holiday':''}`;
           const inner = `<span class="day-num">${d.getDate()}</span><span class="cal-week-day-label">${wd}</span>${holidayInfo ? `<span class="cal-week-holiday-name">${esc(holidayInfo.name)}</span>` : ''}`;
           return numDays === 7
-            ? `<button type="button" class="${cls}" data-week-start="${ds}" aria-label="${ds}から1週間を表示">${inner}</button>`
+            ? `<button type="button" class="${cls}" data-week-start="${ds}" aria-label="${ds}縺九ｉ1騾ｱ髢薙ｒ陦ｨ遉ｺ">${inner}</button>`
             : `<div class="${cls}">${inner}</div>`;
         }).join('')}
       </div>
@@ -518,7 +518,7 @@ function renderTimeGrid(numDays = 7) {
     nowDayCol.appendChild(line);
   }
 
-  // Click slot → add event at that time
+  // Click slot 竊・add event at that time
   body?.querySelectorAll('.cal-hour-slot').forEach(slot => {
     slot.addEventListener('click', () => {
       const date = slot.dataset.date;
@@ -529,7 +529,7 @@ function renderTimeGrid(numDays = 7) {
     });
   });
 
-  // Click timed event → edit
+  // Click timed event 竊・edit
   body?.querySelectorAll('.cal-timed-event').forEach(el => {
     el.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -562,15 +562,15 @@ function openYearMonthPicker() {
   el.innerHTML = `
     <div class="cal-ymp-panel">
       <div class="cal-ymp-toolbar">
-        <button class="cal-ymp-cancel">キャンセル</button>
-        <span class="cal-ymp-label">年月を選択</span>
-        <button class="cal-ymp-ok">決定</button>
+        <button class="cal-ymp-cancel">繧ｭ繝｣繝ｳ繧ｻ繝ｫ</button>
+        <span class="cal-ymp-label">蟷ｴ譛医ｒ驕ｸ謚・/span>
+        <button class="cal-ymp-ok">豎ｺ螳・/button>
       </div>
       <div class="cal-ymp-wrap">
         <div class="cal-ymp-drums">
           <div class="cal-ymp-drum" id="ymp-year-drum">
             <div class="cal-ymp-pad"></div>
-            ${YEARS.map(y => `<div class="cal-ymp-item" data-val="${y}">${y}年</div>`).join('')}
+            ${YEARS.map(y => `<div class="cal-ymp-item" data-val="${y}">${y}蟷ｴ</div>`).join('')}
             <div class="cal-ymp-pad"></div>
           </div>
           <div class="cal-ymp-drum" id="ymp-month-drum">
@@ -631,8 +631,8 @@ function openDaySheet(dateStr) {
   document.querySelector('.cal-day-sheet')?.remove();
 
   const date = new Date(dateStr + 'T00:00:00');
-  const dayNames = ['日','月','火','水','木','金','土'];
-  const dayTitle = `${date.getMonth()+1}月${date.getDate()}日（${dayNames[date.getDay()]}）`;
+  const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+  const dayTitle = `${date.getMonth() + 1}月${date.getDate()}日 (${dayNames[date.getDay()]})`;
 
   const holidayInfo = getHolidayInfo(dateStr);
   const events    = getEvents();
@@ -651,7 +651,7 @@ function openDaySheet(dateStr) {
           <span class="cal-day-sheet-date">${dayTitle}</span>
           ${holidayInfo ? `<span class="cal-day-sheet-holiday">${esc(holidayInfo.name)}</span>` : ''}
         </div>
-        <button class="cal-day-sheet-close" aria-label="閉じる">
+        <button class="cal-day-sheet-close" aria-label="髢峨§繧・>
           <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
             <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
           </svg>
@@ -662,8 +662,8 @@ function openDaySheet(dateStr) {
           const color   = getCategoryColor(e.categoryId);
           const startSrc = e._displayStart ?? e.start;
           const endSrc   = e._displayEnd   ?? e.end;
-          const timeStr = e._isAllDay ? '終日' : (startSrc ? formatTime(startSrc) : '');
-          const endStr  = (!e._isAllDay && endSrc) ? `〜${formatTime(endSrc)}` : '';
+          const timeStr = e._isAllDay ? '邨よ律' : (startSrc ? formatTime(startSrc) : '');
+          const endStr  = (!e._isAllDay && endSrc) ? `縲・{formatTime(endSrc)}` : '';
           return `<div class="cal-sheet-ev" data-ev-id="${esc(e.id)}" style="--ev-color:${color}">
             <div class="cal-sheet-ev-bar"></div>
             <div class="cal-sheet-ev-body">
@@ -671,9 +671,9 @@ function openDaySheet(dateStr) {
               <div class="cal-sheet-ev-title">${esc(e.title)}</div>
             </div>
           </div>`;
-        }).join('') : '<p class="cal-sheet-empty">予定はありません</p>'}
+        }).join('') : '<p class="cal-sheet-empty">莠亥ｮ壹・縺ゅｊ縺ｾ縺帙ｓ</p>'}
       </div>
-      <button class="cal-day-sheet-add" aria-label="予定を追加">
+      <button class="cal-day-sheet-add" aria-label="莠亥ｮ壹ｒ霑ｽ蜉">
         <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22">
           <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
         </svg>
@@ -694,7 +694,7 @@ function openDaySheet(dateStr) {
   // Tap backdrop to close
   sheet.addEventListener('click', e => { if (e.target === sheet) closeSheet(); });
 
-  // Tap event → edit
+  // Tap event 竊・edit
   sheet.querySelectorAll('.cal-sheet-ev').forEach(el => {
     el.addEventListener('click', () => {
       const ev = getEvents().find(e => e.id === el.dataset.evId);
@@ -702,7 +702,7 @@ function openDaySheet(dateStr) {
     });
   });
 
-  // "+" button → add event on this date
+  // "+" button 竊・add event on this date
   sheet.querySelector('.cal-day-sheet-add').onclick = () => {
     closeSheet();
     setTimeout(() => openEventModal(null, dateStr), 80);
@@ -727,7 +727,7 @@ function renderTimedEvent(event, slotH) {
   const height = (duration / 60) * slotH - 2;
 
   const color = getCategoryColor(event.categoryId);
-  const timeStr = formatTime(startSrc) + (endSrc ? `–${formatTime(endSrc)}` : '');
+  const timeStr = formatTime(startSrc) + (endSrc ? `窶・{formatTime(endSrc)}` : '');
 
   return `<div class="cal-timed-event${event.isTentative?' tentative':''}"
     data-event-id="${esc(event.id)}"
@@ -775,7 +775,7 @@ function renderTimedScheduleItem(item, slotH) {
   const top = (startMin / 60) * slotH;
   const height = (duration / 60) * slotH - 2;
   const color = getMyScheduleColor();
-  const timeStr = `${item.startTime || '--:--'}–${item.endTime || '--:--'}`;
+  const timeStr = `${item.startTime || '--:--'}窶・{item.endTime || '--:--'}`;
 
   return `<div class="cal-timed-event cal-timed-schedule"
     data-schedule-id="${esc(item.id)}"
@@ -808,26 +808,25 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd) {
     ? event.end
     : new Date(new Date(defStart).getTime() + 3600000).toISOString());
 
-  // Parse start/end into date + time parts for custom picker
   const _dtParts = (iso) => {
     if (!iso) return { date: '', time: '' };
     const d = new Date(iso);
     const pad = n => String(n).padStart(2, '0');
     return {
-      date: `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`,
+      date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
       time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
     };
   };
 
   let evStart = _dtParts(defStart);
-  let evEnd   = _dtParts(defEnd);
+  let evEnd = _dtParts(defEnd);
   let evRecurEnd = '';
 
   const body = document.createElement('div');
   body.innerHTML = `
     <div class="form-group">
       <label class="form-label">タイトル</label>
-      <input class="input" id="ev-title" placeholder="予定のタイトル" value="${esc(event?.title || '')}" autofocus>
+      <input class="input" id="ev-title" placeholder="予定タイトル" value="${esc(event?.title || '')}" autofocus>
     </div>
 
     <div class="form-row">
@@ -853,93 +852,98 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd) {
       <label class="form-label">カテゴリ</label>
       <div class="event-cat-select" id="ev-cat-list">
         ${cats.map(c => `
-          <button type="button" class="event-cat-btn${event?.categoryId===c.id||(!event&&c.id===cats[0].id)?' selected':''}"
+          <button type="button" class="event-cat-btn${event?.categoryId === c.id || (!event && c.id === cats[0].id) ? ' selected' : ''}"
             data-cat-id="${c.id}" style="background:${c.color}">
             ${esc(c.name)}
-          </button>`
-        ).join('')}
+          </button>
+        `).join('')}
       </div>
     </div>
 
     <div class="form-group">
-      <label class="form-label">タグ</label>
-      <div class="ev-tag-chips-wrap" id="ev-tag-chips"></div>
-      <input class="input" id="ev-tag-input" placeholder="タグを追加してEnter" list="ev-tag-dl" style="margin-top:4px;font-size:12px">
-      <datalist id="ev-tag-dl">
-        ${getTags().map(t => `<option value="${esc(t)}">`).join('')}
-      </datalist>
+      <label class="form-label">メモ</label>
+      <textarea class="input event-memo-textarea" id="ev-memo" placeholder="補足メモ（任意）…" rows="4">${esc(event?.memo || '')}</textarea>
     </div>
 
     <div class="form-group" style="display:flex;gap:20px;align-items:center">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-        <input type="checkbox" id="ev-tentative" ${event?.isTentative?'checked':''}>
-        <span>仮の予定</span>
+        <input type="checkbox" id="ev-tentative" ${event?.isTentative ? 'checked' : ''}>
+        <span>仮予定</span>
       </label>
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-        <input type="checkbox" id="ev-routine" ${event?.isRoutine?'checked':''}>
-        <span>定期・ルーティン</span>
+        <input type="checkbox" id="ev-routine" ${event?.isRoutine ? 'checked' : ''}>
+        <span>ルーティン</span>
       </label>
     </div>
 
     ${isEdit && event.recurringId ? `
-    <div class="form-group" style="background:var(--bg-hover);border-radius:var(--radius-sm);padding:12px">
-      <p style="font-size:13px;color:var(--text-muted);margin-bottom:8px">繰り返し予定の編集範囲:</p>
-      <div style="display:flex;gap:10px">
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
-          <input type="radio" name="recurring-scope" value="this" checked> この予定のみ
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
-          <input type="radio" name="recurring-scope" value="future"> 今後すべて
-        </label>
+      <div class="form-group" style="background:var(--bg-hover);border-radius:var(--radius-sm);padding:12px">
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:8px">繰り返し予定の更新範囲:</p>
+        <div style="display:flex;gap:10px">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="radio" name="recurring-scope" value="this" checked> この予定のみ
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="radio" name="recurring-scope" value="future"> 今後すべて
+          </label>
+        </div>
       </div>
-    </div>` : ''}
+    ` : ''}
 
     ${!isEdit ? `
-    <div class="form-group">
-      <label class="form-label">繰り返し</label>
-      <select class="select" id="ev-recurring">
-        <option value="">なし</option>
-        <option value="daily">毎日</option>
-        <option value="weekly">毎週</option>
-        <option value="monthly">毎月</option>
-      </select>
-    </div>
-    <div class="form-group hidden" id="ev-recurring-end-wrap">
-      <label class="form-label">繰り返し終了日</label>
-      <input type="hidden" id="ev-recurring-end">
-      <button class="dp-trigger dp-trigger--full" id="ev-recurring-end-btn">📅 終了日を選択</button>
-    </div>
+      <div class="form-group">
+        <label class="form-label">繰り返し</label>
+        <select class="select" id="ev-recurring">
+          <option value="">なし</option>
+          <option value="daily">毎日</option>
+          <option value="weekly">毎週</option>
+          <option value="monthly">毎月</option>
+        </select>
+      </div>
+      <div class="form-group hidden" id="ev-recurring-end-wrap">
+        <label class="form-label">繰り返し終了日</label>
+        <input type="hidden" id="ev-recurring-end">
+        <button class="dp-trigger dp-trigger--full" id="ev-recurring-end-btn">📅 終了日を選ぶ</button>
+      </div>
     ` : ''}
   `;
 
-  // Title time-suggestions: show past event time-slots matching typed title
   const suggWrap = document.createElement('div');
   suggWrap.className = 'ev-title-sugg-wrap';
   body.querySelector('#ev-title')?.insertAdjacentElement('afterend', suggWrap);
+
+  const _syncHidden = () => {
+    const sh = body.querySelector('#ev-start');
+    const eh = body.querySelector('#ev-end');
+    if (sh) sh.value = evStart.date && evStart.time ? `${evStart.date}T${evStart.time}` : '';
+    if (eh) eh.value = evEnd.date && evEnd.time ? `${evEnd.date}T${evEnd.time}` : '';
+  };
 
   body.querySelector('#ev-title')?.addEventListener('input', e => {
     const q = e.target.value.trim().toLowerCase();
     suggWrap.innerHTML = '';
     if (!q) return;
+
     const timeMap = new Map();
     getEvents().forEach(ev => {
-      if (!ev.start || !ev.end) return;
-      if (!ev.title.toLowerCase().includes(q)) return;
+      if (!ev.start || !ev.end || !ev.title?.toLowerCase().includes(q)) return;
       const pad = n => String(n).padStart(2, '0');
-      const sd = new Date(ev.start), ed = new Date(ev.end);
+      const sd = new Date(ev.start);
+      const ed = new Date(ev.end);
       const sStr = `${pad(sd.getHours())}:${pad(sd.getMinutes())}`;
       const eStr = `${pad(ed.getHours())}:${pad(ed.getMinutes())}`;
-      const key  = `${sStr}〜${eStr}`;
+      const key = `${sStr}-${eStr}`;
       if (!timeMap.has(key)) timeMap.set(key, { sStr, eStr });
     });
+
     [...timeMap.values()].slice(0, 4).forEach(({ sStr, eStr }) => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'ev-title-sugg-btn';
-      btn.textContent = `${sStr}〜${eStr}`;
+      btn.textContent = `${sStr}-${eStr}`;
       btn.onclick = () => {
         evStart.time = sStr;
-        evEnd.time   = eStr;
+        evEnd.time = eStr;
         if (!evEnd.date) evEnd.date = evStart.date;
         const sb = body.querySelector('#ev-start-time-btn');
         const eb = body.querySelector('#ev-end-time-btn');
@@ -952,7 +956,6 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd) {
     });
   });
 
-  // Category select
   body.querySelectorAll('.event-cat-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       body.querySelectorAll('.event-cat-btn').forEach(b => b.classList.remove('selected'));
@@ -960,29 +963,6 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd) {
     });
   });
 
-  // Tags
-  let evTags = event?.tags ? [...event.tags] : [];
-  const _renderEvTagChips = () => {
-    const chips = body.querySelector('#ev-tag-chips');
-    if (!chips) return;
-    chips.innerHTML = evTags.map(t =>
-      `<span class="task-tag-chip">${esc(t)}<button class="tag-chip-x" data-ev-rm="${esc(t)}">✕</button></span>`
-    ).join('');
-    chips.querySelectorAll('[data-ev-rm]').forEach(btn => {
-      btn.onclick = () => { evTags = evTags.filter(x => x !== btn.dataset.evRm); _renderEvTagChips(); };
-    });
-  };
-  _renderEvTagChips();
-  body.querySelector('#ev-tag-input')?.addEventListener('keydown', e => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const val = e.target.value.trim();
-      if (val && !evTags.includes(val)) { evTags.push(val); addTag(val); _renderEvTagChips(); }
-      e.target.value = '';
-    }
-  });
-
-  // Recurring end date toggle
   if (!isEdit) {
     const recSel = body.querySelector('#ev-recurring');
     const recEndWrap = body.querySelector('#ev-recurring-end-wrap');
@@ -991,15 +971,6 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd) {
     });
   }
 
-  // ---- Custom date/time picker wiring ----
-  const _syncHidden = () => {
-    const sh = body.querySelector('#ev-start');
-    const eh = body.querySelector('#ev-end');
-    if (sh) sh.value = evStart.date && evStart.time ? `${evStart.date}T${evStart.time}` : '';
-    if (eh) eh.value = evEnd.date   && evEnd.time   ? `${evEnd.date}T${evEnd.time}`     : '';
-  };
-
-  // Start date
   body.querySelector('#ev-start-date-btn')?.addEventListener('click', () => {
     openDatePicker({
       value: evStart.date || null,
@@ -1011,7 +982,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd) {
       },
     });
   });
-  // Start time — also auto-updates end to start+1h
+
   body.querySelector('#ev-start-time-btn')?.addEventListener('click', () => {
     openTimePicker({
       value: evStart.time || null,
@@ -1020,21 +991,20 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd) {
         const sb = body.querySelector('#ev-start-time-btn');
         if (sb) sb.textContent = '🕐 ' + t;
 
-        // Auto-set end = start + 1h (only when end hasn't been manually set or is on same day)
         const [sh, sm] = t.split(':').map(Number);
-        let eh = sh + 1, em = sm;
+        let eh = sh + 1;
+        let em = sm;
         if (eh >= 24) { eh = 23; em = 59; }
-        const autoEnd = `${String(eh).padStart(2,'0')}:${String(em).padStart(2,'0')}`;
+        const autoEnd = `${String(eh).padStart(2, '0')}:${String(em).padStart(2, '0')}`;
         evEnd.time = autoEnd;
         if (!evEnd.date) evEnd.date = evStart.date;
         const eb = body.querySelector('#ev-end-time-btn');
         if (eb) eb.textContent = '🕐 ' + autoEnd;
-
         _syncHidden();
       },
     });
   });
-  // End date
+
   body.querySelector('#ev-end-date-btn')?.addEventListener('click', () => {
     openDatePicker({
       value: evEnd.date || null,
@@ -1046,7 +1016,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd) {
       },
     });
   });
-  // End time
+
   body.querySelector('#ev-end-time-btn')?.addEventListener('click', () => {
     openTimePicker({
       value: evEnd.time || null,
@@ -1058,7 +1028,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd) {
       },
     });
   });
-  // Recurring end date
+
   body.querySelector('#ev-recurring-end-btn')?.addEventListener('click', () => {
     openDatePicker({
       value: evRecurEnd || null,
@@ -1066,18 +1036,23 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd) {
         evRecurEnd = d;
         body.querySelector('#ev-recurring-end').value = d;
         const b = body.querySelector('#ev-recurring-end-btn');
-        if (b) { b.textContent = formatPickerDate(d); b.classList.add('dp-trigger--set'); }
+        if (b) {
+          b.textContent = formatPickerDate(d);
+          b.classList.add('dp-trigger--set');
+        }
       },
       onClear: () => {
         evRecurEnd = '';
         body.querySelector('#ev-recurring-end').value = '';
         const b = body.querySelector('#ev-recurring-end-btn');
-        if (b) { b.textContent = '📅 終了日を選択'; b.classList.remove('dp-trigger--set'); }
+        if (b) {
+          b.textContent = '📅 終了日を選ぶ';
+          b.classList.remove('dp-trigger--set');
+        }
       },
     });
   });
 
-  // Footer buttons
   const footer = document.createElement('div');
   footer.style.cssText = 'display:flex;gap:8px;justify-content:space-between;width:100%';
 
@@ -1088,7 +1063,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd) {
     delBtn.onclick = () => handleDelete(event);
     footer.appendChild(delBtn);
   } else {
-    footer.appendChild(document.createElement('span')); // spacer
+    footer.appendChild(document.createElement('span'));
   }
 
   const rightBtns = document.createElement('div');
@@ -1106,11 +1081,6 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd) {
   rightBtns.appendChild(saveBtn);
   footer.appendChild(rightBtns);
 
-  const closeModal = window.AppNav?.openModal
-    ? null  // fallback handled below
-    : null;
-
-  // Use the global openModal from app.js
   const close = openModalGlobal({
     title: isEdit ? '予定を編集' : '予定を追加',
     body,
@@ -1121,15 +1091,18 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd) {
 
   saveBtn.onclick = () => {
     const title = body.querySelector('#ev-title').value.trim();
-    if (!title) { body.querySelector('#ev-title').focus(); return; }
+    if (!title) {
+      body.querySelector('#ev-title').focus();
+      return;
+    }
 
     const startVal = body.querySelector('#ev-start').value;
-    const endVal   = body.querySelector('#ev-end').value;
+    const endVal = body.querySelector('#ev-end').value;
     if (!startVal) return;
 
     const catId = body.querySelector('.event-cat-btn.selected')?.dataset.catId || cats[0].id;
     const isTentative = body.querySelector('#ev-tentative')?.checked || false;
-    const isRoutine   = body.querySelector('#ev-routine')?.checked || false;
+    const isRoutine = body.querySelector('#ev-routine')?.checked || false;
 
     const startIso = fromDateTimeLocal(startVal);
     let endIso = endVal ? fromDateTimeLocal(endVal) : null;
@@ -1142,19 +1115,18 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd) {
     const newData = {
       title,
       start: startIso,
-      end:   endIso,
+      end: endIso,
       categoryId: catId,
       isTentative,
       isRoutine,
-      tags: evTags,
+      memo: body.querySelector('#ev-memo')?.value?.trim() || '',
+      tags: [],
     };
 
     if (isEdit) {
       const scope = body.querySelector('[name="recurring-scope"]:checked')?.value || 'this';
       updateEvent(event.id, newData);
-      // If "future", update all future recurring
       if (scope === 'future' && event.recurringId) {
-        // Update all future ones (simple approach: update each)
         const allEvents = getEvents();
         allEvents
           .filter(e => e.recurringId === event.recurringId && e.start >= event.start && e.id !== event.id)
@@ -1169,13 +1141,11 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd) {
       }
       toast('予定を更新しました', 'success');
     } else {
-      // Check recurring
       const recurType = body.querySelector('#ev-recurring')?.value || '';
       const recurEndStr = body.querySelector('#ev-recurring-end')?.value || '';
-
-      if (recurType && recurType !== '') {
+      if (recurType) {
         createRecurringEvents(newData, recurType, recurEndStr);
-        toast(`繰り返し予定を作成しました`, 'success');
+        toast('繰り返し予定を追加しました', 'success');
       } else {
         addEvent(newData);
         toast(`「${title}」を追加しました`, 'success');
@@ -1224,25 +1194,25 @@ async function handleDelete(event) {
     // Show choice: this only vs all future
     const body = document.createElement('div');
     body.innerHTML = `
-      <p style="margin-bottom:12px">繰り返し予定を削除します。</p>
+      <p style="margin-bottom:12px">郢ｰ繧願ｿ斐＠莠亥ｮ壹ｒ蜑企勁縺励∪縺吶・/p>
       <div style="display:flex;flex-direction:column;gap:10px">
-        <button class="btn btn-ghost" id="del-this">この予定のみ削除</button>
-        <button class="btn btn-danger" id="del-future">この予定と今後すべて削除</button>
+        <button class="btn btn-ghost" id="del-this">縺薙・莠亥ｮ壹・縺ｿ蜑企勁</button>
+        <button class="btn btn-danger" id="del-future">縺薙・莠亥ｮ壹→莉雁ｾ後☆縺ｹ縺ｦ蜑企勁</button>
       </div>
     `;
 
-    const closeChoice = openModalGlobal({ title: '削除の範囲', body, footer: null });
+    const closeChoice = openModalGlobal({ title: '蜑企勁縺ｮ遽・峇', body, footer: null });
 
     body.querySelector('#del-this').onclick = () => {
       deleteEvent(event.id);
-      toast('削除しました', 'success');
+      toast('蜑企勁縺励∪縺励◆', 'success');
       closeChoice();
       closeModalGlobal();
       render();
     };
     body.querySelector('#del-future').onclick = () => {
       deleteFutureRecurring(event.recurringId, event.start);
-      toast('削除しました', 'success');
+      toast('蜑企勁縺励∪縺励◆', 'success');
       closeChoice();
       render();
     };
@@ -1265,14 +1235,14 @@ async function handleNLInput(input, btn) {
   const text = input?.value?.trim();
   if (!text) return;
 
-  btn.textContent = '…';
+  btn.textContent = '窶ｦ';
   btn.disabled = true;
   input.disabled = true;
 
   try {
     const cats = getCategories();
     const parsed = await parseNaturalLanguageEvent(text, cats);
-    if (!parsed || !parsed.start) throw new Error('解析できませんでした');
+    if (!parsed || !parsed.start) throw new Error('隗｣譫舌〒縺阪∪縺帙ｓ縺ｧ縺励◆');
 
     const cat = cats.find(c => c.name === parsed.categoryName) || cats[cats.length - 1];
     addEvent({
@@ -1285,12 +1255,12 @@ async function handleNLInput(input, btn) {
     });
 
     input.value = '';
-    toast(`「${parsed.title || text}」を追加しました ✨`, 'success');
+    toast(`縲・{parsed.title || text}縲阪ｒ霑ｽ蜉縺励∪縺励◆ 笨ｨ`, 'success');
     render();
   } catch (e) {
-    toast('AI解析エラー: ' + e.message, 'error');
+    toast('AI隗｣譫舌お繝ｩ繝ｼ: ' + e.message, 'error');
   } finally {
-    btn.textContent = '追加';
+    btn.textContent = '霑ｽ蜉';
     btn.disabled = false;
     input.disabled = false;
   }
@@ -1311,7 +1281,7 @@ function openModalGlobal(opts) {
   modal.innerHTML = `
     <div class="modal-header">
       <span class="modal-title">${opts.title || ''}</span>
-      <button class="modal-close" aria-label="閉じる">
+      <button class="modal-close" aria-label="髢峨§繧・>
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
       </button>
     </div>
@@ -1356,7 +1326,7 @@ function confirmGlobal(message, opts = {}) {
 
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'btn btn-ghost btn-sm';
-    cancelBtn.textContent = 'キャンセル';
+    cancelBtn.textContent = '繧ｭ繝｣繝ｳ繧ｻ繝ｫ';
 
     const okBtn = document.createElement('button');
     okBtn.className = opts.danger ? 'btn btn-danger btn-sm' : 'btn btn-primary btn-sm';
@@ -1370,3 +1340,5 @@ function confirmGlobal(message, opts = {}) {
     okBtn.onclick = () => { close(); resolve(true); };
   });
 }
+
+

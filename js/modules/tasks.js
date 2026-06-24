@@ -1,5 +1,5 @@
-// ============================================================
-// tasks.js — Task management module
+﻿// ============================================================
+// tasks.js 窶・Task management module
 // ============================================================
 
 import {
@@ -43,6 +43,13 @@ let state = {
 };
 
 const PRESET_TAGS = ['就活', '授業', '研究', '娯楽'];
+const TASK_HIGHLIGHT_OPTIONS = [
+  { value: '', label: '通常', color: '' },
+  { value: '#F5C542', label: '黄', color: '#F5C542' },
+  { value: '#F07090', label: '桃', color: '#F07090' },
+  { value: '#67B7FF', label: '青', color: '#67B7FF' },
+  { value: '#32D49A', label: '緑', color: '#32D49A' },
+];
 
 // ---- Public ----
 
@@ -88,8 +95,8 @@ function render() {
   container.innerHTML = `
     <!-- Add form -->
     <div class="tasks-add">
-      <input class="input" id="task-input" placeholder="タスク名" type="text" value="${esc(state.addTitle)}">
-      <button class="btn btn-primary" id="task-add-btn" style="flex-shrink:0">保存</button>
+      <input class="input" id="task-input" placeholder="繧ｿ繧ｹ繧ｯ蜷・ type="text" value="${esc(state.addTitle)}">
+      <button class="btn btn-primary" id="task-add-btn" style="flex-shrink:0">菫晏ｭ・/button>
     </div>
 
     <!-- Add form extras (type + weight + due date + due time) -->
@@ -105,13 +112,13 @@ function render() {
         <button class="weight-btn${state.addWeight === 'medium' ? ' selected' : ''}" data-w="medium">中</button>
         <button class="weight-btn${state.addWeight === 'small' ? ' selected' : ''}" data-w="small">小</button>
       </div>
-      <button class="dp-trigger tasks-due-input" id="task-due-date-btn" title="期日を選択">
+      <button class="dp-trigger tasks-due-input" id="task-due-date-btn" title="日付を選ぶ">
         ${state.addDueDate ? formatPickerDate(state.addDueDate) : '📅 日付'}
       </button>
-      <button class="dp-trigger tasks-due-input" id="task-due-time-btn" title="時刻を選択">
+      <button class="dp-trigger tasks-due-input" id="task-due-time-btn" title="時刻を選ぶ">
         ${state.addDueTime ? '🕐 ' + state.addDueTime : '🕐 時刻'}
       </button>
-      <button class="dp-trigger tasks-due-input" id="task-estimate-btn" title="工数を選択">
+      <button class="dp-trigger tasks-due-input" id="task-estimate-btn" title="工数を選ぶ">
         ${state.addEstimate ? `⏱ ${formatDuration(state.addEstimate)}` : '⏱ 工数'}
       </button>
       <select class="input tasks-due-input" id="task-recurrence" title="繰り返し">
@@ -132,7 +139,7 @@ function render() {
       </div>
       <div class="add-tag-chips-wrap" id="add-tag-chips"></div>
       <div class="tasks-tag-input-wrap${state.addCustomTagOpen ? ' open' : ''}" id="tasks-tag-input-wrap">
-        <input class="input tasks-tag-input" id="tasks-add-tag-input" placeholder="タグを追加 (Enter)" list="add-tag-dl">
+        <input class="input tasks-tag-input" id="tasks-add-tag-input" placeholder="繧ｿ繧ｰ繧定ｿｽ蜉 (Enter)" list="add-tag-dl">
       </div>
       <datalist id="add-tag-dl">
         ${getTags().map(t => `<option value="${esc(t)}">`).join('')}
@@ -152,7 +159,7 @@ function render() {
 
     <!-- Archive link -->
     <div class="tasks-archive-link">
-      <button class="btn btn-ghost btn-sm" id="goto-archive-btn">🗑 Trash を見る</button>
+      <button class="btn btn-ghost btn-sm" id="goto-archive-btn">卵 Trash 繧定ｦ九ｋ</button>
     </div>
   `;
 
@@ -166,7 +173,7 @@ function render() {
     toggle.className = `tasks-add-toggle${state.addFormOpen ? ' open' : ''}`;
     toggle.setAttribute('aria-expanded', state.addFormOpen ? 'true' : 'false');
     toggle.innerHTML = `
-      <span>＋ タスクを作成</span>
+      <span>・・繧ｿ繧ｹ繧ｯ繧剃ｽ懈・</span>
       <span class="tasks-add-toggle-arrow">${state.addFormOpen ? '-' : '+'}</span>
     `;
     addForm.parentNode.insertBefore(toggle, addForm);
@@ -222,7 +229,7 @@ function render() {
   };
   const _updateDueTimeBtn = () => {
     if (!_dueTimeBtn) return;
-    _dueTimeBtn.textContent = state.addDueTime ? '🕐 ' + state.addDueTime : '🕐 時刻';
+    _dueTimeBtn.textContent = state.addDueTime ? '武 ' + state.addDueTime : '🕐 時刻';
     _dueTimeBtn.classList.toggle('dp-trigger--set', !!state.addDueTime);
   };
 
@@ -243,7 +250,7 @@ function render() {
 
   const _updateEstimateBtn = () => {
     if (!_estimateBtn) return;
-    _estimateBtn.textContent = state.addEstimate ? `⏱ ${formatDuration(state.addEstimate)}` : '⏱ 工数';
+    _estimateBtn.textContent = state.addEstimate ? `竢ｱ ${formatDuration(state.addEstimate)}` : '竢ｱ 蟾･謨ｰ';
     _estimateBtn.classList.toggle('dp-trigger--set', !!state.addEstimate);
   };
   _estimateBtn?.addEventListener('click', () => {
@@ -279,7 +286,7 @@ function render() {
   const _renderAddTagChips = () => {
     if (!_tagChipsEl) return;
     _tagChipsEl.innerHTML = state.addTags.map(t =>
-      `<span class="task-tag-chip">${esc(t)}<button class="tag-chip-x" data-rm="${esc(t)}">✕</button></span>`
+      `<span class="task-tag-chip">${esc(t)}<button class="tag-chip-x" data-rm="${esc(t)}">笨・/button></span>`
     ).join('');
     _tagChipsEl.querySelectorAll('[data-rm]').forEach(btn => {
       btn.onclick = () => { state.addTags = state.addTags.filter(x => x !== btn.dataset.rm); _renderAddTagChips(); };
@@ -361,12 +368,12 @@ function renderProgressBar() {
     subTotal  += subs.length;
     subDone   += subs.filter(s => s.completed).length;
   });
-  const subStr = subTotal > 0 ? ` · サブタスク ${subDone}/${subTotal}` : '';
+  const subStr = subTotal > 0 ? ` ﾂｷ 繧ｵ繝悶ち繧ｹ繧ｯ ${subDone}/${subTotal}` : '';
 
   wrap.innerHTML = `
     <div class="tasks-progress">
       <div class="tasks-progress-bar" style="width:${pct}%"></div>
-      <span class="tasks-progress-label">${done} / ${total} 完了 (${pct}%)${subStr}</span>
+      <span class="tasks-progress-label">${done} / ${total} 螳御ｺ・(${pct}%)${subStr}</span>
     </div>
   `;
 }
@@ -395,7 +402,7 @@ function renderFiltersHTML() {
       ${f.label}${f.badge !== null ? `<span class="filter-badge">${f.badge}</span>` : ''}
     </button>`
   ).join('') + (counts.done > 0
-    ? `<button class="filter-btn tasks-clear-done" id="tasks-clear-done" title="完了済みタスクを一括削除">🗑 クリア</button>`
+    ? `<button class="filter-btn tasks-clear-done" id="tasks-clear-done" title="螳御ｺ・ｸ医∩繧ｿ繧ｹ繧ｯ繧剃ｸ諡ｬ蜑企勁">卵 繧ｯ繝ｪ繧｢</button>`
     : '');
 }
 
@@ -415,7 +422,7 @@ function wireFilters(container) {
     if (!completed.length) return;
     deleteCompletedTasks();
     refreshTaskUi(true);
-    toast(`${completed.length}件の完了タスクを削除しました`, 'success');
+    toast(`${completed.length}莉ｶ縺ｮ螳御ｺ・ち繧ｹ繧ｯ繧貞炎髯､縺励∪縺励◆`, 'success');
   });
 }
 
@@ -443,20 +450,19 @@ function renderCodexPlannerPanel() {
     <section class="codex-plan-card">
       <div class="codex-plan-head">
         <div>
-          <div class="codex-plan-kicker">外部AIスケジュール</div>
-          <h3 class="codex-plan-title">タスクを作業時間に再配分</h3>
+          <div class="codex-plan-kicker">螟夜ΚAI繧ｹ繧ｱ繧ｸ繝･繝ｼ繝ｫ</div>
+          <h3 class="codex-plan-title">繧ｿ繧ｹ繧ｯ繧剃ｽ懈･ｭ譎る俣縺ｫ蜀埼・蛻・/h3>
         </div>
-        <button class="btn btn-ghost btn-sm" id="codex-close-btn" type="button">閉じる</button>
+        <button class="btn btn-ghost btn-sm" id="codex-close-btn" type="button">髢峨§繧・/button>
       </div>
       <p class="codex-plan-desc">
-        指定期間の未完了タスクと予定だけをコピーします。AIには、見直しや余白を入れず、実作業だけを詰めてマイスケジュール案を作らせます。
-      </p>
+        謖・ｮ壽悄髢薙・譛ｪ螳御ｺ・ち繧ｹ繧ｯ縺ｨ莠亥ｮ壹□縺代ｒ繧ｳ繝斐・縺励∪縺吶・I縺ｫ縺ｯ縲∬ｦ狗峩縺励ｄ菴咏區繧貞・繧後★縲∝ｮ滉ｽ懈･ｭ縺縺代ｒ隧ｰ繧√※繝槭う繧ｹ繧ｱ繧ｸ繝･繝ｼ繝ｫ譯医ｒ菴懊ｉ縺帙∪縺吶・      </p>
       <div class="codex-plan-controls">
-        <button class="dp-trigger" id="codex-start-date-btn">開始日 ${formatPickerDate(defaultStart)}</button>
-        <button class="dp-trigger" id="codex-end-date-btn">終了日 ${formatPickerDate(defaultEnd)}</button>
-        <button class="dp-trigger" id="codex-start-time-btn">開始時刻 ${state.codexStartTime}</button>
-        <button class="dp-trigger" id="codex-end-time-btn">終了時刻 ${state.codexEndTime}</button>
-        <select class="input codex-plan-select" id="codex-buffer-pct" title="余裕">
+        <button class="dp-trigger" id="codex-start-date-btn">髢句ｧ区律 ${formatPickerDate(defaultStart)}</button>
+        <button class="dp-trigger" id="codex-end-date-btn">邨ゆｺ・律 ${formatPickerDate(defaultEnd)}</button>
+        <button class="dp-trigger" id="codex-start-time-btn">髢句ｧ区凾蛻ｻ ${state.codexStartTime}</button>
+        <button class="dp-trigger" id="codex-end-time-btn">邨ゆｺ・凾蛻ｻ ${state.codexEndTime}</button>
+        <select class="input codex-plan-select" id="codex-buffer-pct" title="余裕時間">
           <option value="0" ${state.codexBufferPct === 0 ? 'selected' : ''}>余裕なし</option>
           <option value="10" ${state.codexBufferPct === 10 ? 'selected' : ''}>余裕 10%</option>
           <option value="20" ${state.codexBufferPct === 20 ? 'selected' : ''}>余裕 20%</option>
@@ -466,12 +472,12 @@ function renderCodexPlannerPanel() {
         <button class="dp-trigger" id="codex-break-end-btn">休憩終了 ${state.codexBreakEnd || 'なし'}</button>
       </div>
       <div class="codex-plan-actions">
-        <button class="btn btn-primary" id="codex-copy-btn">AI用にコピー</button>
-        <button class="btn btn-ghost" id="codex-apply-btn">AI案を反映</button>
+        <button class="btn btn-primary" id="codex-copy-btn">AI逕ｨ縺ｫ繧ｳ繝斐・</button>
+        <button class="btn btn-ghost" id="codex-apply-btn">AI譯医ｒ蜿肴丐</button>
       </div>
-      <textarea class="codex-plan-textarea" id="codex-export-text" readonly placeholder="コピーしたデータがここに出ます"></textarea>
-      <textarea class="codex-plan-textarea" id="codex-import-text" placeholder="Claude / GPT / Codex が返した JSON を貼り付け"></textarea>
-      <p class="codex-plan-note">反映先はマイスケジュールです。タスク本体の締切やメモは変更しません。</p>
+      <textarea class="codex-plan-textarea" id="codex-export-text" readonly placeholder="繧ｳ繝斐・縺励◆繝・・繧ｿ縺後％縺薙↓蜃ｺ縺ｾ縺・></textarea>
+      <textarea class="codex-plan-textarea" id="codex-import-text" placeholder="Claude / GPT / Codex 縺瑚ｿ斐＠縺・JSON 繧定ｲｼ繧贋ｻ倥￠"></textarea>
+      <p class="codex-plan-note">蜿肴丐蜈医・繝槭う繧ｹ繧ｱ繧ｸ繝･繝ｼ繝ｫ縺ｧ縺吶ゅち繧ｹ繧ｯ譛ｬ菴薙・邱蛻・ｄ繝｡繝｢縺ｯ螟画峩縺励∪縺帙ｓ縲・/p>
     </section>
   `;
 }
@@ -490,8 +496,8 @@ function wireCodexPlannerPanel(container) {
       onConfirm: d => {
         state.codexStartDate = d;
         if (state.codexEndDate && state.codexEndDate < d) state.codexEndDate = d;
-        startDateBtn.textContent = `開始日 ${formatPickerDate(state.codexStartDate)}`;
-        if (endDateBtn) endDateBtn.textContent = `終了日 ${formatPickerDate(state.codexEndDate)}`;
+        startDateBtn.textContent = `髢句ｧ区律 ${formatPickerDate(state.codexStartDate)}`;
+        if (endDateBtn) endDateBtn.textContent = `邨ゆｺ・律 ${formatPickerDate(state.codexEndDate)}`;
       },
     });
   });
@@ -501,13 +507,13 @@ function wireCodexPlannerPanel(container) {
       onConfirm: d => {
         state.codexEndDate = d;
         if (state.codexStartDate && state.codexStartDate > d) state.codexStartDate = d;
-        if (startDateBtn) startDateBtn.textContent = `開始日 ${formatPickerDate(state.codexStartDate)}`;
-        endDateBtn.textContent = `終了日 ${formatPickerDate(state.codexEndDate)}`;
+        if (startDateBtn) startDateBtn.textContent = `髢句ｧ区律 ${formatPickerDate(state.codexStartDate)}`;
+        endDateBtn.textContent = `邨ゆｺ・律 ${formatPickerDate(state.codexEndDate)}`;
       },
     });
   });
-  startTimeBtn?.addEventListener('click', () => openCodexTimePicker('codexStartTime', startTimeBtn, '開始時刻'));
-  endTimeBtn?.addEventListener('click', () => openCodexTimePicker('codexEndTime', endTimeBtn, '終了時刻'));
+  startTimeBtn?.addEventListener('click', () => openCodexTimePicker('codexStartTime', startTimeBtn, '髢句ｧ区凾蛻ｻ'));
+  endTimeBtn?.addEventListener('click', () => openCodexTimePicker('codexEndTime', endTimeBtn, '邨ゆｺ・凾蛻ｻ'));
   breakStartBtn?.addEventListener('click', () => openCodexTimePicker('codexBreakStart', breakStartBtn, '休憩開始', true));
   breakEndBtn?.addEventListener('click', () => openCodexTimePicker('codexBreakEnd', breakEndBtn, '休憩終了', true));
   container.querySelector('#codex-buffer-pct')?.addEventListener('change', e => {
@@ -573,18 +579,18 @@ async function copyCodexPayload(container) {
     kind: 'my-planner-ai-reschedule-request',
     version: 7,
     instruction: [
-      'You are a scheduling assistant. Follow these rules exactly — no exceptions, no creative interpretation.',
+      'You are a scheduling assistant. Follow these rules exactly with no exceptions and no creative interpretation.',
       '',
-      'RULE 1 — DURATION: Each task has a pre-computed effectiveMinutes (buffer already included, rounded to 10 min, and scaled for overflow if totalAvailableMinutes was exceeded). Use this number EXACTLY as the total work duration. Do NOT recompute, adjust, or round it.',
-      'RULE 2 — TODAY START: Today is ' + periodStart + '. The current time is approximately ' + (todayStart || state.codexStartTime) + '. ' + (todayStart ? 'Do NOT schedule any block on ' + periodStart + ' that starts before ' + todayStart + '. Time slots before ' + todayStart + ' on today do not exist.' : ''),
-      'RULE 3 — DEADLINES: A task with dueDate must have ALL its blocks on dates ≤ dueDate. Never schedule any portion of a task after its deadline. effectiveMinutes for deadline-constrained tasks has already been reduced if needed to guarantee they fit before their deadline.',
-      'RULE 4 — GREEDY SLOT FILLING: Enumerate free slots in strict chronological order. A free slot is a continuous window inside activeHours not blocked by a calendarEvent or dailyBreak. Fill each slot back-to-back. Never leave a slot unused while tasks remain.',
-      'RULE 5 — SPLIT ONLY AT BOUNDARIES: A task may only be interrupted at the end of a free slot (event start, break start, or activeHours end). Never split in the middle of an open free slot. The remainder of an interrupted task MUST be the first item in the very next free slot — before any new task.',
-      'RULE 6 — PORTIONS: Each portion must be a multiple of 5 minutes. All portions for a task must sum exactly to effectiveMinutes.',
-      'RULE 7 — NO OVERLAPS: Blocks must not overlap calendarEvents, existingMySchedule, or dailyBreaks.',
-      'RULE 8 — ACTIVE HOURS: All blocks must fall within activeHours (' + state.codexStartTime + '–' + state.codexEndTime + ').',
-      'RULE 9 — TASK WORK ONLY: No review, prep, buffer, admin, or placeholder blocks.',
-      'RULE 10 — OUTPUT FORMAT: Return valid JSON only — no prose, no markdown. Schema: {"scheduleItems":[{"taskId":"...","title":"...","date":"YYYY-MM-DD","startTime":"HH:MM","endTime":"HH:MM","note":"..."}]}',
+      'RULE 1 - DURATION: Use each task effectiveMinutes exactly as given. Do not recompute, adjust, or round it.',
+      'RULE 2 - TODAY START: Today is ' + periodStart + '. The current time is approximately ' + (todayStart || state.codexStartTime) + '. ' + (todayStart ? 'Do not schedule any block on ' + periodStart + ' that starts before ' + todayStart + '.' : ''),
+      'RULE 3 - DEADLINES: A task with dueDate must have all its blocks on or before dueDate. Never schedule any portion after its deadline.',
+      'RULE 4 - GREEDY SLOT FILLING: Enumerate free slots in strict chronological order and fill each slot back-to-back.',
+      'RULE 5 - SPLIT ONLY AT BOUNDARIES: A task may only be interrupted at the end of a free slot. Never split in the middle of an open free slot.',
+      'RULE 6 - PORTIONS: Each portion must be a multiple of 5 minutes. All portions for a task must sum exactly to effectiveMinutes.',
+      'RULE 7 - NO OVERLAPS: Blocks must not overlap calendarEvents, existingMySchedule, or dailyBreaks.',
+      'RULE 8 - ACTIVE HOURS: All blocks must fall within activeHours (' + state.codexStartTime + ' - ' + state.codexEndTime + ').',
+      'RULE 9 - TASK WORK ONLY: No review, prep, buffer, admin, or placeholder blocks.',
+      'RULE 10 - OUTPUT FORMAT: Return valid JSON only. No prose, no markdown. Schema: {"scheduleItems":[{"taskId":"...","title":"...","date":"YYYY-MM-DD","startTime":"HH:MM","endTime":"HH:MM","note":"..."}]}',
     ].join('\n'),
     activeHours: { start: state.codexStartTime, end: state.codexEndTime },
     planningPeriod: { startDate: periodStart, endDate: periodEnd },
@@ -605,7 +611,7 @@ async function copyCodexPayload(container) {
   } catch {
     out?.focus();
     out?.select();
-    toast('コピー欄を選択しました。手動でコピーしてください', 'info');
+    toast('コピーを自動で行えませんでした。手動でコピーしてください', 'info');
   }
 }
 
@@ -613,7 +619,7 @@ function applyCodexPlan(container) {
   const input = container.querySelector('#codex-import-text');
   const raw = input?.value?.trim();
   if (!raw) {
-    toast('Codex案のJSONを貼り付けてください', 'error');
+    toast('Codex譯医・JSON繧定ｲｼ繧贋ｻ倥￠縺ｦ縺上□縺輔＞', 'error');
     return;
   }
 
@@ -621,48 +627,48 @@ function applyCodexPlan(container) {
   try {
     plan = JSON.parse(raw);
   } catch {
-    toast('JSONとして読めませんでした', 'error');
+    toast('JSON縺ｨ縺励※隱ｭ繧√∪縺帙ｓ縺ｧ縺励◆', 'error');
     return;
   }
 
   const blocks = normalizeCodexScheduleItems(plan);
   if (!blocks.length) {
-    toast('scheduleItems が見つかりませんでした', 'error');
+    toast('scheduleItems 縺瑚ｦ九▽縺九ｊ縺ｾ縺帙ｓ縺ｧ縺励◆', 'error');
     return;
   }
 
   const normalTasksById = new Map(getTasks().filter(isNormalTask).map(t => [t.id, t]));
   const nonNormalRefs = blocks.filter(b => b.taskId && !normalTasksById.has(b.taskId));
   if (nonNormalRefs.length) {
-    toast(`通常タスク以外、または存在しないタスクが ${nonNormalRefs.length} 件あります。反映を止めました`, 'error');
+    toast(`騾壼ｸｸ繧ｿ繧ｹ繧ｯ莉･螟悶√∪縺溘・蟄伜惠縺励↑縺・ち繧ｹ繧ｯ縺・${nonNormalRefs.length} 莉ｶ縺ゅｊ縺ｾ縺吶ょ渚譏繧呈ｭ｢繧√∪縺励◆`, 'error');
     return;
   }
 
   const outsideWindow = blocks.filter(blockOutsidePlanningWindow);
   if (outsideWindow.length) {
-    toast(`活動時間外、または対象期限を超える案が ${outsideWindow.length} 件あります。反映を止めました`, 'error');
+    toast(`豢ｻ蜍墓凾髢灘､悶√∪縺溘・蟇ｾ雎｡譛滄剞繧定ｶ・∴繧区｡医′ ${outsideWindow.length} 莉ｶ縺ゅｊ縺ｾ縺吶ょ渚譏繧呈ｭ｢繧√∪縺励◆`, 'error');
     return;
   }
 
   const breakOverlaps = blocks.filter(blockOverlapsBreak);
   if (breakOverlaps.length) {
-    toast(`休憩時間と重なる案が ${breakOverlaps.length} 件あります。反映を止めました`, 'error');
+    toast(`莨第・譎る俣縺ｨ驥阪↑繧区｡医′ ${breakOverlaps.length} 莉ｶ縺ゅｊ縺ｾ縺吶ょ渚譏繧呈ｭ｢繧√∪縺励◆`, 'error');
     return;
   }
 
   const overlaps = blocks.filter(blockOverlapsCalendar);
   if (overlaps.length) {
-    toast(`カレンダー予定と重なる案が ${overlaps.length} 件あります。反映を止めました`, 'error');
+    toast(`繧ｫ繝ｬ繝ｳ繝繝ｼ莠亥ｮ壹→驥阪↑繧区｡医′ ${overlaps.length} 莉ｶ縺ゅｊ縺ｾ縺吶ょ渚譏繧呈ｭ｢繧√∪縺励◆`, 'error');
     return;
   }
 
   const scheduleOverlaps = blocks.filter(blockOverlapsExistingSchedule);
   if (scheduleOverlaps.length) {
-    toast(`既存マイスケジュールと重なる案が ${scheduleOverlaps.length} 件あります。反映を止めました`, 'error');
+    toast(`既存のマイスケジュールと重なる予定が ${scheduleOverlaps.length} 件あります。内容を確認してください`, 'error');
     return;
   }
 
-  if (!confirm(`${blocks.length}件の作業ブロックをマイスケジュールに反映します。既存のCodex計画は置き換えます。`)) return;
+  if (!confirm(`${blocks.length}件の作業ブロックをマイスケジュールに反映します。既存のCodex計画は置き換わります。`)) return;
 
   getScheduleItems()
     .filter(i => i.source === 'codex-plan')
@@ -684,7 +690,7 @@ function applyCodexPlan(container) {
   input.value = '';
   rerenderList();
   renderProgressBar();
-  toast(`${blocks.length}件をマイスケジュールに反映しました`, 'success');
+  toast(`${blocks.length}莉ｶ繧偵・繧､繧ｹ繧ｱ繧ｸ繝･繝ｼ繝ｫ縺ｫ蜿肴丐縺励∪縺励◆`, 'success');
 }
 
 function normalizeCodexScheduleItems(plan) {
@@ -849,7 +855,7 @@ function adjustTasksForOverflow(tasks, periodStart, periodEnd, activeStart, acti
     }));
   }
 
-  // Step 2: per-deadline group — if tasks due by D still overflow available time up to D, scale that group down further
+  // Step 2: per-deadline group 窶・if tasks due by D still overflow available time up to D, scale that group down further
   const groups = {};
   scaled.forEach(t => {
     const key = t.dueDate && t.dueDate <= periodEnd ? t.dueDate : '_later';
@@ -967,6 +973,9 @@ function getSortedFilteredTasks() {
 function renderTaskItem(task) {
   const tdStr   = today();
   const overdue = task.dueDate && task.dueDate < tdStr && !task.completed;
+  const highlightStyle = task.highlightColor
+    ? ` style="--task-highlight:${esc(task.highlightColor)}"`
+    : '';
 
   // Due label
   let dueLabel = '';
@@ -976,21 +985,21 @@ function renderTaskItem(task) {
   }
 
   const recurIcon = task.recurrence
-    ? `<span class="task-recur-icon" title="${esc(recurrenceLabel(task.recurrence))}">🔁</span>` : '';
+    ? `<span class="task-recur-icon" title="${esc(recurrenceLabel(task.recurrence))}">煤</span>` : '';
 
   const estimateChip = task.estimatedMinutes
-    ? `<span class="task-estimate-chip" title="工数">${formatEstimate(task.estimatedMinutes)}</span>`
+    ? `<span class="task-estimate-chip" title="蟾･謨ｰ">${formatEstimate(task.estimatedMinutes)}</span>`
     : '';
 
   // Subtask progress chip
   const subs    = task.subtasks || [];
   const subDone = subs.filter(s => s.completed).length;
   const subChip = subs.length > 0
-    ? `<span class="task-sub-chip${subDone === subs.length ? ' done' : ''}" title="サブタスク">${subDone}/${subs.length}</span>`
+    ? `<span class="task-sub-chip${subDone === subs.length ? ' done' : ''}" title="繧ｵ繝悶ち繧ｹ繧ｯ">${subDone}/${subs.length}</span>`
     : '';
 
   // Memo indicator
-  const memoIcon = task.memo ? `<span class="task-memo-dot" title="メモあり">📝</span>` : '';
+  const memoIcon = task.memo ? `<span class="task-memo-dot" title="繝｡繝｢縺ゅｊ">統</span>` : '';
 
   // Tag chips (up to 2)
   const tagChips = (task.tags || []).slice(0, 2)
@@ -1003,28 +1012,28 @@ function renderTaskItem(task) {
   const isGoal = task.taskType === 'goal';
 
   return `
-    <li class="task-item${task.completed ? ' completed' : ''}${task.abandoned ? ' abandoned' : ''}${isGoal ? ' task-item--goal' : ''}" data-task-id="${esc(task.id)}" draggable="true">
+    <li class="task-item${task.completed ? ' completed' : ''}${task.abandoned ? ' abandoned' : ''}${isGoal ? ' task-item--goal' : ''}${task.highlightColor ? ' task-item--highlight' : ''}" data-task-id="${esc(task.id)}" draggable="true"${highlightStyle}>
       <button class="task-check${task.completed ? ' done' : ''}" data-action="toggle"
-        ${task.abandoned ? 'disabled aria-label="諦めたタスクは完了に変更できません" title="諦めたタスクは完了に変更できません"' : 'aria-label="完了切り替え"'}>
+        ${task.abandoned ? 'disabled aria-label="隲ｦ繧√◆繧ｿ繧ｹ繧ｯ縺ｯ螳御ｺ・↓螟画峩縺ｧ縺阪∪縺帙ｓ" title="隲ｦ繧√◆繧ｿ繧ｹ繧ｯ縺ｯ螳御ｺ・↓螟画峩縺ｧ縺阪∪縺帙ｓ"' : 'aria-label="螳御ｺ・・繧頑崛縺・'}>
         <svg viewBox="0 0 24 24" fill="currentColor">
           <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
         </svg>
       </button>
       <span class="weight-dot weight-${task.weight || 'medium'}"></span>
-      ${isGoal ? '<span class="task-goal-icon">🎯</span>' : ''}
+      ${isGoal ? '<span class="task-goal-icon">識</span>' : ''}
       <div class="task-main">
         <span class="task-title" data-action="edit-title">${esc(task.title)}</span>
         ${metaInline ? `<div class="task-inline-meta">${metaInline}</div>` : ''}
       </div>
       <div class="task-meta">
-        ${isGoal ? `<button class="btn btn-ghost btn-sm task-decompose-btn" data-action="decompose" title="AIでサブタスクに分解">🤖</button>` : ''}
+        ${isGoal ? `<button class="btn btn-ghost btn-sm task-decompose-btn" data-action="decompose" title="AI縺ｧ繧ｵ繝悶ち繧ｹ繧ｯ縺ｫ蛻・ｧ｣">､・/button>` : ''}
         ${task.abandoned
-          ? `<button class="task-abandon task-abandon--undo" data-action="unabandon" aria-label="諦めを取り消す" title="諦めを取り消す">↩</button>`
+          ? `<button class="task-abandon task-abandon--undo" data-action="unabandon" aria-label="隲ｦ繧√ｒ蜿悶ｊ豸医☆" title="隲ｦ繧√ｒ蜿悶ｊ豸医☆">竊ｩ</button>`
           : !task.completed
-            ? `<button class="task-abandon" data-action="abandon" aria-label="諦める" title="諦める">🏳</button>`
+            ? `<button class="task-abandon" data-action="abandon" aria-label="隲ｦ繧√ｋ" title="隲ｦ繧√ｋ">承</button>`
             : ''
         }
-        <button class="task-delete" data-action="delete" aria-label="削除">
+        <button class="task-delete" data-action="delete" aria-label="蜑企勁">
           <svg viewBox="0 0 24 24" fill="currentColor">
             <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
           </svg>
@@ -1041,7 +1050,7 @@ function renderListInto(listEl) {
     const { filter } = state;
     listEl.innerHTML = `<li style="list-style:none">
       <div class="empty-state">
-        <div class="empty-state-icon">${filter === 'done' ? '✅' : filter === 'abandoned' ? '🏳' : '📝'}</div>
+        <div class="empty-state-icon">${filter === 'done' ? '✓' : filter === 'abandoned' ? '✕' : '📝'}</div>
         <div class="empty-state-text">${filter === 'done' ? '完了タスクはありません' : filter === 'abandoned' ? '諦めたタスクはありません' : 'タスクがありません'}</div>
         <div class="empty-state-sub">${(filter === 'all' || filter === 'pending') ? '上のフォームで追加しましょう' : ''}</div>
       </div>
@@ -1114,13 +1123,13 @@ function handleAdd() {
   if (_tce) _tce.innerHTML = '';
   c.querySelectorAll('[data-preset-tag]').forEach(btn => btn.classList.remove('active'));
   const _eb = c.querySelector('#task-estimate-btn');
-  if (_eb) { _eb.textContent = '⏱ 工数'; _eb.classList.remove('dp-trigger--set'); }
+  if (_eb) { _eb.textContent = '竢ｱ 蟾･謨ｰ'; _eb.classList.remove('dp-trigger--set'); }
   input.focus();
 
-  // Persist synchronously — addTask returns the new task object
+  // Persist synchronously 窶・addTask returns the new task object
   const newTask = addTask({ title, weight, dueDate, dueTime, estimatedMinutes, recurrence, tags, taskType });
 
-  // ── Optimistic: insert new item into DOM without full rerender ──
+  // 笏笏 Optimistic: insert new item into DOM without full rerender 笏笏
   const listEl = state.container?.querySelector('#task-list');
   if (listEl && newTask) {
     // Remove empty-state placeholder if it's there
@@ -1154,7 +1163,7 @@ function handleAdd() {
   }
 
   renderProgressBar();
-  toast(`「${title}」を追加しました`, 'success');
+  toast(`縲・{title}縲阪ｒ霑ｽ蜉縺励∪縺励◆`, 'success');
 }
 
 async function handleDecompose(taskId, btn) {
@@ -1162,8 +1171,8 @@ async function handleDecompose(taskId, btn) {
   if (!task) return;
   if (!isAiAvailable()) { toast('AI is currently unavailable.', 'error'); return; }
 
-  const originalText = btn?.textContent || '🤖';
-  if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
+  const originalText = btn?.textContent || '🤖 AI';
+  if (btn) { btn.textContent = '竢ｳ'; btn.disabled = true; }
 
   try {
     const result = await splitGoalToTasks({
@@ -1174,7 +1183,7 @@ async function handleDecompose(taskId, btn) {
       description: '',
     });
     const subtasks = result?.tasks || [];
-    if (!subtasks.length) { toast('サブタスクを生成できませんでした', 'error'); return; }
+    if (!subtasks.length) { toast('繧ｵ繝悶ち繧ｹ繧ｯ繧堤函謌舌〒縺阪∪縺帙ｓ縺ｧ縺励◆', 'error'); return; }
 
     subtasks.forEach(st => {
       addTask({ title: st.title, weight: st.weight || 'medium', dueDate: st.dueDate || task.dueDate, tags: task.tags || [] });
@@ -1183,9 +1192,9 @@ async function handleDecompose(taskId, btn) {
     rerenderList();
     renderProgressBar();
     const advice = result?.advice ? ` ${result.advice}` : '';
-    toast(`${subtasks.length}件のサブタスクを追加しました ✓${advice}`, 'success');
+    toast(`${subtasks.length}莉ｶ縺ｮ繧ｵ繝悶ち繧ｹ繧ｯ繧定ｿｽ蜉縺励∪縺励◆ 笨・{advice}`, 'success');
   } catch (e) {
-    toast('AI分解エラー: ' + e.message, 'error');
+    toast('AI蛻・ｧ｣繧ｨ繝ｩ繝ｼ: ' + e.message, 'error');
   } finally {
     if (btn) { btn.textContent = originalText; btn.disabled = false; }
   }
@@ -1199,7 +1208,7 @@ function handleToggle(taskId, li) {
   const willComplete = !task.completed;
 
   if (willComplete) {
-    // ── Optimistic: instantly apply completed styles ──
+    // 笏笏 Optimistic: instantly apply completed styles 笏笏
     li.classList.add('completed');
     li.querySelector('.task-check')?.classList.add('done');
 
@@ -1210,7 +1219,7 @@ function handleToggle(taskId, li) {
 
     refreshTaskUi(false);
 
-    undoToast(`「${task.title.slice(0, 20)}」を完了しました`, () => {
+    undoToast(`縲・{task.title.slice(0, 20)}縲阪ｒ螳御ｺ・＠縺ｾ縺励◆`, () => {
       applyUndo();
       rerenderList();
         refreshTaskUi(true);
@@ -1227,7 +1236,7 @@ function handleToggle(taskId, li) {
     }
 
   } else {
-    // ── Optimistic: instantly remove completed styles ──
+    // 笏笏 Optimistic: instantly remove completed styles 笏笏
     li.classList.remove('completed');
     li.querySelector('.task-check')?.classList.remove('done');
 
@@ -1244,7 +1253,7 @@ function handleDelete(taskId, li) {
   const task  = tasks.find(t => t.id === taskId);
   if (!task) return;
 
-  // ── Optimistic: animate out immediately ──
+  // 笏笏 Optimistic: animate out immediately 笏笏
   li.style.transition = 'opacity 0.18s ease, transform 0.18s ease';
   li.style.opacity    = '0';
   li.style.transform  = 'translateX(-8px)';
@@ -1255,7 +1264,7 @@ function handleDelete(taskId, li) {
   deleteTask(taskId);
   refreshTaskUi(false);
 
-  undoToast(`「${task.title.slice(0, 20)}」を削除しました`, () => {
+  undoToast(`縲・{task.title.slice(0, 20)}縲阪ｒ蜑企勁縺励∪縺励◆`, () => {
     applyUndo();
     refreshTaskUi(true);
   });
@@ -1271,7 +1280,7 @@ function handleAbandon(taskId, li) {
   updateTask(taskId, { abandoned: true });
   refreshTaskUi(false);
 
-  undoToast(`「${task.title.slice(0, 20)}」を諦めました`, () => {
+  undoToast(`縲・{task.title.slice(0, 20)}縲阪ｒ隲ｦ繧√∪縺励◆`, () => {
     updateTask(taskId, { abandoned: false, abandonedAt: null });
     refreshTaskUi(true);
   });
@@ -1288,7 +1297,7 @@ function handleUnabandon(taskId, li) {
   updateTask(taskId, { abandoned: false, abandonedAt: null });
   refreshTaskUi(false);
 
-  undoToast(`「${task.title.slice(0, 20)}」を諦めリストから戻しました`, () => {
+  undoToast(`縲・{task.title.slice(0, 20)}縲阪ｒ隲ｦ繧√Μ繧ｹ繝医°繧画綾縺励∪縺励◆`, () => {
     updateTask(taskId, { abandoned: true });
     refreshTaskUi(true);
   });
@@ -1307,12 +1316,13 @@ function startTitleEdit(li, taskId) {
   const overlay = document.getElementById('modal-overlay');
   if (!overlay) return;
 
-  let editDueDate  = task.dueDate  || null;
-  let editDueTime  = task.dueTime  || null;
+  let editDueDate = task.dueDate || null;
+  let editDueTime = task.dueTime || null;
   let editEstimate = task.estimatedMinutes || null;
-  let editTags     = [...(task.tags || [])];
+  let editTags = [...(task.tags || [])];
   let editSubtasks = (task.subtasks || []).map(s => ({ ...s }));
-  let editMemo     = task.memo || '';
+  let editMemo = task.memo || '';
+  let editHighlight = task.highlightColor || '';
 
   const modal = document.createElement('div');
   modal.className = 'modal task-edit-modal';
@@ -1325,57 +1335,68 @@ function startTitleEdit(li, taskId) {
       <button class="btn-icon modal-close" aria-label="閉じる">✕</button>
     </div>
     <div class="modal-body task-edit-body">
-      <!-- Title -->
-      <label class="form-label">タスク名</label>
-      <input class="input" id="edit-task-title" value="${esc(task.title)}" placeholder="タスク名">
+      <div class="task-edit-sticky">
+        <label class="form-label">タスク名</label>
+        <input class="input" id="edit-task-title" value="${esc(task.title)}" placeholder="タスク名">
+      </div>
 
-      <!-- Due date / time -->
-      <div class="edit-dt-row">
-        <div style="flex:1">
-          <label class="form-label">締め切り日</label>
-          <button class="dp-trigger dp-trigger--full${editDueDate ? ' dp-trigger--set' : ''}" id="edit-task-date-btn">
-            ${editDueDate ? formatPickerDate(editDueDate) : '📅 日付'}
-          </button>
+      <div class="task-edit-scroll">
+        <div class="edit-dt-row">
+          <div style="flex:1">
+            <label class="form-label">締め切り日</label>
+            <button class="dp-trigger dp-trigger--full${editDueDate ? ' dp-trigger--set' : ''}" id="edit-task-date-btn">
+              ${editDueDate ? formatPickerDate(editDueDate) : '📅 日付'}
+            </button>
+          </div>
+          <div style="flex:1">
+            <label class="form-label">締め切り時刻</label>
+            <button class="dp-trigger dp-trigger--full${editDueTime ? ' dp-trigger--set' : ''}" id="edit-task-time-btn">
+              ${editDueTime ? '🕐 ' + editDueTime : '🕐 時刻'}
+            </button>
+          </div>
         </div>
-        <div style="flex:1">
-          <label class="form-label">締め切り時刻</label>
-          <button class="dp-trigger dp-trigger--full${editDueTime ? ' dp-trigger--set' : ''}" id="edit-task-time-btn">
-            ${editDueTime ? '🕐 ' + editDueTime : '🕐 時刻'}
-          </button>
+
+        <label class="form-label">工数</label>
+        <button class="dp-trigger dp-trigger--full${editEstimate ? ' dp-trigger--set' : ''}" id="edit-task-estimate-btn">
+          ${editEstimate ? `⏱ ${formatDuration(editEstimate)}` : '⏱ 工数'}
+        </button>
+
+        <label class="form-label">強調表示</label>
+        <div class="task-highlight-palette" id="task-highlight-palette">
+          ${TASK_HIGHLIGHT_OPTIONS.map(opt => `
+            <button type="button" class="task-highlight-chip${editHighlight === opt.value ? ' active' : ''}"
+              data-hl="${esc(opt.value)}"
+              ${opt.color ? `style="--chip-color:${esc(opt.color)}"` : ''}>
+              <span class="task-highlight-chip-dot${opt.color ? '' : ' is-empty'}"></span>
+              <span>${esc(opt.label)}</span>
+            </button>
+          `).join('')}
         </div>
+
+        <label class="form-label">タグ</label>
+        <div class="edit-tag-area">
+          <div class="edit-tag-chips" id="edit-tag-chips"></div>
+          <input class="input" id="edit-tag-input" placeholder="タグを入力してEnter" list="edit-tag-dl" style="font-size:13px;margin-top:6px">
+          <datalist id="edit-tag-dl">
+            ${allTags.map(t => `<option value="${esc(t)}">`).join('')}
+          </datalist>
+        </div>
+
+        <label class="form-label">
+          サブタスク
+          <span class="edit-sub-count" id="edit-sub-count"></span>
+        </label>
+        <ul class="edit-subtask-list" id="edit-subtask-list"></ul>
+        <div class="edit-sub-add-row">
+          <input class="input" id="edit-new-sub" placeholder="サブタスクを追加…" style="flex:1;font-size:13px">
+          <button class="btn btn-ghost btn-sm" id="add-sub-btn">+ 追加</button>
+        </div>
+
+        <details class="task-memo-details" ${editMemo ? 'open' : ''}>
+          <summary class="form-label task-memo-summary">📝 メモ</summary>
+          <textarea class="input task-memo-textarea" id="edit-task-memo" placeholder="メモ（任意）…" rows="6">${esc(editMemo)}</textarea>
+        </details>
       </div>
-
-      <label class="form-label">工数</label>
-      <button class="dp-trigger dp-trigger--full${editEstimate ? ' dp-trigger--set' : ''}" id="edit-task-estimate-btn">
-        ${editEstimate ? `⏱ ${formatDuration(editEstimate)}` : '⏱ 工数'}
-      </button>
-
-      <!-- Tags -->
-      <label class="form-label">タグ</label>
-      <div class="edit-tag-area">
-        <div class="edit-tag-chips" id="edit-tag-chips"></div>
-        <input class="input" id="edit-tag-input" placeholder="タグを入力してEnter" list="edit-tag-dl" style="font-size:13px;margin-top:6px">
-        <datalist id="edit-tag-dl">
-          ${allTags.map(t => `<option value="${esc(t)}">`).join('')}
-        </datalist>
-      </div>
-
-      <!-- Subtasks -->
-      <label class="form-label">
-        サブタスク
-        <span class="edit-sub-count" id="edit-sub-count"></span>
-      </label>
-      <ul class="edit-subtask-list" id="edit-subtask-list"></ul>
-      <div class="edit-sub-add-row">
-        <input class="input" id="edit-new-sub" placeholder="サブタスクを追加…" style="flex:1;font-size:13px">
-        <button class="btn btn-ghost btn-sm" id="add-sub-btn">+ 追加</button>
-      </div>
-
-      <!-- Memo -->
-      <details class="task-memo-details" ${editMemo ? 'open' : ''}>
-        <summary class="form-label task-memo-summary">📝 メモ</summary>
-        <textarea class="input task-memo-textarea" id="edit-task-memo" placeholder="メモ（任意）…" rows="4">${esc(editMemo)}</textarea>
-      </details>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" id="edit-cancel-btn">キャンセル</button>
@@ -1387,31 +1408,27 @@ function startTitleEdit(li, taskId) {
   overlay.appendChild(modal);
   overlay.classList.remove('hidden');
 
-  // ---- キーボード表示時のビューポート調整 ----
   let _vvCleanup = null;
   if (window.visualViewport) {
     const _onVVResize = () => {
       const vvH = window.visualViewport.height;
-      // フォーム全体が見えるよう max-height を動的に更新
       modal.style.maxHeight = `${vvH - 20}px`;
     };
     window.visualViewport.addEventListener('resize', _onVVResize);
     _vvCleanup = () => window.visualViewport.removeEventListener('resize', _onVVResize);
   }
 
-  // タイトル入力欄にフォーカス（キーボードを出さない preventScroll 付き）
   requestAnimationFrame(() => {
     modal.querySelector('#edit-task-title')?.focus({ preventScroll: true });
   });
 
-  // ---- Subtask list ----
   const _renderSubs = () => {
     const list = modal.querySelector('#edit-subtask-list');
     const countEl = modal.querySelector('#edit-sub-count');
     if (!list) return;
     list.innerHTML = editSubtasks.map((s, i) => `
       <li class="edit-sub-item${s.completed ? ' done' : ''}" data-si="${i}">
-        <button class="edit-sub-check${s.completed ? ' done' : ''}" data-sub-toggle="${i}" aria-label="完了切り替え">
+        <button class="edit-sub-check${s.completed ? ' done' : ''}" data-sub-toggle="${i}" aria-label="完了を切り替え">
           <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
             <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
           </svg>
@@ -1428,7 +1445,10 @@ function startTitleEdit(li, taskId) {
       };
     });
     list.querySelectorAll('[data-sub-del]').forEach(btn => {
-      btn.onclick = () => { editSubtasks.splice(+btn.dataset.subDel, 1); _renderSubs(); };
+      btn.onclick = () => {
+        editSubtasks.splice(+btn.dataset.subDel, 1);
+        _renderSubs();
+      };
     });
     if (countEl) {
       const done = editSubtasks.filter(s => s.completed).length;
@@ -1438,8 +1458,8 @@ function startTitleEdit(li, taskId) {
   _renderSubs();
 
   const newSubInput = modal.querySelector('#edit-new-sub');
-  const addSubBtn   = modal.querySelector('#add-sub-btn');
-  const _doAddSub   = () => {
+  const addSubBtn = modal.querySelector('#add-sub-btn');
+  const _doAddSub = () => {
     const title = newSubInput?.value?.trim();
     if (!title) return;
     editSubtasks.push({ id: generateId(), title, completed: false, createdAt: new Date().toISOString() });
@@ -1447,9 +1467,13 @@ function startTitleEdit(li, taskId) {
     _renderSubs();
   };
   addSubBtn?.addEventListener('click', _doAddSub);
-  newSubInput?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); _doAddSub(); } });
+  newSubInput?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      _doAddSub();
+    }
+  });
 
-  // ---- Tag chips ----
   const _renderTags = () => {
     const chips = modal.querySelector('#edit-tag-chips');
     if (!chips) return;
@@ -1457,7 +1481,10 @@ function startTitleEdit(li, taskId) {
       `<span class="task-tag-chip">${esc(t)}<button class="tag-chip-x" data-remove="${esc(t)}">✕</button></span>`
     ).join('');
     chips.querySelectorAll('[data-remove]').forEach(btn => {
-      btn.onclick = () => { editTags = editTags.filter(x => x !== btn.dataset.remove); _renderTags(); };
+      btn.onclick = () => {
+        editTags = editTags.filter(x => x !== btn.dataset.remove);
+        _renderTags();
+      };
     });
   };
   _renderTags();
@@ -1476,10 +1503,16 @@ function startTitleEdit(li, taskId) {
     }
   });
 
-  // ---- Date/time pickers ----
+  modal.querySelectorAll('[data-hl]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      editHighlight = btn.dataset.hl || '';
+      modal.querySelectorAll('[data-hl]').forEach(el => el.classList.toggle('active', el === btn));
+    });
+  });
+
   const titleInput = modal.querySelector('#edit-task-title');
-  const dateBtn    = modal.querySelector('#edit-task-date-btn');
-  const timeBtn    = modal.querySelector('#edit-task-time-btn');
+  const dateBtn = modal.querySelector('#edit-task-date-btn');
+  const timeBtn = modal.querySelector('#edit-task-time-btn');
   const estimateBtn = modal.querySelector('#edit-task-estimate-btn');
 
   const _updDate = () => {
@@ -1499,14 +1532,14 @@ function startTitleEdit(li, taskId) {
     openDatePicker({
       value: editDueDate,
       onConfirm: d => { editDueDate = d; _updDate(); },
-      onClear:   () => { editDueDate = null; _updDate(); },
+      onClear: () => { editDueDate = null; _updDate(); },
     });
   });
   timeBtn?.addEventListener('click', () => {
     openTimePicker({
       value: editDueTime,
       onConfirm: t => { editDueTime = t; _updTime(); },
-      onClear:   () => { editDueTime = null; _updTime(); },
+      onClear: () => { editDueTime = null; _updTime(); },
     });
   });
   estimateBtn?.addEventListener('click', () => {
@@ -1525,21 +1558,23 @@ function startTitleEdit(li, taskId) {
 
   const save = () => {
     const newTitle = titleInput.value.trim();
-    if (!newTitle) { toast('タスク名を入力してください', 'error'); return; }
+    if (!newTitle) {
+      toast('タスク名を入力してください', 'error');
+      return;
+    }
 
     const newMemo = modal.querySelector('#edit-task-memo')?.value || '';
     const newEstimate = editEstimate ? Number(editEstimate) : null;
 
     const changes = {};
-    if (newTitle    !== task.title)                              changes.title    = newTitle;
-    if (editDueDate !== (task.dueDate || null))                  changes.dueDate  = editDueDate;
-    if (editDueTime !== (task.dueTime || null))                  changes.dueTime  = editDueTime;
-    if (newEstimate !== (task.estimatedMinutes || null))         changes.estimatedMinutes = newEstimate;
-    if (JSON.stringify(editTags) !== JSON.stringify(task.tags || []))
-      changes.tags = editTags;
-    if (JSON.stringify(editSubtasks) !== JSON.stringify(task.subtasks || []))
-      changes.subtasks = editSubtasks;
-    if (newMemo !== (task.memo || ''))                           changes.memo     = newMemo;
+    if (newTitle !== task.title) changes.title = newTitle;
+    if (editDueDate !== (task.dueDate || null)) changes.dueDate = editDueDate;
+    if (editDueTime !== (task.dueTime || null)) changes.dueTime = editDueTime;
+    if (newEstimate !== (task.estimatedMinutes || null)) changes.estimatedMinutes = newEstimate;
+    if (JSON.stringify(editTags) !== JSON.stringify(task.tags || [])) changes.tags = editTags;
+    if (JSON.stringify(editSubtasks) !== JSON.stringify(task.subtasks || [])) changes.subtasks = editSubtasks;
+    if (newMemo !== (task.memo || '')) changes.memo = newMemo;
+    if (editHighlight !== (task.highlightColor || '')) changes.highlightColor = editHighlight || null;
 
     if (Object.keys(changes).length) {
       updateTask(taskId, changes);
@@ -1555,7 +1590,10 @@ function startTitleEdit(li, taskId) {
   modal.querySelector('.modal-close')?.addEventListener('click', close);
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); }, { once: true });
   titleInput.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { e.preventDefault(); close(); }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      close();
+    }
   });
 }
 
@@ -1567,9 +1605,9 @@ function showKnowledgeSavePrompt(task) {
   const banner = document.createElement('div');
   banner.className = 'kn-save-banner';
   banner.innerHTML = `
-    <span class="kn-save-text">📝 メモをナレッジに保存しますか？</span>
-    <button class="btn btn-primary btn-sm kn-save-yes">保存</button>
-    <button class="kn-save-dismiss" aria-label="閉じる">✕</button>
+    <span class="kn-save-text">統 繝｡繝｢繧偵リ繝ｬ繝・ず縺ｫ菫晏ｭ倥＠縺ｾ縺吶°・・/span>
+    <button class="btn btn-primary btn-sm kn-save-yes">菫晏ｭ・/button>
+    <button class="kn-save-dismiss" aria-label="髢峨§繧・>笨・/button>
   `;
   document.body.appendChild(banner);
 
@@ -1602,7 +1640,7 @@ function showKnowledgeSavePrompt(task) {
         }).catch(() => {});
       });
     }
-    toast('ナレッジに保存しました ✓', 'success');
+    toast('ナレッジに保存しました', 'success');
   });
 
   banner.querySelector('.kn-save-dismiss')?.addEventListener('click', () => {
@@ -1669,10 +1707,14 @@ function wireDragDrop(listEl) {
 function recurrenceLabel(r) {
   if (!r) return '';
   switch (r.freq) {
-    case 'daily':    return '毎日';
+    case 'daily':    return '豈取律';
     case 'weekdays': return '平日毎日';
-    case 'weekly':   return '毎週';
-    case 'monthly':  return '毎月';
+    case 'weekly':   return '豈朱ｱ';
+    case 'monthly':  return '豈取怦';
     default: return '';
   }
 }
+
+
+
+

@@ -144,6 +144,7 @@ export function taskToRow(task, userId, isArchived) {
     sort_order:        0,
     task_type:         task.taskType          || 'normal',
     estimated_minutes: task.estimatedMinutes  || null,
+    highlight_color:   task.highlightColor    || null,
     abandoned:         task.abandoned         || false,
     abandoned_at:      task.abandonedAt       || null,
     created_at:        task.createdAt         || _now(),
@@ -168,6 +169,7 @@ export function rowToTask(row) {
     archivedAt:       row.archived_at       || null,
     taskType:         row.task_type         || 'normal',
     estimatedMinutes: row.estimated_minutes || null,
+    highlightColor:   row.highlight_color   || null,
     abandoned:        row.abandoned         || false,
     abandonedAt:      row.abandoned_at      || null,
     createdAt:        row.created_at        || _now(),
@@ -187,6 +189,7 @@ export function eventToRow(event, userId) {
     is_routine:   event.isRoutine   || false,
     recurring_id: event.recurringId || null,
     tags:         event.tags        || [],
+    memo:         event.memo        || '',
     created_at:   event.createdAt   || _now(),
     updated_at:   event.updatedAt   || _now(),
   };
@@ -203,6 +206,7 @@ export function rowToEvent(row) {
     isRoutine:   row.is_routine   || false,
     recurringId: row.recurring_id || null,
     tags:        row.tags         || [],
+    memo:        row.memo         || '',
     createdAt:   row.created_at   || _now(),
     updatedAt:   row.updated_at   || _now(),
   };

@@ -1119,6 +1119,16 @@ button { cursor: pointer; font-family: inherit; }
   box-shadow: var(--shadow-sm);
   transition: opacity var(--transition);
 }
+.task-item--highlight {
+  border-color: color-mix(in srgb, var(--task-highlight, var(--primary)) 38%, var(--border));
+  background:
+    linear-gradient(0deg, rgba(255,255,255,0.01), rgba(255,255,255,0.01)),
+    color-mix(in srgb, var(--task-highlight, var(--primary)) 10%, var(--bg-card));
+}
+.task-item--highlight .task-title {
+  color: color-mix(in srgb, var(--task-highlight, var(--primary)) 78%, var(--text));
+  font-weight: 600;
+}
 .task-item.completed { opacity: 0.4; }
 .task-item.completed .task-title { text-decoration: line-through; color: var(--text-muted); }
 .task-item.abandoned { opacity: 0.5; }
@@ -4642,7 +4652,23 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 0;
-  padding: 16px;
+  padding: 0;
+  overflow: hidden;
+  min-height: 0;
+}
+.task-edit-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-card);
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.task-edit-scroll {
+  padding: 10px 16px 16px;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
 }
 .task-edit-body .form-label {
   font-size: 11px;
@@ -4654,6 +4680,7 @@ kbd {
   display: block;
 }
 .task-edit-body .form-label:first-child { margin-top: 0; }
+.task-edit-sticky .form-label { margin-top: 0; }
 
 .edit-dt-row {
   display: flex;
@@ -4743,6 +4770,44 @@ kbd {
   line-height: 1.5;
   min-height: 80px;
   box-sizing: border-box;
+}
+.task-highlight-palette {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.task-highlight-chip {
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 7px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.task-highlight-chip.active {
+  border-color: var(--task-highlight, var(--primary));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--task-highlight, var(--primary)) 40%, transparent);
+}
+.task-highlight-chip-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--chip-color, transparent);
+  border: 1px solid color-mix(in srgb, var(--chip-color, var(--border)) 70%, var(--border));
+}
+.task-highlight-chip-dot.is-empty {
+  background: transparent;
+  border-color: var(--border);
+}
+.event-memo-textarea {
+  min-height: 92px;
+  resize: vertical;
+  line-height: 1.5;
 }
 
 /* ============================================================

@@ -8,9 +8,11 @@
 -- ================================================================
 alter table tasks          add column if not exists task_type         text    default 'normal';
 alter table tasks          add column if not exists estimated_minutes integer;
+alter table tasks          add column if not exists highlight_color   text;
 alter table schedule_items add column if not exists source            text;
 alter table schedule_items add column if not exists task_id           text;
 alter table schedule_items add column if not exists note              text    default '';
+alter table events         add column if not exists memo              text    default '';
 
 -- ================================================================
 -- TASKS (アクティブ + アーカイブ両方を格納 / archived_at で区別)
@@ -33,6 +35,7 @@ create table if not exists tasks (
   sort_order         integer     default 0,
   task_type          text        default 'normal',
   estimated_minutes  integer,
+  highlight_color    text,
   created_at         timestamptz default now(),
   updated_at         timestamptz default now()
 );
@@ -55,6 +58,7 @@ create table if not exists events (
   is_routine    boolean     default false,
   recurring_id  text,
   tags          text[]      default '{}',
+  memo          text        default '',
   created_at    timestamptz default now(),
   updated_at    timestamptz default now()
 );
