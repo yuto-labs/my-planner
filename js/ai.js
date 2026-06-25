@@ -388,12 +388,18 @@ export async function explainTerm(term, context = '') {
 }
 
 export async function formatKnowledgeMemo(rawText, existingMemosCtx = '') {
-  const system = 'ノートをJSON化してください。返答はJSONのみ。{"title":"20文字以内","blocks":[{"type":"h2","text":"見出し"},{"type":"paragraph","text":"本文"},{"type":"bullet","text":"箇条書き"}],"tags":["タグ1","タグ2"]}';
-  const user = `整理対象テキスト:\n${rawText.slice(0, 1800)}${existingMemosCtx ? `\n\n既存タグ候補:\n${existingMemosCtx}` : ''}`;
+  const system = [
+    'Turn rough notes into a useful Japanese knowledge memo. Return JSON only.',
+    'Schema: {"title":"short Japanese title","blocks":[{"type":"h2","text":"heading"},{"type":"paragraph","text":"body"},{"type":"bullet","text":"point"}],"tags":["tag1","tag2"]}.',
+    'Use only block types paragraph, h1, h2, h3, bullet, numbered, quote, toggle, math, divider.',
+    'Do not invent facts. Preserve important details. Make the memo readable even from messy input.',
+  ].join(' ');
+  const user = 'Text to organize:\n' + rawText.slice(0, 1800)
+    + (existingMemosCtx ? '\n\nExisting memo context:\n' + existingMemosCtx : '');
 
   const raw = await callAPI(HAIKU, system, user, 1400, 'json');
   const parsed = tryParseJSON(raw);
-  if (!parsed?.blocks) throw new Error('AI応答の解析に失敗しました');
+  if (!parsed?.blocks) throw new Error('AI memo format failed');
   return {
     title: parsed.title || '',
     blocks: Array.isArray(parsed.blocks) ? parsed.blocks : [],
@@ -516,4 +522,43 @@ export async function processBatchQueue(onProgress) {
   }
 
   return { processed, total: queue.length };
+}
+
+
+// ---- Whole-app AI helpers ----
+export async function interpretPlannerInput(text, context = {}) {
+  const now = new Date().toISOString();
+  const result = await callAPI(
+    SONNET,
+    [
+      'You are the command brain for a planner app. Decide what the user wants and return JSON only.',
+      'Schema: {"action":"task|event|schedule|memo|database","title":"...","date":"YYYY-MM-DD|null","startTime":"HH:MM|null","endTime":"HH:MM|null","dueDate":"YYYY-MM-DD|null","dueTime":"HH:MM|null","weight":"large|medium|small","estimatedMinutes":number|null,"tags":["..."],"memo":"...","blocks":[{"type":"paragraph|h2|bullet","text":"..."}],"fields":["..."],"rows":[{"...":"..."}],"message":"..."}.',
+      'Use task for todos, event for calendar appointments, schedule for time blocks, memo for notes, database for table-like collections or when the user asks to create a database.',
+      'Dates and times must be concrete when inferable. Never return prose outside JSON.',
+    ].join(' '),
+    JSON.stringify({ now, text, context }),
+    900,
+    'json'
+  );
+  const parsed = tryParseJSON(result);
+  if (!parsed?.action) throw new Error('AI response was empty');
+  return parsed;
+}
+
+export async function generateTaskSchedule(payload) {
+  const result = await callAPI(
+    SONNET,
+    [
+      'You schedule tasks inside a planner app. Return JSON only.',
+      'Output schema: {"scheduleItems":[{"taskId":"...","title":"...","date":"YYYY-MM-DD","startTime":"HH:MM","endTime":"HH:MM","note":"..."}]}',
+      'Respect activeHours, planningPeriod, todayEarliestStart, dailyBreaks, calendarEvents, existingMySchedule, and task dueDate.',
+      'Do not overlap blocks. Use task effectiveMinutes as closely as possible. Split only when needed.',
+    ].join(' '),
+    JSON.stringify(payload),
+    2200,
+    'json'
+  );
+  const parsed = tryParseJSON(result);
+  if (!parsed?.scheduleItems && !Array.isArray(parsed?.blocks)) throw new Error('AI response was empty');
+  return parsed;
 }

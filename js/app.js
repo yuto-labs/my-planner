@@ -631,7 +631,13 @@ async function init() {
 
   // Wire up bottom nav
   document.querySelectorAll('#bottom-nav .nav-btn').forEach(btn => {
-    btn.addEventListener('click', () => navigate(btn.dataset.view));
+    btn.addEventListener('click', () => {
+      btn.classList.remove('nav-btn--tap');
+      void btn.offsetWidth;
+      btn.classList.add('nav-btn--tap');
+      setTimeout(() => btn.classList.remove('nav-btn--tap'), 180);
+      navigate(btn.dataset.view);
+    });
   });
 
   // Wire search button in header

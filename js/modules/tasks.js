@@ -10,7 +10,7 @@ import {
   getEvents, getScheduleItems, addScheduleItem, deleteScheduleItem,
 } from '../storage.js';
 import { esc, today, tomorrow, formatDate, generateId, addDays, toDateStr, getEventsForDate } from '../utils.js';
-import { splitGoalToTasks } from '../ai.js';
+import { splitGoalToTasks, generateTaskSchedule } from '../ai.js';
 import { openDatePicker, openTimePicker, openDurationPicker, formatPickerDate, formatDuration } from '../datepicker.js';
 
 const toast     = (msg, type) => window.AppNav?.showToast(msg, type);
@@ -267,7 +267,7 @@ function render() {
   container.querySelector('#task-input')
     ?.addEventListener('input', e => { state.addTitle = e.target.value; });
   container.querySelector('#task-input')
-    ?.addEventListener('keydown', e => { if (e.key === 'Enter') handleAdd(); });
+    ?.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.repeat) { e.preventDefault(); handleAdd(); } });
   container.querySelector('#task-recurrence')
     ?.addEventListener('change', e => { state.addRecurrence = e.target.value || ''; });
 
@@ -473,8 +473,9 @@ function renderCodexPlannerPanel() {
         <button class="dp-trigger" id="codex-break-end-btn">休憩終了 ${state.codexBreakEnd || 'なし'}</button>
       </div>
       <div class="codex-plan-actions">
-        <button class="btn btn-primary" id="codex-copy-btn">AI用にコピー</button>
-        <button class="btn btn-ghost" id="codex-apply-btn">AI案を反映</button>
+        <button class="btn btn-primary" id="codex-ai-btn">AI\u3067\u5272\u308a\u632f\u308b</button>
+        <button class="btn btn-ghost" id="codex-copy-btn">AI\u7528\u306b\u30b3\u30d4\u30fc</button>
+        <button class="btn btn-ghost" id="codex-apply-btn">AI\u6848\u3092\u53cd\u6620</button>
       </div>
       <textarea class="codex-plan-textarea" id="codex-export-text" readonly placeholder="コピーしたJSONがここに出ます"></textarea>
       <textarea class="codex-plan-textarea" id="codex-import-text" placeholder="Claude / GPT / Codex が返したJSONを貼り付け"></textarea>
@@ -521,6 +522,7 @@ function wireCodexPlannerPanel(container) {
     state.codexBufferPct = Number(e.target.value) || 0;
   });
 
+  container.querySelector('#codex-ai-btn')?.addEventListener('click', e => runCodexAiPlan(container, e.currentTarget));
   container.querySelector('#codex-copy-btn')?.addEventListener('click', () => copyCodexPayload(container));
   container.querySelector('#codex-apply-btn')?.addEventListener('click', () => applyCodexPlan(container));
   container.querySelector('#codex-close-btn')?.addEventListener('click', () => {
@@ -543,7 +545,7 @@ function openCodexTimePicker(key, btn, label, allowClear = false) {
   });
 }
 
-async function copyCodexPayload(container) {
+function buildCodexPayload() {
   const periodStart = state.codexStartDate || today();
   const periodEnd = state.codexEndDate || periodStart;
   const relevantTasks = getTasks()
@@ -555,44 +557,27 @@ async function copyCodexPayload(container) {
       dueDate: t.dueDate || null,
       dueTime: t.dueTime || null,
       estimatedMinutes: Number(t.estimatedMinutes) || estimateMinutesByWeight(t.weight),
-      subtasks: (t.subtasks || []).map(s => ({ title: s.title, completed: !!s.completed })),
+      subtasks: (t.subtasks || []).map(st => ({ title: st.title, completed: !!st.completed })),
       tags: t.tags || [],
     }));
 
   const breaks = getCodexDailyBreaks();
   const todayStart = periodStart === today() ? nextHalfHour() : null;
-
   const tasksWithEffective = relevantTasks.map(t => ({
     ...t,
     effectiveMinutes: applyBufferAndRound(t.estimatedMinutes, state.codexBufferPct),
   }));
-
   const tasksAdjusted = adjustTasksForOverflow(
     tasksWithEffective, periodStart, periodEnd,
     state.codexStartTime, state.codexEndTime, breaks, todayStart
   );
-
   const totalAvailableMinutes = _availForPeriod(
     periodStart, periodEnd, state.codexStartTime, state.codexEndTime, breaks, todayStart
   );
 
-  const payload = {
+  return {
     kind: 'my-planner-ai-reschedule-request',
-    version: 7,
-    instruction: [
-      'You are a scheduling assistant. Follow these rules exactly with no exceptions and no creative interpretation.',
-      '',
-      'RULE 1 - DURATION: Use each task effectiveMinutes exactly as given. Do not recompute, adjust, or round it.',
-      'RULE 2 - TODAY START: Today is ' + periodStart + '. The current time is approximately ' + (todayStart || state.codexStartTime) + '. ' + (todayStart ? 'Do not schedule any block on ' + periodStart + ' that starts before ' + todayStart + '.' : ''),
-      'RULE 3 - DEADLINES: A task with dueDate must have all its blocks on or before dueDate. Never schedule any portion after its deadline.',
-      'RULE 4 - GREEDY SLOT FILLING: Enumerate free slots in strict chronological order and fill each slot back-to-back.',
-      'RULE 5 - SPLIT ONLY AT BOUNDARIES: A task may only be interrupted at the end of a free slot. Never split in the middle of an open free slot.',
-      'RULE 6 - PORTIONS: Each portion must be a multiple of 5 minutes. All portions for a task must sum exactly to effectiveMinutes.',
-      'RULE 7 - NO OVERLAPS: Blocks must not overlap calendarEvents, existingMySchedule, or dailyBreaks.',
-      'RULE 8 - ACTIVE HOURS: All blocks must fall within activeHours (' + state.codexStartTime + ' - ' + state.codexEndTime + ').',
-      'RULE 9 - TASK WORK ONLY: No review, prep, buffer, admin, or placeholder blocks.',
-      'RULE 10 - OUTPUT FORMAT: Return valid JSON only. No prose, no markdown. Schema: {"scheduleItems":[{"taskId":"...","title":"...","date":"YYYY-MM-DD","startTime":"HH:MM","endTime":"HH:MM","note":"..."}]}',
-    ].join('\n'),
+    version: 8,
     activeHours: { start: state.codexStartTime, end: state.codexEndTime },
     planningPeriod: { startDate: periodStart, endDate: periodEnd },
     ...(todayStart ? { todayEarliestStart: todayStart } : {}),
@@ -602,21 +587,46 @@ async function copyCodexPayload(container) {
     calendarEvents: getEventsInPlanningPeriod(periodStart, periodEnd),
     existingMySchedule: getScheduleItemsInPlanningPeriod(periodStart, periodEnd),
   };
+}
 
-  const text = JSON.stringify(payload, null, 2);
+async function copyCodexPayload(container) {
+  const payload = buildCodexPayload();
+  const text = JSON.stringify({
+    ...payload,
+    instruction: 'Return JSON only: {"scheduleItems":[{"taskId":"...","title":"...","date":"YYYY-MM-DD","startTime":"HH:MM","endTime":"HH:MM","note":"..."}]}',
+  }, null, 2);
   const out = container.querySelector('#codex-export-text');
   if (out) out.value = text;
   try {
     await navigator.clipboard.writeText(text);
-    toast(`${relevantTasks.length}件のタスクをAI用にコピーしました`, 'success');
+    toast(payload.tasks.length + '\u4ef6\u306e\u30bf\u30b9\u30af\u3092AI\u7528\u306b\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f', 'success');
   } catch {
     out?.focus();
     out?.select();
-    toast('コピーを自動で行えませんでした。手動でコピーしてください', 'info');
+    toast('Copy failed. Please copy manually.', 'info');
   }
 }
 
-function applyCodexPlan(container) {
+async function runCodexAiPlan(container, btn) {
+  if (!isAiAvailable()) { toast('AI is not available. Check settings.', 'error'); return; }
+  const payload = buildCodexPayload();
+  if (!payload.tasks.length) { toast('No unfinished tasks to schedule.', 'info'); return; }
+
+  const original = btn?.textContent || 'AI\u3067\u5272\u308a\u632f\u308b';
+  if (btn) { btn.textContent = 'AI\u5272\u308a\u632f\u308a\u4e2d...'; btn.disabled = true; }
+  try {
+    const plan = await generateTaskSchedule(payload);
+    const input = container.querySelector('#codex-import-text');
+    if (input) input.value = JSON.stringify(plan, null, 2);
+    applyCodexPlan(container, { skipConfirm: true, sourceLabel: 'AI' });
+  } catch (e) {
+    toast('AI schedule error: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.textContent = original; btn.disabled = false; }
+  }
+}
+
+function applyCodexPlan(container, options = {}) {
   const input = container.querySelector('#codex-import-text');
   const raw = input?.value?.trim();
   if (!raw) {

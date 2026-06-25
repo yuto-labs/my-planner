@@ -4,17 +4,18 @@
 
 import {
   getTasks, getEvents, isAiAvailable,
-  getCategoryById, updateTask, getCategories, addEvent,
-  getScheduleItemsForDate, getMyScheduleColor, getReviewsForDate,
+  getCategoryById, updateTask, getCategories, addEvent, addTask,
+  addScheduleItem, addKnowledgeMemo, getScheduleItemsForDate, getMyScheduleColor, getReviewsForDate,
 } from '../storage.js';
-import { parseNaturalLanguageEvent } from '../ai.js';
+import { interpretPlannerInput } from '../ai.js';
 import {
   esc, today, tomorrow, toDateStr, formatDate, formatTime, getGreeting, getGreetingPeriod,
-  getEventsForDate,
+  getEventsForDate, generateId,
 } from '../utils.js';
 
 const nav   = (view) => window.AppNav?.navigate(view);
 const toast = (msg, type) => window.AppNav?.showToast(msg, type);
+let nlBusy = false;
 
 export function initHome(container) {
   const todayStr  = today();
@@ -67,7 +68,7 @@ export function initHome(container) {
         <!-- Quick NL add input -->
         <div class="home-quick-add mt-3">
           <input class="input" id="nl-input"
-            placeholder="✦ 例：明日14時から研究、今日バイト18時" type="text">
+            placeholder="AI\u306b\u8ffd\u52a0\u3057\u305f\u3044\u3053\u3068\u3092\u5165\u529b" type="text">
           <button class="btn btn-primary" id="nl-add-btn">Add</button>
         </div>
       ` : ''}
@@ -169,7 +170,7 @@ export function initHome(container) {
   if (nlBtn && !nlBtn.disabled) {
     nlBtn.addEventListener('click', () => handleNLInput(nlInput, nlBtn, container));
     nlInput?.addEventListener('keydown', e => {
-      if (e.key === 'Enter') handleNLInput(nlInput, nlBtn, container);
+      if (e.key === 'Enter' && !e.repeat) { e.preventDefault(); handleNLInput(nlInput, nlBtn, container); }
     });
   }
 
@@ -318,38 +319,82 @@ function timeToMinutes(t) {
 
 async function handleNLInput(input, btn, container) {
   const text = input?.value?.trim();
-  if (!text) return;
+  if (!text || nlBusy) return;
 
+  nlBusy = true;
   const originalText = btn.textContent;
-  btn.textContent = '処理中…';
+  btn.textContent = 'AI\u51e6\u7406\u4e2d...';
   btn.disabled = true;
   input.disabled = true;
 
   try {
-    const cats = getCategories();
-    const parsed = await parseNaturalLanguageEvent(text, cats);
-    if (!parsed || !parsed.start) throw new Error('解析できませんでした');
-
-    const cat = cats.find(c => c.name === parsed.categoryName) || cats[cats.length - 1];
-    addEvent({
-      title: parsed.title || text,
-      start: parsed.start,
-      end:   parsed.end,
-      categoryId:  cat.id,
-      isTentative: parsed.isTentative || false,
-      isRoutine:   false,
+    const parsed = await interpretPlannerInput(text, {
+      today: today(),
+      categories: getCategories().map(c => c.name),
+      recentTasks: getTasks().slice(-8).map(t => ({ title: t.title, dueDate: t.dueDate, tags: t.tags || [] })),
     });
 
+    const title = parsed.title || text;
+    const tags = Array.isArray(parsed.tags) ? parsed.tags : [];
+    let message = parsed.message || '';
+
+    if (parsed.action === 'event') {
+      const cats = getCategories();
+      const cat = cats.find(c => c.name === parsed.categoryName) || cats[cats.length - 1];
+      const start = parsed.start || (parsed.date && parsed.startTime ? parsed.date + 'T' + parsed.startTime + ':00' : null);
+      const end = parsed.end || (parsed.date && parsed.endTime ? parsed.date + 'T' + parsed.endTime + ':00' : null);
+      if (!start) throw new Error('event needs date and start time');
+      addEvent({ title, start, end, categoryId: cat.id, isTentative: !!parsed.isTentative, isRoutine: false, memo: parsed.memo || '', tags });
+      message = message || '\u4e88\u5b9a\u3092\u8ffd\u52a0\u3057\u307e\u3057\u305f';
+    } else if (parsed.action === 'schedule') {
+      if (!parsed.date || !parsed.startTime || !parsed.endTime) throw new Error('schedule needs date, startTime, and endTime');
+      addScheduleItem({ title, date: parsed.date, startTime: parsed.startTime, endTime: parsed.endTime, note: parsed.memo || '', source: 'ai-input' });
+      message = message || '\u6d3b\u52d5\u6642\u9593\u306b\u8ffd\u52a0\u3057\u307e\u3057\u305f';
+    } else if (parsed.action === 'memo' || parsed.action === 'database') {
+      const isDb = parsed.action === 'database';
+      const fields = Array.isArray(parsed.fields) ? parsed.fields : [];
+      const rows = Array.isArray(parsed.rows) ? parsed.rows : [];
+      const blocks = Array.isArray(parsed.blocks) && parsed.blocks.length
+        ? parsed.blocks.map(b => ({ id: generateId(), type: b.type || 'paragraph', text: b.text || '' }))
+        : buildMemoBlocksFromInput(text, parsed.memo || '', isDb, fields, rows);
+      addKnowledgeMemo({ title, blocks, tags: [...new Set([...(isDb ? ['Database'] : []), ...tags])], summary: (parsed.memo || text).slice(0, 200) });
+      message = message || (isDb ? '\u30c7\u30fc\u30bf\u30d9\u30fc\u30b9\u3092\u4f5c\u6210\u3057\u307e\u3057\u305f' : '\u30e1\u30e2\u3092\u4f5c\u6210\u3057\u307e\u3057\u305f');
+    } else {
+      addTask({
+        title,
+        weight: parsed.weight || 'medium',
+        dueDate: parsed.dueDate || parsed.date || null,
+        dueTime: parsed.dueTime || null,
+        estimatedMinutes: parsed.estimatedMinutes || null,
+        tags,
+        memo: parsed.memo || '',
+      });
+      message = message || '\u30bf\u30b9\u30af\u3092\u8ffd\u52a0\u3057\u307e\u3057\u305f';
+    }
+
     input.value = '';
-    toast(`「${parsed.title || text}」を追加しました ✨`, 'success');
+    toast(message, 'success');
     reinit(container);
   } catch (e) {
-    toast('AI解析エラー: ' + e.message, 'error');
+    toast('AI error: ' + e.message, 'error');
   } finally {
+    nlBusy = false;
     btn.textContent = originalText;
     btn.disabled = false;
     input.disabled = false;
   }
+}
+
+function buildMemoBlocksFromInput(rawText, memo, isDatabase, fields, rows) {
+  if (!isDatabase) return [{ id: generateId(), type: 'paragraph', text: memo || rawText }];
+  const blocks = [
+    { id: generateId(), type: 'h2', text: '\u30c7\u30fc\u30bf\u30d9\u30fc\u30b9' },
+    { id: generateId(), type: 'paragraph', text: memo || 'AI input database.' },
+  ];
+  if (fields.length) blocks.push({ id: generateId(), type: 'bullet', text: '\u9805\u76ee: ' + fields.join(' / ') });
+  rows.slice(0, 20).forEach(row => blocks.push({ id: generateId(), type: 'bullet', text: Object.entries(row).map(([k, v]) => k + ': ' + v).join(' / ') }));
+  if (!rows.length && rawText) blocks.push({ id: generateId(), type: 'quote', text: rawText });
+  return blocks;
 }
 
 function reinit(container) {

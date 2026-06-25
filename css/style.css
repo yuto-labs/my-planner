@@ -30,8 +30,8 @@
   --bg-active:    rgba(255,255,255,0.09);
 
   --text:         #EDECF9;
-  --text-muted:   rgba(237,236,249,0.68);
-  --text-dim:     rgba(237,236,249,0.48);
+  --text-muted:   rgba(237,236,249,0.82);
+  --text-dim:     rgba(237,236,249,0.64);
 
   --border:       rgba(255,255,255,0.07);
   --border-light: rgba(255,255,255,0.04);
@@ -65,8 +65,8 @@
     --bg-active:    rgba(142,201,187,0.11);
 
     --text:         #1A1830;
-    --text-muted:   rgba(26,24,48,0.68);
-    --text-dim:     rgba(26,24,48,0.48);
+    --text-muted:   rgba(26,24,48,0.82);
+    --text-dim:     rgba(26,24,48,0.64);
 
     --border:       rgba(0,0,0,0.07);
     --border-light: rgba(0,0,0,0.04);
@@ -625,7 +625,7 @@ button { cursor: pointer; font-family: inherit; }
   border-radius: var(--radius);
   box-shadow: none;
 }
-.ai-message { font-size: 14px; font-weight: 600; margin-bottom: 6px; line-height: 1.5; }
+.ai-message { font-size: 15px; font-weight: 600; margin-bottom: 6px; line-height: 1.5; }
 .ai-focus {
   font-size: 12px;
   color: var(--text-muted);
@@ -682,7 +682,7 @@ button { cursor: pointer; font-family: inherit; }
   min-width: 68px;
   letter-spacing: 0.03em;
 }
-.schedule-title { flex: 1; font-size: 13px; font-weight: 500; }
+.schedule-title { flex: 1; font-size: 14px; font-weight: 500; }
 .schedule-tentative { opacity: 0.55; font-style: italic; }
 .schedule-my-item {
   background: color-mix(in srgb, var(--cat-color, var(--primary)) 12%, var(--bg-hover));
@@ -1770,7 +1770,7 @@ button { cursor: pointer; font-family: inherit; }
 }
 .today-task-item.completed .swipe-content { opacity: 0.4; }
 .today-task-item.completed .today-task-title { text-decoration: line-through; color: var(--text-muted); }
-.today-task-title { flex: 1; font-size: 13px; }
+.today-task-title { flex: 1; font-size: 14px; }
 .today-task-due { font-size: 11px; color: var(--text-dim); flex-shrink: 0; }
 
 /* Timeline */
@@ -5584,3 +5584,32 @@ kbd {
   color: color-mix(in srgb, var(--danger) 86%, var(--text));
 }
 
+
+
+/* ---- UX polish: tap response and readability ---- */
+.nav-btn { position: relative; overflow: hidden; }
+.nav-btn::after {
+  content: '';
+  position: absolute;
+  inset: 7px 12px;
+  border-radius: 16px;
+  background: var(--primary-bg);
+  opacity: 0;
+  transform: scale(0.72);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+  z-index: -1;
+}
+.nav-btn.nav-btn--tap::after,
+.nav-btn:active::after { opacity: 1; transform: scale(1); }
+.nav-btn.nav-btn--tap svg { transform: scale(0.9); }
+.home-page .card:not(.home-greeting),
+.analytics-page,
+.task-list,
+.kn-list-page { font-size: 1.04rem; }
+.analytics-section-title,
+.codex-plan-title,
+.kn-edit-title,
+.cal-title { font-size: calc(1em + 2px); font-weight: 800; }
+.codex-plan-actions { flex-wrap: wrap; }
+#codex-ai-btn { box-shadow: 0 8px 22px color-mix(in srgb, var(--primary) 22%, transparent); }
+.cal-ymp-item { color: var(--text); font-weight: 700; }

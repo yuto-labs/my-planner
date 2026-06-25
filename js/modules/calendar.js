@@ -570,7 +570,7 @@ function openYearMonthPicker() {
         <div class="cal-ymp-drums">
           <div class="cal-ymp-drum" id="ymp-year-drum">
             <div class="cal-ymp-pad"></div>
-            ${YEARS.map(y => `<div class="cal-ymp-item" data-val="${y}">${y}蟷ｴ</div>`).join('')}
+            ${YEARS.map(y => `<div class="cal-ymp-item" data-val="${y}">${y}\u5e74</div>`).join('')}
             <div class="cal-ymp-pad"></div>
           </div>
           <div class="cal-ymp-drum" id="ymp-month-drum">

@@ -114,7 +114,7 @@ export function thisMonthRange() {
 
 // ---- Formatting ----
 
-const WEEKDAYS_SHORT = ['日', '月', '火', '水', '木', '金', '土'];
+const WEEKDAYS_SHORT = ['\u65e5', '\u6708', '\u706b', '\u6c34', '\u6728', '\u91d1', '\u571f'];
 
 export function formatDate(dateOrStr, style = 'short') {
   const d = new Date(dateOrStr);
@@ -125,8 +125,8 @@ export function formatDate(dateOrStr, style = 'short') {
   const wd = WEEKDAYS_SHORT[d.getDay()];
 
   if (style === 'short') return `${m}/${day}(${wd})`;
-  if (style === 'medium') return `${y}年${m}月${day}日(${wd})`;
-  if (style === 'month') return `${y}年${m}月`;
+  if (style === 'medium') return `${y}\u5e74${m}\u6708${day}\u65e5(${wd})`;  
+  if (style === 'month') return `${y}\u5e74${m}\u6708`;  
   if (style === 'ymd') return `${y}/${m}/${day}`;
   return `${m}/${day}`;
 }
@@ -214,11 +214,11 @@ function _clampEventForDay(ev, dateStr) {
 
 export function getGreeting() {
   const h = new Date().getHours();
-  if (h < 5) return 'おやすみなさい';
-  if (h < 10) return 'おはようございます';
-  if (h < 17) return 'こんにちは';
-  if (h < 21) return 'こんばんは';
-  return 'お疲れさまです';
+  if (h < 5) return '\u304a\u3084\u3059\u307f\u306a\u3055\u3044';
+  if (h < 10) return '\u304a\u306f\u3088\u3046\u3054\u3056\u3044\u307e\u3059';
+  if (h < 17) return '\u3053\u3093\u306b\u3061\u306f';
+  if (h < 21) return '\u3053\u3093\u3070\u3093\u306f';
+  return '\u304a\u75b2\u308c\u3055\u307e\u3067\u3059';
 }
 
 export function getGreetingPeriod() {
