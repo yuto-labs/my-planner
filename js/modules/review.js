@@ -1,5 +1,5 @@
 // ============================================================
-// review.js — Anki-like spaced repetition review session
+// review.js - Anki-like spaced repetition review session
 // ============================================================
 import {
   getReviewsForDate, getKnowledgeMemoById,
@@ -11,17 +11,24 @@ import { esc, fmtDays } from '../utils.js';
 const nav = (view) => window.AppNav?.navigate(view);
 
 export function initReview(container) {
-  const todayStr   = new Date().toISOString().slice(0, 10);
+  const todayStr = new Date().toISOString().slice(0, 10);
   const dueEntries = getReviewsForDate(todayStr);
-  const queue      = dueEntries.map(e => getKnowledgeMemoById(e.memoId)).filter(Boolean);
+  const queue = dueEntries.map(e => getKnowledgeMemoById(e.memoId)).filter(Boolean);
 
-  let idx      = 0;
+  let idx = 0;
   let revealed = false;
 
   function render() {
-    if (queue.length === 0) { renderEmpty(); return; }
-    if (idx >= queue.length) { renderDone(); return; }
-    revealed ? renderBack(queue[idx]) : renderFront(queue[idx]);
+    if (queue.length === 0) {
+      renderEmpty();
+      return;
+    }
+    if (idx >= queue.length) {
+      renderDone();
+      return;
+    }
+    if (revealed) renderBack(queue[idx]);
+    else renderFront(queue[idx]);
   }
 
   function header() {
@@ -38,10 +45,10 @@ export function initReview(container) {
   function renderEmpty() {
     container.innerHTML = `
       <div class="rv-page rv-done">
-        <div class="rv-done-icon">✅</div>
+        <div class="rv-done-icon">🎉</div>
         <div class="rv-done-title">今日の復習は完了しています</div>
-        <div class="rv-done-sub">また明日！</div>
-        <button class="btn btn-primary" id="rv-exit">ホームへ戻る</button>
+        <div class="rv-done-sub">また明日続けましょう</div>
+        <button class="btn btn-primary" id="rv-exit">ホームに戻る</button>
       </div>`;
     container.querySelector('#rv-exit')?.addEventListener('click', () => nav('home'));
   }
@@ -49,10 +56,10 @@ export function initReview(container) {
   function renderDone() {
     container.innerHTML = `
       <div class="rv-page rv-done">
-        <div class="rv-done-icon">🎉</div>
+        <div class="rv-done-icon">✅</div>
         <div class="rv-done-title">今日の復習 完了！</div>
         <div class="rv-done-sub">${queue.length}件のカードを復習しました</div>
-        <button class="btn btn-primary" id="rv-exit">ホームへ戻る</button>
+        <button class="btn btn-primary" id="rv-exit">ホームに戻る</button>
       </div>`;
     container.querySelector('#rv-exit')?.addEventListener('click', () => nav('home'));
   }
@@ -69,12 +76,15 @@ export function initReview(container) {
           <p class="rv-front-hint">内容を思い出してからタップ</p>
         </div>
         <button class="btn btn-primary rv-reveal-btn" id="rv-reveal">
-          内容を確認する
+          答えを見る
           <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M7 10l5 5 5-5z"/></svg>
         </button>
       </div>`;
     container.querySelector('#rv-exit')?.addEventListener('click', () => nav('home'));
-    container.querySelector('#rv-reveal')?.addEventListener('click', () => { revealed = true; render(); });
+    container.querySelector('#rv-reveal')?.addEventListener('click', () => {
+      revealed = true;
+      render();
+    });
   }
 
   function renderBack(memo) {
@@ -91,7 +101,7 @@ export function initReview(container) {
           <div class="rv-content kn-view-content">${renderBlocksView(memo.blocks || [])}</div>
         </div>
         <div class="rv-rating">
-          <div class="rv-rating-label">どの程度覚えていましたか？</div>
+          <div class="rv-rating-label">どのくらい思い出せましたか？</div>
           <div class="rv-rating-btns">
             <button class="rv-btn rv-btn--again" data-r="again">
               <span class="rv-btn-label">もう一度</span><span class="rv-btn-interval">${fmtDays(ivs.again)}</span>
