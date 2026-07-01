@@ -1777,6 +1777,11 @@ button { cursor: pointer; font-family: inherit; }
   flex: 1;
 }
 
+#shared-new-name {
+  height: 52px;
+  font-size: 15px;
+}
+
 .shared-group-manager {
   display: grid;
   gap: 16px;

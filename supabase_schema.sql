@@ -197,6 +197,33 @@ create policy "shared invites: group owner create" on shared_calendar_invites
     )
   );
 
+create or replace function create_shared_calendar_group(group_id text, group_name text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'login required';
+  end if;
+
+  insert into shared_calendar_groups(id, owner_id, name, created_at, updated_at)
+  values (group_id, auth.uid(), coalesce(nullif(group_name, ''), '共有カレンダー'), now(), now())
+  on conflict (id) do update
+    set name = excluded.name,
+        updated_at = now()
+    where shared_calendar_groups.owner_id = auth.uid();
+
+  insert into shared_calendar_members(group_id, user_id, role, created_at)
+  values (group_id, auth.uid(), 'owner', now())
+  on conflict (group_id, user_id) do update
+    set role = 'owner';
+
+  return jsonb_build_object('id', group_id, 'name', coalesce(nullif(group_name, ''), '共有カレンダー'));
+end;
+$$;
+
 create or replace function accept_shared_calendar_invite(invite_token text)
 returns jsonb
 language plpgsql
