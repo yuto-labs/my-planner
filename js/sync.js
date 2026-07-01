@@ -285,7 +285,8 @@ async function _pullTasks(client, userId, forceReplace = false) {
 async function _pullEvents(client, userId, forceReplace = false) {
   const { data, error } = await client
     .from('events').select('*').eq('user_id', userId);
-  if (error || !data) return;
+  if (error) throw error;
+  if (!data) return;
   const remote = _filterPendingDeletes('events', data.map(rowToEvent));
   return _writeIfChanged('mp_events', forceReplace ? _mergeProtectedLocalItems('events', 'mp_events', remote) : _merge(_ls('mp_events', []), remote));
 }

@@ -726,7 +726,8 @@ function wireAccount(container, options = {}) {
       if (!session) throw new Error('Could not create a session.');
       setActiveUserId(session.user?.id || null);
       toast('Signed in.', 'success');
-      if (!await isMigratedForCurrentUser()) {
+      const pulledFirst = await pullAll(true);
+      if (!pulledFirst && !await isMigratedForCurrentUser()) {
         btn.textContent = 'Syncing…';
         try {
           await migrateToSupabase(() => {});
@@ -736,8 +737,6 @@ function wireAccount(container, options = {}) {
           console.warn('[Sync] auto-migrate failed:', e);
           toast('Sync failed — tap "Move local data to cloud" in AI Settings to retry.', 'error');
         }
-      } else {
-        await pullAll(true);
       }
       await startRealtimeSync();
       window.AppNav?.refreshCurrentView?.({ preserveScroll: true });

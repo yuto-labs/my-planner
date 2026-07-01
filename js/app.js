@@ -605,12 +605,13 @@ async function init() {
         deferSyncWhileEditing({ needsPull: true });
       } else {
         (async () => {
-          if (!await isMigratedForCurrentUser()) {
+          const pulledFirst = await pullAll(true);
+          if (!pulledFirst && !await isMigratedForCurrentUser()) {
             await migrateToSupabase(() => {});
+            await pullAll(true);
           }
-          const pulled = await pullAll(true);
           await startRealtimeSync();
-          return pulled;
+          return pulledFirst;
         })().then(pulled => {
           if (!pulled || !currentView) return;
           refreshCurrentView();
