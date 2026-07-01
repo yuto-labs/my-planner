@@ -316,6 +316,88 @@ $$;
 
 grant execute on function accept_shared_calendar_invite(text) to authenticated;
 
+drop function if exists get_shared_calendar_groups();
+create or replace function get_shared_calendar_groups()
+returns table (
+  id text,
+  name text,
+  owner_id uuid,
+  role text,
+  created_at timestamptz,
+  updated_at timestamptz
+)
+language sql
+security definer
+set search_path = public
+as $$
+  select
+    scg.id,
+    scg.name,
+    scg.owner_id,
+    scm.role,
+    scg.created_at,
+    scg.updated_at
+  from shared_calendar_members scm
+  join shared_calendar_groups scg on scg.id = scm.group_id
+  where scm.user_id = auth.uid()
+  order by scg.created_at desc;
+$$;
+
+grant execute on function get_shared_calendar_groups() to authenticated;
+
+drop function if exists get_shared_calendar_events(text);
+create or replace function get_shared_calendar_events(p_group_id text default null)
+returns table (
+  id text,
+  user_id uuid,
+  title text,
+  start_at timestamptz,
+  end_at timestamptz,
+  category_id text,
+  is_tentative boolean,
+  is_routine boolean,
+  recurring_id text,
+  tags text[],
+  memo text,
+  share_visibility text,
+  shared_group_ids text[],
+  created_at timestamptz,
+  updated_at timestamptz
+)
+language sql
+security definer
+set search_path = public
+as $$
+  select
+    e.id,
+    e.user_id,
+    e.title,
+    e.start_at,
+    e.end_at,
+    e.category_id,
+    e.is_tentative,
+    e.is_routine,
+    e.recurring_id,
+    e.tags,
+    e.memo,
+    e.share_visibility,
+    e.shared_group_ids,
+    e.created_at,
+    e.updated_at
+  from events e
+  where e.share_visibility <> 'private'
+    and exists (
+      select 1
+      from shared_calendar_members scm
+      where scm.user_id = auth.uid()
+        and scm.group_id = any(e.shared_group_ids)
+        and (p_group_id is null or scm.group_id = p_group_id)
+    )
+  order by e.start_at asc;
+$$;
+
+grant execute on function get_shared_calendar_events(text) to authenticated;
+
 -- ================================================================
 -- GOALS (目標)
 -- ================================================================

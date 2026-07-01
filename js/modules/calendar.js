@@ -77,9 +77,14 @@ async function handleCalendarInviteFromUrl() {
   const url = new URL(window.location.href);
   const token = url.searchParams.get('shareInvite');
   if (!token) return;
-  await acceptSharedInvite(token);
+  const result = await acceptSharedInvite(token);
   url.searchParams.delete('shareInvite');
   window.history.replaceState({}, document.title, `${url.origin}${url.pathname}#calendar`);
+  if (result?.pendingLogin) {
+    toast('ログインすると、この招待グループに自動で参加します', 'info');
+    window.AppNav?.navigate('settings');
+    return;
+  }
   toast('共有グループに参加しました', 'success');
 }
 

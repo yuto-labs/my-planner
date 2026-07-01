@@ -4,11 +4,8 @@ import {
   createSharedGroup,
   createSharedInvite,
   deleteSharedGroup,
-  deleteOwnSharedEvent,
   loadSharedGroups,
-  updateOwnSharedEvent,
 } from '../shared-calendar.js';
-import { getCategories, getCategoryColor } from '../storage.js';
 import { esc, formatDate, formatTime, getEventsForDate, today, toDateStr } from '../utils.js';
 
 const toast = (msg, type) => window.AppNav?.showToast(msg, type);
@@ -21,7 +18,6 @@ let state = {
   groupId: '',
   groups: [],
   events: [],
-  userId: null,
   loading: false,
   error: null,
 };
@@ -47,10 +43,15 @@ async function handleInviteFromUrl() {
   const url = new URL(window.location.href);
   const token = url.searchParams.get('shareInvite');
   if (!token) return;
-  await acceptSharedInvite(token);
+  const result = await acceptSharedInvite(token);
   url.searchParams.delete('shareInvite');
   window.history.replaceState({}, document.title, `${url.origin}${url.pathname}#shared-calendar`);
-  toast('共有カレンダーに参加しました', 'success');
+  if (result?.pendingLogin) {
+    toast('ログインすると、この招待グループに自動で参加します', 'info');
+    nav('settings');
+    return;
+  }
+  toast('共有グループに参加しました', 'success');
 }
 
 async function refresh() {
@@ -59,7 +60,6 @@ async function refresh() {
   const result = await collectSharedCalendarEvents(state.groupId);
   state.groups = result.groups || [];
   state.events = result.events || [];
-  state.userId = result.userId || null;
   state.error = result.error?.message || null;
   state.loading = false;
   render();
@@ -86,7 +86,7 @@ function render() {
               <button class="cal-scope-btn active" type="button" aria-pressed="true">共</button>
             </div>
           </div>
-          <p>個人予定を保存元にしたまま、共有対象だけを合成表示します。</p>
+          <p>個人予定を保存先にしたまま、共有対象にした予定だけをまとめて表示します。</p>
         </div>
       </div>
 
@@ -101,7 +101,7 @@ function render() {
         <button class="btn btn-ghost btn-sm" id="shared-refresh" type="button">更新</button>
       </div>
 
-      ${state.error ? `<div class="card shared-cal-error">共有データを読み込めませんでした。Supabaseに共有カレンダー用SQLを適用すると使えます。<br>${esc(state.error)}</div>` : ''}
+      ${state.error ? `<div class="card shared-cal-error">共有データを読み込めませんでした。Supabaseに最新の共有カレンダーSQLを適用してください。<br>${esc(state.error)}</div>` : ''}
       ${state.loading ? '<div class="empty-state"><div class="loader-ring"></div><p class="empty-state-text">読み込み中...</p></div>' : renderMonth()}
     </section>
   `;
@@ -121,18 +121,15 @@ function render() {
     toast('共有カレンダーを更新しました', 'success');
   });
   container.querySelector('#shared-personal-btn')?.addEventListener('click', () => nav('calendar'));
-  container.querySelectorAll('[data-shared-event-id]').forEach(btn => {
-    btn.addEventListener('click', () => openSharedEvent(btn.dataset.sharedEventId));
-  });
 }
 
 function renderMonth() {
   if (!state.groups.length) {
     return `
       <div class="empty-state">
-        <div class="empty-state-icon">◎</div>
+        <div class="empty-state-icon">□</div>
         <p class="empty-state-text">共有グループがまだありません</p>
-        <p class="empty-state-sub">「共有グループ」から作成して、友人に招待リンクを渡せます。</p>
+        <p class="empty-state-sub">設定の共有グループから作成し、招待リンクを送ってください。</p>
       </div>
     `;
   }
@@ -142,13 +139,14 @@ function renderMonth() {
   gridStart.setDate(start.getDate() - start.getDay());
   const dayLabels = ['日', '月', '火', '水', '木', '金', '土'];
   const todayStr = today();
+  let d = new Date(gridStart);
 
   let html = `
     <div class="shared-cal-grid-wrap">
-      <div class="cal-day-headers">${dayLabels.map(d => `<div class="cal-day-header">${d}</div>`).join('')}</div>
+      <div class="cal-day-headers">${dayLabels.map(label => `<div class="cal-day-header">${label}</div>`).join('')}</div>
       <div class="cal-grid shared-cal-grid">
   `;
-  let d = new Date(gridStart);
+
   for (let i = 0; i < 42; i += 1) {
     const ds = toDateStr(d);
     const isOther = d.getMonth() !== state.cursor.getMonth();
@@ -156,144 +154,29 @@ function renderMonth() {
     html += `
       <div class="cal-cell${isOther ? ' other-month' : ''}${ds === todayStr ? ' today' : ''}">
         <div class="cal-cell-num">${d.getDate()}</div>
-        ${events.map(ev => renderChip(ev)).join('')}
+        ${events.map(renderChip).join('')}
       </div>
     `;
     d.setDate(d.getDate() + 1);
   }
-  html += '</div></div>';
-  return html;
+
+  return `${html}</div></div>`;
 }
 
 function renderChip(event) {
-  const color = event.isOwn ? getCategoryColor(event.categoryId) : 'var(--primary)';
   const label = event.isOwn ? '自分' : (event.shareVisibility === 'shared_busy' ? '予定あり' : '共有');
   return `
-    <button class="shared-event-chip${event.isOwn ? ' own' : ''}" data-shared-event-id="${esc(event.id)}" style="--event-color:${color}">
+    <span class="shared-event-chip${event.isOwn ? ' own' : ''}">
       <span>${esc(formatTime(event.start))}</span>
       <strong>${esc(event.visibleTitle || event.title || '予定')}</strong>
       <em>${label}</em>
-    </button>
+    </span>
   `;
-}
-
-function openSharedEvent(eventId) {
-  const event = state.events.find(ev => ev.id === eventId);
-  if (!event) return;
-  const cats = getCategories();
-  const body = document.createElement('div');
-  body.innerHTML = `
-    <div class="shared-event-detail">
-      <p class="shared-cal-kicker">${event.isOwn ? 'YOUR EVENT' : 'READ ONLY'}</p>
-      <h3>${esc(event.visibleTitle || event.title || '予定')}</h3>
-      <p>${esc(formatDate(new Date(event.start), 'medium'))} ${esc(formatTime(event.start))}${event.end ? ` - ${esc(formatTime(event.end))}` : ''}</p>
-      ${event.visibleMemo ? `<p class="shared-event-memo">${esc(event.visibleMemo)}</p>` : ''}
-      <p class="form-help">${event.isOwn ? '共有画面からでも、自分の予定だけ編集できます。' : '他のメンバーの予定は閲覧のみです。'}</p>
-    </div>
-  `;
-
-  const footer = document.createElement('div');
-  footer.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;width:100%';
-  if (event.isOwn) {
-    const edit = document.createElement('button');
-    edit.className = 'btn btn-primary btn-sm';
-    edit.textContent = '自分の予定を編集';
-    edit.onclick = () => {
-      close();
-      openQuickEdit(event, cats);
-    };
-    footer.appendChild(edit);
-
-    const del = document.createElement('button');
-    del.className = 'btn btn-danger btn-sm';
-    del.textContent = '削除';
-    del.onclick = () => {
-      close();
-      confirmSharedDelete(event);
-    };
-    footer.appendChild(del);
-  }
-  const close = openModal({ title: '共有予定', body, footer });
-}
-
-function confirmSharedDelete(event) {
-  const body = document.createElement('div');
-  body.innerHTML = `
-    <p>「${esc(event.title || '予定')}」を削除しますか？</p>
-    <p class="form-help">共有カレンダーから見えている自分の予定だけを削除します。他のメンバーの予定は削除されません。</p>
-  `;
-  const footer = document.createElement('div');
-  footer.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;width:100%';
-  const cancel = document.createElement('button');
-  cancel.className = 'btn btn-ghost btn-sm';
-  cancel.textContent = 'キャンセル';
-  const ok = document.createElement('button');
-  ok.className = 'btn btn-danger btn-sm';
-  ok.textContent = '削除';
-  footer.append(cancel, ok);
-  const close = openModal({ title: '予定を削除', body, footer });
-  cancel.onclick = () => close();
-  ok.onclick = async () => {
-    try {
-      await deleteOwnSharedEvent(event.id);
-      close();
-      toast('予定を削除しました', 'success');
-      await refresh();
-    } catch (e) {
-      toast(e.message || '削除できませんでした', 'error');
-    }
-  };
-}
-
-function openQuickEdit(event, cats) {
-  const body = document.createElement('div');
-  body.innerHTML = `
-    <div class="form-group">
-      <label class="form-label">タイトル</label>
-      <input class="input" id="shared-edit-title" value="${esc(event.title || '')}">
-    </div>
-    <div class="form-group">
-      <label class="form-label">カテゴリ</label>
-      <select class="select" id="shared-edit-category">
-        ${cats.map(cat => `<option value="${esc(cat.id)}" ${event.categoryId === cat.id ? 'selected' : ''}>${esc(cat.name)}</option>`).join('')}
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label">共有範囲</label>
-      <select class="select" id="shared-edit-visibility">
-        <option value="private" ${event.shareVisibility === 'private' ? 'selected' : ''}>共有しない</option>
-        <option value="shared_busy" ${event.shareVisibility === 'shared_busy' ? 'selected' : ''}>時間だけ共有</option>
-        <option value="shared_detail" ${event.shareVisibility === 'shared_detail' ? 'selected' : ''}>詳細も共有</option>
-      </select>
-    </div>
-  `;
-  const footer = document.createElement('div');
-  footer.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;width:100%';
-  const save = document.createElement('button');
-  save.className = 'btn btn-primary btn-sm';
-  save.textContent = '保存';
-  footer.appendChild(save);
-  const close = openModal({ title: '自分の予定を編集', body, footer });
-  save.onclick = async () => {
-    const title = body.querySelector('#shared-edit-title')?.value.trim();
-    if (!title) return;
-    try {
-      await updateOwnSharedEvent(event.id, {
-      title,
-      categoryId: body.querySelector('#shared-edit-category')?.value || event.categoryId,
-      shareVisibility: body.querySelector('#shared-edit-visibility')?.value || 'private',
-      });
-      close();
-      toast('予定を更新しました', 'success');
-      await refresh();
-    } catch (e) {
-      toast(e.message || '更新できませんでした', 'error');
-    }
-  };
 }
 
 export async function openSharedCalendarSettings() {
-  await loadSharedGroups().then(groups => { state.groups = groups; }).catch(() => {});
+  state.groups = await loadSharedGroups().catch(() => state.groups || []);
+
   const body = document.createElement('div');
   body.innerHTML = `
     <div class="shared-group-manager">
@@ -302,12 +185,12 @@ export async function openSharedCalendarSettings() {
           <span class="shared-manager-step">1</span>
           <div>
             <h3>共有グループを作る</h3>
-            <p>友人や家族など、一緒に予定を見たい相手ごとにグループを作ります。</p>
+            <p>友達や家族など、予定を一緒に見たい相手ごとにグループを作ります。</p>
           </div>
         </div>
         <label class="form-label" for="shared-new-name">グループ名</label>
         <div class="shared-inline shared-inline--wide">
-          <input class="input" id="shared-new-name" placeholder="例: 友人カレンダー / 家族予定 / 部活メンバー">
+          <input class="input" id="shared-new-name" placeholder="例: 友達カレンダー / 家族予定">
           <button class="btn btn-primary" id="shared-create-group">作成</button>
         </div>
       </section>
@@ -317,7 +200,7 @@ export async function openSharedCalendarSettings() {
           <span class="shared-manager-step">2</span>
           <div>
             <h3>招待リンクを作る</h3>
-            <p>相手に送るリンクです。相手がログインしてリンクを開くと、この共有グループに参加できます。</p>
+            <p>相手がログインした状態でリンクを開くと、そのアカウントでグループに参加できます。未ログインの場合は、ログイン後に自動で参加します。</p>
           </div>
         </div>
         <div class="shared-manager-grid">
@@ -326,25 +209,24 @@ export async function openSharedCalendarSettings() {
             <select class="select" id="shared-invite-group">
               ${state.groups.map(group => `<option value="${esc(group.id)}">${esc(group.name || '共有グループ')}</option>`).join('')}
             </select>
-            <p class="form-help">どの共有カレンダーに招待するかを選びます。</p>
           </div>
           <div class="form-group">
             <label class="form-label" for="shared-invite-email">相手のメール（任意）</label>
             <input class="input" id="shared-invite-email" placeholder="例: friend@example.com">
-            <p class="form-help">空欄ならリンクを知っているログイン済みユーザーが使えます。メールを書くと、そのメールのアカウントだけが参加できます。</p>
+            <p class="form-help">空欄ならリンクを知っているログイン済みユーザーが参加できます。メールを書くと、そのメールのアカウントだけ参加できます。</p>
           </div>
         </div>
         <button class="btn btn-ghost btn-full" id="shared-create-invite" ${state.groups.length ? '' : 'disabled'}>招待リンクを作成</button>
-        <textarea class="input shared-invite-output" id="shared-invite-output" readonly placeholder="作成した招待リンクがここに表示されます。コピーしてLINEやメールで送ってください。"></textarea>
-        <p class="form-help">招待リンクは7日で期限切れになり、1回使われると再利用できません。</p>
+        <textarea class="input shared-invite-output" id="shared-invite-output" readonly placeholder="作成した招待リンクがここに表示されます。コピーしてLINEやメールで送れます。"></textarea>
+        <p class="form-help">招待リンクは7日で期限切れになり、1回使うと再利用できません。</p>
       </section>
 
       <section class="shared-manager-card shared-manager-card--compact">
         <div class="shared-manager-card-head">
           <span class="shared-manager-step">3</span>
           <div>
-            <h3>いま参加している共有グループ</h3>
-            <p>ここに表示されるグループだけが共有カレンダーに反映されます。</p>
+            <h3>参加中の共有グループ</h3>
+            <p>ここに表示されるグループが、カレンダーの共表示で選べます。</p>
           </div>
         </div>
         <div class="shared-group-list">
@@ -359,23 +241,23 @@ export async function openSharedCalendarSettings() {
       </section>
     </div>
   `;
-  const close = openModal({ title: '共有グループ', body, footer: null, wide: true });
+
+  const close = openModal({ title: '共有設定', body });
 
   body.querySelector('#shared-create-group')?.addEventListener('click', async () => {
-    const name = body.querySelector('#shared-new-name')?.value.trim();
-    if (!name) return;
+    const input = body.querySelector('#shared-new-name');
+    const name = input?.value.trim();
+    if (!name) {
+      toast('グループ名を入力してください', 'error');
+      return;
+    }
     try {
-      const created = await createSharedGroup(name);
-      state.groups = [
-        { role: 'owner', ...created },
-        ...state.groups.filter(group => group.id !== created.id),
-      ];
+      await createSharedGroup(name);
       toast('共有グループを作成しました', 'success');
       close();
-      if (state.container) await refresh();
-      openSharedCalendarSettings();
+      await openSharedCalendarSettings();
     } catch (e) {
-      toast(e.message || '作成できませんでした', 'error');
+      toast(e.message || '共有グループを作成できませんでした', 'error');
     }
   });
 
@@ -384,7 +266,13 @@ export async function openSharedCalendarSettings() {
     const email = body.querySelector('#shared-invite-email')?.value || '';
     try {
       const invite = await createSharedInvite(groupId, email);
-      body.querySelector('#shared-invite-output').value = invite.url;
+      const out = body.querySelector('#shared-invite-output');
+      if (out) {
+        out.value = invite.url;
+        out.focus();
+        out.select();
+      }
+      await navigator.clipboard?.writeText(invite.url).catch(() => {});
       toast('招待リンクを作成しました', 'success');
     } catch (e) {
       toast(e.message || '招待リンクを作成できませんでした', 'error');
@@ -392,19 +280,17 @@ export async function openSharedCalendarSettings() {
   });
 
   body.querySelectorAll('[data-delete-group-id]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      openDeleteGroupConfirm(btn.dataset.deleteGroupId, btn.dataset.deleteGroupName, close);
-    });
+    btn.addEventListener('click', () => confirmDeleteGroup(btn.dataset.deleteGroupId, btn.dataset.deleteGroupName || '共有グループ', close));
   });
 }
 
-function openDeleteGroupConfirm(groupId, groupName, parentClose) {
+function confirmDeleteGroup(groupId, groupName, parentClose) {
   const body = document.createElement('div');
   body.innerHTML = `
     <p>共有グループ「${esc(groupName)}」を削除します。</p>
-    <p class="form-help">予定そのものは削除されません。このグループへの共有だけが解除されます。作成者だけが削除できます。</p>
-    <label class="form-label" for="shared-delete-confirm-name">確認のためグループ名を入力</label>
-    <input class="input" id="shared-delete-confirm-name" placeholder="${esc(groupName)}">
+    <p class="form-help">作成者だけが削除できます。共有設定は外れますが、各ユーザーの個人予定そのものは削除されません。</p>
+    <label class="form-label" for="shared-delete-confirm">確認のためグループ名を入力</label>
+    <input class="input" id="shared-delete-confirm" placeholder="${esc(groupName)}">
   `;
   const footer = document.createElement('div');
   footer.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;width:100%';
@@ -414,24 +300,20 @@ function openDeleteGroupConfirm(groupId, groupName, parentClose) {
   const ok = document.createElement('button');
   ok.className = 'btn btn-danger btn-sm';
   ok.textContent = '削除';
-  ok.disabled = true;
   footer.append(cancel, ok);
-
   const close = openModal({ title: '共有グループを削除', body, footer });
-  const input = body.querySelector('#shared-delete-confirm-name');
-  input?.addEventListener('input', () => {
-    ok.disabled = input.value.trim() !== groupName;
-  });
   cancel.onclick = () => close();
   ok.onclick = async () => {
+    const typed = body.querySelector('#shared-delete-confirm')?.value.trim();
+    if (typed !== groupName) {
+      toast('グループ名が一致しません', 'error');
+      return;
+    }
     try {
       await deleteSharedGroup(groupId);
       close();
       parentClose?.();
       toast('共有グループを削除しました', 'success');
-      state.groupId = state.groupId === groupId ? '' : state.groupId;
-      if (state.container) await refresh();
-      openSharedCalendarSettings();
     } catch (e) {
       toast(e.message || '共有グループを削除できませんでした', 'error');
     }

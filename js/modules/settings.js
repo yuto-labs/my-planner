@@ -16,6 +16,7 @@ import {
 } from '../supabase.js';
 import { migrateToSupabase } from '../migrate.js';
 import { getSyncStatus, pullAll, startRealtimeSync, stopRealtimeSync } from '../sync.js';
+import { consumePendingSharedInvite } from '../shared-calendar.js';
 import { openSharedCalendarSettings } from './shared-calendar.js';
 
 const toast = (msg, type) => window.AppNav?.showToast(msg, type);
@@ -739,6 +740,13 @@ function wireAccount(container, options = {}) {
         }
       }
       await startRealtimeSync();
+      const inviteResult = await consumePendingSharedInvite().catch(e => {
+        toast('共有招待の参加に失敗しました: ' + e.message, 'error');
+        return null;
+      });
+      if (inviteResult && !inviteResult.pendingLogin) {
+        toast('共有グループに参加しました', 'success');
+      }
       window.AppNav?.refreshCurrentView?.({ preserveScroll: true });
     } catch (e) {
       toast('Sign-in error: ' + e.message, 'error');
