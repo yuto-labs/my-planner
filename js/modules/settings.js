@@ -16,6 +16,7 @@ import {
 } from '../supabase.js';
 import { migrateToSupabase } from '../migrate.js';
 import { getSyncStatus, pullAll, startRealtimeSync, stopRealtimeSync } from '../sync.js';
+import { openSharedCalendarSettings } from './shared-calendar.js';
 
 const toast = (msg, type) => window.AppNav?.showToast(msg, type);
 const nav = (view) => window.AppNav?.navigate(view);
@@ -70,6 +71,20 @@ function renderMainSettings(container) {
         </div>
         <p class="text-sm text-muted" style="margin-top:8px">
           Color used for My Schedule blocks on Home, Today, and Calendar.
+        </p>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-heading">Calendar Sharing</div>
+        <button class="settings-link-card" id="open-shared-calendar-settings-btn">
+          <span>
+            <strong>共有カレンダー設定</strong>
+            <small>共有グループの作成、招待リンク、参加中グループの確認</small>
+          </span>
+          <span class="settings-link-arrow">›</span>
+        </button>
+        <p class="text-sm text-muted" style="margin-top:8px">
+          共有画面では予定を保存せず、個人カレンダーの共有対象だけをまとめて表示します。
         </p>
       </div>
 
@@ -138,6 +153,9 @@ function renderMainSettings(container) {
   wireCategories(container);
   wireAccount(container, { hideWhenSignedIn: false, sectionId: 'main-account-section' });
   container.querySelector('#open-ai-settings-btn')?.addEventListener('click', () => nav('ai-settings'));
+  container.querySelector('#open-shared-calendar-settings-btn')?.addEventListener('click', () => {
+    openSharedCalendarSettings().catch(e => toast(e?.message || '共有設定を開けませんでした', 'error'));
+  });
 }
 
 function renderAISettings(container) {

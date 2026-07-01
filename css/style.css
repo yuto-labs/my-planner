@@ -801,6 +801,39 @@ button { cursor: pointer; font-family: inherit; }
 }
 .cal-title:active { opacity: 0.7; }
 
+.cal-scope-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-input);
+  flex-shrink: 0;
+}
+
+.cal-scope-btn {
+  min-width: 30px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.cal-scope-btn.active {
+  background: var(--primary-bg);
+  color: var(--primary-light);
+  box-shadow: inset 0 0 0 1px var(--primary-border);
+}
+
+.cal-scope-btn:active {
+  transform: scale(0.96);
+}
+
 .cal-mode-tabs {
   display: flex;
   background: var(--bg-hover);
@@ -1606,12 +1639,6 @@ button { cursor: pointer; font-family: inherit; }
 .empty-state-text { font-size: 15px; font-weight: 700; }
 .empty-state-sub  { font-size: 12px; color: var(--text-dim); }
 
-/* Shared calendar */
-.cal-share-btn {
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
 .event-share-box {
   padding: 12px;
   border: 1px solid var(--border);
@@ -1657,6 +1684,18 @@ button { cursor: pointer; font-family: inherit; }
 .shared-cal-head h2 {
   margin: 0 0 4px;
   font-size: 22px;
+}
+
+.shared-cal-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 4px;
+}
+
+.shared-cal-title-row h2 {
+  margin: 0;
 }
 
 .shared-cal-head p {

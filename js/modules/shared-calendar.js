@@ -10,6 +10,7 @@ import { esc, formatDate, formatTime, getEventsForDate, today, toDateStr } from 
 
 const toast = (msg, type) => window.AppNav?.showToast(msg, type);
 const openModal = (opts) => window.AppNav?.openModal(opts);
+const nav = (view) => window.AppNav?.navigate(view);
 
 let state = {
   container: null,
@@ -75,10 +76,15 @@ function render() {
       <div class="shared-cal-head">
         <div>
           <p class="shared-cal-kicker">PERSONAL SOURCE / SHARED VIEW</p>
-          <h2>共有カレンダー</h2>
+          <div class="shared-cal-title-row">
+            <h2>共有カレンダー</h2>
+            <div class="cal-scope-toggle" aria-label="カレンダー表示切替">
+              <button class="cal-scope-btn" id="shared-personal-btn" type="button" aria-pressed="false">個</button>
+              <button class="cal-scope-btn active" type="button" aria-pressed="true">共</button>
+            </div>
+          </div>
           <p>個人予定を保存元にしたまま、共有対象だけを合成表示します。</p>
         </div>
-        <button class="btn btn-primary btn-sm" id="shared-manage-btn">共有グループ</button>
       </div>
 
       <div class="shared-cal-controls">
@@ -106,7 +112,7 @@ function render() {
     state.groupId = e.target.value;
     await refresh();
   });
-  container.querySelector('#shared-manage-btn')?.addEventListener('click', openGroupManager);
+  container.querySelector('#shared-personal-btn')?.addEventListener('click', () => nav('calendar'));
   container.querySelectorAll('[data-shared-event-id]').forEach(btn => {
     btn.addEventListener('click', () => openSharedEvent(btn.dataset.sharedEventId));
   });
@@ -236,7 +242,7 @@ function openQuickEdit(event, cats) {
   };
 }
 
-async function openGroupManager() {
+export async function openSharedCalendarSettings() {
   await loadSharedGroups().then(groups => { state.groups = groups; }).catch(() => {});
   const body = document.createElement('div');
   body.innerHTML = `
@@ -306,8 +312,8 @@ async function openGroupManager() {
       await createSharedGroup(name);
       toast('共有グループを作成しました', 'success');
       close();
-      await refresh();
-      openGroupManager();
+      if (state.container) await refresh();
+      openSharedCalendarSettings();
     } catch (e) {
       toast(e.message || '作成できませんでした', 'error');
     }

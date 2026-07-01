@@ -202,7 +202,10 @@ function render() {
       <button class="cal-nav-arrow" id="cal-prev-btn" aria-label="蜑阪∈">&#8249;</button>
       <div class="cal-title-wrap">
         <button class="cal-title" id="cal-title-btn">${getViewTitle()}</button>
-        <button class="btn btn-ghost btn-sm cal-share-btn" id="cal-share-btn" type="button">共有カレンダー</button>
+        <div class="cal-scope-toggle" aria-label="カレンダー表示切替">
+          <button class="cal-scope-btn active" type="button" aria-pressed="true">個</button>
+          <button class="cal-scope-btn" id="cal-share-btn" type="button" aria-pressed="false">共</button>
+        </div>
       </div>
       <button class="cal-nav-arrow" id="cal-next-btn" aria-label="次へ">&#8250;</button>
       <div class="cal-mode-tabs">
