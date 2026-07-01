@@ -5,7 +5,8 @@
 import { getSettings, getBatchSettings, getPendingAIQueue, autoArchiveTasks, isAiAvailable, clearUserContentLocal, DEFAULT_ACCENT_RGB, DEFAULT_THEME_TUNING } from './storage.js';
 import { processBatchQueue, refreshAiRuntimeStatus } from './ai.js';
 import { initSync, pullAll, pullIfStale, startRealtimeSync, hasPendingSyncWork } from './sync.js';
-import { getSession, handleAuthRedirect, getActiveUserId, setActiveUserId } from './supabase.js';
+import { getSession, handleAuthRedirect, getActiveUserId, setActiveUserId, isMigratedForCurrentUser } from './supabase.js';
+import { migrateToSupabase } from './migrate.js';
 import { today } from './utils.js';
 import { initHome }     from './modules/home.js';
 import { initCalendar, openCalendarAddFlow } from './modules/calendar.js';
@@ -604,10 +605,15 @@ async function init() {
       if (hasPendingSyncWork()) {
         deferSyncWhileEditing({ needsPull: true });
       } else {
-        pullAll(true).then(pulled => {
+        (async () => {
+          if (!await isMigratedForCurrentUser()) {
+            await migrateToSupabase(() => {});
+          }
+          return pullAll(true);
+        })().then(pulled => {
           if (!pulled || !currentView) return;
           refreshCurrentView();
-        }).catch(e => console.warn('[Sync] pullAll failed:', e));
+        }).catch(e => console.warn('[Sync] login sync failed:', e));
       }
     }
   } catch (e) {

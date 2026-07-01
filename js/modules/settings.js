@@ -730,6 +730,7 @@ function wireAccount(container, options = {}) {
         btn.textContent = 'Syncing…';
         try {
           await migrateToSupabase(() => {});
+          await pullAll(true);
           toast('Sync complete ✓', 'success');
         } catch (e) {
           console.warn('[Sync] auto-migrate failed:', e);
