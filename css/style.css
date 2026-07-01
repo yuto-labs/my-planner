@@ -1740,12 +1740,64 @@ button { cursor: pointer; font-family: inherit; }
 
 .shared-group-manager {
   display: grid;
-  gap: 14px;
+  gap: 16px;
+}
+
+.shared-manager-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-hover);
+}
+
+.shared-manager-card--compact {
+  gap: 10px;
+}
+
+.shared-manager-card-head {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.shared-manager-card-head h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.shared-manager-card-head p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.shared-manager-step {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  border-radius: 999px;
+  background: var(--primary-bg);
+  color: var(--primary-light);
+  border: 1px solid var(--primary-border);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.shared-manager-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 12px;
 }
 
 .shared-invite-output {
   margin-top: 8px;
-  min-height: 72px;
+  min-height: 92px;
+  resize: vertical;
 }
 
 .shared-group-list,
@@ -1774,6 +1826,10 @@ button { cursor: pointer; font-family: inherit; }
   .shared-inline {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .shared-manager-grid {
+    grid-template-columns: 1fr;
   }
 
   .shared-cal-grid .cal-cell {

@@ -241,25 +241,60 @@ async function openGroupManager() {
   const body = document.createElement('div');
   body.innerHTML = `
     <div class="shared-group-manager">
-      <div class="form-group">
-        <label class="form-label">新しい共有グループ</label>
-        <div class="shared-inline">
-          <input class="input" id="shared-new-name" placeholder="例: 友人カレンダー">
-          <button class="btn btn-primary btn-sm" id="shared-create-group">作成</button>
+      <section class="shared-manager-card">
+        <div class="shared-manager-card-head">
+          <span class="shared-manager-step">1</span>
+          <div>
+            <h3>共有グループを作る</h3>
+            <p>友人や家族など、一緒に予定を見たい相手ごとにグループを作ります。</p>
+          </div>
         </div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">招待リンク</label>
-        <select class="select" id="shared-invite-group">
-          ${state.groups.map(group => `<option value="${esc(group.id)}">${esc(group.name || '共有グループ')}</option>`).join('')}
-        </select>
-        <input class="input" id="shared-invite-email" placeholder="メール（任意・制限したい場合）">
-        <button class="btn btn-ghost btn-sm" id="shared-create-invite">招待リンクを作成</button>
-        <textarea class="input shared-invite-output" id="shared-invite-output" readonly placeholder="ここに招待リンクが表示されます"></textarea>
-      </div>
-      <div class="shared-group-list">
-        ${state.groups.length ? state.groups.map(group => `<div class="shared-group-row"><strong>${esc(group.name || '共有グループ')}</strong><span>${esc(group.role || 'member')}</span></div>`).join('') : '<p class="form-help">まだグループがありません。</p>'}
-      </div>
+        <label class="form-label" for="shared-new-name">グループ名</label>
+        <div class="shared-inline shared-inline--wide">
+          <input class="input" id="shared-new-name" placeholder="例: 友人カレンダー / 家族予定 / 部活メンバー">
+          <button class="btn btn-primary" id="shared-create-group">作成</button>
+        </div>
+      </section>
+
+      <section class="shared-manager-card">
+        <div class="shared-manager-card-head">
+          <span class="shared-manager-step">2</span>
+          <div>
+            <h3>招待リンクを作る</h3>
+            <p>相手に送るリンクです。相手がログインしてリンクを開くと、この共有グループに参加できます。</p>
+          </div>
+        </div>
+        <div class="shared-manager-grid">
+          <div class="form-group">
+            <label class="form-label" for="shared-invite-group">招待先のグループ</label>
+            <select class="select" id="shared-invite-group">
+              ${state.groups.map(group => `<option value="${esc(group.id)}">${esc(group.name || '共有グループ')}</option>`).join('')}
+            </select>
+            <p class="form-help">どの共有カレンダーに招待するかを選びます。</p>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="shared-invite-email">相手のメール（任意）</label>
+            <input class="input" id="shared-invite-email" placeholder="例: friend@example.com">
+            <p class="form-help">空欄ならリンクを知っているログイン済みユーザーが使えます。メールを書くと、そのメールのアカウントだけが参加できます。</p>
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-full" id="shared-create-invite" ${state.groups.length ? '' : 'disabled'}>招待リンクを作成</button>
+        <textarea class="input shared-invite-output" id="shared-invite-output" readonly placeholder="作成した招待リンクがここに表示されます。コピーしてLINEやメールで送ってください。"></textarea>
+        <p class="form-help">招待リンクは7日で期限切れになり、1回使われると再利用できません。</p>
+      </section>
+
+      <section class="shared-manager-card shared-manager-card--compact">
+        <div class="shared-manager-card-head">
+          <span class="shared-manager-step">3</span>
+          <div>
+            <h3>いま参加している共有グループ</h3>
+            <p>ここに表示されるグループだけが共有カレンダーに反映されます。</p>
+          </div>
+        </div>
+        <div class="shared-group-list">
+          ${state.groups.length ? state.groups.map(group => `<div class="shared-group-row"><strong>${esc(group.name || '共有グループ')}</strong><span>${esc(group.role || 'member')}</span></div>`).join('') : '<p class="form-help">まだグループがありません。まず上でグループを作成してください。</p>'}
+        </div>
+      </section>
     </div>
   `;
   const close = openModal({ title: '共有グループ', body, footer: null, wide: true });
