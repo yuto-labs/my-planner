@@ -16,6 +16,7 @@ import {
 } from '../utils.js';
 import { openDatePicker, openTimePicker, formatPickerDate } from '../datepicker.js';
 import { getHolidayInfo } from '../holidays.js';
+import { getShareGroupsForEventForm } from '../shared-calendar.js';
 
 const nav       = (view) => window.AppNav?.navigate(view);
 const toast     = (msg, type) => window.AppNav?.showToast(msg, type);
@@ -210,6 +211,7 @@ function render() {
           </button>`
         ).join('')}
       </div>
+      <button class="btn btn-ghost btn-sm cal-share-btn" id="cal-share-btn" type="button">共有カレンダー</button>
     </div>
     <div id="cal-view"></div>
   `;
@@ -236,6 +238,8 @@ function render() {
       render();
     };
   });
+
+  container.querySelector('#cal-share-btn')?.addEventListener('click', () => nav('shared-calendar'));
 
   renderView();
 
@@ -800,6 +804,8 @@ function timeToMinutes(t) {
 function openEventModal(event, defaultDate, defaultStart, defaultEnd) {
   const isEdit = !!event;
   const cats = getCategories();
+  const shareGroups = getShareGroupsForEventForm();
+  const selectedShareGroups = new Set(Array.isArray(event?.sharedGroupIds) ? event.sharedGroupIds : []);
 
   const defStart = defaultStart || (defaultDate
     ? `${defaultDate}T09:00:00`
@@ -863,6 +869,24 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd) {
     <div class="form-group">
       <label class="form-label">メモ</label>
       <textarea class="input event-memo-textarea" id="ev-memo" placeholder="補足メモ（任意）…" rows="4">${esc(event?.memo || '')}</textarea>
+    </div>
+
+    <div class="form-group event-share-box">
+      <label class="form-label">共有カレンダーへの見せ方</label>
+      <select class="select" id="ev-share-visibility">
+        <option value="private" ${(event?.shareVisibility || 'private') === 'private' ? 'selected' : ''}>共有しない</option>
+        <option value="shared_busy" ${event?.shareVisibility === 'shared_busy' ? 'selected' : ''}>時間だけ共有</option>
+        <option value="shared_detail" ${event?.shareVisibility === 'shared_detail' ? 'selected' : ''}>詳細も共有</option>
+      </select>
+      <p class="form-help">共有カレンダーは保存場所ではなく、共有対象の個人予定をまとめて表示します。</p>
+      <div class="event-share-groups" id="ev-share-groups">
+        ${shareGroups.length ? shareGroups.map(group => `
+          <label class="event-share-group">
+            <input type="checkbox" value="${esc(group.id)}" ${selectedShareGroups.has(group.id) ? 'checked' : ''}>
+            <span>${esc(group.name || '共有グループ')}</span>
+          </label>
+        `).join('') : '<p class="form-help">共有グループは「共有カレンダー」から作成できます。</p>'}
+      </div>
     </div>
 
     <div class="form-group" style="display:flex;gap:20px;align-items:center">
@@ -1120,6 +1144,8 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd) {
       isTentative,
       isRoutine,
       memo: body.querySelector('#ev-memo')?.value?.trim() || '',
+      shareVisibility: body.querySelector('#ev-share-visibility')?.value || 'private',
+      sharedGroupIds: [...body.querySelectorAll('#ev-share-groups input[type="checkbox"]:checked')].map(input => input.value),
       tags: [],
     };
 

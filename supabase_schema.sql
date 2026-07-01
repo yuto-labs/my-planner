@@ -15,6 +15,17 @@ alter table schedule_items add column if not exists source            text;
 alter table schedule_items add column if not exists task_id           text;
 alter table schedule_items add column if not exists note              text    default '';
 alter table events         add column if not exists memo              text    default '';
+alter table events         add column if not exists share_visibility  text    not null default 'private';
+alter table events         add column if not exists shared_group_ids  text[]  not null default '{}';
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'events_share_visibility_check') then
+    alter table events
+      add constraint events_share_visibility_check
+      check (share_visibility in ('private', 'shared_busy', 'shared_detail'));
+  end if;
+end $$;
 
 -- ================================================================
 -- TASKS (アクティブ + アーカイブ両方を格納 / archived_at で区別)
@@ -45,6 +56,7 @@ create table if not exists tasks (
 );
 
 alter table tasks enable row level security;
+drop policy if exists "tasks: own data only" on tasks;
 create policy "tasks: own data only" on tasks
   for all using (user_id = auth.uid());
 
@@ -63,13 +75,179 @@ create table if not exists events (
   recurring_id  text,
   tags          text[]      default '{}',
   memo          text        default '',
+  share_visibility text     not null default 'private',
+  shared_group_ids text[]   not null default '{}',
   created_at    timestamptz default now(),
   updated_at    timestamptz default now()
 );
 
+create table if not exists shared_calendar_groups (
+  id         text primary key,
+  owner_id   uuid not null references auth.users(id) on delete cascade,
+  name       text not null default '',
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists shared_calendar_members (
+  group_id   text not null references shared_calendar_groups(id) on delete cascade,
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  role       text not null default 'member',
+  created_at timestamptz default now(),
+  primary key (group_id, user_id)
+);
+
 alter table events enable row level security;
-create policy "events: own data only" on events
-  for all using (user_id = auth.uid());
+drop policy if exists "events: own data only" on events;
+drop policy if exists "events: read own or shared group" on events;
+drop policy if exists "events: insert own only" on events;
+drop policy if exists "events: update own only" on events;
+drop policy if exists "events: delete own only" on events;
+create policy "events: read own or shared group" on events
+  for select using (
+    user_id = auth.uid()
+    or (
+      share_visibility <> 'private'
+      and exists (
+        select 1 from shared_calendar_members scm
+        where scm.user_id = auth.uid()
+          and scm.group_id = any(events.shared_group_ids)
+      )
+    )
+  );
+create policy "events: insert own only" on events
+  for insert with check (user_id = auth.uid());
+create policy "events: update own only" on events
+  for update using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "events: delete own only" on events
+  for delete using (user_id = auth.uid());
+
+-- ================================================================
+-- SHARED CALENDAR GROUPS
+-- Personal events remain the source of truth. Groups only grant a
+-- read scope for events whose share_visibility and shared_group_ids
+-- explicitly allow it.
+-- ================================================================
+create table if not exists shared_calendar_invites (
+  id         text primary key,
+  group_id   text not null references shared_calendar_groups(id) on delete cascade,
+  created_by uuid not null references auth.users(id) on delete cascade,
+  email      text,
+  token      text not null unique,
+  expires_at timestamptz not null,
+  used_at    timestamptz,
+  used_by    uuid references auth.users(id) on delete set null,
+  created_at timestamptz default now()
+);
+
+alter table shared_calendar_groups enable row level security;
+alter table shared_calendar_members enable row level security;
+alter table shared_calendar_invites enable row level security;
+
+drop policy if exists "shared groups: member read" on shared_calendar_groups;
+drop policy if exists "shared groups: owner insert" on shared_calendar_groups;
+drop policy if exists "shared groups: owner update" on shared_calendar_groups;
+drop policy if exists "shared groups: owner delete" on shared_calendar_groups;
+create policy "shared groups: member read" on shared_calendar_groups
+  for select using (
+    exists (
+      select 1 from shared_calendar_members scm
+      where scm.group_id = shared_calendar_groups.id
+        and scm.user_id = auth.uid()
+    )
+  );
+create policy "shared groups: owner insert" on shared_calendar_groups
+  for insert with check (owner_id = auth.uid());
+create policy "shared groups: owner update" on shared_calendar_groups
+  for update using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+create policy "shared groups: owner delete" on shared_calendar_groups
+  for delete using (owner_id = auth.uid());
+
+drop policy if exists "shared members: same group read" on shared_calendar_members;
+drop policy if exists "shared members: owner manages" on shared_calendar_members;
+create policy "shared members: same group read" on shared_calendar_members
+  for select using (
+    user_id = auth.uid()
+    or exists (
+      select 1 from shared_calendar_members mine
+      where mine.group_id = shared_calendar_members.group_id
+        and mine.user_id = auth.uid()
+    )
+  );
+create policy "shared members: owner manages" on shared_calendar_members
+  for all using (
+    exists (
+      select 1 from shared_calendar_groups scg
+      where scg.id = shared_calendar_members.group_id
+        and scg.owner_id = auth.uid()
+    )
+  ) with check (
+    exists (
+      select 1 from shared_calendar_groups scg
+      where scg.id = shared_calendar_members.group_id
+        and scg.owner_id = auth.uid()
+    )
+  );
+
+drop policy if exists "shared invites: creator read" on shared_calendar_invites;
+drop policy if exists "shared invites: group owner create" on shared_calendar_invites;
+create policy "shared invites: creator read" on shared_calendar_invites
+  for select using (created_by = auth.uid());
+create policy "shared invites: group owner create" on shared_calendar_invites
+  for insert with check (
+    created_by = auth.uid()
+    and exists (
+      select 1 from shared_calendar_groups scg
+      where scg.id = group_id
+        and scg.owner_id = auth.uid()
+    )
+  );
+
+create or replace function accept_shared_calendar_invite(invite_token text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_invite shared_calendar_invites%rowtype;
+  v_email text;
+begin
+  if auth.uid() is null then
+    raise exception 'login required';
+  end if;
+
+  select * into v_invite
+  from shared_calendar_invites
+  where token = invite_token
+  for update;
+
+  if not found then
+    raise exception 'invite not found';
+  end if;
+  if v_invite.used_at is not null then
+    raise exception 'invite already used';
+  end if;
+  if v_invite.expires_at < now() then
+    raise exception 'invite expired';
+  end if;
+
+  v_email := nullif((auth.jwt() ->> 'email'), '');
+  if v_invite.email is not null and lower(v_invite.email) <> lower(coalesce(v_email, '')) then
+    raise exception 'invite email mismatch';
+  end if;
+
+  insert into shared_calendar_members(group_id, user_id, role, created_at)
+  values (v_invite.group_id, auth.uid(), 'member', now())
+  on conflict (group_id, user_id) do nothing;
+
+  update shared_calendar_invites
+  set used_at = now(), used_by = auth.uid()
+  where id = v_invite.id;
+
+  return jsonb_build_object('groupId', v_invite.group_id);
+end;
+$$;
 
 -- ================================================================
 -- GOALS (目標)
@@ -87,6 +265,7 @@ create table if not exists goals (
 );
 
 alter table goals enable row level security;
+drop policy if exists "goals: own data only" on goals;
 create policy "goals: own data only" on goals
   for all using (user_id = auth.uid());
 
@@ -107,6 +286,7 @@ create table if not exists knowledge_memos (
 );
 
 alter table knowledge_memos enable row level security;
+drop policy if exists "knowledge_memos: own data only" on knowledge_memos;
 create policy "knowledge_memos: own data only" on knowledge_memos
   for all using (user_id = auth.uid());
 
@@ -125,6 +305,7 @@ create table if not exists trash_items (
 );
 
 alter table trash_items enable row level security;
+drop policy if exists "trash_items: own data only" on trash_items;
 create policy "trash_items: own data only" on trash_items
   for all using (user_id = auth.uid());
 
@@ -146,6 +327,7 @@ create table if not exists schedule_items (
 );
 
 alter table schedule_items enable row level security;
+drop policy if exists "schedule_items: own data only" on schedule_items;
 create policy "schedule_items: own data only" on schedule_items
   for all using (user_id = auth.uid());
 
@@ -159,6 +341,7 @@ create table if not exists tags (
 );
 
 alter table tags enable row level security;
+drop policy if exists "tags: own data only" on tags;
 create policy "tags: own data only" on tags
   for all using (user_id = auth.uid());
 
@@ -175,6 +358,7 @@ create table if not exists habit_logs (
 );
 
 alter table habit_logs enable row level security;
+drop policy if exists "habit_logs: own data only" on habit_logs;
 create policy "habit_logs: own data only" on habit_logs
   for all using (user_id = auth.uid());
 
@@ -191,5 +375,6 @@ create table if not exists review_schedule (
 );
 
 alter table review_schedule enable row level security;
+drop policy if exists "review_schedule: own data only" on review_schedule;
 create policy "review_schedule: own data only" on review_schedule
   for all using (user_id = auth.uid());

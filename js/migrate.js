@@ -190,6 +190,8 @@ export function eventToRow(event, userId) {
     recurring_id: event.recurringId || null,
     tags:         event.tags        || [],
     memo:         event.memo        || '',
+    share_visibility: event.shareVisibility || 'private',
+    shared_group_ids: Array.isArray(event.sharedGroupIds) ? event.sharedGroupIds : [],
     created_at:   event.createdAt   || _now(),
     updated_at:   event.updatedAt   || _now(),
   };
@@ -207,6 +209,8 @@ export function rowToEvent(row) {
     recurringId: row.recurring_id || null,
     tags:        row.tags         || [],
     memo:        row.memo         || '',
+    shareVisibility: row.share_visibility || 'private',
+    sharedGroupIds:  row.shared_group_ids || [],
     createdAt:   row.created_at   || _now(),
     updatedAt:   row.updated_at   || _now(),
   };

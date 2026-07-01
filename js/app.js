@@ -9,6 +9,7 @@ import { getSession, handleAuthRedirect, getActiveUserId, setActiveUserId } from
 import { today } from './utils.js';
 import { initHome }     from './modules/home.js';
 import { initCalendar, openCalendarAddFlow } from './modules/calendar.js';
+import { initSharedCalendar } from './modules/shared-calendar.js';
 import { initTasks }    from './modules/tasks.js';
 import { initGoals }    from './modules/goals.js';
 import { initSettings, initAISettings } from './modules/settings.js';
@@ -25,6 +26,7 @@ import { initTagsPage, setTagFilter } from './modules/tagspage.js';
 const MODULES = {
   home:              { title: 'My planner', init: initHome },
   calendar:          { title: 'Calendar',   init: initCalendar },
+  'shared-calendar': { title: '共有カレンダー', init: initSharedCalendar, back: 'calendar' },
   tasks:             { title: 'Tasks',      init: initTasks },
   goals:             { title: 'Goals',      init: initGoals,          back: 'tasks' },
   settings:          { title: 'Settings',   init: initSettings },
