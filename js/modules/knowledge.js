@@ -1462,13 +1462,24 @@ function wireBlocksEdit(container) {
     const btn = e.target.closest('[data-del-id]');
     if (!btn) return;
     const delId = btn.dataset.delId;
-    // Remove from top-level blocks
-    edState.blocks = edState.blocks.filter(b => b.id !== delId);
-    // Also remove from toggle children
-    edState.blocks.forEach(b => {
-      if (b.children) b.children = b.children.filter(c => c.id !== delId);
-    });
-    rerenderBlocks(container);
+    if (edState.blocks.length <= 1) {
+      const block = findBlockInAllBlocks(edState.blocks, delId);
+      const el = container.querySelector(`.kn-block-focusable[data-block-id="${delId}"]`);
+      if (block) block.text = '';
+      if (el) {
+        if (el.tagName === 'TEXTAREA') el.value = '';
+        else el.textContent = '';
+        el.focus();
+      }
+      return;
+    }
+    const blockEl = btn.closest('.kn-block');
+    const nextFocusId = blockEl?.previousElementSibling?.dataset?.blockId
+      || blockEl?.nextElementSibling?.dataset?.blockId
+      || edState.blocks.find(b => b.id !== delId)?.id;
+    removeBlockById(delId);
+    removeBlockElement(delId, container);
+    if (nextFocusId) focusBlock(nextFocusId, container, true);
   });
 
   // Render KaTeX previews
@@ -1486,7 +1497,15 @@ function wireBlocksEdit(container) {
 }
 
 function handleBlockKeydown(e, blockId, container) {
-  if (e.key === 'Enter' && !e.shiftKey) {
+  if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    document.execCommand?.('insertLineBreak');
+    const block = findBlockInAllBlocks(edState.blocks, blockId);
+    if (block) block.text = e.target.textContent;
+    return;
+  }
+
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
     e.preventDefault();
     const idx = edState.blocks.findIndex(b => b.id === blockId);
     if (idx < 0) return;
@@ -1511,8 +1530,8 @@ function handleBlockKeydown(e, blockId, container) {
       e.preventDefault();
       const idx = edState.blocks.findIndex(b => b.id === blockId);
       if (idx < 0) return;
-      edState.blocks.splice(idx, 1);
-      rerenderBlocks(container);
+      removeBlockById(blockId);
+      removeBlockElement(blockId, container);
       const prevBlock = edState.blocks[Math.max(0, idx - 1)];
       if (prevBlock) focusBlock(prevBlock.id, container, true);
     }
@@ -1587,6 +1606,25 @@ function rerenderBlocks(container) {
   if (!wrap) return;
   wrap.innerHTML = edState.blocks.map((b, i) => renderBlockEdit(b, i)).join('');
   wireBlocksEdit(container);
+}
+
+function removeBlockById(blockId, blocks = edState.blocks) {
+  const idx = blocks.findIndex(block => block.id === blockId);
+  if (idx >= 0) {
+    blocks.splice(idx, 1);
+    return true;
+  }
+  for (const block of blocks) {
+    if (block.children && removeBlockById(blockId, block.children)) return true;
+  }
+  return false;
+}
+
+function removeBlockElement(blockId, container) {
+  const blockEl = container.querySelector(`.kn-block[data-block-id="${blockId}"]`);
+  if (!blockEl) return;
+  blockEl.classList.add('kn-block--removing');
+  setTimeout(() => blockEl.remove(), 120);
 }
 
 function focusBlock(id, container, atEnd = false) {

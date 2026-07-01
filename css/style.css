@@ -1944,12 +1944,26 @@ button { cursor: pointer; font-family: inherit; }
 }
 
 .shared-group-row {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-hover);
+}
+
+.shared-group-delete {
+  border: 1px solid rgba(240,96,122,0.35);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--danger);
+  font-size: 10px;
+  font-weight: 800;
+  padding: 3px 8px;
+}
+
+.shared-group-delete:active {
+  background: rgba(240,96,122,0.14);
 }
 
 .shared-cal-error {
@@ -2803,6 +2817,11 @@ button { cursor: pointer; font-family: inherit; }
 }
 .kn-block:hover .kn-block-del, .kn-block:focus-within .kn-block-del { opacity: 1; }
 .kn-block-del:hover { color: var(--danger); border-color: var(--danger); }
+.kn-block--removing {
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
 
 .kn-add-block-btn {
   display: flex; align-items: center; gap: 8px;

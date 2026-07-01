@@ -198,7 +198,7 @@ create policy "shared invites: group owner create" on shared_calendar_invites
   );
 
 drop function if exists create_shared_calendar_group(text, text);
-create or replace function create_shared_calendar_group(group_id text, p_group_name text)
+create or replace function create_shared_calendar_group(p_group_id text, p_group_name text)
 returns jsonb
 language plpgsql
 security definer
@@ -210,20 +210,63 @@ begin
   end if;
 
   insert into shared_calendar_groups(id, owner_id, name, created_at, updated_at)
-  values (group_id, auth.uid(), coalesce(nullif(p_group_name, ''), '共有カレンダー'), now(), now())
+  values (p_group_id, auth.uid(), coalesce(nullif(p_group_name, ''), '共有カレンダー'), now(), now())
   on conflict (id) do update
     set name = excluded.name,
         updated_at = now()
     where shared_calendar_groups.owner_id = auth.uid();
 
   insert into shared_calendar_members(group_id, user_id, role, created_at)
-  values (group_id, auth.uid(), 'owner', now())
+  values (p_group_id, auth.uid(), 'owner', now())
   on conflict (group_id, user_id) do update
     set role = 'owner';
 
-  return jsonb_build_object('id', group_id, 'name', coalesce(nullif(p_group_name, ''), '共有カレンダー'));
+  return jsonb_build_object('id', p_group_id, 'name', coalesce(nullif(p_group_name, ''), '共有カレンダー'));
 end;
 $$;
+
+grant execute on function create_shared_calendar_group(text, text) to authenticated;
+
+drop function if exists delete_shared_calendar_group(text);
+create or replace function delete_shared_calendar_group(p_group_id text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'login required';
+  end if;
+
+  if not exists (
+    select 1
+    from shared_calendar_groups scg
+    where scg.id = p_group_id
+      and scg.owner_id = auth.uid()
+  ) then
+    raise exception 'group owner required';
+  end if;
+
+  update events
+  set shared_group_ids = array_remove(shared_group_ids, p_group_id),
+      share_visibility = case
+        when coalesce(array_length(array_remove(shared_group_ids, p_group_id), 1), 0) = 0 then 'private'
+        else share_visibility
+      end,
+      updated_at = now()
+  where user_id = auth.uid()
+    and p_group_id = any(shared_group_ids);
+
+  delete from shared_calendar_groups
+  where id = p_group_id
+    and owner_id = auth.uid();
+
+  return jsonb_build_object('deletedGroupId', p_group_id);
+end;
+$$;
+
+grant execute on function delete_shared_calendar_group(text) to authenticated;
 
 create or replace function accept_shared_calendar_invite(invite_token text)
 returns jsonb
@@ -270,6 +313,8 @@ begin
   return jsonb_build_object('groupId', v_invite.group_id);
 end;
 $$;
+
+grant execute on function accept_shared_calendar_invite(text) to authenticated;
 
 -- ================================================================
 -- GOALS (目標)

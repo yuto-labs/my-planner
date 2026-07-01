@@ -3,6 +3,7 @@ import {
   collectSharedCalendarEvents,
   createSharedGroup,
   createSharedInvite,
+  deleteSharedGroup,
   deleteOwnSharedEvent,
   loadSharedGroups,
   updateOwnSharedEvent,
@@ -347,7 +348,13 @@ export async function openSharedCalendarSettings() {
           </div>
         </div>
         <div class="shared-group-list">
-          ${state.groups.length ? state.groups.map(group => `<div class="shared-group-row"><strong>${esc(group.name || '共有グループ')}</strong><span>${esc(group.role || 'member')}</span></div>`).join('') : '<p class="form-help">まだグループがありません。まず上でグループを作成してください。</p>'}
+          ${state.groups.length ? state.groups.map(group => `
+            <div class="shared-group-row">
+              <strong>${esc(group.name || '共有グループ')}</strong>
+              <span>${esc(group.role || 'member')}</span>
+              ${group.role === 'owner' ? `<button class="shared-group-delete" data-delete-group-id="${esc(group.id)}" data-delete-group-name="${esc(group.name || '共有グループ')}" type="button">削除</button>` : ''}
+            </div>
+          `).join('') : '<p class="form-help">まだグループがありません。まず上でグループを作成してください。</p>'}
         </div>
       </section>
     </div>
@@ -379,4 +386,50 @@ export async function openSharedCalendarSettings() {
       toast(e.message || '招待リンクを作成できませんでした', 'error');
     }
   });
+
+  body.querySelectorAll('[data-delete-group-id]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      openDeleteGroupConfirm(btn.dataset.deleteGroupId, btn.dataset.deleteGroupName, close);
+    });
+  });
+}
+
+function openDeleteGroupConfirm(groupId, groupName, parentClose) {
+  const body = document.createElement('div');
+  body.innerHTML = `
+    <p>共有グループ「${esc(groupName)}」を削除します。</p>
+    <p class="form-help">予定そのものは削除されません。このグループへの共有だけが解除されます。作成者だけが削除できます。</p>
+    <label class="form-label" for="shared-delete-confirm-name">確認のためグループ名を入力</label>
+    <input class="input" id="shared-delete-confirm-name" placeholder="${esc(groupName)}">
+  `;
+  const footer = document.createElement('div');
+  footer.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;width:100%';
+  const cancel = document.createElement('button');
+  cancel.className = 'btn btn-ghost btn-sm';
+  cancel.textContent = 'キャンセル';
+  const ok = document.createElement('button');
+  ok.className = 'btn btn-danger btn-sm';
+  ok.textContent = '削除';
+  ok.disabled = true;
+  footer.append(cancel, ok);
+
+  const close = openModal({ title: '共有グループを削除', body, footer });
+  const input = body.querySelector('#shared-delete-confirm-name');
+  input?.addEventListener('input', () => {
+    ok.disabled = input.value.trim() !== groupName;
+  });
+  cancel.onclick = () => close();
+  ok.onclick = async () => {
+    try {
+      await deleteSharedGroup(groupId);
+      close();
+      parentClose?.();
+      toast('共有グループを削除しました', 'success');
+      state.groupId = state.groupId === groupId ? '' : state.groupId;
+      if (state.container) await refresh();
+      openSharedCalendarSettings();
+    } catch (e) {
+      toast(e.message || '共有グループを削除できませんでした', 'error');
+    }
+  };
 }
