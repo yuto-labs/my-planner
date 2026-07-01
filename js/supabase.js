@@ -42,8 +42,7 @@ export function setMigrated() {
 export async function isMigratedForCurrentUser() {
   const userId = await getUserId();
   if (!userId) return isMigrated();
-  return localStorage.getItem(`${MIGRATE_KEY}:${userId}`) === 'true'
-    || localStorage.getItem(MIGRATE_KEY) === 'true';
+  return localStorage.getItem(`${MIGRATE_KEY}:${userId}`) === 'true';
 }
 
 export async function setMigratedForCurrentUser() {

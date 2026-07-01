@@ -164,16 +164,10 @@ create policy "shared groups: owner delete" on shared_calendar_groups
   for delete using (owner_id = auth.uid());
 
 drop policy if exists "shared members: same group read" on shared_calendar_members;
+drop policy if exists "shared members: own read" on shared_calendar_members;
 drop policy if exists "shared members: owner manages" on shared_calendar_members;
-create policy "shared members: same group read" on shared_calendar_members
-  for select using (
-    user_id = auth.uid()
-    or exists (
-      select 1 from shared_calendar_members mine
-      where mine.group_id = shared_calendar_members.group_id
-        and mine.user_id = auth.uid()
-    )
-  );
+create policy "shared members: own read" on shared_calendar_members
+  for select using (user_id = auth.uid());
 create policy "shared members: owner manages" on shared_calendar_members
   for all using (
     exists (
