@@ -74,7 +74,7 @@ const DELETE_GRACE_MS = 250;
 const DELETE_TOMBSTONE_KEY = 'mp_sync_pending_deletes';
 const DELETE_TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const RECENT_UPSERT_KEY = 'mp_sync_recent_upserts';
-const RECENT_UPSERT_TTL_MS = 6 * 60 * 60 * 1000;
+const RECENT_UPSERT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PUSH_RETRY_MS = 2500;
 let _realtimeChannel = null;
 let _realtimeUserId = null;
@@ -520,6 +520,7 @@ function _mergeProtectedLocalItems(tableKey, lsKey, remoteItems) {
 
   const remoteIds = new Set(remoteItems.map(item => item.id));
   const appended = localItems.filter(item => item?.id && recentIds.has(item.id) && !remoteIds.has(item.id));
+  if (appended.length) _schedulePushRetry(tableKey);
   return appended.length ? [...merged, ...appended] : merged;
 }
 
@@ -529,7 +530,9 @@ function _mergeRecentLocalTags(remoteTags) {
       .filter(entry => entry.table === 'tags' && entry.name)
       .map(entry => entry.name)
   );
-  return [...new Set([...remoteTags, ..._ls('mp_tags', []).filter(name => recentNames.has(name))])].sort();
+  const localRecent = _ls('mp_tags', []).filter(name => recentNames.has(name));
+  if (localRecent.some(name => !remoteTags.includes(name))) _schedulePushRetry('tags');
+  return [...new Set([...remoteTags, ...localRecent])].sort();
 }
 
 function _updatedTs(item) {
