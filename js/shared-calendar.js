@@ -12,10 +12,56 @@ function saveGroups(groups) {
   try { localStorage.setItem(CACHE_KEY, JSON.stringify(groups || [])); } catch {}
 }
 
+function notifyGroupsChanged() {
+  try { document.dispatchEvent(new CustomEvent('shared-calendar:groups-changed')); } catch {}
+}
+
+function mergeGroupInCache(group) {
+  if (!group?.id) return;
+  const groups = getShareGroupsForEventForm();
+  const next = [
+    { role: 'owner', ...group },
+    ...groups.filter(item => item.id !== group.id),
+  ];
+  saveGroups(next);
+  notifyGroupsChanged();
+}
+
 function rpcNeedsSqlRefresh(error, functionName) {
   const message = `${error?.message || ''} ${error?.details || ''}`;
   return new RegExp(`function .*${functionName}|schema cache|not found|does not exist|ambiguous|あいまい`, 'i')
     .test(message);
+}
+
+async function callCreateGroupRpc(client, group) {
+  const attempts = [
+    { p_group_id: group.id, p_group_name: group.name },
+    { group_id: group.id, p_group_name: group.name },
+    { group_id: group.id, group_name: group.name },
+  ];
+  let lastError = null;
+  for (const args of attempts) {
+    const { data, error } = await client.rpc('create_shared_calendar_group', args);
+    if (!error) return data;
+    lastError = error;
+    if (!rpcNeedsSqlRefresh(error, 'create_shared_calendar_group')) break;
+  }
+  throw lastError;
+}
+
+async function callDeleteGroupRpc(client, groupId) {
+  const attempts = [
+    { p_group_id: groupId },
+    { group_id: groupId },
+  ];
+  let lastError = null;
+  for (const args of attempts) {
+    const { error } = await client.rpc('delete_shared_calendar_group', args);
+    if (!error) return true;
+    lastError = error;
+    if (!rpcNeedsSqlRefresh(error, 'delete_shared_calendar_group')) break;
+  }
+  throw lastError;
 }
 
 export function getShareGroupsForEventForm() {
@@ -34,12 +80,24 @@ export async function loadSharedGroups() {
 
   if (error || !memberships) return getShareGroupsForEventForm();
 
-  const groups = memberships
+  let groups = memberships
     .map(row => ({
       ...(row.shared_calendar_groups || {}),
       role: row.role || 'member',
     }))
     .filter(group => group.id);
+
+  if (!groups.length && memberships.length) {
+    const ids = memberships.map(row => row.group_id).filter(Boolean);
+    const { data: rawGroups } = await client
+      .from('shared_calendar_groups')
+      .select('id,name,owner_id,created_at,updated_at')
+      .in('id', ids);
+    groups = (rawGroups || []).map(group => ({
+      ...group,
+      role: memberships.find(row => row.group_id === group.id)?.role || 'member',
+    }));
+  }
 
   saveGroups(groups);
   return groups;
@@ -56,20 +114,20 @@ export async function createSharedGroup(name) {
     name: name || '共有カレンダー',
   };
 
-  const { data, error } = await client.rpc('create_shared_calendar_group', {
-    p_group_id: group.id,
-    p_group_name: group.name,
-  });
-
-  if (error) {
+  let data = null;
+  try {
+    data = await callCreateGroupRpc(client, group);
+  } catch (error) {
     if (rpcNeedsSqlRefresh(error, 'create_shared_calendar_group')) {
       throw new Error('共有グループ作成用SQLを更新してください');
     }
     throw error;
   }
 
-  await loadSharedGroups();
-  return { ...group, ...(data || {}) };
+  const created = { ...group, ...(data || {}), role: 'owner' };
+  mergeGroupInCache(created);
+  await loadSharedGroups().catch(() => getShareGroupsForEventForm());
+  return created;
 }
 
 export async function deleteSharedGroup(groupId) {
@@ -78,8 +136,9 @@ export async function deleteSharedGroup(groupId) {
   if (!client || !userId) throw new Error('ログインが必要です');
   if (!groupId) throw new Error('削除するグループを選んでください');
 
-  const { error } = await client.rpc('delete_shared_calendar_group', { p_group_id: groupId });
-  if (error) {
+  try {
+    await callDeleteGroupRpc(client, groupId);
+  } catch (error) {
     if (rpcNeedsSqlRefresh(error, 'delete_shared_calendar_group')) {
       throw new Error('共有グループ削除用SQLを更新してください');
     }
@@ -87,6 +146,7 @@ export async function deleteSharedGroup(groupId) {
   }
 
   await loadSharedGroups();
+  notifyGroupsChanged();
   return true;
 }
 
@@ -123,6 +183,7 @@ export async function acceptSharedInvite(token) {
   const { data, error } = await client.rpc('accept_shared_calendar_invite', { invite_token: token });
   if (error) throw error;
   await loadSharedGroups();
+  notifyGroupsChanged();
   return data;
 }
 

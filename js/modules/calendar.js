@@ -44,6 +44,8 @@ export function initCalendar(container) {
     state.cursor = new Date();
   }
   const cleanupSwipe = _setupSwipe(container); // register touch listeners for this mount only
+  const onGroupsChanged = () => loadCalendarShareGroups();
+  document.addEventListener('shared-calendar:groups-changed', onGroupsChanged);
   render();
   handleCalendarInviteFromUrl()
     .catch(e => toast(e?.message || '招待リンクを処理できませんでした', 'error'))
@@ -51,6 +53,7 @@ export function initCalendar(container) {
   // Return cleanup: remove calendar-only DOM/listeners when navigating away
   return () => {
     document.querySelector('.cal-day-sheet')?.remove();
+    document.removeEventListener('shared-calendar:groups-changed', onGroupsChanged);
     cleanupSwipe?.();
     if (state.container === container) state.container = null;
     _swipeLocked = false;

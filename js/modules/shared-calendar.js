@@ -365,7 +365,11 @@ export async function openSharedCalendarSettings() {
     const name = body.querySelector('#shared-new-name')?.value.trim();
     if (!name) return;
     try {
-      await createSharedGroup(name);
+      const created = await createSharedGroup(name);
+      state.groups = [
+        { role: 'owner', ...created },
+        ...state.groups.filter(group => group.id !== created.id),
+      ];
       toast('共有グループを作成しました', 'success');
       close();
       if (state.container) await refresh();
