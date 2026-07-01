@@ -16,9 +16,8 @@ import {
 } from '../utils.js';
 import { openDatePicker, openTimePicker, formatPickerDate } from '../datepicker.js';
 import { getHolidayInfo } from '../holidays.js';
-import { getShareGroupsForEventForm } from '../shared-calendar.js';
+import { acceptSharedInvite, collectSharedCalendarEvents, getShareGroupsForEventForm, loadSharedGroups } from '../shared-calendar.js';
 
-const nav       = (view) => window.AppNav?.navigate(view);
 const toast     = (msg, type) => window.AppNav?.showToast(msg, type);
 const undoToast = (msg, cb)   => window.AppNav?.showUndoToast(msg, cb);
 
@@ -28,6 +27,12 @@ let state = {
   cursor: new Date(),    // current view date
   weekStartDate: null,   // YYYY-MM-DD | null 窶・custom week start for week view only
   container: null,
+  source: 'personal',
+  groupId: '',
+  shareGroups: [],
+  sharedEvents: [],
+  sharedLoading: false,
+  sharedError: null,
 };
 let _slideDir     = null;  // 'next' | 'prev' | null 窶・swipe animation direction
 let _selectedDate = null;  // currently highlighted date string (single-tap)
@@ -40,6 +45,9 @@ export function initCalendar(container) {
   }
   const cleanupSwipe = _setupSwipe(container); // register touch listeners for this mount only
   render();
+  handleCalendarInviteFromUrl()
+    .catch(e => toast(e?.message || '招待リンクを処理できませんでした', 'error'))
+    .finally(loadCalendarShareGroups);
   // Return cleanup: remove calendar-only DOM/listeners when navigating away
   return () => {
     document.querySelector('.cal-day-sheet')?.remove();
@@ -57,9 +65,19 @@ export function openCalendarAddFlow() {
     value: _selectedDate || today(),
     onConfirm: dateStr => {
       _selectedDate = dateStr;
-      openEventModal(null, dateStr);
+      openEventModal(null, dateStr, null, null, getCurrentShareDefaults());
     },
   });
+}
+
+async function handleCalendarInviteFromUrl() {
+  const url = new URL(window.location.href);
+  const token = url.searchParams.get('shareInvite');
+  if (!token) return;
+  await acceptSharedInvite(token);
+  url.searchParams.delete('shareInvite');
+  window.history.replaceState({}, document.title, `${url.origin}${url.pathname}#calendar`);
+  toast('共有グループに参加しました', 'success');
 }
 
 // Swipe listeners live on the container element for the lifetime of the view.
@@ -202,10 +220,6 @@ function render() {
       <button class="cal-nav-arrow" id="cal-prev-btn" aria-label="蜑阪∈">&#8249;</button>
       <div class="cal-title-wrap">
         <button class="cal-title" id="cal-title-btn">${getViewTitle()}</button>
-        <div class="cal-scope-toggle" aria-label="カレンダー表示切替">
-          <button class="cal-scope-btn active" type="button" aria-pressed="true">個</button>
-          <button class="cal-scope-btn" id="cal-share-btn" type="button" aria-pressed="false">共</button>
-        </div>
       </div>
       <button class="cal-nav-arrow" id="cal-next-btn" aria-label="次へ">&#8250;</button>
       <div class="cal-mode-tabs">
@@ -216,6 +230,17 @@ function render() {
         ).join('')}
       </div>
     </div>
+    <div class="cal-source-bar" aria-label="カレンダー表示元">
+      <button class="cal-source-btn${state.source === 'personal' ? ' active' : ''}" data-source="personal" type="button">個人</button>
+      ${state.shareGroups.map(group => `
+        <button class="cal-source-btn${state.groupId === group.id ? ' active' : ''}" data-source="group" data-group-id="${esc(group.id)}" type="button">
+          ${esc(group.name || '共有')}
+        </button>
+      `).join('')}
+      ${state.shareGroups.length ? '<button class="cal-source-refresh" id="cal-source-refresh" type="button">更新</button>' : '<span class="cal-source-help">共有グループは設定から作成できます</span>'}
+    </div>
+    ${state.sharedError ? `<div class="cal-shared-error">${esc(state.sharedError)}</div>` : ''}
+    ${state.sharedLoading ? '<div class="cal-shared-loading">共有予定を読み込み中...</div>' : ''}
     <div id="cal-view"></div>
   `;
 
@@ -242,7 +267,16 @@ function render() {
     };
   });
 
-  container.querySelector('#cal-share-btn')?.addEventListener('click', () => nav('shared-calendar'));
+  container.querySelectorAll('.cal-source-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const source = btn.dataset.source;
+      setCalendarSource(source, btn.dataset.groupId || '');
+    });
+  });
+  container.querySelector('#cal-source-refresh')?.addEventListener('click', () => {
+    if (isSharedSource()) refreshCalendarSharedEvents();
+    else loadCalendarShareGroups();
+  });
 
   renderView();
 
@@ -274,6 +308,70 @@ function getViewTitle() {
     return `${formatDate(ws, 'short')} 窶・${formatDate(we, 'short')}`;
   }
   return formatDate(cursor, 'medium');
+}
+
+async function loadCalendarShareGroups() {
+  try {
+    state.shareGroups = await loadSharedGroups();
+    if (state.source !== 'personal') await refreshCalendarSharedEvents();
+    else render();
+  } catch {
+    state.shareGroups = getShareGroupsForEventForm();
+    render();
+  }
+}
+
+async function setCalendarSource(source, groupId = '') {
+  state.source = source;
+  state.groupId = source === 'personal' ? '' : groupId;
+  _selectedDate = null;
+  document.querySelector('.cal-day-sheet')?.remove();
+  if (source === 'personal') {
+    state.sharedEvents = [];
+    state.sharedError = null;
+    render();
+    return;
+  }
+  await refreshCalendarSharedEvents();
+}
+
+async function refreshCalendarSharedEvents() {
+  if (state.source === 'personal') return;
+  state.sharedLoading = true;
+  state.sharedError = null;
+  render();
+  try {
+    const result = await collectSharedCalendarEvents(state.groupId);
+    state.shareGroups = result.groups || state.shareGroups;
+    state.sharedEvents = result.events || [];
+    state.sharedError = result.error?.message || null;
+  } catch (e) {
+    state.sharedEvents = [];
+    state.sharedError = e?.message || '共有予定を読み込めませんでした';
+  } finally {
+    state.sharedLoading = false;
+    render();
+  }
+}
+
+function isSharedSource() {
+  return state.source !== 'personal' && !!state.groupId;
+}
+
+function getVisibleEvents() {
+  return isSharedSource() ? state.sharedEvents : getEvents();
+}
+
+function getEventDisplayTitle(event) {
+  return event.visibleTitle || event.title || '予定';
+}
+
+function redrawAfterEventChange(removedId = '') {
+  if (removedId) state.sharedEvents = state.sharedEvents.filter(event => event.id !== removedId);
+  render();
+  if (isSharedSource()) {
+    setTimeout(() => refreshCalendarSharedEvents(), 600);
+  }
 }
 
 function getWeekStartDate(fallbackDate = state.cursor) {
@@ -312,7 +410,7 @@ function renderView() {
 
 function renderMonth() {
   const { cursor } = state;
-  const events = getEvents();
+  const events = getVisibleEvents();
   const view = state.container.querySelector('#cal-view');
 
   const monthStart = startOfMonth(cursor);
@@ -357,11 +455,11 @@ function renderMonth() {
 
       const MAX_CHIPS = 4;
       const chips = dayEvents.slice(0, MAX_CHIPS).map(e => {
-        const color = getCategoryColor(e.categoryId);
-        const title = e.title || '';
+        const color = e.isOwn === false ? 'var(--primary)' : getCategoryColor(e.categoryId);
+        const title = getEventDisplayTitle(e);
         const isLong = [...title].length > 4;
-        return `<span class="cal-event-chip${isLong ? ' long' : ''}${e.isTentative ? ' tentative' : ''}${e._multiDay ? ' multiday' : ''}"
-          style="--event-color:${color}" data-event-id="${esc(e.id)}">${esc(e.title)}</span>`;
+        return `<span class="cal-event-chip${isLong ? ' long' : ''}${e.isTentative ? ' tentative' : ''}${e._multiDay ? ' multiday' : ''}${e.isOwn === false ? ' shared-readonly' : ''}"
+          style="--event-color:${color}" data-event-id="${esc(e.id)}">${esc(title)}</span>`;
       }).join('');
       const moreHtml = dayEvents.length > MAX_CHIPS
         ? `<span class="cal-more">+${dayEvents.length - MAX_CHIPS}</span>` : '';
@@ -411,15 +509,10 @@ function renderMonth() {
   view.querySelectorAll('.cal-event-chip').forEach(chip => {
     chip.addEventListener('click', e => {
       e.stopPropagation();
-      const cell = chip.closest('.cal-cell');
-      if (!cell) return;
-      const dateStr = cell.dataset.date;
-      if (_selectedDate === dateStr) {
-        openDaySheet(dateStr);
-      } else {
-        _selectedDate = dateStr;
-        view.querySelectorAll('.cal-cell').forEach(c => c.classList.remove('cal-cell--selected'));
-        cell.classList.add('cal-cell--selected');
+      const ev = getVisibleEvents().find(item => item.id === chip.dataset.eventId);
+      if (ev) {
+        openCalendarEvent(ev);
+        return;
       }
     });
   });
@@ -431,7 +524,7 @@ function renderMonth() {
 
 function renderTimeGrid(numDays = 7) {
   const { cursor } = state;
-  const events = getEvents();
+  const events = getVisibleEvents();
   const view = state.container.querySelector('#cal-view');
   const todayStr = today();
 
@@ -480,7 +573,7 @@ function renderTimeGrid(numDays = 7) {
           const isToday = ds === todayStr;
           const dayEvents = [
             ...getEventsForDate(events, ds),
-            ...getScheduleItemsForDate(ds).map(scheduleItemToTimedEvent),
+            ...(isSharedSource() ? [] : getScheduleItemsForDate(ds).map(scheduleItemToTimedEvent)),
           ].sort(compareTimedItems);
           return `<div class="cal-day-col${isToday?' today':''}" data-date="${ds}">
             ${Array.from({length:HOURS}, (_,h) =>
@@ -532,7 +625,7 @@ function renderTimeGrid(numDays = 7) {
       const hour = parseInt(slot.dataset.hour);
       const startISO = `${date}T${String(hour).padStart(2,'0')}:00:00`;
       const endISO   = `${date}T${String(hour+1).padStart(2,'0')}:00:00`;
-      openEventModal(null, null, startISO, endISO);
+      openEventModal(null, null, startISO, endISO, getCurrentShareDefaults());
     });
   });
 
@@ -541,8 +634,8 @@ function renderTimeGrid(numDays = 7) {
     el.addEventListener('click', (e) => {
       e.stopPropagation();
       if (el.dataset.scheduleId) return;
-      const ev = getEvents().find(ev => ev.id === el.dataset.eventId);
-      if (ev) openEventModal(ev, null);
+      const ev = getVisibleEvents().find(item => item.id === el.dataset.eventId);
+      if (ev) openCalendarEvent(ev);
     });
   });
 }
@@ -642,7 +735,7 @@ function openDaySheet(dateStr) {
   const dayTitle = `${date.getMonth() + 1}月${date.getDate()}日 (${dayNames[date.getDay()]})`;
 
   const holidayInfo = getHolidayInfo(dateStr);
-  const events    = getEvents();
+  const events    = getVisibleEvents();
   const dayEvents = getEventsForDate(events, dateStr).sort((a, b) =>
     new Date(a._displayStart ?? a.start).getTime() -
     new Date(b._displayStart ?? b.start).getTime()
@@ -666,16 +759,16 @@ function openDaySheet(dateStr) {
       </div>
       <div class="cal-day-sheet-events">
         ${dayEvents.length ? dayEvents.map(e => {
-          const color   = getCategoryColor(e.categoryId);
+          const color   = e.isOwn === false ? 'var(--primary)' : getCategoryColor(e.categoryId);
           const startSrc = e._displayStart ?? e.start;
           const endSrc   = e._displayEnd   ?? e.end;
           const timeStr = e._isAllDay ? '終日' : (startSrc ? formatTime(startSrc) : '');
           const endStr  = (!e._isAllDay && endSrc) ? `〜${formatTime(endSrc)}` : '';
-          return `<div class="cal-sheet-ev" data-ev-id="${esc(e.id)}" style="--ev-color:${color}">
+          return `<div class="cal-sheet-ev${e.isOwn === false ? ' shared-readonly' : ''}" data-ev-id="${esc(e.id)}" style="--ev-color:${color}">
             <div class="cal-sheet-ev-bar"></div>
             <div class="cal-sheet-ev-body">
               <div class="cal-sheet-ev-time">${timeStr}${endStr}</div>
-              <div class="cal-sheet-ev-title">${esc(e.title)}</div>
+              <div class="cal-sheet-ev-title">${esc(getEventDisplayTitle(e))}</div>
             </div>
           </div>`;
         }).join('') : '<p class="cal-sheet-empty">予定はありません</p>'}
@@ -704,15 +797,15 @@ function openDaySheet(dateStr) {
   // Tap event 竊・edit
   sheet.querySelectorAll('.cal-sheet-ev').forEach(el => {
     el.addEventListener('click', () => {
-      const ev = getEvents().find(e => e.id === el.dataset.evId);
-      if (ev) { closeSheet(); setTimeout(() => openEventModal(ev, null), 80); }
+      const ev = getVisibleEvents().find(e => e.id === el.dataset.evId);
+      if (ev) { closeSheet(); setTimeout(() => openCalendarEvent(ev), 80); }
     });
   });
 
   // "+" button 竊・add event on this date
   sheet.querySelector('.cal-day-sheet-add').onclick = () => {
     closeSheet();
-    setTimeout(() => openEventModal(null, dateStr), 80);
+    setTimeout(() => openEventModal(null, dateStr, null, null, getCurrentShareDefaults()), 80);
   };
 }
 
@@ -733,15 +826,15 @@ function renderTimedEvent(event, slotH) {
   const top    = (startMin / 60) * slotH;
   const height = (duration / 60) * slotH - 2;
 
-  const color = getCategoryColor(event.categoryId);
+  const color = event.isOwn === false ? 'var(--primary)' : getCategoryColor(event.categoryId);
   const timeStr = formatTime(startSrc) + (endSrc ? `窶・{formatTime(endSrc)}` : '');
 
-  return `<div class="cal-timed-event${event.isTentative?' tentative':''}"
+  return `<div class="cal-timed-event${event.isTentative?' tentative':''}${event.isOwn === false ? ' shared-readonly' : ''}"
     data-event-id="${esc(event.id)}"
     style="top:${top}px;height:${height}px;background:${color}"
-    title="${esc(event.title)}">
+    title="${esc(getEventDisplayTitle(event))}">
     <div>${esc(timeStr)}</div>
-    <div style="font-weight:500">${esc(event.title)}</div>
+    <div style="font-weight:500">${esc(getEventDisplayTitle(event))}</div>
   </div>`;
 }
 
@@ -800,15 +893,49 @@ function timeToMinutes(t) {
   return h * 60 + m;
 }
 
+function getCurrentShareDefaults() {
+  if (!isSharedSource()) return {};
+  return {
+    defaultShareGroupId: state.groupId,
+    defaultShareVisibility: 'shared_busy',
+  };
+}
+
+function openCalendarEvent(event) {
+  if (!event) return;
+  if (event.isOwn === false) {
+    openReadOnlySharedEvent(event);
+    return;
+  }
+  const local = getEvents().find(ev => ev.id === event.id) || event;
+  openEventModal(local, null);
+}
+
+function openReadOnlySharedEvent(event) {
+  const body = document.createElement('div');
+  body.innerHTML = `
+    <div class="shared-event-detail">
+      <p class="shared-cal-kicker">READ ONLY</p>
+      <h3>${esc(getEventDisplayTitle(event))}</h3>
+      <p>${esc(formatDate(new Date(event.start), 'medium'))} ${esc(formatTime(event.start))}${event.end ? ` - ${esc(formatTime(event.end))}` : ''}</p>
+      ${event.visibleMemo ? `<p class="shared-event-memo">${esc(event.visibleMemo)}</p>` : ''}
+      <p class="form-help">この予定は共有メンバーの予定です。閲覧だけできます。</p>
+    </div>
+  `;
+  window.AppNav?.openModal({ title: '共有予定', body, footer: null });
+}
+
 // ============================================================
 // EVENT MODAL (add / edit)
 // ============================================================
 
-function openEventModal(event, defaultDate, defaultStart, defaultEnd) {
+function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = {}) {
   const isEdit = !!event;
   const cats = getCategories();
   const shareGroups = getShareGroupsForEventForm();
   const selectedShareGroups = new Set(Array.isArray(event?.sharedGroupIds) ? event.sharedGroupIds : []);
+  if (!isEdit && options.defaultShareGroupId) selectedShareGroups.add(options.defaultShareGroupId);
+  const currentShareVisibility = event?.shareVisibility || options.defaultShareVisibility || 'private';
 
   const defStart = defaultStart || (defaultDate
     ? `${defaultDate}T09:00:00`
@@ -875,20 +1002,30 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd) {
     </div>
 
     <div class="form-group event-share-box">
-      <label class="form-label">共有カレンダーへの見せ方</label>
-      <select class="select" id="ev-share-visibility">
-        <option value="private" ${(event?.shareVisibility || 'private') === 'private' ? 'selected' : ''}>共有しない</option>
-        <option value="shared_busy" ${event?.shareVisibility === 'shared_busy' ? 'selected' : ''}>時間だけ共有</option>
-        <option value="shared_detail" ${event?.shareVisibility === 'shared_detail' ? 'selected' : ''}>詳細も共有</option>
-      </select>
-      <p class="form-help">共有カレンダーは保存場所ではなく、共有対象の個人予定をまとめて表示します。</p>
+      <label class="form-label">共有する内容</label>
+      <div class="event-share-visibility" id="ev-share-visibility">
+        <label class="event-share-choice${currentShareVisibility === 'private' ? ' selected' : ''}">
+          <input type="radio" name="ev-share-visibility" value="private" ${currentShareVisibility === 'private' ? 'checked' : ''}>
+          <span>共有しない</span>
+        </label>
+        <label class="event-share-choice${currentShareVisibility === 'shared_busy' ? ' selected' : ''}">
+          <input type="radio" name="ev-share-visibility" value="shared_busy" ${currentShareVisibility === 'shared_busy' ? 'checked' : ''}>
+          <span>時間だけ</span>
+        </label>
+        <label class="event-share-choice${currentShareVisibility === 'shared_detail' ? ' selected' : ''}">
+          <input type="radio" name="ev-share-visibility" value="shared_detail" ${currentShareVisibility === 'shared_detail' ? 'checked' : ''}>
+          <span>詳細も</span>
+        </label>
+      </div>
+      <p class="form-help">時間だけなら相手には「予定あり」と表示されます。詳細も選ぶとタイトルとメモも見えます。</p>
+      <label class="form-label">共有先</label>
       <div class="event-share-groups" id="ev-share-groups">
         ${shareGroups.length ? shareGroups.map(group => `
           <label class="event-share-group">
             <input type="checkbox" value="${esc(group.id)}" ${selectedShareGroups.has(group.id) ? 'checked' : ''}>
             <span>${esc(group.name || '共有グループ')}</span>
           </label>
-        `).join('') : '<p class="form-help">共有グループは「共有カレンダー」から作成できます。</p>'}
+        `).join('') : '<p class="form-help">共有グループは設定画面から作成できます。</p>'}
       </div>
     </div>
 
@@ -987,6 +1124,14 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd) {
     btn.addEventListener('click', () => {
       body.querySelectorAll('.event-cat-btn').forEach(b => b.classList.remove('selected'));
       btn.classList.add('selected');
+    });
+  });
+
+  body.querySelectorAll('.event-share-choice input').forEach(input => {
+    input.addEventListener('change', () => {
+      body.querySelectorAll('.event-share-choice').forEach(label => {
+        label.classList.toggle('selected', label.querySelector('input')?.checked);
+      });
     });
   });
 
@@ -1139,6 +1284,9 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd) {
       endIso = fixedEnd.toISOString();
     }
 
+    const checkedShareGroups = [...body.querySelectorAll('#ev-share-groups input[type="checkbox"]:checked')].map(input => input.value);
+    const shareVisibility = body.querySelector('[name="ev-share-visibility"]:checked')?.value || 'private';
+
     const newData = {
       title,
       start: startIso,
@@ -1147,8 +1295,8 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd) {
       isTentative,
       isRoutine,
       memo: body.querySelector('#ev-memo')?.value?.trim() || '',
-      shareVisibility: body.querySelector('#ev-share-visibility')?.value || 'private',
-      sharedGroupIds: [...body.querySelectorAll('#ev-share-groups input[type="checkbox"]:checked')].map(input => input.value),
+      shareVisibility: checkedShareGroups.length ? shareVisibility : 'private',
+      sharedGroupIds: checkedShareGroups.length ? checkedShareGroups : [],
       tags: [],
     };
 
@@ -1182,7 +1330,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd) {
     }
 
     close();
-    render();
+    redrawAfterEventChange();
   };
 }
 
@@ -1237,23 +1385,23 @@ async function handleDelete(event) {
       toast('削除しました', 'success');
       closeChoice();
       closeModalGlobal();
-      render();
+      redrawAfterEventChange(event.id);
     };
     body.querySelector('#del-future').onclick = () => {
       deleteFutureRecurring(event.recurringId, event.start);
       toast('削除しました', 'success');
       closeChoice();
-      render();
+      redrawAfterEventChange(event.id);
     };
   } else {
     if (await confirmGlobal(`「${event.title}」を削除しますか？`, { danger: true, okLabel: '削除' })) {
       pushUndo({ type: 'delete_event', event });
       deleteEvent(event.id);
       closeModalGlobal();
-      render();
+      redrawAfterEventChange(event.id);
       undoToast(`「${event.title.slice(0, 20)}」を削除しました`, () => {
         applyUndo();
-        render();
+        redrawAfterEventChange();
       });
     }
   }

@@ -834,6 +834,57 @@ button { cursor: pointer; font-family: inherit; }
   transform: scale(0.96);
 }
 
+.cal-source-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px 10px;
+  background: var(--bg-card);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.cal-source-bar::-webkit-scrollbar { display: none; }
+
+.cal-source-btn,
+.cal-source-refresh {
+  min-height: 30px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-input);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.cal-source-btn.active {
+  border-color: var(--primary-border);
+  background: var(--primary-bg);
+  color: var(--primary-light);
+}
+
+.cal-source-refresh {
+  margin-left: auto;
+  color: var(--text-dim);
+  background: transparent;
+}
+
+.cal-source-help,
+.cal-shared-loading,
+.cal-shared-error {
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.cal-shared-loading,
+.cal-shared-error {
+  margin: 0 16px 10px;
+}
+
+.cal-shared-error { color: var(--warning); }
+
 .cal-mode-tabs {
   display: flex;
   background: var(--bg-hover);
@@ -938,6 +989,11 @@ button { cursor: pointer; font-family: inherit; }
   text-align: left;
 }
 .cal-event-chip.tentative { opacity: 0.55; }
+.cal-event-chip.shared-readonly {
+  color: var(--primary-light);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  border-style: dashed;
+}
 .cal-event-chip:hover { opacity: 1; }
 /* Multi-day event: arrow indicator on right edge */
 .cal-event-chip.multiday {
@@ -1768,6 +1824,43 @@ button { cursor: pointer; font-family: inherit; }
   white-space: pre-wrap;
 }
 
+.event-share-visibility {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.event-share-choice,
+.event-share-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.event-share-choice.selected,
+.event-share-group:has(input:checked) {
+  border-color: var(--primary-border);
+  background: var(--primary-bg);
+  color: var(--primary-light);
+}
+
+.event-share-choice input,
+.event-share-group input {
+  accent-color: var(--primary);
+}
+
+.cal-sheet-ev.shared-readonly {
+  opacity: 0.9;
+}
+
 .shared-inline {
   display: flex;
   gap: 8px;
@@ -1888,6 +1981,10 @@ button { cursor: pointer; font-family: inherit; }
   .shared-event-chip span,
   .shared-event-chip em {
     display: none;
+  }
+
+  .event-share-visibility {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -102,7 +102,7 @@ export async function createSharedInvite(groupId, email = '') {
   return {
     token,
     expiresAt: expires,
-    url: `${window.location.origin}${window.location.pathname}?shareInvite=${encodeURIComponent(token)}#shared-calendar`,
+    url: `${window.location.origin}${window.location.pathname}?shareInvite=${encodeURIComponent(token)}#calendar`,
   };
 }
 
