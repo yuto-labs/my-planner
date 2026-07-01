@@ -55,13 +55,13 @@ export async function createSharedGroup(name) {
 
   const rpcResult = await client.rpc('create_shared_calendar_group', {
     group_id: group.id,
-    group_name: group.name,
+    p_group_name: group.name,
   });
   if (!rpcResult.error) {
     await loadSharedGroups();
     return { ...group, ...(rpcResult.data || {}) };
   }
-  const rpcMissing = /function .*create_shared_calendar_group|schema cache|not found|does not exist/i
+  const rpcMissing = /function .*create_shared_calendar_group|schema cache|not found|does not exist|ambiguous|あいまい/i
     .test(`${rpcResult.error.message || ''} ${rpcResult.error.details || ''}`);
   if (!rpcMissing) throw rpcResult.error;
 

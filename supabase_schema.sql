@@ -197,7 +197,8 @@ create policy "shared invites: group owner create" on shared_calendar_invites
     )
   );
 
-create or replace function create_shared_calendar_group(group_id text, group_name text)
+drop function if exists create_shared_calendar_group(text, text);
+create or replace function create_shared_calendar_group(group_id text, p_group_name text)
 returns jsonb
 language plpgsql
 security definer
@@ -209,7 +210,7 @@ begin
   end if;
 
   insert into shared_calendar_groups(id, owner_id, name, created_at, updated_at)
-  values (group_id, auth.uid(), coalesce(nullif(group_name, ''), '共有カレンダー'), now(), now())
+  values (group_id, auth.uid(), coalesce(nullif(p_group_name, ''), '共有カレンダー'), now(), now())
   on conflict (id) do update
     set name = excluded.name,
         updated_at = now()
@@ -220,7 +221,7 @@ begin
   on conflict (group_id, user_id) do update
     set role = 'owner';
 
-  return jsonb_build_object('id', group_id, 'name', coalesce(nullif(group_name, ''), '共有カレンダー'));
+  return jsonb_build_object('id', group_id, 'name', coalesce(nullif(p_group_name, ''), '共有カレンダー'));
 end;
 $$;
 
