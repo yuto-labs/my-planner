@@ -11,11 +11,11 @@ import {
 import { processBatchQueue, refreshAiRuntimeStatus } from '../ai.js';
 import { esc, generateId } from '../utils.js';
 import {
-  getSession, getUserEmail,
+  getSession, getUserEmail, getStoredConfig,
   signInWithEmail, verifyEmailOtp, signOut, isMigratedForCurrentUser, setActiveUserId,
 } from '../supabase.js';
 import { migrateToSupabase } from '../migrate.js';
-import { pullAll, startRealtimeSync, stopRealtimeSync } from '../sync.js';
+import { getSyncStatus, pullAll, startRealtimeSync, stopRealtimeSync } from '../sync.js';
 
 const toast = (msg, type) => window.AppNav?.showToast(msg, type);
 const nav = (view) => window.AppNav?.navigate(view);
@@ -270,10 +270,19 @@ function renderCategoryRow(cat) {
 }
 
 function renderAccountSection() {
+  const syncStatus = getSyncStatus();
+  const cfg = getStoredConfig();
+  const cloudHost = safeCloudHost(cfg.url);
   return `
     <div class="settings-heading">Account</div>
     <div id="sb-auth-area">
       <div id="sb-status" class="text-sm text-muted" style="margin-bottom:10px">Checking...</div>
+      <div class="text-sm text-muted" style="margin-bottom:10px">
+        Cloud: ${esc(cloudHost)}
+      </div>
+      <div id="sb-sync-status" class="text-sm text-muted" style="margin-bottom:10px">
+        ${renderSyncStatus(syncStatus)}
+      </div>
 
       <div id="sb-signin-wrap">
         <div class="form-group">
@@ -308,6 +317,29 @@ function renderAccountSection() {
       </div>
     </div>
   `;
+}
+
+function safeCloudHost(url) {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return 'not configured';
+  }
+}
+
+function renderSyncStatus(status) {
+  const lastPush = status.lastPushAt ? formatSyncTime(status.lastPushAt) : 'not yet';
+  const lastPull = status.lastPullAt ? formatSyncTime(status.lastPullAt) : 'not yet';
+  const error = status.lastErrorAt
+    ? `<br><span style="color:var(--danger)">Last error (${esc(status.lastErrorTable || 'sync')}): ${esc(status.lastErrorMessage || '')}</span>`
+    : '';
+  return `Last push: ${esc(lastPush)} / Last pull: ${esc(lastPull)}${error}`;
+}
+
+function formatSyncTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value || '');
+  return date.toLocaleString();
 }
 
 function wireAppearance(container) {

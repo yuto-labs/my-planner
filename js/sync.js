@@ -78,6 +78,7 @@ const DELETE_GRACE_MS = 250;
 const DELETE_TOMBSTONE_KEY = 'mp_sync_pending_deletes';
 const DELETE_TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const RECENT_UPSERT_KEY = 'mp_sync_recent_upserts';
+const SYNC_STATUS_KEY = 'mp_sync_status';
 const RECENT_UPSERT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PUSH_RETRY_MS = 2500;
 let _realtimeChannel = null;
@@ -161,6 +162,16 @@ export function hasPendingSyncWork() {
   return Object.values(_timers).some(Boolean) || _deleteTimers.size > 0;
 }
 
+export function getSyncStatus() {
+  return _ls(SYNC_STATUS_KEY, {
+    lastPushAt: null,
+    lastPullAt: null,
+    lastErrorAt: null,
+    lastErrorTable: null,
+    lastErrorMessage: null,
+  });
+}
+
 // ---- Push ----
 
 async function _pushTable(tableKey) {
@@ -179,17 +190,58 @@ async function _pushTable(tableKey) {
   if (!sourceItems.length) return;
 
   const rows = sourceItems.map(item => toRow(item, userId));
-  const { error } = await client.from(dbTable)
-    .upsert(rows, { onConflict: conflict });
+  const { error } = await _upsertRowsCompat(client, dbTable, rows, conflict);
 
   if (error) {
     console.warn(`[Sync] push ${tableKey} failed:`, error.message);
+    _recordSyncError(tableKey, error);
     _schedulePushRetry(tableKey);
     return false;
   }
 
+  _recordSyncSuccess('push');
   _clearRecentUpsertsForTable(tableKey);
   return true;
+}
+
+async function _upsertRowsCompat(client, dbTable, rows, conflict) {
+  let attemptRows = rows;
+  const strippedColumns = [];
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const result = await client.from(dbTable)
+      .upsert(attemptRows, { onConflict: conflict });
+    if (!result.error) {
+      if (strippedColumns.length) {
+        console.warn(`[Sync] ${dbTable}: skipped unsupported cloud column(s): ${strippedColumns.join(', ')}`);
+      }
+      return result;
+    }
+
+    const missingColumn = _missingColumnFromError(result.error);
+    if (!missingColumn || !attemptRows.some(row => Object.hasOwn(row, missingColumn))) {
+      return result;
+    }
+
+    strippedColumns.push(missingColumn);
+    attemptRows = attemptRows.map(row => {
+      const next = { ...row };
+      delete next[missingColumn];
+      return next;
+    });
+  }
+
+  return {
+    error: new Error(`Could not sync ${dbTable}: too many unsupported cloud columns (${strippedColumns.join(', ')})`),
+  };
+}
+
+function _missingColumnFromError(error) {
+  const text = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`;
+  const quoted = text.match(/'([^']+)'\s+column/i);
+  if (quoted?.[1]) return quoted[1];
+  const named = text.match(/column\s+["']?([a-zA-Z0-9_]+)["']?\s+(?:does not exist|not found|could not find)/i);
+  return named?.[1] || null;
 }
 
 // ---- Pull (起動時 + オンライン復帰時) ----
@@ -210,6 +262,9 @@ export async function pullAll(forceReplace = false) {
     _pullReviewSchedule(client, userId, forceReplace),
   ]);
 
+  const firstError = results.find(r => r.status === 'rejected');
+  if (firstError) _recordSyncError('pull', firstError.reason);
+  else _recordSyncSuccess('pull');
   return results.some(r => r.status === 'fulfilled' && r.value === true);
 }
 
@@ -656,6 +711,26 @@ function _writeIfChanged(key, value) {
   if (prev === next) return false;
   localStorage.setItem(key, next);
   return true;
+}
+
+function _recordSyncSuccess(type) {
+  const current = getSyncStatus();
+  const next = {
+    ...current,
+    [type === 'pull' ? 'lastPullAt' : 'lastPushAt']: new Date().toISOString(),
+  };
+  localStorage.setItem(SYNC_STATUS_KEY, JSON.stringify(next));
+}
+
+function _recordSyncError(table, error) {
+  const current = getSyncStatus();
+  const next = {
+    ...current,
+    lastErrorAt: new Date().toISOString(),
+    lastErrorTable: table,
+    lastErrorMessage: error?.message || String(error || 'Unknown sync error'),
+  };
+  localStorage.setItem(SYNC_STATUS_KEY, JSON.stringify(next));
 }
 
 function _ls(key, fb) {

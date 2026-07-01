@@ -9,6 +9,8 @@
 alter table tasks          add column if not exists task_type         text    default 'normal';
 alter table tasks          add column if not exists estimated_minutes integer;
 alter table tasks          add column if not exists highlight_color   text;
+alter table tasks          add column if not exists abandoned         boolean default false;
+alter table tasks          add column if not exists abandoned_at      timestamptz;
 alter table schedule_items add column if not exists source            text;
 alter table schedule_items add column if not exists task_id           text;
 alter table schedule_items add column if not exists note              text    default '';
@@ -36,6 +38,8 @@ create table if not exists tasks (
   task_type          text        default 'normal',
   estimated_minutes  integer,
   highlight_color    text,
+  abandoned          boolean     default false,
+  abandoned_at       timestamptz,
   created_at         timestamptz default now(),
   updated_at         timestamptz default now()
 );
