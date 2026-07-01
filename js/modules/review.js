@@ -45,7 +45,7 @@ export function initReview(container) {
   function renderEmpty() {
     container.innerHTML = `
       <div class="rv-page rv-done">
-        <div class="rv-done-icon">🎉</div>
+        <div class="rv-done-icon">🎴</div>
         <div class="rv-done-title">今日の復習は完了しています</div>
         <div class="rv-done-sub">また明日続けましょう</div>
         <button class="btn btn-primary" id="rv-exit">ホームに戻る</button>
@@ -56,7 +56,7 @@ export function initReview(container) {
   function renderDone() {
     container.innerHTML = `
       <div class="rv-page rv-done">
-        <div class="rv-done-icon">✅</div>
+        <div class="rv-done-icon">✓</div>
         <div class="rv-done-title">今日の復習 完了！</div>
         <div class="rv-done-sub">${queue.length}件のカードを復習しました</div>
         <button class="btn btn-primary" id="rv-exit">ホームに戻る</button>

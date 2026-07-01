@@ -30,6 +30,7 @@ const LS_KEYS = {
   trash_items:      'mp_trash',
   schedule_items:   'mp_schedule',
   tags:             'mp_tags',
+  review_schedule:  'mp_reviews',
 };
 
 // ---- 変換関数マップ (localData → DB row) ----
@@ -42,6 +43,7 @@ const TO_ROW = {
   trash_items:     (item, uid) => trashToRow(item, uid),
   schedule_items:  (item, uid) => schedItemToRow(item, uid),
   tags:            (name, uid) => ({ user_id: uid, name }),
+  review_schedule: ([memoId, entry], uid) => reviewEntryToRow(memoId, entry, uid),
 };
 
 // ---- テーブル名マップ (internal key → Supabase table) ----
@@ -54,6 +56,7 @@ const DB_TABLE = {
   trash_items:     'trash_items',
   schedule_items:  'schedule_items',
   tags:            'tags',
+  review_schedule: 'review_schedule',
 };
 
 const CONFLICT_KEY = {
@@ -65,6 +68,7 @@ const CONFLICT_KEY = {
   trash_items:     'id',
   schedule_items:  'id',
   tags:            'user_id,name',
+  review_schedule: 'user_id,memo_id',
 };
 
 // ---- Push デバウンスタイマー ----
@@ -109,7 +113,7 @@ export async function startRealtimeSync() {
   await stopRealtimeSync();
 
   const channel = client.channel(`planner-sync-${userId}`);
-  const tables = ['tasks', 'events', 'goals', 'knowledge_memos', 'trash_items', 'schedule_items', 'tags'];
+  const tables = ['tasks', 'events', 'goals', 'knowledge_memos', 'trash_items', 'schedule_items', 'tags', 'review_schedule'];
 
   tables.forEach(table => {
     channel.on('postgres_changes', {
@@ -170,10 +174,11 @@ async function _pushTable(tableKey) {
   const conflict  = CONFLICT_KEY[tableKey];
   if (!lsKey || !toRow) return;
 
-  const localData = _ls(lsKey, []);
-  if (!localData.length) return;
+  const localData = _ls(lsKey, tableKey === 'review_schedule' ? {} : []);
+  const sourceItems = tableKey === 'review_schedule' ? Object.entries(localData) : localData;
+  if (!sourceItems.length) return;
 
-  const rows = localData.map(item => toRow(item, userId));
+  const rows = sourceItems.map(item => toRow(item, userId));
   const { error } = await client.from(dbTable)
     .upsert(rows, { onConflict: conflict });
 
@@ -202,6 +207,7 @@ export async function pullAll(forceReplace = false) {
     _pullTrash(client, userId, forceReplace),
     _pullSchedule(client, userId, forceReplace),
     _pullTags(client, userId, forceReplace),
+    _pullReviewSchedule(client, userId, forceReplace),
   ]);
 
   return results.some(r => r.status === 'fulfilled' && r.value === true);
@@ -280,6 +286,15 @@ async function _pullTags(client, userId, forceReplace = false) {
   return _writeIfChanged('mp_tags', merged);
 }
 
+async function _pullReviewSchedule(client, userId, forceReplace = false) {
+  const { data, error } = await client
+    .from('review_schedule').select('*').eq('user_id', userId);
+  if (error || !data) return;
+  const remote = Object.fromEntries(data.map(rowToReviewEntry));
+  const local = _ls('mp_reviews', {});
+  return _writeIfChanged('mp_reviews', _mergeReviewSchedules(local, remote, forceReplace));
+}
+
 // ---- Merge strategy: last-write-wins by updated_at ----
 
 function _merge(local, remote) {
@@ -331,6 +346,11 @@ function _scheduleDelete(payload) {
           .delete()
           .eq('user_id', userId)
           .eq('name', payload.name);
+      } else if (payload.table === 'review_schedule' && payload.id) {
+        await client.from('review_schedule')
+          .delete()
+          .eq('memo_id', payload.id)
+          .eq('user_id', userId);
       } else if (payload.id) {
         await client.from(payload.table)
           .delete()
@@ -359,6 +379,10 @@ function _isStillDeleted({ table, id, name }) {
 
   if (table === 'tasks') {
     return !_hasId('mp_tasks', id) && !_hasId('mp_task_archive', id);
+  }
+
+  if (table === 'review_schedule') {
+    return !_ls('mp_reviews', {})[id];
   }
 
   if (table === 'trash_items') {
@@ -470,6 +494,15 @@ function _markRecentUpserts(tableKey) {
 
   const lsKey = LS_KEYS[tableKey];
   if (!lsKey) return;
+  if (tableKey === 'review_schedule') {
+    const schedule = _ls(lsKey, {});
+    const survivors = entries.filter(entry => entry.table !== tableKey);
+    Object.keys(schedule).forEach(memoId => {
+      survivors.push({ table: tableKey, id: memoId, expiresAt });
+    });
+    _saveRecentUpserts(survivors);
+    return;
+  }
   const items = _ls(lsKey, []);
   const survivors = entries.filter(entry => entry.table !== tableKey);
   items.forEach(item => {
@@ -484,6 +517,9 @@ function _markRecentUpserts(tableKey) {
 function _isStillPresent(entry) {
   if (entry.table === 'tags') {
     return _ls('mp_tags', []).includes(entry.name);
+  }
+  if (entry.table === 'review_schedule') {
+    return !!_ls('mp_reviews', {})[entry.id];
   }
   const lsKey = LS_KEYS[entry.table];
   if (!lsKey || !entry.id) return false;
@@ -533,6 +569,66 @@ function _mergeRecentLocalTags(remoteTags) {
   const localRecent = _ls('mp_tags', []).filter(name => recentNames.has(name));
   if (localRecent.some(name => !remoteTags.includes(name))) _schedulePushRetry('tags');
   return [...new Set([...remoteTags, ...localRecent])].sort();
+}
+
+function _mergeReviewSchedules(localSchedule, remoteSchedule, protectRecent = false) {
+  const merged = { ...(remoteSchedule || {}) };
+  const recentIds = new Set(
+    _getRecentUpserts()
+      .filter(entry => entry.table === 'review_schedule' && entry.id)
+      .map(entry => entry.id)
+  );
+  let needsRetry = false;
+
+  Object.entries(localSchedule || {}).forEach(([memoId, localEntry]) => {
+    const remoteEntry = merged[memoId];
+    if (!remoteEntry) {
+      if (!protectRecent || recentIds.has(memoId)) {
+        merged[memoId] = localEntry;
+        needsRetry = true;
+      }
+      return;
+    }
+    merged[memoId] = _newerReviewEntry(localEntry, remoteEntry);
+    if (merged[memoId] === localEntry && recentIds.has(memoId)) needsRetry = true;
+  });
+
+  if (needsRetry) _schedulePushRetry('review_schedule');
+  return merged;
+}
+
+function _newerReviewEntry(localEntry, remoteEntry) {
+  const localTime = _reviewEntryTs(localEntry);
+  const remoteTime = _reviewEntryTs(remoteEntry);
+  if (localTime !== remoteTime) return localTime > remoteTime ? localEntry : remoteEntry;
+  const localStage = Number(localEntry?.stage ?? 0);
+  const remoteStage = Number(remoteEntry?.stage ?? 0);
+  return localStage >= remoteStage ? localEntry : remoteEntry;
+}
+
+function _reviewEntryTs(entry) {
+  const candidates = [entry?.lastReview, entry?.nextReview]
+    .map(value => new Date(value || 0).getTime())
+    .filter(Number.isFinite);
+  return candidates.length ? Math.max(...candidates) : 0;
+}
+
+function reviewEntryToRow(memoId, entry, userId) {
+  return {
+    user_id: userId,
+    memo_id: memoId,
+    stage: entry?.stage ?? 0,
+    next_review: entry?.nextReview ?? null,
+    last_review: entry?.lastReview ?? null,
+  };
+}
+
+function rowToReviewEntry(row) {
+  return [row.memo_id, {
+    stage: row.stage ?? 0,
+    nextReview: row.next_review ?? null,
+    lastReview: row.last_review ?? null,
+  }];
 }
 
 function _updatedTs(item) {

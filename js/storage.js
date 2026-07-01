@@ -525,12 +525,16 @@ const RATING_INTERVALS = {
 const STAGE_DELTA = { again: -2, hard: 0, good: +1, easy: +1 };
 
 export function getReviewSchedule()              { return load(REVIEW_KEY, {}); }
+export function saveReviewSchedule(schedule) {
+  save(REVIEW_KEY, schedule);
+  _notifySync('review_schedule');
+}
 export function scheduleFirstReview(memoId) {
   const schedule = getReviewSchedule();
   if (schedule[memoId]) return;
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   schedule[memoId] = { stage: 0, nextReview: toDateStr_simple(tomorrow), lastReview: null };
-  save(REVIEW_KEY, schedule);
+  saveReviewSchedule(schedule);
 }
 
 export function rateReview(memoId, rating) {
@@ -548,7 +552,7 @@ export function rateReview(memoId, rating) {
     nextReview: newStage >= MASTERY_STAGE ? '9999-12-31' : toDateStr_simple(next),
     lastReview: toDateStr_simple(new Date()),
   };
-  save(REVIEW_KEY, schedule);
+  saveReviewSchedule(schedule);
 }
 
 export function previewReviewIntervals(memoId) {
@@ -574,7 +578,7 @@ export function setReviewStage(memoId, stage) {
     interval: STAGE_INTERVALS[newStage],
     nextReview: newStage >= MASTERY_STAGE ? '9999-12-31' : toDateStr_simple(next),
   };
-  save(REVIEW_KEY, schedule);
+  saveReviewSchedule(schedule);
 }
 
 export function getReviewsForDate(dateStr) {
@@ -633,7 +637,8 @@ export function deleteKnowledgeMemo(id) {
   const schedule = getReviewSchedule();
   if (schedule[id]) {
     delete schedule[id];
-    save(REVIEW_KEY, schedule);
+    saveReviewSchedule(schedule);
+    _notifyDelete({ table: 'review_schedule', id });
   }
   _notifyDelete({ table: 'knowledge_memos', id });
 }

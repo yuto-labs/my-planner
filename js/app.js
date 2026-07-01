@@ -34,7 +34,7 @@ const MODULES = {
   'knowledge-detail':{ title: 'Note',       init: initKnowledgeDetail, back: 'knowledge', backAction: backFromKnowledgeDetail },
   'knowledge-graph': { title: 'Knowledge Graph', init: initKnowledgeGraph, back: 'knowledge' },
   analytics:         { title: 'Analytics',  init: initAnalytics },
-  review:            { title: '蠕ｩ鄙偵そ繝・す繝ｧ繝ｳ', init: initReview, back: 'home' },
+  review:            { title: '復習セッション', init: initReview, back: 'home' },
   archive:           { title: 'Trash',      init: initArchive,         back: 'tasks' },
   tags:              { title: 'Tags',       init: initTagsPage },
 };
