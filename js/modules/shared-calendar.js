@@ -3,9 +3,11 @@ import {
   collectSharedCalendarEvents,
   createSharedGroup,
   createSharedInvite,
+  deleteOwnSharedEvent,
   loadSharedGroups,
+  updateOwnSharedEvent,
 } from '../shared-calendar.js';
-import { getCategories, getCategoryColor, updateEvent } from '../storage.js';
+import { getCategories, getCategoryColor } from '../storage.js';
 import { esc, formatDate, formatTime, getEventsForDate, today, toDateStr } from '../utils.js';
 
 const toast = (msg, type) => window.AppNav?.showToast(msg, type);
@@ -95,6 +97,7 @@ function render() {
           <option value="">すべての共有グループ</option>
           ${state.groups.map(group => `<option value="${esc(group.id)}" ${state.groupId === group.id ? 'selected' : ''}>${esc(group.name || '共有グループ')}</option>`).join('')}
         </select>
+        <button class="btn btn-ghost btn-sm" id="shared-refresh" type="button">更新</button>
       </div>
 
       ${state.error ? `<div class="card shared-cal-error">共有データを読み込めませんでした。Supabaseに共有カレンダー用SQLを適用すると使えます。<br>${esc(state.error)}</div>` : ''}
@@ -111,6 +114,10 @@ function render() {
   container.querySelector('#shared-group-filter')?.addEventListener('change', async e => {
     state.groupId = e.target.value;
     await refresh();
+  });
+  container.querySelector('#shared-refresh')?.addEventListener('click', async () => {
+    await refresh();
+    toast('共有カレンダーを更新しました', 'success');
   });
   container.querySelector('#shared-personal-btn')?.addEventListener('click', () => nav('calendar'));
   container.querySelectorAll('[data-shared-event-id]').forEach(btn => {
@@ -195,8 +202,46 @@ function openSharedEvent(eventId) {
       openQuickEdit(event, cats);
     };
     footer.appendChild(edit);
+
+    const del = document.createElement('button');
+    del.className = 'btn btn-danger btn-sm';
+    del.textContent = '削除';
+    del.onclick = () => {
+      close();
+      confirmSharedDelete(event);
+    };
+    footer.appendChild(del);
   }
   const close = openModal({ title: '共有予定', body, footer });
+}
+
+function confirmSharedDelete(event) {
+  const body = document.createElement('div');
+  body.innerHTML = `
+    <p>「${esc(event.title || '予定')}」を削除しますか？</p>
+    <p class="form-help">共有カレンダーから見えている自分の予定だけを削除します。他のメンバーの予定は削除されません。</p>
+  `;
+  const footer = document.createElement('div');
+  footer.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;width:100%';
+  const cancel = document.createElement('button');
+  cancel.className = 'btn btn-ghost btn-sm';
+  cancel.textContent = 'キャンセル';
+  const ok = document.createElement('button');
+  ok.className = 'btn btn-danger btn-sm';
+  ok.textContent = '削除';
+  footer.append(cancel, ok);
+  const close = openModal({ title: '予定を削除', body, footer });
+  cancel.onclick = () => close();
+  ok.onclick = async () => {
+    try {
+      await deleteOwnSharedEvent(event.id);
+      close();
+      toast('予定を削除しました', 'success');
+      await refresh();
+    } catch (e) {
+      toast(e.message || '削除できませんでした', 'error');
+    }
+  };
 }
 
 function openQuickEdit(event, cats) {
@@ -231,14 +276,18 @@ function openQuickEdit(event, cats) {
   save.onclick = async () => {
     const title = body.querySelector('#shared-edit-title')?.value.trim();
     if (!title) return;
-    updateEvent(event.id, {
+    try {
+      await updateOwnSharedEvent(event.id, {
       title,
       categoryId: body.querySelector('#shared-edit-category')?.value || event.categoryId,
       shareVisibility: body.querySelector('#shared-edit-visibility')?.value || 'private',
-    });
-    close();
-    toast('予定を更新しました', 'success');
-    await refresh();
+      });
+      close();
+      toast('予定を更新しました', 'success');
+      await refresh();
+    } catch (e) {
+      toast(e.message || '更新できませんでした', 'error');
+    }
   };
 }
 
