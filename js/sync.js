@@ -124,13 +124,10 @@ export async function startRealtimeSync() {
       filter: `user_id=eq.${userId}`,
     }, () => {
       clearTimeout(_realtimePullTimer);
-      _realtimePullTimer = setTimeout(async () => {
-        const pulled = await pullAll(true);
-        if (pulled) {
-          document.dispatchEvent(new CustomEvent('sync:updated', {
-            detail: { source: 'realtime', table },
-          }));
-        }
+      _realtimePullTimer = setTimeout(() => {
+        document.dispatchEvent(new CustomEvent('sync:remote-change', {
+          detail: { source: 'realtime', table },
+        }));
       }, 300);
     });
   });

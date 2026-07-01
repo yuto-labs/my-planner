@@ -601,7 +601,6 @@ async function init() {
         clearUserContentLocal();
       }
       setActiveUserId(nextUserId);
-      startRealtimeSync().catch(e => console.warn('[Sync] realtime start failed:', e));
       if (hasPendingSyncWork()) {
         deferSyncWhileEditing({ needsPull: true });
       } else {
@@ -609,7 +608,9 @@ async function init() {
           if (!await isMigratedForCurrentUser()) {
             await migrateToSupabase(() => {});
           }
-          return pullAll(true);
+          const pulled = await pullAll(true);
+          await startRealtimeSync();
+          return pulled;
         })().then(pulled => {
           if (!pulled || !currentView) return;
           refreshCurrentView();
@@ -703,6 +704,19 @@ async function init() {
       return;
     }
     refreshCurrentView({ preserveScroll: true });
+  });
+
+  document.addEventListener('sync:remote-change', () => {
+    if (isUserEditing() || hasPendingSyncWork()) {
+      deferSyncWhileEditing({ needsPull: true });
+      return;
+    }
+    getSession().then(session => {
+      if (!session) return;
+      pullIfStale(1_000, true).then(pulled => {
+        if (pulled) refreshCurrentView({ preserveScroll: true });
+      }).catch(() => {});
+    }).catch(() => {});
   });
 }
 
