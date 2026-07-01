@@ -202,6 +202,7 @@ function render() {
       <button class="cal-nav-arrow" id="cal-prev-btn" aria-label="蜑阪∈">&#8249;</button>
       <div class="cal-title-wrap">
         <button class="cal-title" id="cal-title-btn">${getViewTitle()}</button>
+        <button class="btn btn-ghost btn-sm cal-share-btn" id="cal-share-btn" type="button">共有カレンダー</button>
       </div>
       <button class="cal-nav-arrow" id="cal-next-btn" aria-label="次へ">&#8250;</button>
       <div class="cal-mode-tabs">
@@ -211,7 +212,6 @@ function render() {
           </button>`
         ).join('')}
       </div>
-      <button class="btn btn-ghost btn-sm cal-share-btn" id="cal-share-btn" type="button">共有カレンダー</button>
     </div>
     <div id="cal-view"></div>
   `;

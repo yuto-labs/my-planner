@@ -781,7 +781,13 @@ button { cursor: pointer; font-family: inherit; }
   transition: background var(--transition), color var(--transition);
 }
 .cal-nav-arrow:active { background: var(--bg-hover); color: var(--text); }
-.cal-title-wrap { flex: 1; }
+.cal-title-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .cal-title {
   font-size: 18px;
   font-weight: 700;
@@ -1602,7 +1608,7 @@ button { cursor: pointer; font-family: inherit; }
 
 /* Shared calendar */
 .cal-share-btn {
-  margin-left: auto;
+  flex-shrink: 0;
   white-space: nowrap;
 }
 
