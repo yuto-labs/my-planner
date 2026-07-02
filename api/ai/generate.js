@@ -18,6 +18,19 @@ function extractText(data) {
   return parts.map(part => part?.text || '').join('').trim();
 }
 
+async function requestGemini(key, model, payload) {
+  const upstream = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }
+  );
+  const data = await upstream.json().catch(() => ({}));
+  return { upstream, data };
+}
+
 const DEFAULT_SUPABASE_URL = 'https://nhgbvlovptelaqcurobv.supabase.co';
 const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5oZ2J2bG92cHRlbGFxY3Vyb2J2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMTY2NzcsImV4cCI6MjA5NjU5MjY3N30.Vgsy9--B3d5FoxoHpvjC00OPPzE2WUwzP8GV2LE4-p4';
 const USER_DAILY_LIMIT = Number(process.env.AI_USER_DAILY_LIMIT || 50);
@@ -158,6 +171,7 @@ export default async function handler(req, res) {
       maxOutputTokens: Number(body.maxTokens || 300),
       temperature: responseFormat === 'json' ? 0.2 : 0.4,
       responseMimeType: responseFormat === 'json' ? 'application/json' : 'text/plain',
+      thinkingConfig: { thinkingBudget: 0 },
     },
   };
 
@@ -168,23 +182,32 @@ export default async function handler(req, res) {
   }
 
   try {
-    const upstream = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      }
-    );
-
-    const data = await upstream.json().catch(() => ({}));
+    let { upstream, data } = await requestGemini(key, model, payload);
     if (!upstream.ok) {
       const msg = data?.error?.message || `Gemini upstream error ${upstream.status}`;
       res.status(upstream.status).json({ error: msg });
       return;
     }
 
-    const text = extractText(data);
+    let text = extractText(data);
+    if (!text) {
+      const retryPayload = {
+        ...payload,
+        generationConfig: {
+          ...payload.generationConfig,
+          maxOutputTokens: Math.max(Number(body.maxTokens || 300) * 2, 512),
+          thinkingConfig: { thinkingBudget: 0 },
+        },
+      };
+      ({ upstream, data } = await requestGemini(key, model, retryPayload));
+      if (!upstream.ok) {
+        const msg = data?.error?.message || `Gemini upstream error ${upstream.status}`;
+        res.status(upstream.status).json({ error: msg });
+        return;
+      }
+      text = extractText(data);
+    }
+
     if (!text) {
       const blockReason = data?.promptFeedback?.blockReason;
       res.status(502).json({ error: blockReason ? `Gemini blocked the request: ${blockReason}` : 'Gemini returned an empty response.' });

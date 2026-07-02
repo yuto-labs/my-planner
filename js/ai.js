@@ -180,8 +180,19 @@ export async function streamDailyMessage(tasks = [], events = [], goals = [], on
 }
 
 function tryParseJSON(text) {
-  const cleaned = text.trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
-  try { return JSON.parse(cleaned); } catch { return null; }
+  const cleaned = String(text || '').trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+  try { return JSON.parse(cleaned); } catch {}
+  const firstObject = cleaned.indexOf('{');
+  const lastObject = cleaned.lastIndexOf('}');
+  if (firstObject >= 0 && lastObject > firstObject) {
+    try { return JSON.parse(cleaned.slice(firstObject, lastObject + 1)); } catch {}
+  }
+  const firstArray = cleaned.indexOf('[');
+  const lastArray = cleaned.lastIndexOf(']');
+  if (firstArray >= 0 && lastArray > firstArray) {
+    try { return JSON.parse(cleaned.slice(firstArray, lastArray + 1)); } catch {}
+  }
+  return null;
 }
 
 export async function getDailyMessage(tasks = [], events = [], goals = []) {
