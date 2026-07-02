@@ -20,6 +20,7 @@ import { acceptSharedInvite, collectSharedCalendarEvents, getShareGroupsForEvent
 
 const toast     = (msg, type) => window.AppNav?.showToast(msg, type);
 const undoToast = (msg, cb)   => window.AppNav?.showUndoToast(msg, cb);
+const SHARE_DEFAULTS_KEY = 'mp_calendar_share_defaults';
 
 // Module state
 let state = {
@@ -905,8 +906,25 @@ function getCurrentShareDefaults() {
   if (!isSharedSource()) return {};
   return {
     defaultShareGroupId: state.groupId,
-    defaultShareVisibility: 'shared_busy',
+    defaultShareVisibility: 'shared_detail',
   };
+}
+
+function loadShareDefaults() {
+  try {
+    return JSON.parse(localStorage.getItem(SHARE_DEFAULTS_KEY) || 'null') || {};
+  } catch {
+    return {};
+  }
+}
+
+function saveShareDefaults(visibility, groupIds) {
+  try {
+    localStorage.setItem(SHARE_DEFAULTS_KEY, JSON.stringify({
+      visibility: visibility || 'private',
+      groupIds: Array.isArray(groupIds) ? groupIds : [],
+    }));
+  } catch {}
 }
 
 function openCalendarEvent(event) {
@@ -941,14 +959,22 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
   const isEdit = !!event;
   const cats = getCategories();
   const shareGroups = getShareGroupsForEventForm();
+  const savedShareDefaults = loadShareDefaults();
+  const validSavedGroupIds = Array.isArray(savedShareDefaults.groupIds)
+    ? savedShareDefaults.groupIds.filter(id => shareGroups.some(group => group.id === id))
+    : [];
   const selectedShareGroups = new Set(Array.isArray(event?.sharedGroupIds) ? event.sharedGroupIds : []);
   if (!isEdit && options.defaultShareGroupId) selectedShareGroups.add(options.defaultShareGroupId);
+  if (!isEdit && !options.defaultShareGroupId && validSavedGroupIds.length) {
+    validSavedGroupIds.forEach(id => selectedShareGroups.add(id));
+  }
   if (!isEdit && !options.defaultShareGroupId && shareGroups.length === 1) {
     selectedShareGroups.add(shareGroups[0].id);
   }
   const currentShareVisibility = event?.shareVisibility
     || options.defaultShareVisibility
-    || (!isEdit && selectedShareGroups.size ? 'shared_busy' : 'private');
+    || (!isEdit && savedShareDefaults.visibility)
+    || (!isEdit && selectedShareGroups.size ? 'shared_detail' : 'private');
 
   const defStart = defaultStart || (defaultDate
     ? `${defaultDate}T09:00:00`
@@ -1312,6 +1338,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
       sharedGroupIds: checkedShareGroups.length ? checkedShareGroups : [],
       tags: [],
     };
+    saveShareDefaults(newData.shareVisibility, newData.sharedGroupIds);
 
     if (isEdit) {
       const scope = body.querySelector('[name="recurring-scope"]:checked')?.value || 'this';

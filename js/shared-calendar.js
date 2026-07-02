@@ -302,6 +302,39 @@ export async function collectSharedCalendarEvents(groupId = '') {
   return { groups, events, userId };
 }
 
+export function countShareableLocalEvents(groupId = '', scope = 'future') {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  return getEvents().filter(event => {
+    if (!event?.id || !event.start) return false;
+    if (scope === 'future' && new Date(event.start) < todayStart) return false;
+    const ids = Array.isArray(event.sharedGroupIds) ? event.sharedGroupIds : [];
+    return groupId ? !ids.includes(groupId) : true;
+  }).length;
+}
+
+export function bulkShareLocalEvents({ groupId, visibility = 'shared_detail', scope = 'future' } = {}) {
+  if (!groupId) throw new Error('共有先グループを選んでください');
+  const safeVisibility = visibility === 'shared_busy' ? 'shared_busy' : 'shared_detail';
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  let count = 0;
+
+  getEvents().forEach(event => {
+    if (!event?.id || !event.start) return;
+    if (scope === 'future' && new Date(event.start) < todayStart) return;
+    const currentGroups = Array.isArray(event.sharedGroupIds) ? event.sharedGroupIds : [];
+    if (currentGroups.includes(groupId) && event.shareVisibility === safeVisibility) return;
+    updateEvent(event.id, {
+      shareVisibility: safeVisibility,
+      sharedGroupIds: [...new Set([...currentGroups, groupId])],
+    });
+    count += 1;
+  });
+
+  return count;
+}
+
 export async function updateOwnSharedEvent(eventId, updates) {
   const local = getEvents().find(ev => ev.id === eventId);
   if (!local) throw new Error('自分の予定だけ編集できます');

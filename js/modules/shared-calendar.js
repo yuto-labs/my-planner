@@ -1,6 +1,8 @@
 import {
   acceptSharedInvite,
+  bulkShareLocalEvents,
   collectSharedCalendarEvents,
+  countShareableLocalEvents,
   createSharedGroup,
   createSharedInvite,
   deleteSharedGroup,
@@ -221,9 +223,46 @@ export async function openSharedCalendarSettings() {
         <p class="form-help">招待リンクは7日で期限切れになり、1回使うと再利用できません。</p>
       </section>
 
-      <section class="shared-manager-card shared-manager-card--compact">
+      <section class="shared-manager-card">
         <div class="shared-manager-card-head">
           <span class="shared-manager-step">3</span>
+          <div>
+            <h3>既存予定をまとめて共有</h3>
+            <p>すでに作ってある個人予定を、選んだグループに一括で共有します。予定の保存先は個人カレンダーのままです。</p>
+          </div>
+        </div>
+        <div class="shared-manager-grid">
+          <div class="form-group">
+            <label class="form-label" for="shared-bulk-group">共有先グループ</label>
+            <select class="select" id="shared-bulk-group">
+              ${state.groups.map(group => `<option value="${esc(group.id)}">${esc(group.name || '共有グループ')}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="shared-bulk-scope">対象</label>
+            <select class="select" id="shared-bulk-scope">
+              <option value="future">今日以降の予定</option>
+              <option value="all">すべての予定</option>
+            </select>
+          </div>
+        </div>
+        <div class="event-share-visibility" id="shared-bulk-visibility">
+          <label class="event-share-choice">
+            <input type="radio" name="shared-bulk-visibility" value="shared_busy">
+            <span>時間だけ</span>
+          </label>
+          <label class="event-share-choice selected">
+            <input type="radio" name="shared-bulk-visibility" value="shared_detail" checked>
+            <span>詳細も</span>
+          </label>
+        </div>
+        <p class="form-help">まずは「詳細も」が標準です。相手にタイトルやメモを見せたくない予定が多い場合は「時間だけ」を選んでください。</p>
+        <button class="btn btn-ghost btn-full" id="shared-bulk-apply" ${state.groups.length ? '' : 'disabled'}>既存予定を一括共有</button>
+      </section>
+
+      <section class="shared-manager-card shared-manager-card--compact">
+        <div class="shared-manager-card-head">
+          <span class="shared-manager-step">4</span>
           <div>
             <h3>参加中の共有グループ</h3>
             <p>ここに表示されるグループが、カレンダーの共表示で選べます。</p>
@@ -279,9 +318,66 @@ export async function openSharedCalendarSettings() {
     }
   });
 
+  body.querySelectorAll('#shared-bulk-visibility input').forEach(input => {
+    input.addEventListener('change', () => {
+      body.querySelectorAll('#shared-bulk-visibility .event-share-choice').forEach(label => {
+        label.classList.toggle('selected', label.querySelector('input')?.checked);
+      });
+    });
+  });
+
+  body.querySelector('#shared-bulk-apply')?.addEventListener('click', () => {
+    const groupId = body.querySelector('#shared-bulk-group')?.value;
+    const groupName = state.groups.find(group => group.id === groupId)?.name || '共有グループ';
+    const scope = body.querySelector('#shared-bulk-scope')?.value || 'future';
+    const visibility = body.querySelector('[name="shared-bulk-visibility"]:checked')?.value || 'shared_detail';
+    const count = countShareableLocalEvents(groupId, scope);
+    if (!groupId) {
+      toast('共有先グループを選んでください', 'error');
+      return;
+    }
+    if (!count) {
+      toast('一括共有できる予定がありません', 'info');
+      return;
+    }
+    confirmBulkShare({ groupId, groupName, scope, visibility, count, parentClose: close });
+  });
+
   body.querySelectorAll('[data-delete-group-id]').forEach(btn => {
     btn.addEventListener('click', () => confirmDeleteGroup(btn.dataset.deleteGroupId, btn.dataset.deleteGroupName || '共有グループ', close));
   });
+}
+
+function confirmBulkShare({ groupId, groupName, scope, visibility, count, parentClose }) {
+  const body = document.createElement('div');
+  const scopeLabel = scope === 'all' ? 'すべての予定' : '今日以降の予定';
+  const visibilityLabel = visibility === 'shared_busy' ? '時間だけ' : '詳細も';
+  body.innerHTML = `
+    <p>${scopeLabel} ${count}件を「${esc(groupName)}」に共有します。</p>
+    <p class="form-help">共有内容は「${visibilityLabel}」です。予定の保存先は個人カレンダーのままで、共有先には表示だけ反映されます。</p>
+  `;
+  const footer = document.createElement('div');
+  footer.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;width:100%';
+  const cancel = document.createElement('button');
+  cancel.className = 'btn btn-ghost btn-sm';
+  cancel.textContent = 'キャンセル';
+  const ok = document.createElement('button');
+  ok.className = 'btn btn-primary btn-sm';
+  ok.textContent = '一括共有する';
+  footer.append(cancel, ok);
+  const close = openModal({ title: '既存予定を一括共有', body, footer });
+  cancel.onclick = () => close();
+  ok.onclick = async () => {
+    try {
+      const updated = bulkShareLocalEvents({ groupId, visibility, scope });
+      close();
+      parentClose?.();
+      toast(`${updated}件の予定を共有しました`, 'success');
+      document.dispatchEvent(new CustomEvent('shared-calendar:groups-changed'));
+    } catch (e) {
+      toast(e.message || '一括共有できませんでした', 'error');
+    }
+  };
 }
 
 function confirmDeleteGroup(groupId, groupName, parentClose) {
