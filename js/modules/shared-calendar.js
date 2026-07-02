@@ -303,9 +303,15 @@ export async function openSharedCalendarSettings() {
   body.querySelector('#shared-create-invite')?.addEventListener('click', async () => {
     const groupId = body.querySelector('#shared-invite-group')?.value;
     const email = body.querySelector('#shared-invite-email')?.value || '';
+    const btn = body.querySelector('#shared-create-invite');
+    const out = body.querySelector('#shared-invite-output');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '作成中...';
+    }
+    if (out) out.value = '';
     try {
       const invite = await createSharedInvite(groupId, email);
-      const out = body.querySelector('#shared-invite-output');
       if (out) {
         out.value = invite.url;
         out.focus();
@@ -314,7 +320,13 @@ export async function openSharedCalendarSettings() {
       await navigator.clipboard?.writeText(invite.url).catch(() => {});
       toast('招待リンクを作成しました', 'success');
     } catch (e) {
+      if (out) out.value = e.message || '招待リンクを作成できませんでした';
       toast(e.message || '招待リンクを作成できませんでした', 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = !state.groups.length;
+        btn.textContent = '招待リンクを作成';
+      }
     }
   });
 

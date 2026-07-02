@@ -73,6 +73,33 @@ async function callDeleteGroupRpc(client, groupId) {
   throw lastError;
 }
 
+async function callCreateInviteRpc(client, payload) {
+  const attempts = [
+    {
+      p_invite_id: payload.id,
+      p_group_id: payload.group_id,
+      p_email: payload.email,
+      p_token: payload.token,
+      p_expires_at: payload.expires_at,
+    },
+    {
+      invite_id: payload.id,
+      group_id: payload.group_id,
+      email: payload.email,
+      token: payload.token,
+      expires_at: payload.expires_at,
+    },
+  ];
+  let lastError = null;
+  for (const args of attempts) {
+    const { data, error } = await client.rpc('create_shared_calendar_invite', args);
+    if (!error) return data;
+    lastError = error;
+    if (!rpcNeedsSqlRefresh(error, 'create_shared_calendar_invite')) break;
+  }
+  throw lastError;
+}
+
 function normalizeGroup(group) {
   return {
     id: group.id,
@@ -213,7 +240,7 @@ export async function createSharedInvite(groupId, email = '') {
 
   const token = `${crypto.randomUUID()}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(36)}`;
   const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-  const { error } = await client.from('shared_calendar_invites').insert({
+  const payload = {
     id: crypto.randomUUID(),
     group_id: groupId,
     created_by: userId,
@@ -221,8 +248,19 @@ export async function createSharedInvite(groupId, email = '') {
     token,
     expires_at: expires,
     created_at: new Date().toISOString(),
-  });
-  if (error) throw error;
+  };
+
+  try {
+    await callCreateInviteRpc(client, payload);
+  } catch (rpcError) {
+    if (!rpcNeedsSqlRefresh(rpcError, 'create_shared_calendar_invite')) {
+      throw rpcError;
+    }
+    const { error } = await client.from('shared_calendar_invites').insert(payload);
+    if (error) {
+      throw new Error('招待リンク作成用SQLを更新してください');
+    }
+  }
 
   return {
     token,

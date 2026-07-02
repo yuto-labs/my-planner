@@ -268,6 +268,62 @@ $$;
 
 grant execute on function delete_shared_calendar_group(text) to authenticated;
 
+drop function if exists create_shared_calendar_invite(text, text, text, text, timestamptz);
+create or replace function create_shared_calendar_invite(
+  p_invite_id text,
+  p_group_id text,
+  p_email text,
+  p_token text,
+  p_expires_at timestamptz
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'login required';
+  end if;
+
+  if not exists (
+    select 1
+    from shared_calendar_groups scg
+    where scg.id = p_group_id
+      and scg.owner_id = auth.uid()
+  ) then
+    raise exception 'group owner required';
+  end if;
+
+  insert into shared_calendar_invites(
+    id,
+    group_id,
+    created_by,
+    email,
+    token,
+    expires_at,
+    created_at
+  )
+  values (
+    p_invite_id,
+    p_group_id,
+    auth.uid(),
+    nullif(p_email, ''),
+    p_token,
+    p_expires_at,
+    now()
+  );
+
+  return jsonb_build_object(
+    'id', p_invite_id,
+    'groupId', p_group_id,
+    'expiresAt', p_expires_at
+  );
+end;
+$$;
+
+grant execute on function create_shared_calendar_invite(text, text, text, text, timestamptz) to authenticated;
+
 create or replace function accept_shared_calendar_invite(invite_token text)
 returns jsonb
 language plpgsql
