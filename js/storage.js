@@ -77,9 +77,9 @@ export const DEFAULT_CATEGORIES = [
   { id: 'other',    name: 'その他', color: '#8B83E8' },
 ];
 
-export const DEFAULT_ACCENT_RGB = { r: 190, g: 230, b: 216 };
+export const DEFAULT_ACCENT_RGB = { r: 255, g: 255, b: 255 };
 export const DEFAULT_THEME_TUNING = {
-  toneLevel: 55,
+  toneLevel: 0,
   cardContrast: 50,
   glowIntensity: 35,
   accentVividness: 45,
@@ -312,7 +312,7 @@ export function getCategoryColor(id) {
 
 const DEFAULT_SETTINGS = {
   apiKey: '',
-  theme: 'dark',
+  theme: 'light',
   aiEnabled: false,
   myScheduleColor: '#60A5FA',
   accentRgb: DEFAULT_ACCENT_RGB,

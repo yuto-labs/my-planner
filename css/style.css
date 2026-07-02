@@ -20,8 +20,7 @@
   --warning:    #F5C542;
 }
 
-/* ---- Dark mode (default) ---- */
-:root,
+/* ---- Dark mode ---- */
 [data-theme="dark"] {
   --bg:           #0D0D15;
   --bg-card:      #14142A;
@@ -91,7 +90,8 @@
   }
 }
 
-/* ---- Light mode (explicit attr) ---- */
+/* ---- Light mode (default / explicit attr) ---- */
+:root,
 [data-theme="light"] {
   --bg:           #F2F1FD;
   --bg-card:      #FFFFFF;
