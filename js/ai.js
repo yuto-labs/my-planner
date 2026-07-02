@@ -581,15 +581,19 @@ export async function generateTaskSchedule(payload) {
     SONNET,
     [
       'You schedule tasks inside a planner app. Return JSON only.',
-      'Output schema: {"scheduleItems":[{"taskId":"...","title":"...","date":"YYYY-MM-DD","startTime":"HH:MM","endTime":"HH:MM","note":"..."}]}',
+      'Output exactly this schema: {"scheduleItems":[{"taskId":"...","title":"...","date":"YYYY-MM-DD","startTime":"HH:MM","endTime":"HH:MM","note":"..."}]}.',
       'Respect activeHours, planningPeriod, todayEarliestStart, dailyBreaks, calendarEvents, existingMySchedule, and task dueDate.',
       'Do not overlap blocks. Use task effectiveMinutes as closely as possible. Split only when needed.',
+      'Use only taskId values from the provided tasks array. If nothing can fit, return {"scheduleItems":[]}.',
+      'Do not return Markdown, prose, comments, or keys outside the schema.',
     ].join(' '),
     JSON.stringify(payload),
     2200,
-    'json'
+    'json',
+    'task_schedule'
   );
   const parsed = tryParseJSON(result);
-  if (!parsed?.scheduleItems && !Array.isArray(parsed?.blocks)) throw new Error('AI response was empty');
-  return parsed;
+  if (Array.isArray(parsed)) return { scheduleItems: parsed };
+  if (parsed?.scheduleItems || parsed?.mySchedule || parsed?.blocks || parsed?.plan || parsed?.items) return parsed;
+  throw new Error('AI response did not include scheduleItems');
 }

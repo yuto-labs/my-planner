@@ -679,7 +679,7 @@ function applyCodexPlan(container, options = {}) {
     return;
   }
 
-  if (!confirm(`${blocks.length}件の作業ブロックをマイスケジュールに反映します。既存のCodex計画は置き換わります。`)) return;
+  if (!options.skipConfirm && !confirm(`${blocks.length}件の作業ブロックをマイスケジュールに反映します。既存のCodex計画は置き換わります。`)) return;
 
   getScheduleItems()
     .filter(i => i.source === 'codex-plan')
@@ -701,22 +701,46 @@ function applyCodexPlan(container, options = {}) {
   input.value = '';
   rerenderList();
   renderProgressBar();
-  toast(`${blocks.length}件をマイスケジュールに反映しました`, 'success');
+  toast(`${options.sourceLabel || 'AI案'}: ${blocks.length}件をマイスケジュールに反映しました`, 'success');
 }
 
 function normalizeCodexScheduleItems(plan) {
-  const source = plan.scheduleItems || plan.mySchedule || plan.blocks || plan.plan || [];
+  const source = Array.isArray(plan)
+    ? plan
+    : plan.scheduleItems || plan.mySchedule || plan.blocks || plan.plan || plan.items || plan.schedule?.items || [];
   if (!Array.isArray(source)) return [];
   return source
-    .map(b => ({
-      taskId: b.taskId || b.task_id || null,
-      title: b.title || b.taskTitle || b.name || '',
-      date: b.date || '',
-      startTime: b.startTime || b.start || '',
-      endTime: b.endTime || b.end || '',
-      note: b.note || b.reason || '',
-    }))
+    .map(normalizeCodexBlock)
     .filter(b => /^\d{4}-\d{2}-\d{2}$/.test(b.date) && /^\d{2}:\d{2}$/.test(b.startTime) && /^\d{2}:\d{2}$/.test(b.endTime));
+}
+
+function normalizeCodexBlock(b) {
+  const startRaw = b.startTime || b.start_time || b.start || b.from || '';
+  const endRaw = b.endTime || b.end_time || b.end || b.to || '';
+  const dateRaw = b.date || b.day || extractDateFromDateTime(startRaw) || '';
+  return {
+    taskId: b.taskId || b.task_id || b.id || null,
+    title: b.title || b.taskTitle || b.task_title || b.name || '',
+    date: String(dateRaw).slice(0, 10),
+    startTime: normalizeCodexTime(startRaw),
+    endTime: normalizeCodexTime(endRaw),
+    note: b.note || b.reason || b.memo || '',
+  };
+}
+
+function extractDateFromDateTime(value) {
+  const text = String(value || '');
+  const match = text.match(/\d{4}-\d{2}-\d{2}/);
+  return match?.[0] || '';
+}
+
+function normalizeCodexTime(value) {
+  const text = String(value || '').trim();
+  const isoTime = text.match(/T(\d{2}:\d{2})(?::\d{2})?/);
+  if (isoTime) return isoTime[1];
+  const time = text.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!time) return '';
+  return `${String(Number(time[1])).padStart(2, '0')}:${time[2]}`;
 }
 
 function isNormalTask(task) {
