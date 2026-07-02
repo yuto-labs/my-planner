@@ -1871,8 +1871,9 @@ button { cursor: pointer; font-family: inherit; }
 }
 
 #shared-new-name {
-  height: 52px;
-  font-size: 15px;
+  min-height: 58px;
+  font-size: 17px;
+  padding-inline: 16px;
 }
 
 .shared-group-manager {
@@ -1929,6 +1930,10 @@ button { cursor: pointer; font-family: inherit; }
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
   gap: 12px;
+}
+
+.shared-manager-grid--single {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .shared-invite-output {

@@ -205,19 +205,15 @@ export async function openSharedCalendarSettings() {
             <p>相手がログインした状態でリンクを開くと、そのアカウントでグループに参加できます。未ログインの場合は、ログイン後に自動で参加します。</p>
           </div>
         </div>
-        <div class="shared-manager-grid">
+        <div class="shared-manager-grid shared-manager-grid--single">
           <div class="form-group">
             <label class="form-label" for="shared-invite-group">招待先のグループ</label>
             <select class="select" id="shared-invite-group">
               ${state.groups.map(group => `<option value="${esc(group.id)}">${esc(group.name || '共有グループ')}</option>`).join('')}
             </select>
           </div>
-          <div class="form-group">
-            <label class="form-label" for="shared-invite-email">相手のメール（任意）</label>
-            <input class="input" id="shared-invite-email" placeholder="例: friend@example.com">
-            <p class="form-help">空欄ならリンクを知っているログイン済みユーザーが参加できます。メールを書くと、そのメールのアカウントだけ参加できます。</p>
-          </div>
         </div>
+        <p class="form-help">作成したリンクを相手に送ります。相手はログイン済みの自分のアカウントでリンクを開くと参加できます。</p>
         <button class="btn btn-ghost btn-full" id="shared-create-invite" ${state.groups.length ? '' : 'disabled'}>招待リンクを作成</button>
         <textarea class="input shared-invite-output" id="shared-invite-output" readonly placeholder="作成した招待リンクがここに表示されます。コピーしてLINEやメールで送れます。"></textarea>
         <p class="form-help">招待リンクは7日で期限切れになり、1回使うと再利用できません。</p>
@@ -302,7 +298,6 @@ export async function openSharedCalendarSettings() {
 
   body.querySelector('#shared-create-invite')?.addEventListener('click', async () => {
     const groupId = body.querySelector('#shared-invite-group')?.value;
-    const email = body.querySelector('#shared-invite-email')?.value || '';
     const btn = body.querySelector('#shared-create-invite');
     const out = body.querySelector('#shared-invite-output');
     if (btn) {
@@ -311,7 +306,7 @@ export async function openSharedCalendarSettings() {
     }
     if (out) out.value = '';
     try {
-      const invite = await createSharedInvite(groupId, email);
+      const invite = await createSharedInvite(groupId);
       if (out) {
         out.value = invite.url;
         out.focus();
