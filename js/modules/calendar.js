@@ -943,7 +943,12 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
   const shareGroups = getShareGroupsForEventForm();
   const selectedShareGroups = new Set(Array.isArray(event?.sharedGroupIds) ? event.sharedGroupIds : []);
   if (!isEdit && options.defaultShareGroupId) selectedShareGroups.add(options.defaultShareGroupId);
-  const currentShareVisibility = event?.shareVisibility || options.defaultShareVisibility || 'private';
+  if (!isEdit && !options.defaultShareGroupId && shareGroups.length === 1) {
+    selectedShareGroups.add(shareGroups[0].id);
+  }
+  const currentShareVisibility = event?.shareVisibility
+    || options.defaultShareVisibility
+    || (!isEdit && selectedShareGroups.size ? 'shared_busy' : 'private');
 
   const defStart = defaultStart || (defaultDate
     ? `${defaultDate}T09:00:00`

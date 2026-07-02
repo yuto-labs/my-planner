@@ -96,6 +96,23 @@ function mapSharedEvent(row, userId) {
   return event;
 }
 
+function mapLocalSharedEvent(event, userId) {
+  return {
+    ...event,
+    ownerId: userId,
+    isOwn: true,
+    visibleTitle: event.title,
+    visibleMemo: event.memo || '',
+    visibleGroups: Array.isArray(event.sharedGroupIds) ? event.sharedGroupIds : [],
+  };
+}
+
+function isEventSharedToGroups(event, groupIds) {
+  if (!event || event.shareVisibility === 'private') return false;
+  const ids = Array.isArray(event.sharedGroupIds) ? event.sharedGroupIds : [];
+  return ids.some(id => groupIds.includes(id));
+}
+
 export function getShareGroupsForEventForm() {
   return ls(CACHE_KEY, []);
 }
@@ -271,7 +288,17 @@ export async function collectSharedCalendarEvents(groupId = '') {
 
   if (error || !data) return { groups, events: [], userId, error };
 
-  const events = data.map(row => mapSharedEvent(row, userId));
+  const merged = new Map();
+  getEvents()
+    .filter(event => isEventSharedToGroups(event, groupIds))
+    .map(event => mapLocalSharedEvent(event, userId))
+    .forEach(event => merged.set(event.id, event));
+  data.map(row => mapSharedEvent(row, userId))
+    .forEach(event => {
+      if (!event.isOwn || !merged.has(event.id)) merged.set(event.id, event);
+    });
+  const events = [...merged.values()]
+    .sort((a, b) => new Date(a.start || 0) - new Date(b.start || 0));
   return { groups, events, userId };
 }
 
