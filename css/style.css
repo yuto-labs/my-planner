@@ -5729,17 +5729,31 @@ kbd {
   min-height: 0;
 }
 .ev-title-sugg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
   background: rgba(190,230,200,0.15);
-  color: var(--primary);
-  border: none;
-  border-radius: 99px;
-  padding: 4px 12px;
+  color: var(--text);
+  border: 1px solid var(--primary-border);
+  border-radius: 12px;
+  padding: 6px 10px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: background var(--transition);
 }
 .ev-title-sugg-btn:hover { background: rgba(190,230,200,0.24); }
+.ev-title-sugg-main {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ev-title-sugg-time {
+  color: var(--primary-dark);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 
 /* ============================================================
    62. TASK EDIT MODAL KEYBOARD FIX

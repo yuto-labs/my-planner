@@ -1122,42 +1122,37 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
     if (eh) eh.value = evEnd.date && evEnd.time ? `${evEnd.date}T${evEnd.time}` : '';
   };
 
-  body.querySelector('#ev-title')?.addEventListener('input', e => {
-    const q = e.target.value.trim().toLowerCase();
+  const titleInput = body.querySelector('#ev-title');
+  const renderTitleSuggestions = () => {
+    const q = titleInput?.value.trim().toLowerCase() || '';
     suggWrap.innerHTML = '';
-    if (!q) return;
+    if (q.length < 1) return;
 
-    const timeMap = new Map();
-    getEvents().forEach(ev => {
-      if (!ev.start || !ev.end || !ev.title?.toLowerCase().includes(q)) return;
-      const pad = n => String(n).padStart(2, '0');
-      const sd = new Date(ev.start);
-      const ed = new Date(ev.end);
-      const sStr = `${pad(sd.getHours())}:${pad(sd.getMinutes())}`;
-      const eStr = `${pad(ed.getHours())}:${pad(ed.getMinutes())}`;
-      const key = `${sStr}-${eStr}`;
-      if (!timeMap.has(key)) timeMap.set(key, { sStr, eStr });
-    });
-
-    [...timeMap.values()].slice(0, 4).forEach(({ sStr, eStr }) => {
+    getEventTitleSuggestions(q, event?.id).slice(0, 5).forEach(sugg => {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'ev-title-sugg-btn';
-      btn.textContent = `${sStr}-${eStr}`;
+      btn.innerHTML = `
+        <span class="ev-title-sugg-main">${esc(sugg.title)}</span>
+        <span class="ev-title-sugg-time">${esc(sugg.startTime)}-${esc(sugg.endTime)}</span>
+      `;
       btn.onclick = () => {
-        evStart.time = sStr;
-        evEnd.time = eStr;
+        if (titleInput) titleInput.value = sugg.title;
+        evStart.time = sugg.startTime;
+        evEnd.time = sugg.endTime;
         if (!evEnd.date) evEnd.date = evStart.date;
         const sb = body.querySelector('#ev-start-time-btn');
         const eb = body.querySelector('#ev-end-time-btn');
-        if (sb) sb.textContent = '🕐 ' + sStr;
-        if (eb) eb.textContent = '🕐 ' + eStr;
+        if (sb) sb.textContent = '🕐 ' + sugg.startTime;
+        if (eb) eb.textContent = '🕐 ' + sugg.endTime;
         _syncHidden();
         suggWrap.innerHTML = '';
       };
       suggWrap.appendChild(btn);
     });
-  });
+  };
+  titleInput?.addEventListener('input', renderTitleSuggestions);
+  titleInput?.addEventListener('focus', renderTitleSuggestions);
 
   body.querySelectorAll('.event-cat-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1402,6 +1397,41 @@ function createRecurringEvents(eventData, recurType, endDateStr) {
 
     count++;
   }
+}
+
+function getEventTitleSuggestions(query, excludeId = null) {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return [];
+  const pad = n => String(n).padStart(2, '0');
+  const suggestions = new Map();
+
+  getEvents().forEach(ev => {
+    const title = String(ev.title || '').trim();
+    if (!title || !ev.start || !ev.end || ev.id === excludeId) return;
+    const hay = title.toLowerCase();
+    if (!hay.includes(q)) return;
+
+    const sd = new Date(ev.start);
+    const ed = new Date(ev.end);
+    if (Number.isNaN(sd.getTime()) || Number.isNaN(ed.getTime())) return;
+
+    const startTime = `${pad(sd.getHours())}:${pad(sd.getMinutes())}`;
+    const endTime = `${pad(ed.getHours())}:${pad(ed.getMinutes())}`;
+    const key = `${hay}|${startTime}|${endTime}`;
+    const prev = suggestions.get(key);
+    const updatedAt = new Date(ev.updatedAt || ev.createdAt || ev.start).getTime() || sd.getTime();
+    suggestions.set(key, {
+      title,
+      startTime,
+      endTime,
+      count: (prev?.count || 0) + 1,
+      latest: Math.max(prev?.latest || 0, updatedAt),
+      score: (hay.startsWith(q) ? 1000 : 0) + (prev?.count || 0) * 20 + Math.min(updatedAt / 86_400_000, 30000),
+    });
+  });
+
+  return [...suggestions.values()]
+    .sort((a, b) => (b.score - a.score) || (b.latest - a.latest) || a.title.localeCompare(b.title, 'ja'));
 }
 
 async function handleDelete(event) {
