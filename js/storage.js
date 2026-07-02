@@ -322,6 +322,8 @@ const DEFAULT_AI_RUNTIME = {
   provider: 'gemini',
   mode: 'server',
   configured: false,
+  limits: null,
+  usage: null,
   checkedAt: 0,
   message: '',
 };

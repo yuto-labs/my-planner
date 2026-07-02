@@ -166,6 +166,12 @@ function renderAISettings(container) {
   const runtime = getAiRuntime();
   const hasLegacyKey = !!(settings.apiKey || '').trim();
   const serverReady = runtime.configured === true;
+  const usage = runtime.usage || null;
+  const userLimit = usage?.userDailyLimit || runtime.limits?.userDaily || 50;
+  const userUsed = Math.max(0, Number(usage?.userUsedToday || 0));
+  const userRemaining = Math.max(0, Number(usage?.userRemaining ?? (userLimit - userUsed)));
+  const usagePct = userLimit > 0 ? Math.min(100, Math.round((userUsed / userLimit) * 100)) : 0;
+  const usageClass = usagePct >= 90 ? 'danger' : usagePct >= 75 ? 'warn' : '';
 
   container.innerHTML = `
     <div class="settings-page">
@@ -195,6 +201,22 @@ function renderAISettings(container) {
           <p class="text-sm text-muted">
             AI runs through the deployed app server. Browser-side API keys are no longer required for normal use.
           </p>
+          <div class="ai-usage-meter ${usageClass}">
+            <div class="ai-usage-meter-top">
+              <span>今日のAI利用</span>
+              <strong>${userUsed} / ${userLimit} pt</strong>
+            </div>
+            <div class="ai-usage-bar" aria-hidden="true">
+              <span style="width:${usagePct}%"></span>
+            </div>
+            <p class="text-sm text-muted">
+              ${userRemaining <= 0
+                ? '今日はAIを使い切りました。明日また使えます。'
+                : userRemaining <= 10
+                  ? `今日はあと ${userRemaining} pt 使えます。`
+                  : '軽いAI操作は普段どおり使えます。重い整理だけ少し多めに消費します。'}
+            </p>
+          </div>
           ${hasLegacyKey ? `
             <p class="text-sm text-muted">
               A legacy browser key is still saved on this device for fallback compatibility.

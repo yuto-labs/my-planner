@@ -9,6 +9,7 @@ import {
   getPendingAIQueue, removeFromPendingAIQueue,
   getKnowledgeMemoById, updateKnowledgeMemo,
 } from './storage.js';
+import { getSession } from './supabase.js';
 import { today } from './utils.js';
 
 const SERVER_STATUS_URL = '/api/ai/status';
@@ -32,6 +33,7 @@ export async function refreshAiRuntimeStatus({ force = false } = {}) {
       provider: data.provider || 'gemini',
       mode: data.mode || 'server',
       configured: !!data.configured,
+      limits: data.limits || null,
       checkedAt: Date.now(),
       message: data.message || '',
     };
@@ -42,6 +44,7 @@ export async function refreshAiRuntimeStatus({ force = false } = {}) {
       provider: 'gemini',
       mode: 'server',
       configured: false,
+      limits: null,
       checkedAt: Date.now(),
       message: 'server_unavailable',
     };
@@ -50,29 +53,44 @@ export async function refreshAiRuntimeStatus({ force = false } = {}) {
   }
 }
 
-async function callServerAI(modelPreference, systemText, userText, maxTokens, responseFormat = 'text') {
+async function callServerAI(modelPreference, systemText, userText, maxTokens, responseFormat = 'text', actionType = 'ai_request') {
+  const session = await getSession();
+  const token = session?.access_token || '';
   const res = await fetch(SERVER_GENERATE_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({
       modelPreference,
       systemText,
       userText,
       maxTokens,
       responseFormat,
+      actionType,
     }),
   });
 
   if (!res.ok) {
     let msg = `AI Error ${res.status}`;
+    let usage = null;
     try {
       const data = await res.json();
       msg = data.error || msg;
+      usage = data.usage || null;
     } catch {}
-    throw new Error(msg);
+    const err = new Error(msg);
+    err.status = res.status;
+    err.usage = usage;
+    throw err;
   }
 
   const data = await res.json();
+  if (data.usage) {
+    const runtime = getAiRuntime();
+    saveAiRuntime({ ...runtime, usage: data.usage, checkedAt: Date.now() });
+  }
   return data.text ?? '';
 }
 
@@ -109,7 +127,7 @@ async function callLegacyAnthropic(model, systemText, userText, maxTokens) {
   return data.content?.[0]?.text ?? '';
 }
 
-async function callAPI(modelPreference, systemText, userText, maxTokens, responseFormat = 'text') {
+async function callAPI(modelPreference, systemText, userText, maxTokens, responseFormat = 'text', actionType = 'ai_request') {
   const runtime = getAiRuntime();
   const legacyKey = getApiKey();
   const shouldTryServer = runtime.configured || !legacyKey;
@@ -117,9 +135,11 @@ async function callAPI(modelPreference, systemText, userText, maxTokens, respons
   let serverError = null;
   if (shouldTryServer) {
     try {
-      return await callServerAI(modelPreference, systemText, userText, maxTokens, responseFormat);
+      return await callServerAI(modelPreference, systemText, userText, maxTokens, responseFormat, actionType);
     } catch (err) {
       serverError = err;
+      if (runtime.configured === true) throw err;
+      if ([401, 403, 429, 503].includes(Number(err?.status))) throw err;
     }
   }
 
@@ -131,7 +151,7 @@ async function callAPI(modelPreference, systemText, userText, maxTokens, respons
 }
 
 export async function streamText({ model = HAIKU, system, userContent, maxTokens = 200, onChunk }) {
-  const full = await callAPI(model, system || '', userContent, maxTokens, 'text');
+  const full = await callAPI(model, system || '', userContent, maxTokens, 'text', 'daily_message');
   let acc = '';
   for (const ch of full) {
     acc += ch;
