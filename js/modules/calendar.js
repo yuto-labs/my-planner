@@ -521,10 +521,13 @@ function renderMonth() {
       const cell = chip.closest('.cal-cell');
       const dateStr = cell?.dataset.date;
       if (!dateStr) return;
-      _selectedDate = dateStr;
-      view.querySelectorAll('.cal-cell').forEach(c => c.classList.remove('cal-cell--selected'));
-      cell.classList.add('cal-cell--selected');
-      openDaySheet(dateStr);
+      if (_selectedDate === dateStr) {
+        openDaySheet(dateStr);
+      } else {
+        _selectedDate = dateStr;
+        view.querySelectorAll('.cal-cell').forEach(c => c.classList.remove('cal-cell--selected'));
+        cell.classList.add('cal-cell--selected');
+      }
     });
   });
 }
