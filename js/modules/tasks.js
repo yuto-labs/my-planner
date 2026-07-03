@@ -57,11 +57,14 @@ export function initTasks(container) {
   state.container = container;
   if (openPlannerHandler) window.removeEventListener('tasks:open-planner', openPlannerHandler);
   openPlannerHandler = () => {
-    state.codexPanelOpen = true;
+    const shouldOpen = !state.codexPanelOpen;
+    state.codexPanelOpen = shouldOpen;
     render();
-    requestAnimationFrame(() => {
-      state.container?.querySelector('#codex-plan-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+    if (shouldOpen) {
+      requestAnimationFrame(() => {
+        state.container?.querySelector('#codex-plan-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
   };
   window.addEventListener('tasks:open-planner', openPlannerHandler);
 

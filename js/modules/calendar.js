@@ -1,5 +1,5 @@
 ﻿// ============================================================
-// calendar.js 窶・Calendar: month / week / day views + event CRUD
+// calendar.js - Calendar: month / week / day views + event CRUD
 // ============================================================
 
 import {
@@ -26,7 +26,7 @@ const SHARE_DEFAULTS_KEY = 'mp_calendar_share_defaults';
 let state = {
   mode: 'month',         // 'month' | 'week' | 'day'
   cursor: new Date(),    // current view date
-  weekStartDate: null,   // YYYY-MM-DD | null 窶・custom week start for week view only
+  weekStartDate: null,   // YYYY-MM-DD | null - custom week start for week view only
   container: null,
   source: 'personal',
   groupId: '',
@@ -35,9 +35,9 @@ let state = {
   sharedLoading: false,
   sharedError: null,
 };
-let _slideDir     = null;  // 'next' | 'prev' | null 窶・swipe animation direction
+let _slideDir     = null;  // 'next' | 'prev' | null - swipe animation direction
 let _selectedDate = null;  // currently highlighted date string (single-tap)
-let _swipeLocked  = false; // true while slide animation plays 窶・blocks consecutive swipes
+let _swipeLocked  = false; // true while slide animation plays - blocks consecutive swipes
 
 export function initCalendar(container) {
   state.container = container;
@@ -90,7 +90,7 @@ async function handleCalendarInviteFromUrl() {
 }
 
 // Swipe listeners live on the container element for the lifetime of the view.
-// They must NOT be inside render() 窶・render() is called on every navigation
+// They must NOT be inside render() - render() is called on every navigation
 // and would accumulate duplicate listeners on the same DOM node.
 function _setupSwipe(container) {
   let _sx = 0, _sy = 0, _dx = 0;
@@ -297,7 +297,7 @@ function render() {
       view.classList.add(cls);
       view.addEventListener('animationend', () => {
         view.classList.remove(cls);
-        _swipeLocked = false; // unlock here 窶・exactly when animation ends
+        _swipeLocked = false; // unlock here - exactly when animation ends
       }, { once: true });
       // Safety fallback: unlock after 350ms even if animationend misfires
       setTimeout(() => { _swipeLocked = false; }, 350);
@@ -314,7 +314,7 @@ function getViewTitle() {
   if (mode === 'week') {
     const ws = getWeekStartDate(cursor);
     const we = addDays(ws, 6);
-    return `${formatDate(ws, 'short')} 窶・${formatDate(we, 'short')}`;
+    return `${formatDate(ws, 'short')} 〜 ${formatDate(we, 'short')}`;
   }
   return formatDate(cursor, 'medium');
 }
@@ -429,7 +429,7 @@ function renderMonth() {
   const gridStart = startOfWeek(monthStart);
   const todayStr  = today();
 
-  // Pre-build events map: dateStr 竊・clamped events[] 窶・avoids 42ﾃ・filter in the grid loop
+  // Pre-build events map: dateStr -> clamped events[]; avoids repeated grid filtering
   const eventsByDate = new Map();
   {
     let dTemp = new Date(gridStart);
@@ -518,11 +518,13 @@ function renderMonth() {
   view.querySelectorAll('.cal-event-chip').forEach(chip => {
     chip.addEventListener('click', e => {
       e.stopPropagation();
-      const ev = getVisibleEvents().find(item => item.id === chip.dataset.eventId);
-      if (ev) {
-        openCalendarEvent(ev);
-        return;
-      }
+      const cell = chip.closest('.cal-cell');
+      const dateStr = cell?.dataset.date;
+      if (!dateStr) return;
+      _selectedDate = dateStr;
+      view.querySelectorAll('.cal-cell').forEach(c => c.classList.remove('cal-cell--selected'));
+      cell.classList.add('cal-cell--selected');
+      openDaySheet(dateStr);
     });
   });
 }
@@ -836,7 +838,7 @@ function renderTimedEvent(event, slotH) {
   const height = (duration / 60) * slotH - 2;
 
   const color = event.isOwn === false ? 'var(--primary)' : getCategoryColor(event.categoryId);
-  const timeStr = formatTime(startSrc) + (endSrc ? `窶・{formatTime(endSrc)}` : '');
+  const timeStr = formatTime(startSrc) + (endSrc ? `〜${formatTime(endSrc)}` : '');
 
   return `<div class="cal-timed-event${event.isTentative?' tentative':''}${event.isOwn === false ? ' shared-readonly' : ''}"
     data-event-id="${esc(event.id)}"
@@ -884,7 +886,7 @@ function renderTimedScheduleItem(item, slotH) {
   const top = (startMin / 60) * slotH;
   const height = (duration / 60) * slotH - 2;
   const color = getMyScheduleColor();
-  const timeStr = `${item.startTime || '--:--'}窶・{item.endTime || '--:--'}`;
+  const timeStr = `${item.startTime || '--:--'}〜${item.endTime || '--:--'}`;
 
   return `<div class="cal-timed-event cal-timed-schedule"
     data-schedule-id="${esc(item.id)}"

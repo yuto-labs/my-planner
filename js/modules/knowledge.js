@@ -11,6 +11,7 @@ import {
   MASTERY_STAGE, STAGE_INTERVALS,
   getBatchSettings, addToPendingAIQueue, removeFromPendingAIQueue,
   pushUndo, applyUndo, addReviewLog, getReviewLog,
+  getTags, addTag,
 } from '../storage.js';
 import {
   suggestKnowledgeTags, explainTerm, summarizeAndTagText,
@@ -342,7 +343,7 @@ function renderList() {
   container.querySelector('#kn-graph-btn')?.addEventListener('click', () => nav('knowledge-graph'));
 
   // Wire new
-  container.querySelector('#kn-new-btn')?.addEventListener('click', () => showTemplatePicker());
+  container.querySelector('#kn-new-btn')?.addEventListener('click', () => startNewMemo(null));
 
   // Wire tag filters
   container.querySelectorAll('[data-filter-tag]').forEach(btn => {
@@ -1262,6 +1263,7 @@ function renderEditMode(container) {
               AI提案
             </button>
           ` : ''}
+          <div class="kn-tag-suggestions" id="kn-tag-suggestions"></div>
         </div>
         <input class="kn-url-input" id="kn-url-input" placeholder="参照URL (任意)" value="${esc(url)}" type="url" autocomplete="off">
       </div>
@@ -1704,6 +1706,59 @@ function showTagSuggestions(suggested, container) {
   });
 }
 
+function collectExistingKnowledgeTags() {
+  const tags = new Set(getTags());
+  getKnowledgeMemos().forEach(memo => {
+    (memo.tags || []).forEach(tag => {
+      const trimmed = String(tag || '').trim();
+      if (trimmed) tags.add(trimmed);
+    });
+  });
+  return [...tags].sort((a, b) => a.localeCompare(b, 'ja'));
+}
+
+function addKnowledgeTagToEdit(tag, container) {
+  const trimmed = String(tag || '').trim();
+  if (!trimmed || edState.tags.includes(trimmed)) return;
+  edState.tags.push(trimmed);
+  addTag(trimmed);
+  renderTagDisplay(container);
+}
+
+function syncKnowledgeTagSuggestions(container) {
+  const row = container.querySelector('#kn-tag-suggestions');
+  const input = container.querySelector('#kn-tag-input');
+  if (!row || !input) return;
+
+  const query = input.value.trim().toLowerCase();
+  const selected = new Set(edState.tags);
+  const candidates = collectExistingKnowledgeTags()
+    .filter(tag => !selected.has(tag))
+    .filter(tag => !query || tag.toLowerCase().includes(query))
+    .slice(0, 8);
+
+  if (!candidates.length) {
+    row.innerHTML = '';
+    row.classList.add('hidden');
+    return;
+  }
+
+  row.classList.remove('hidden');
+  row.innerHTML = `
+    <span class="kn-tag-suggest-label">候補</span>
+    ${candidates.map(tag => `<button class="kn-tag-suggest-btn" type="button" data-existing-tag="${esc(tag)}">${esc(tag)}</button>`).join('')}
+  `;
+
+  row.querySelectorAll('[data-existing-tag]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      addKnowledgeTagToEdit(btn.dataset.existingTag, container);
+      input.value = '';
+      input.focus();
+      syncKnowledgeTagSuggestions(container);
+    });
+  });
+}
+
 // ---- Paste summarize ----
 
 async function handlePasteSummarize(text, container) {
@@ -1752,19 +1807,25 @@ function wireTagInput(container) {
   const input = container.querySelector('#kn-tag-input');
   if (!input) return;
 
+  const addCurrentInputTag = () => {
+    const tag = input.value.trim().replace(/,$/, '');
+    if (tag) addKnowledgeTagToEdit(tag, container);
+    input.value = '';
+    syncKnowledgeTagSuggestions(container);
+  };
+
+  input.addEventListener('focus', () => syncKnowledgeTagSuggestions(container));
+  input.addEventListener('input', () => syncKnowledgeTagSuggestions(container));
+
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter' || e.key === ',') {
       e.preventDefault();
-      const tag = input.value.trim().replace(/,$/, '');
-      if (tag && !edState.tags.includes(tag)) {
-        edState.tags.push(tag);
-        renderTagDisplay(container);
-      }
-      input.value = '';
+      addCurrentInputTag();
     }
     if (e.key === 'Backspace' && !input.value && edState.tags.length) {
       edState.tags.pop();
       renderTagDisplay(container);
+      syncKnowledgeTagSuggestions(container);
     }
   });
 
@@ -1774,7 +1835,10 @@ function wireTagInput(container) {
     if (!btn) return;
     edState.tags = edState.tags.filter(t => t !== btn.dataset.tag);
     renderTagDisplay(container);
+    syncKnowledgeTagSuggestions(container);
   });
+
+  syncKnowledgeTagSuggestions(container);
 }
 
 function renderTagDisplay(container) {
@@ -1784,6 +1848,7 @@ function renderTagDisplay(container) {
     <span class="kn-tag-chip kn-tag-chip--edit">
       ${esc(t)}<button class="kn-tag-remove" data-tag="${esc(t)}">×</button>
     </span>`).join('');
+  syncKnowledgeTagSuggestions(container);
 }
 
 // ---- Save / Delete ----
