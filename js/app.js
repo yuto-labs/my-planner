@@ -919,11 +919,18 @@ function setupFAB() {
 
 // ---- Keyboard shortcuts ----
 
+function isEditingText(target) {
+  const el = target instanceof Element ? target : document.activeElement;
+  if (!el) return false;
+  return !!el.closest?.('input, textarea, select, [contenteditable="true"]');
+}
+
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', e => {
-    // Ignore when typing in inputs
-    const tag = document.activeElement?.tagName;
-    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return;
+    // Ignore all global shortcuts while typing/editing text, including memo blocks.
+    if (isEditingText(e.target) || isEditingText(document.activeElement)) return;
+    // Leave browser/system shortcuts alone.
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     // Ignore when modal is open
     if (!document.getElementById('modal-overlay')?.classList.contains('hidden')) return;
     // Ignore when search is open
@@ -948,11 +955,11 @@ function setupKeyboardShortcuts() {
         e.preventDefault();
         showShortcutsHelp();
         break;
-      case '1': navigate('home');     break;
-      case '2': navigate('calendar'); break;
-      case '3': navigate('tasks');    break;
-      case '4': navigate('knowledge'); break;
-      case '5': navigate('analytics'); break;
+      case '1': e.preventDefault(); navigate('home');      break;
+      case '2': e.preventDefault(); navigate('calendar');  break;
+      case '3': e.preventDefault(); navigate('tasks');     break;
+      case '4': e.preventDefault(); navigate('knowledge'); break;
+      case '5': e.preventDefault(); navigate('analytics'); break;
     }
   });
 }
