@@ -21,6 +21,8 @@ import { acceptSharedInvite, collectSharedCalendarEvents, getShareGroupsForEvent
 const toast     = (msg, type) => window.AppNav?.showToast(msg, type);
 const undoToast = (msg, cb)   => window.AppNav?.showUndoToast(msg, cb);
 const SHARE_DEFAULTS_KEY = 'mp_calendar_share_defaults';
+const EVENT_TITLE_HISTORY_KEY = 'mp_calendar_event_title_history';
+const EVENT_TITLE_HISTORY_MAX = 240;
 
 // Module state
 let state = {
@@ -934,6 +936,71 @@ function saveShareDefaults(visibility, groupIds) {
   } catch {}
 }
 
+function loadEventTitleHistory() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(EVENT_TITLE_HISTORY_KEY) || '[]');
+    return Array.isArray(raw) ? raw.filter(item => item?.title) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveEventTitleHistory(history) {
+  try {
+    localStorage.setItem(EVENT_TITLE_HISTORY_KEY, JSON.stringify(history.slice(0, EVENT_TITLE_HISTORY_MAX)));
+  } catch {}
+}
+
+function rememberEventTitle({ title, start, end, updatedAt, createdAt } = {}) {
+  const cleanTitle = String(title || '').trim();
+  if (!cleanTitle || !start || !end) return;
+  const sd = new Date(start);
+  const ed = new Date(end);
+  if (Number.isNaN(sd.getTime()) || Number.isNaN(ed.getTime())) return;
+
+  const pad = n => String(n).padStart(2, '0');
+  const startTime = `${pad(sd.getHours())}:${pad(sd.getMinutes())}`;
+  const endTime = `${pad(ed.getHours())}:${pad(ed.getMinutes())}`;
+  const key = `${cleanTitle.toLowerCase()}|${startTime}|${endTime}`;
+  const latest = new Date(updatedAt || createdAt || start).getTime() || Date.now();
+  const rest = loadEventTitleHistory().filter(item => item.key !== key);
+  saveEventTitleHistory([{ key, title: cleanTitle, startTime, endTime, latest, count: 1 }, ...rest]);
+}
+
+function seedEventTitleHistoryFromExistingEvents() {
+  const existing = loadEventTitleHistory();
+  const byKey = new Map(existing.map(item => [item.key, item]));
+  let changed = false;
+
+  getEvents().forEach(ev => {
+    const cleanTitle = String(ev.title || '').trim();
+    if (!cleanTitle || !ev.start || !ev.end) return;
+    const sd = new Date(ev.start);
+    const ed = new Date(ev.end);
+    if (Number.isNaN(sd.getTime()) || Number.isNaN(ed.getTime())) return;
+
+    const pad = n => String(n).padStart(2, '0');
+    const startTime = `${pad(sd.getHours())}:${pad(sd.getMinutes())}`;
+    const endTime = `${pad(ed.getHours())}:${pad(ed.getMinutes())}`;
+    const key = `${cleanTitle.toLowerCase()}|${startTime}|${endTime}`;
+    const latest = new Date(ev.updatedAt || ev.createdAt || ev.start).getTime() || sd.getTime();
+    const prev = byKey.get(key);
+    byKey.set(key, {
+      key,
+      title: cleanTitle,
+      startTime,
+      endTime,
+      latest: Math.max(prev?.latest || 0, latest),
+      count: (prev?.count || 0) + 1,
+    });
+    if (!prev) changed = true;
+  });
+
+  if (changed) {
+    saveEventTitleHistory([...byKey.values()].sort((a, b) => (b.latest || 0) - (a.latest || 0)));
+  }
+}
+
 function openCalendarEvent(event) {
   if (!event) return;
   if (event.isOwn === false) {
@@ -1439,6 +1506,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
       tags: [...selectedEventTags],
     };
     saveShareDefaults(newData.shareVisibility, newData.sharedGroupIds);
+    rememberEventTitle(newData);
 
     if (isEdit) {
       const scope = body.querySelector('[name="recurring-scope"]:checked')?.value || 'this';
@@ -1486,12 +1554,14 @@ function createRecurringEvents(eventData, recurType, endDateStr) {
   const MAX = 200;
 
   while (cursor <= endDate && count < MAX) {
-    addEvent({
+    const recurringEvent = {
       ...eventData,
       start: cursor.toISOString(),
       end: new Date(cursor.getTime() + duration).toISOString(),
       recurringId,
-    });
+    };
+    addEvent(recurringEvent);
+    rememberEventTitle(recurringEvent);
 
     if (recurType === 'daily') cursor = addDays(cursor, 1);
     else if (recurType === 'weekly') cursor = addDays(cursor, 7);
@@ -1509,6 +1579,26 @@ function getEventTitleSuggestions(query, excludeId = null) {
   if (!q) return [];
   const pad = n => String(n).padStart(2, '0');
   const suggestions = new Map();
+  seedEventTitleHistoryFromExistingEvents();
+
+  const addSuggestion = ({ title, startTime, endTime, latest = 0, count = 1 }) => {
+    const cleanTitle = String(title || '').trim();
+    if (!cleanTitle || !startTime || !endTime) return;
+    const hay = cleanTitle.toLowerCase();
+    if (!hay.includes(q)) return;
+    const key = `${hay}|${startTime}|${endTime}`;
+    const prev = suggestions.get(key);
+    suggestions.set(key, {
+      title: cleanTitle,
+      startTime,
+      endTime,
+      count: (prev?.count || 0) + count,
+      latest: Math.max(prev?.latest || 0, latest || 0),
+      score: (hay.startsWith(q) ? 1000 : 0)
+        + ((prev?.count || 0) + count) * 20
+        + Math.min((latest || 0) / 86_400_000, 30000),
+    });
+  };
 
   getEvents().forEach(ev => {
     const title = String(ev.title || '').trim();
@@ -1522,18 +1612,17 @@ function getEventTitleSuggestions(query, excludeId = null) {
 
     const startTime = `${pad(sd.getHours())}:${pad(sd.getMinutes())}`;
     const endTime = `${pad(ed.getHours())}:${pad(ed.getMinutes())}`;
-    const key = `${hay}|${startTime}|${endTime}`;
-    const prev = suggestions.get(key);
     const updatedAt = new Date(ev.updatedAt || ev.createdAt || ev.start).getTime() || sd.getTime();
-    suggestions.set(key, {
+    addSuggestion({
       title,
       startTime,
       endTime,
-      count: (prev?.count || 0) + 1,
-      latest: Math.max(prev?.latest || 0, updatedAt),
-      score: (hay.startsWith(q) ? 1000 : 0) + (prev?.count || 0) * 20 + Math.min(updatedAt / 86_400_000, 30000),
+      latest: updatedAt,
+      count: 1,
     });
   });
+
+  loadEventTitleHistory().forEach(addSuggestion);
 
   return [...suggestions.values()]
     .sort((a, b) => (b.score - a.score) || (b.latest - a.latest) || a.title.localeCompare(b.title, 'ja'));
