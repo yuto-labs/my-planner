@@ -5588,11 +5588,72 @@ kbd {
 /* ============================================================
    59. EVENT MODAL TAG CHIPS
    ============================================================ */
+.ev-tag-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 .ev-tag-chips-wrap {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  min-height: 20px;
+  gap: 6px;
+  min-height: 18px;
+}
+.ev-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--primary-border);
+  background: var(--primary-bg);
+  color: var(--primary);
+  border-radius: 999px;
+  padding: 3px 5px 3px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.ev-tag-chip button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: 0.72;
+}
+.ev-tag-chip button:active {
+  background: rgba(255,255,255,0.18);
+  opacity: 1;
+}
+.ev-tag-input {
+  min-height: 36px;
+}
+.ev-tag-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.ev-tag-suggest-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+.ev-tag-suggest-btn {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.ev-tag-suggest-btn:active {
+  background: var(--primary-bg);
+  border-color: var(--primary-border);
+  color: var(--primary);
 }
 
 

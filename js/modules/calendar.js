@@ -6,7 +6,7 @@ import {
   getEvents, addEvent, updateEvent, deleteEvent, deleteFutureRecurring,
   getCategories, getCategoryById, getCategoryColor, getApiKey,
   pushUndo, applyUndo, getScheduleItemsForDate,
-  getMyScheduleColor,
+  getMyScheduleColor, getTags, addTag,
 } from '../storage.js';
 import { parseNaturalLanguageEvent } from '../ai.js';
 import {
@@ -908,6 +908,8 @@ function timeToMinutes(t) {
 }
 
 function getCurrentShareDefaults() {
+  const saved = loadShareDefaults();
+  if (saved.visibility) return {};
   if (!isSharedSource()) return {};
   return {
     defaultShareGroupId: state.groupId,
@@ -969,17 +971,18 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
     ? savedShareDefaults.groupIds.filter(id => shareGroups.some(group => group.id === id))
     : [];
   const selectedShareGroups = new Set(Array.isArray(event?.sharedGroupIds) ? event.sharedGroupIds : []);
-  if (!isEdit && options.defaultShareGroupId) selectedShareGroups.add(options.defaultShareGroupId);
-  if (!isEdit && !options.defaultShareGroupId && validSavedGroupIds.length) {
+  if (!isEdit && validSavedGroupIds.length) {
     validSavedGroupIds.forEach(id => selectedShareGroups.add(id));
   }
-  if (!isEdit && !options.defaultShareGroupId && shareGroups.length === 1) {
+  if (!isEdit && !validSavedGroupIds.length && options.defaultShareGroupId) selectedShareGroups.add(options.defaultShareGroupId);
+  if (!isEdit && !validSavedGroupIds.length && !options.defaultShareGroupId && shareGroups.length === 1) {
     selectedShareGroups.add(shareGroups[0].id);
   }
   const currentShareVisibility = event?.shareVisibility
-    || options.defaultShareVisibility
     || (!isEdit && savedShareDefaults.visibility)
+    || options.defaultShareVisibility
     || (!isEdit && selectedShareGroups.size ? 'shared_detail' : 'private');
+  const selectedEventTags = new Set(Array.isArray(event?.tags) ? event.tags.filter(Boolean) : []);
 
   const defStart = defaultStart || (defaultDate
     ? `${defaultDate}T09:00:00`
@@ -1043,6 +1046,21 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
     <div class="form-group">
       <label class="form-label">メモ</label>
       <textarea class="input event-memo-textarea" id="ev-memo" placeholder="補足メモ（任意）…" rows="4">${esc(event?.memo || '')}</textarea>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">タグ</label>
+      <div class="ev-tag-editor">
+        <div class="ev-tag-chips-wrap" id="ev-tag-chips">
+          ${[...selectedEventTags].map(tag => `
+            <span class="ev-tag-chip">
+              ${esc(tag)}<button type="button" data-ev-tag-remove="${esc(tag)}" aria-label="${esc(tag)}を外す">×</button>
+            </span>
+          `).join('')}
+        </div>
+        <input class="input ev-tag-input" id="ev-tag-input" placeholder="タグ追加 (Enter)" autocomplete="off">
+        <div class="ev-tag-suggestions" id="ev-tag-suggestions"></div>
+      </div>
     </div>
 
     <div class="form-group event-share-box">
@@ -1158,6 +1176,86 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
   };
   titleInput?.addEventListener('input', renderTitleSuggestions);
   titleInput?.addEventListener('focus', renderTitleSuggestions);
+
+  const tagInput = body.querySelector('#ev-tag-input');
+  const renderEventTags = () => {
+    const chipsWrap = body.querySelector('#ev-tag-chips');
+    if (!chipsWrap) return;
+    chipsWrap.innerHTML = [...selectedEventTags].map(tag => `
+      <span class="ev-tag-chip">
+        ${esc(tag)}<button type="button" data-ev-tag-remove="${esc(tag)}" aria-label="${esc(tag)}を外す">×</button>
+      </span>
+    `).join('');
+  };
+  const collectEventTagSuggestions = () => {
+    const tags = new Set(getTags());
+    getEvents().forEach(ev => (ev.tags || []).forEach(tag => {
+      const trimmed = String(tag || '').trim();
+      if (trimmed) tags.add(trimmed);
+    }));
+    return [...tags].sort((a, b) => a.localeCompare(b, 'ja'));
+  };
+  const syncEventTagSuggestions = () => {
+    const row = body.querySelector('#ev-tag-suggestions');
+    if (!row || !tagInput) return;
+    const query = tagInput.value.trim().toLowerCase();
+    const candidates = collectEventTagSuggestions()
+      .filter(tag => !selectedEventTags.has(tag))
+      .filter(tag => !query || tag.toLowerCase().includes(query))
+      .slice(0, 8);
+    if (!candidates.length) {
+      row.innerHTML = '';
+      row.classList.add('hidden');
+      return;
+    }
+    row.classList.remove('hidden');
+    row.innerHTML = `
+      <span class="ev-tag-suggest-label">候補</span>
+      ${candidates.map(tag => `<button type="button" class="ev-tag-suggest-btn" data-ev-tag-suggest="${esc(tag)}">${esc(tag)}</button>`).join('')}
+    `;
+  };
+  const addEventTag = (tag) => {
+    const trimmed = String(tag || '').trim().replace(/,$/, '');
+    if (!trimmed || selectedEventTags.has(trimmed)) return;
+    selectedEventTags.add(trimmed);
+    addTag(trimmed);
+    renderEventTags();
+    syncEventTagSuggestions();
+  };
+  tagInput?.addEventListener('focus', syncEventTagSuggestions);
+  tagInput?.addEventListener('input', syncEventTagSuggestions);
+  tagInput?.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      addEventTag(tagInput.value);
+      tagInput.value = '';
+      syncEventTagSuggestions();
+    }
+    if (e.key === 'Backspace' && !tagInput.value && selectedEventTags.size) {
+      const last = [...selectedEventTags].pop();
+      selectedEventTags.delete(last);
+      renderEventTags();
+      syncEventTagSuggestions();
+    }
+  });
+  body.querySelector('#ev-tag-chips')?.addEventListener('click', e => {
+    const btn = e.target.closest('[data-ev-tag-remove]');
+    if (!btn) return;
+    selectedEventTags.delete(btn.dataset.evTagRemove);
+    renderEventTags();
+    syncEventTagSuggestions();
+  });
+  body.querySelector('#ev-tag-suggestions')?.addEventListener('click', e => {
+    const btn = e.target.closest('[data-ev-tag-suggest]');
+    if (!btn) return;
+    addEventTag(btn.dataset.evTagSuggest);
+    if (tagInput) {
+      tagInput.value = '';
+      tagInput.focus();
+    }
+    syncEventTagSuggestions();
+  });
+  syncEventTagSuggestions();
 
   body.querySelectorAll('.event-cat-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1325,6 +1423,8 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
 
     const checkedShareGroups = [...body.querySelectorAll('#ev-share-groups input[type="checkbox"]:checked')].map(input => input.value);
     const shareVisibility = body.querySelector('[name="ev-share-visibility"]:checked')?.value || 'private';
+    const effectiveShareGroups = shareVisibility === 'private' ? [] : checkedShareGroups;
+    const effectiveShareVisibility = effectiveShareGroups.length ? shareVisibility : 'private';
 
     const newData = {
       title,
@@ -1334,9 +1434,9 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
       isTentative,
       isRoutine,
       memo: body.querySelector('#ev-memo')?.value?.trim() || '',
-      shareVisibility: checkedShareGroups.length ? shareVisibility : 'private',
-      sharedGroupIds: checkedShareGroups.length ? checkedShareGroups : [],
-      tags: [],
+      shareVisibility: effectiveShareVisibility,
+      sharedGroupIds: effectiveShareGroups,
+      tags: [...selectedEventTags],
     };
     saveShareDefaults(newData.shareVisibility, newData.sharedGroupIds);
 
