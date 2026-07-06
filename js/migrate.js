@@ -124,6 +124,20 @@ async function _uploadReviewSchedule(client, userId) {
 // ================================================================
 
 const _now = () => new Date().toISOString();
+const EVENT_HIDE_FROM_MONTH_TAG = '__mp_hide_from_month';
+
+function _eventTagsFromLocal(event) {
+  const tags = Array.isArray(event.tags)
+    ? event.tags.filter(tag => tag && tag !== EVENT_HIDE_FROM_MONTH_TAG)
+    : [];
+  return event.hideFromMonth ? [...new Set([...tags, EVENT_HIDE_FROM_MONTH_TAG])] : tags;
+}
+
+function _eventTagsFromRow(row) {
+  return Array.isArray(row.tags)
+    ? row.tags.filter(tag => tag && tag !== EVENT_HIDE_FROM_MONTH_TAG)
+    : [];
+}
 
 export function taskToRow(task, userId, isArchived) {
   return {
@@ -188,7 +202,7 @@ export function eventToRow(event, userId) {
     is_tentative: event.isTentative || false,
     is_routine:   event.isRoutine   || false,
     recurring_id: event.recurringId || null,
-    tags:         event.tags        || [],
+    tags:         _eventTagsFromLocal(event),
     memo:         event.memo        || '',
     share_visibility: event.shareVisibility || 'private',
     shared_group_ids: Array.isArray(event.sharedGroupIds) ? event.sharedGroupIds : [],
@@ -207,7 +221,8 @@ export function rowToEvent(row) {
     isTentative: row.is_tentative || false,
     isRoutine:   row.is_routine   || false,
     recurringId: row.recurring_id || null,
-    tags:        row.tags         || [],
+    tags:        _eventTagsFromRow(row),
+    hideFromMonth: Array.isArray(row.tags) ? row.tags.includes(EVENT_HIDE_FROM_MONTH_TAG) : false,
     memo:        row.memo         || '',
     shareVisibility: row.share_visibility || 'private',
     sharedGroupIds:  row.shared_group_ids || [],

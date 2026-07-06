@@ -6,7 +6,7 @@ import {
   getEvents, addEvent, updateEvent, deleteEvent, deleteFutureRecurring,
   getCategories, getCategoryById, getCategoryColor, getApiKey,
   pushUndo, applyUndo, getScheduleItemsForDate,
-  getMyScheduleColor, getTags, addTag,
+  getMyScheduleColor,
 } from '../storage.js';
 import { parseNaturalLanguageEvent } from '../ai.js';
 import {
@@ -373,6 +373,10 @@ function getVisibleEvents() {
   return isSharedSource() ? state.sharedEvents : getEvents();
 }
 
+function getMonthVisibleEvents() {
+  return getVisibleEvents().filter(event => !event.hideFromMonth);
+}
+
 function getEventDisplayTitle(event) {
   return event.visibleTitle || event.title || '予定';
 }
@@ -421,7 +425,7 @@ function renderView() {
 
 function renderMonth() {
   const { cursor } = state;
-  const events = getVisibleEvents();
+  const events = getMonthVisibleEvents();
   const view = state.container.querySelector('#cal-view');
 
   const monthStart = startOfMonth(cursor);
@@ -1025,6 +1029,57 @@ function openReadOnlySharedEvent(event) {
   window.AppNav?.openModal({ title: '共有予定', body, footer: null });
 }
 
+function rangesOverlap(aStart, aEnd, bStart, bEnd) {
+  return aStart < bEnd && bStart < aEnd;
+}
+
+function eventRange(event) {
+  const start = new Date(event.start).getTime();
+  if (!Number.isFinite(start)) return null;
+  const end = event.end ? new Date(event.end).getTime() : start + 60 * 60 * 1000;
+  return { start, end: Number.isFinite(end) && end > start ? end : start + 60 * 60 * 1000 };
+}
+
+function scheduleItemRange(item, dateStr) {
+  if (!item?.startTime) return null;
+  const start = new Date(`${dateStr}T${item.startTime}:00`).getTime();
+  if (!Number.isFinite(start)) return null;
+  const endTime = item.endTime || item.startTime;
+  let end = new Date(`${dateStr}T${endTime}:00`).getTime();
+  if (!Number.isFinite(end) || end <= start) end = start + 60 * 60 * 1000;
+  return { start, end };
+}
+
+function getEventConflicts(candidate, excludeId = '') {
+  const range = eventRange(candidate);
+  if (!range) return [];
+  const dateStr = toDateStr(new Date(candidate.start));
+  const conflicts = [];
+
+  getEvents().forEach(event => {
+    if (!event || event.id === excludeId) return;
+    const other = eventRange(event);
+    if (!other || !rangesOverlap(range.start, range.end, other.start, other.end)) return;
+    conflicts.push({
+      type: 'event',
+      title: event.title || '予定',
+      time: `${formatTime(event.start)}${event.end ? `-${formatTime(event.end)}` : ''}`,
+    });
+  });
+
+  getScheduleItemsForDate(dateStr).forEach(item => {
+    const other = scheduleItemRange(item, dateStr);
+    if (!other || !rangesOverlap(range.start, range.end, other.start, other.end)) return;
+    conflicts.push({
+      type: 'schedule',
+      title: item.title || 'My Schedule',
+      time: `${item.startTime || ''}${item.endTime ? `-${item.endTime}` : ''}`,
+    });
+  });
+
+  return conflicts.slice(0, 5);
+}
+
 // ============================================================
 // EVENT MODAL (add / edit)
 // ============================================================
@@ -1049,7 +1104,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
     || (!isEdit && savedShareDefaults.visibility)
     || options.defaultShareVisibility
     || (!isEdit && selectedShareGroups.size ? 'shared_detail' : 'private');
-  const selectedEventTags = new Set(Array.isArray(event?.tags) ? event.tags.filter(Boolean) : []);
+  const hideFromMonth = !!event?.hideFromMonth;
 
   const defStart = defaultStart || (defaultDate
     ? `${defaultDate}T09:00:00`
@@ -1115,20 +1170,17 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
       <textarea class="input event-memo-textarea" id="ev-memo" placeholder="補足メモ（任意）…" rows="4">${esc(event?.memo || '')}</textarea>
     </div>
 
-    <div class="form-group">
-      <label class="form-label">タグ</label>
-      <div class="ev-tag-editor">
-        <div class="ev-tag-chips-wrap" id="ev-tag-chips">
-          ${[...selectedEventTags].map(tag => `
-            <span class="ev-tag-chip">
-              ${esc(tag)}<button type="button" data-ev-tag-remove="${esc(tag)}" aria-label="${esc(tag)}を外す">×</button>
-            </span>
-          `).join('')}
-        </div>
-        <input class="input ev-tag-input" id="ev-tag-input" placeholder="タグ追加 (Enter)" autocomplete="off">
-        <div class="ev-tag-suggestions" id="ev-tag-suggestions"></div>
-      </div>
+    <div class="form-group event-display-box">
+      <label class="event-display-choice">
+        <input type="checkbox" id="ev-hide-month" ${hideFromMonth ? 'checked' : ''}>
+        <span>
+          <strong>月カレンダーには表示しない</strong>
+          <small>予定は残したまま、週・日・今日のマイスケジュール側で確認します。</small>
+        </span>
+      </label>
     </div>
+
+    <div class="event-conflict-warning hidden" id="ev-conflict-warning"></div>
 
     <div class="form-group event-share-box">
       <label class="form-label">共有する内容</label>
@@ -1243,86 +1295,6 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
   };
   titleInput?.addEventListener('input', renderTitleSuggestions);
   titleInput?.addEventListener('focus', renderTitleSuggestions);
-
-  const tagInput = body.querySelector('#ev-tag-input');
-  const renderEventTags = () => {
-    const chipsWrap = body.querySelector('#ev-tag-chips');
-    if (!chipsWrap) return;
-    chipsWrap.innerHTML = [...selectedEventTags].map(tag => `
-      <span class="ev-tag-chip">
-        ${esc(tag)}<button type="button" data-ev-tag-remove="${esc(tag)}" aria-label="${esc(tag)}を外す">×</button>
-      </span>
-    `).join('');
-  };
-  const collectEventTagSuggestions = () => {
-    const tags = new Set(getTags());
-    getEvents().forEach(ev => (ev.tags || []).forEach(tag => {
-      const trimmed = String(tag || '').trim();
-      if (trimmed) tags.add(trimmed);
-    }));
-    return [...tags].sort((a, b) => a.localeCompare(b, 'ja'));
-  };
-  const syncEventTagSuggestions = () => {
-    const row = body.querySelector('#ev-tag-suggestions');
-    if (!row || !tagInput) return;
-    const query = tagInput.value.trim().toLowerCase();
-    const candidates = collectEventTagSuggestions()
-      .filter(tag => !selectedEventTags.has(tag))
-      .filter(tag => !query || tag.toLowerCase().includes(query))
-      .slice(0, 8);
-    if (!candidates.length) {
-      row.innerHTML = '';
-      row.classList.add('hidden');
-      return;
-    }
-    row.classList.remove('hidden');
-    row.innerHTML = `
-      <span class="ev-tag-suggest-label">候補</span>
-      ${candidates.map(tag => `<button type="button" class="ev-tag-suggest-btn" data-ev-tag-suggest="${esc(tag)}">${esc(tag)}</button>`).join('')}
-    `;
-  };
-  const addEventTag = (tag) => {
-    const trimmed = String(tag || '').trim().replace(/,$/, '');
-    if (!trimmed || selectedEventTags.has(trimmed)) return;
-    selectedEventTags.add(trimmed);
-    addTag(trimmed);
-    renderEventTags();
-    syncEventTagSuggestions();
-  };
-  tagInput?.addEventListener('focus', syncEventTagSuggestions);
-  tagInput?.addEventListener('input', syncEventTagSuggestions);
-  tagInput?.addEventListener('keydown', e => {
-    if (e.key === 'Enter' || e.key === ',') {
-      e.preventDefault();
-      addEventTag(tagInput.value);
-      tagInput.value = '';
-      syncEventTagSuggestions();
-    }
-    if (e.key === 'Backspace' && !tagInput.value && selectedEventTags.size) {
-      const last = [...selectedEventTags].pop();
-      selectedEventTags.delete(last);
-      renderEventTags();
-      syncEventTagSuggestions();
-    }
-  });
-  body.querySelector('#ev-tag-chips')?.addEventListener('click', e => {
-    const btn = e.target.closest('[data-ev-tag-remove]');
-    if (!btn) return;
-    selectedEventTags.delete(btn.dataset.evTagRemove);
-    renderEventTags();
-    syncEventTagSuggestions();
-  });
-  body.querySelector('#ev-tag-suggestions')?.addEventListener('click', e => {
-    const btn = e.target.closest('[data-ev-tag-suggest]');
-    if (!btn) return;
-    addEventTag(btn.dataset.evTagSuggest);
-    if (tagInput) {
-      tagInput.value = '';
-      tagInput.focus();
-    }
-    syncEventTagSuggestions();
-  });
-  syncEventTagSuggestions();
 
   body.querySelectorAll('.event-cat-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1465,7 +1437,30 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
 
   cancelBtn.onclick = close;
 
-  saveBtn.onclick = () => {
+  const showConflictWarning = (conflicts, onContinue) => {
+    const warning = body.querySelector('#ev-conflict-warning');
+    if (!warning) return false;
+    warning.classList.remove('hidden');
+    warning.innerHTML = `
+      <div class="event-conflict-title">時間が重なっている予定があります</div>
+      <ul>
+        ${conflicts.map(item => `<li>${esc(item.time)} ${esc(item.title)}</li>`).join('')}
+      </ul>
+      <div class="event-conflict-actions">
+        <button type="button" class="btn btn-ghost btn-sm" id="ev-conflict-edit">時間を直す</button>
+        <button type="button" class="btn btn-primary btn-sm" id="ev-conflict-continue">それでも${isEdit ? '更新' : '追加'}</button>
+      </div>
+    `;
+    warning.querySelector('#ev-conflict-edit')?.addEventListener('click', () => {
+      warning.classList.add('hidden');
+      body.querySelector('#ev-start-time-btn')?.focus();
+    });
+    warning.querySelector('#ev-conflict-continue')?.addEventListener('click', onContinue);
+    warning.scrollIntoView({ block: 'nearest' });
+    return true;
+  };
+
+  const saveEvent = (allowOverlap = false) => {
     const title = body.querySelector('#ev-title').value.trim();
     if (!title) {
       body.querySelector('#ev-title').focus();
@@ -1503,8 +1498,15 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
       memo: body.querySelector('#ev-memo')?.value?.trim() || '',
       shareVisibility: effectiveShareVisibility,
       sharedGroupIds: effectiveShareGroups,
-      tags: [...selectedEventTags],
+      hideFromMonth: body.querySelector('#ev-hide-month')?.checked || false,
     };
+
+    const conflicts = getEventConflicts(newData, isEdit ? event.id : '');
+    if (!allowOverlap && conflicts.length) {
+      showConflictWarning(conflicts, () => saveEvent(true));
+      return;
+    }
+
     saveShareDefaults(newData.shareVisibility, newData.sharedGroupIds);
     rememberEventTitle(newData);
 
@@ -1540,6 +1542,8 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
     close();
     redrawAfterEventChange();
   };
+
+  saveBtn.onclick = () => saveEvent(false);
 }
 
 function createRecurringEvents(eventData, recurType, endDateStr) {
