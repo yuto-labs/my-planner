@@ -220,14 +220,18 @@ export function navigate(view, options = {}) {
 
   // Clear & render
   const main = document.getElementById('main-content');
+  const shouldRestoreScroll = preserveScroll && main.dataset.view === view;
+  const preservedScrollTop = shouldRestoreScroll ? main.scrollTop : 0;
   main.style.scrollBehavior = 'auto';
   if (!preserveScroll) main.scrollTop = 0;
   main.innerHTML = '';
   main.dataset.view = view; // for CSS glow on home
   cleanupFn = MODULES[view].init(main) || null;
-  if (!preserveScroll) main.scrollTop = 0;
+  if (shouldRestoreScroll) main.scrollTop = preservedScrollTop;
+  else if (!preserveScroll) main.scrollTop = 0;
   requestAnimationFrame(() => {
-    if (!preserveScroll) main.scrollTop = 0;
+    if (shouldRestoreScroll) main.scrollTop = preservedScrollTop;
+    else if (!preserveScroll) main.scrollTop = 0;
     main.style.scrollBehavior = '';
   });
   document.dispatchEvent(new CustomEvent('appNavigated', { detail: { view } }));

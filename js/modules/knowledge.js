@@ -693,7 +693,8 @@ let edState = {
 export function initKnowledgeDetail(container) {
   if (_detailGestureCleanup) { _detailGestureCleanup(); _detailGestureCleanup = null; }
   const main = document.getElementById('main-content');
-  const restoreScrollTop = _pendingDetailScrollTop > 0 ? _pendingDetailScrollTop : 0;
+  const currentScrollTop = main?.scrollTop || 0;
+  const restoreScrollTop = _pendingDetailScrollTop > 0 ? _pendingDetailScrollTop : currentScrollTop;
   if (main) main.scrollTop = restoreScrollTop;
 
   // Load memo or initialize new
@@ -856,7 +857,19 @@ function setupKnowledgeSwipeBack(container) {
   };
 }
 
-function renderDetail(container) {
+function restoreDetailScroll(top) {
+  const main = document.getElementById('main-content');
+  if (!main || top <= 0) return;
+  main.scrollTop = top;
+  requestAnimationFrame(() => {
+    main.scrollTop = top;
+  });
+}
+
+function renderDetail(container, options = {}) {
+  const restoreScrollTop = options.preserveScroll
+    ? document.getElementById('main-content')?.scrollTop || 0
+    : 0;
   const { isEdit, title, blocks, tags, url, starred, id } = edState;
 
   // Update header title
@@ -868,6 +881,8 @@ function renderDetail(container) {
   } else {
     renderViewMode(container);
   }
+
+  if (options.preserveScroll) restoreDetailScroll(restoreScrollTop);
 }
 
 // ============================================================
@@ -1006,13 +1021,13 @@ function renderViewMode(container) {
   // Wire controls
   container.querySelector('#kn-edit-btn')?.addEventListener('click', () => {
     edState.isEdit = true;
-    renderDetail(container);
+    renderDetail(container, { preserveScroll: true });
   });
 
   container.querySelector('#kn-view-star')?.addEventListener('click', () => {
     edState.starred = !edState.starred;
     if (edState.id) updateKnowledgeMemo(edState.id, { starred: edState.starred });
-    renderDetail(container);
+    renderDetail(container, { preserveScroll: true });
   });
 
   container.querySelector('#kn-delete-btn')?.addEventListener('click', () => {
@@ -1032,13 +1047,13 @@ function renderViewMode(container) {
         const days = newEntry?.interval ? fmtDays(newEntry.interval) : null;
         window.AppNav?.showToast(`記録しました ✓${days ? ` — 次回: ${days}` : ''}`, 'success');
       }
-      renderViewMode(container);
+      renderDetail(container, { preserveScroll: true });
     });
   });
 
   container.querySelector('#kn-stage-select')?.addEventListener('change', e => {
     setReviewStage(edState.id, parseInt(e.target.value, 10));
-    renderViewMode(container);
+    renderDetail(container, { preserveScroll: true });
     window.AppNav?.showToast(`ステージを Lv.${e.target.value} に変更しました`, 'success');
   });
 
@@ -1051,7 +1066,7 @@ function renderViewMode(container) {
       const block = findBlockById(edState.blocks, blockId);
       if (block) {
         block.collapsed = !block.collapsed;
-        renderDetail(container);
+        renderDetail(container, { preserveScroll: true });
       }
     });
   });
@@ -1322,7 +1337,7 @@ function renderEditMode(container) {
         edState = { ...edState, title: memo.title, blocks: deepClone(memo.blocks || [defaultBlock()]),
           tags: [...(memo.tags || [])], url: memo.url || '', starred: !!memo.starred, isEdit: false };
       }
-      renderDetail(container);
+      renderDetail(container, { preserveScroll: true });
     } else {
       nav('knowledge');
     }
@@ -2033,7 +2048,7 @@ function saveMemo(container) {
     updateKnowledgeMemo(edState.id, memoData);
     toast('メモを保存しました ✓', 'success');
     edState.isEdit = false;
-    renderDetail(container);
+    renderDetail(container, { preserveScroll: true });
   } else {
     const saved = addKnowledgeMemo(memoData);
     edState.id   = saved.id;
@@ -2054,7 +2069,7 @@ function saveMemo(container) {
       toast('メモを作成しました ✨', 'success');
     }
     edState.isEdit = false;
-    renderDetail(container);
+    renderDetail(container, { preserveScroll: true });
   }
 }
 
