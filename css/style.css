@@ -2766,7 +2766,8 @@ button { cursor: pointer; font-family: inherit; }
   gap: 4px; overflow-x: auto;
 }
 .kn-toolbar::-webkit-scrollbar { display: none; }
-.kn-toolbar-types { display: flex; gap: 2px; }
+.kn-toolbar-types,
+.kn-toolbar-inline { display: flex; gap: 2px; }
 .kn-toolbar-btn {
   min-width: 32px; height: 32px; padding: 0 6px;
   border-radius: var(--radius-xs);
@@ -2781,6 +2782,7 @@ button { cursor: pointer; font-family: inherit; }
   color: var(--primary);
 }
 .kn-toolbar-color-btn { font-size: 14px; }
+.kn-toolbar-mark-btn { min-width: 46px; color: #b77900; }
 
 /* Color picker */
 .kn-color-picker {
@@ -2812,6 +2814,19 @@ button { cursor: pointer; font-family: inherit; }
   font-family: inherit; word-break: break-word;
   white-space: pre-wrap;
 }
+.kn-block-text mark,
+.kn-view-para mark,
+.kn-view-h1 mark,
+.kn-view-h2 mark,
+.kn-view-h3 mark,
+.kn-view-bullet mark,
+.kn-view-numbered mark,
+.kn-view-quote mark {
+  background: rgba(245, 197, 66, 0.45);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 2px;
+}
 .kn-block-text:empty::before {
   content: attr(data-placeholder);
   color: var(--text-dim); pointer-events: none;
@@ -2842,15 +2857,30 @@ button { cursor: pointer; font-family: inherit; }
 .kn-block-prefix--quote { color: var(--primary); font-size: 16px; }
 .kn-block-prefix--toggle { font-size: 11px; color: var(--text-dim); margin-top: 5px; }
 .kn-block-toggle-children-edit { padding-left: 22px; border-left: 2px solid var(--border); margin-left: 8px; }
-.kn-block-del {
-  opacity: 0; position: absolute; right: -4px; top: 4px;
-  background: var(--bg-hover); border: 1px solid var(--border);
-  border-radius: 50%; width: 20px; height: 20px;
-  font-size: 10px; color: var(--text-dim); cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
+.kn-block-controls {
+  opacity: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  padding-left: 4px;
   transition: opacity var(--transition);
 }
-.kn-block:hover .kn-block-del, .kn-block:focus-within .kn-block-del { opacity: 1; }
+.kn-block:hover > .kn-block-controls,
+.kn-block:focus-within > .kn-block-controls { opacity: 1; }
+.kn-block-move,
+.kn-block-del {
+  background: var(--bg-hover); border: 1px solid var(--border);
+  border-radius: 999px; width: 22px; height: 22px;
+  font-size: 10px; color: var(--text-dim); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+.kn-block-move:active {
+  color: var(--primary);
+  border-color: var(--primary-border);
+  background: var(--primary-bg);
+}
 .kn-block-del:hover { color: var(--danger); border-color: var(--danger); }
 .kn-block--removing {
   opacity: 0;

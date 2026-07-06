@@ -1098,7 +1098,7 @@ function renderBlockView(block, numCounter = 0, indent = 0) {
     return `<div class="kn-view-math" ${id} data-katex="${esc(block.text || '')}">${esc(block.text || '')}</div>`;
   }
 
-  const inlineText = renderInlineMarkdown(esc(block.text || ''));
+  const inlineText = getBlockRichHtml(block);
 
   if (block.type === 'toggle') {
     const collapsed = !!block.collapsed;
@@ -1131,6 +1131,11 @@ function renderInlineMarkdown(text) {
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/`(.+?)`/g, '<code class="kn-inline-code">$1</code>')
     .replace(/\[(.+?)\]\((https?:\/\/.+?)\)/g, '<a href="$2" target="_blank" rel="noopener" class="kn-inline-link">$1</a>');
+}
+
+function getBlockRichHtml(block) {
+  if (block.html) return sanitizeBlockHtml(block.html);
+  return renderInlineMarkdown(esc(block.text || ''));
 }
 
 function renderAllKaTeX(container) {
@@ -1275,6 +1280,13 @@ function renderEditMode(container) {
             <button class="kn-toolbar-btn" data-block-type="${esc(bt.type)}" title="${esc(bt.label)}">${esc(bt.icon)}</button>
           `).join('')}
         </div>
+        <div class="kn-toolbar-inline">
+          <button class="kn-toolbar-btn" data-inline-command="bold" title="太字">B</button>
+          <button class="kn-toolbar-btn" data-inline-command="italic" title="斜体"><em>I</em></button>
+          <button class="kn-toolbar-btn" data-inline-command="underline" title="下線"><u>U</u></button>
+          <button class="kn-toolbar-btn" data-inline-command="strikeThrough" title="取り消し線"><s>S</s></button>
+          <button class="kn-toolbar-btn kn-toolbar-mark-btn" data-inline-command="highlight" title="マーカー">MARK</button>
+        </div>
         <button class="kn-toolbar-btn kn-toolbar-color-btn" id="kn-color-btn" title="文字色">🎨</button>
       </div>
 
@@ -1359,12 +1371,20 @@ function renderEditMode(container) {
 function renderBlockEdit(block, idx) {
   const colorStyle = block.color ? `style="color:${block.color}"` : '';
   const typeClass  = `kn-block--${block.type}`;
+  const controls = `
+    <div class="kn-block-controls">
+      <button type="button" class="kn-block-move" data-block-action="up" data-block-id="${esc(block.id)}" title="上へ">↑</button>
+      <button type="button" class="kn-block-move" data-block-action="down" data-block-id="${esc(block.id)}" title="下へ">↓</button>
+      <button type="button" class="kn-block-move" data-block-action="indent" data-block-id="${esc(block.id)}" title="上のトグルの中へ">→</button>
+      <button type="button" class="kn-block-move" data-block-action="outdent" data-block-id="${esc(block.id)}" title="外へ">←</button>
+      <button type="button" class="kn-block-del" data-del-id="${esc(block.id)}" aria-label="削除">×</button>
+    </div>`;
 
   if (block.type === 'divider') {
     return `
       <div class="kn-block kn-block--divider" data-block-id="${esc(block.id)}">
         <hr class="kn-view-divider">
-        <button class="kn-block-del" data-del-id="${esc(block.id)}" aria-label="削除">✕</button>
+        ${controls}
       </div>`;
   }
 
@@ -1375,7 +1395,7 @@ function renderBlockEdit(block, idx) {
         <textarea class="kn-block-math-input kn-block-focusable" data-block-id="${esc(block.id)}"
           placeholder="数式を入力 (例: E=mc^2, \frac{a}{b})">${esc(block.text)}</textarea>
         <div class="kn-block-math-preview" data-katex-preview="${esc(block.id)}"></div>
-        <button class="kn-block-del" data-del-id="${esc(block.id)}" aria-label="削除">✕</button>
+        ${controls}
       </div>`;
   }
 
@@ -1403,18 +1423,23 @@ function renderBlockEdit(block, idx) {
       <div class="kn-block-text kn-block-focusable" contenteditable="true"
         data-block-id="${esc(block.id)}"
         data-placeholder="${esc(placeholder)}"
-        ${colorStyle}>${esc(block.text)}</div>
+        ${colorStyle}>${getBlockEditorHtml(block)}</div>
       ${block.type === 'toggle' && block.children?.length ? `
         <div class="kn-block-toggle-children-edit">
           ${(block.children || []).map((c, ci) => renderBlockEdit(c, ci)).join('')}
         </div>` : ''}
-      <button class="kn-block-del" data-del-id="${esc(block.id)}" aria-label="削除">✕</button>
+      ${controls}
     </div>`;
 }
 
 function wireBlocksEdit(container) {
   const wrap = container.querySelector('#kn-blocks-wrap');
   if (!wrap) return;
+  if (wrap.dataset.wired === '1') {
+    renderMathPreviews(container);
+    return;
+  }
+  wrap.dataset.wired = '1';
 
   // Sync text on input
   wrap.addEventListener('input', e => {
@@ -1437,7 +1462,10 @@ function wireBlocksEdit(container) {
       }
     } else if (el.contentEditable === 'true') {
       const block = findBlockInAllBlocks(edState.blocks, blockId);
-      if (block) block.text = el.textContent;
+      if (block) {
+        block.text = el.textContent;
+        block.html = sanitizeBlockHtml(el.innerHTML);
+      }
     }
   });
 
@@ -1461,6 +1489,16 @@ function wireBlocksEdit(container) {
 
   // Delete buttons
   wrap.addEventListener('click', e => {
+    const moveBtn = e.target.closest('[data-block-action]');
+    if (moveBtn) {
+      const blockId = moveBtn.dataset.blockId;
+      if (moveBlock(blockId, moveBtn.dataset.blockAction)) {
+        rerenderBlocks(container);
+        focusBlock(blockId, container, true);
+      }
+      return;
+    }
+
     const btn = e.target.closest('[data-del-id]');
     if (!btn) return;
     const delId = btn.dataset.delId;
@@ -1484,7 +1522,10 @@ function wireBlocksEdit(container) {
     if (nextFocusId) focusBlock(nextFocusId, container, true);
   });
 
-  // Render KaTeX previews
+  renderMathPreviews(container);
+}
+
+function renderMathPreviews(container) {
   requestAnimationFrame(() => {
     container.querySelectorAll('.kn-block--math .kn-block-math-input').forEach(ta => {
       const blockId = ta.dataset.blockId;
@@ -1501,17 +1542,20 @@ function wireBlocksEdit(container) {
 function handleBlockKeydown(e, blockId, container) {
   if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
     e.preventDefault();
-    document.execCommand?.('insertLineBreak');
+    document.execCommand?.('insertHTML', false, '<br>');
     const block = findBlockInAllBlocks(edState.blocks, blockId);
-    if (block) block.text = e.target.textContent;
+    if (block) {
+      block.text = e.target.textContent;
+      block.html = sanitizeBlockHtml(e.target.innerHTML);
+    }
     return;
   }
 
   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
     e.preventDefault();
-    const idx = edState.blocks.findIndex(b => b.id === blockId);
-    if (idx < 0) return;
-    const currentBlock = edState.blocks[idx];
+    const loc = findBlockLocation(blockId);
+    if (!loc) return;
+    const currentBlock = loc.blocks[loc.idx];
     const newBlock = defaultBlock();
     // If in toggle, add child
     if (currentBlock.type === 'toggle') {
@@ -1521,20 +1565,19 @@ function handleBlockKeydown(e, blockId, container) {
       focusBlock(newBlock.id, container);
       return;
     }
-    edState.blocks.splice(idx + 1, 0, newBlock);
+    loc.blocks.splice(loc.idx + 1, 0, newBlock);
     rerenderBlocks(container);
     focusBlock(newBlock.id, container);
   }
 
   if (e.key === 'Backspace') {
     const el = e.target;
-    if (el.textContent === '' && edState.blocks.length > 1) {
+    const loc = findBlockLocation(blockId);
+    if (el.textContent === '' && loc && (loc.parent || edState.blocks.length > 1)) {
       e.preventDefault();
-      const idx = edState.blocks.findIndex(b => b.id === blockId);
-      if (idx < 0) return;
       removeBlockById(blockId);
       removeBlockElement(blockId, container);
-      const prevBlock = edState.blocks[Math.max(0, idx - 1)];
+      const prevBlock = loc.blocks[Math.max(0, loc.idx - 1)] || loc.parent || edState.blocks[0];
       if (prevBlock) focusBlock(prevBlock.id, container, true);
     }
   }
@@ -1543,6 +1586,7 @@ function handleBlockKeydown(e, blockId, container) {
 function wireToolbar(container) {
   // Block type buttons
   container.querySelectorAll('[data-block-type]').forEach(btn => {
+    btn.addEventListener('mousedown', e => e.preventDefault());
     btn.addEventListener('click', () => {
       const type = btn.dataset.blockType;
       const focusedBlockId = getFocusedBlockId(container);
@@ -1557,24 +1601,52 @@ function wireToolbar(container) {
     });
   });
 
+  container.querySelectorAll('[data-inline-command]').forEach(btn => {
+    btn.addEventListener('mousedown', e => e.preventDefault());
+    btn.addEventListener('click', () => {
+      const focusedBlockId = getFocusedBlockId(container);
+      if (!focusedBlockId) return;
+      const command = btn.dataset.inlineCommand;
+      if (command === 'highlight') {
+        const ok = document.execCommand?.('hiliteColor', false, '#F5C542');
+        if (!ok) document.execCommand?.('backColor', false, '#F5C542');
+      } else {
+        document.execCommand?.(command, false, null);
+      }
+      syncFocusedEditableBlock(container, focusedBlockId);
+      focusEditableWithoutScroll(container.querySelector(`.kn-block-focusable[data-block-id="${focusedBlockId}"]`));
+    });
+  });
+
   // Color picker toggle
-  container.querySelector('#kn-color-btn')?.addEventListener('click', () => {
+  const colorBtn = container.querySelector('#kn-color-btn');
+  colorBtn?.addEventListener('mousedown', e => e.preventDefault());
+  colorBtn?.addEventListener('click', () => {
     const picker = container.querySelector('#kn-color-picker');
     picker?.classList.toggle('hidden');
   });
 
   // Color swatches
   container.querySelectorAll('[data-color-id]').forEach(swatch => {
+    swatch.addEventListener('mousedown', e => e.preventDefault());
     swatch.addEventListener('click', () => {
       const colorId = swatch.dataset.colorId;
       const color = BLOCK_COLORS.find(c => c.id === colorId);
       const focusedBlockId = getFocusedBlockId(container);
       if (focusedBlockId && color) {
-        const block = findBlockInAllBlocks(edState.blocks, focusedBlockId);
-        if (block) {
-          block.color = color.css || null;
-          rerenderBlocks(container);
-          focusBlock(focusedBlockId, container, true);
+        const active = container.querySelector(`.kn-block-focusable[data-block-id="${focusedBlockId}"]:focus`);
+        const selection = window.getSelection();
+        if (active && selection && selection.rangeCount && !selection.isCollapsed && active.contains(selection.anchorNode)) {
+          document.execCommand?.('foreColor', false, color.css || 'inherit');
+          syncFocusedEditableBlock(container, focusedBlockId);
+          focusEditableWithoutScroll(active);
+        } else {
+          const block = findBlockInAllBlocks(edState.blocks, focusedBlockId);
+          if (block) {
+            block.color = color.css || null;
+            rerenderBlocks(container);
+            focusBlock(focusedBlockId, container, true);
+          }
         }
       }
       container.querySelector('#kn-color-picker')?.classList.add('hidden');
@@ -1601,6 +1673,67 @@ function changeBlockType(blockId, type, container) {
   if (type !== 'toggle') delete block.children;
   rerenderBlocks(container);
   focusBlock(blockId, container, true);
+}
+
+function syncFocusedEditableBlock(container, blockId) {
+  const el = container.querySelector(`.kn-block-focusable[data-block-id="${blockId}"]`);
+  const block = findBlockInAllBlocks(edState.blocks, blockId);
+  if (!el || !block || el.tagName === 'TEXTAREA') return;
+  block.text = el.textContent;
+  block.html = sanitizeBlockHtml(el.innerHTML);
+}
+
+function findBlockLocation(blockId, blocks = edState.blocks, parent = null) {
+  const idx = blocks.findIndex(block => block.id === blockId);
+  if (idx >= 0) return { blocks, idx, parent };
+  for (const block of blocks) {
+    if (block.children) {
+      const found = findBlockLocation(blockId, block.children, block);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function moveBlock(blockId, action) {
+  const loc = findBlockLocation(blockId);
+  if (!loc) return false;
+  const { blocks, idx, parent } = loc;
+  const block = blocks[idx];
+
+  if (action === 'up') {
+    if (idx <= 0) return false;
+    [blocks[idx - 1], blocks[idx]] = [blocks[idx], blocks[idx - 1]];
+    return true;
+  }
+
+  if (action === 'down') {
+    if (idx >= blocks.length - 1) return false;
+    [blocks[idx + 1], blocks[idx]] = [blocks[idx], blocks[idx + 1]];
+    return true;
+  }
+
+  if (action === 'indent') {
+    if (idx <= 0) return false;
+    const previous = blocks[idx - 1];
+    if (previous.type !== 'toggle') return false;
+    previous.children = previous.children || [];
+    blocks.splice(idx, 1);
+    previous.children.push(block);
+    previous.collapsed = false;
+    return true;
+  }
+
+  if (action === 'outdent') {
+    if (!parent) return false;
+    const parentLoc = findBlockLocation(parent.id);
+    if (!parentLoc) return false;
+    blocks.splice(idx, 1);
+    parentLoc.blocks.splice(parentLoc.idx + 1, 0, block);
+    return true;
+  }
+
+  return false;
 }
 
 function rerenderBlocks(container) {
@@ -1633,7 +1766,7 @@ function focusBlock(id, container, atEnd = false) {
   requestAnimationFrame(() => {
     const el = container.querySelector(`.kn-block-focusable[data-block-id="${id}"]`);
     if (!el) return;
-    el.focus();
+    focusEditableWithoutScroll(el);
     if (atEnd && el.contentEditable === 'true') {
       const range = document.createRange();
       const sel   = window.getSelection();
@@ -1704,6 +1837,12 @@ function showTagSuggestions(suggested, container) {
       btn.disabled = true;
     });
   });
+}
+
+function focusEditableWithoutScroll(el) {
+  if (!el) return;
+  try { el.focus({ preventScroll: true }); }
+  catch { el.focus(); }
 }
 
 function collectExistingKnowledgeTags() {
@@ -1872,6 +2011,7 @@ function saveMemo(container) {
       block.text = el.value;
     } else if (el.contentEditable === 'true') {
       block.text = el.textContent;
+      block.html = sanitizeBlockHtml(el.innerHTML);
     }
   });
 
@@ -1964,6 +2104,69 @@ function confirmDelete(memoId, container) {
 
 function defaultBlock() {
   return { id: generateId(), type: 'paragraph', text: '', color: null };
+}
+
+function getBlockEditorHtml(block) {
+  if (block.html) return sanitizeBlockHtml(block.html);
+  return esc(block.text || '');
+}
+
+function sanitizeBlockHtml(html) {
+  const template = document.createElement('template');
+  template.innerHTML = String(html || '');
+  const allowedTags = new Set(['BR', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'SPAN', 'MARK', 'CODE', 'A', 'FONT']);
+  const allowedStyles = new Set(['color', 'background-color']);
+
+  const cleanNode = (node) => {
+    [...node.childNodes].forEach(child => {
+      if (child.nodeType === Node.TEXT_NODE) return;
+      if (child.nodeType !== Node.ELEMENT_NODE) {
+        child.remove();
+        return;
+      }
+
+      const tag = child.tagName;
+      if (!allowedTags.has(tag)) {
+        child.replaceWith(document.createTextNode(child.textContent || ''));
+        return;
+      }
+
+      [...child.attributes].forEach(attr => {
+        const name = attr.name.toLowerCase();
+        if (tag === 'FONT' && name === 'color') {
+          const value = child.getAttribute('color') || '';
+          if (value && !/url|expression|javascript/i.test(value)) child.style.color = value;
+          child.removeAttribute('color');
+          return;
+        }
+        if (tag === 'A' && ['href', 'target', 'rel', 'class'].includes(name)) return;
+        if (name === 'style') {
+          const safe = [];
+          for (const prop of allowedStyles) {
+            const value = child.style.getPropertyValue(prop);
+            if (value && !/url|expression|javascript/i.test(value)) safe.push(`${prop}:${value}`);
+          }
+          if (safe.length) child.setAttribute('style', safe.join(';'));
+          else child.removeAttribute('style');
+          return;
+        }
+        child.removeAttribute(attr.name);
+      });
+
+      if (tag === 'A') {
+        const href = child.getAttribute('href') || '';
+        if (!/^https?:\/\//i.test(href)) child.removeAttribute('href');
+        child.setAttribute('target', '_blank');
+        child.setAttribute('rel', 'noopener');
+        child.classList.add('kn-inline-link');
+      }
+
+      cleanNode(child);
+    });
+  };
+
+  cleanNode(template.content);
+  return template.innerHTML;
 }
 
 function deepClone(obj) {
