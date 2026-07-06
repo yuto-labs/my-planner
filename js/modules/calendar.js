@@ -381,6 +381,24 @@ function getEventDisplayTitle(event) {
   return event.visibleTitle || event.title || '予定';
 }
 
+function appendSharedPreviewEvent(event) {
+  if (!isSharedSource() || !event?.id) return;
+  const groupIds = Array.isArray(event.sharedGroupIds) ? event.sharedGroupIds : [];
+  if (event.shareVisibility === 'private') return;
+  if (state.groupId && !groupIds.includes(state.groupId)) return;
+  const preview = {
+    ...event,
+    isOwn: true,
+    visibleTitle: event.title || '予定',
+    visibleMemo: event.memo || '',
+    visibleGroups: groupIds,
+  };
+  state.sharedEvents = [
+    ...state.sharedEvents.filter(item => item.id !== event.id),
+    preview,
+  ].sort((a, b) => new Date(a.start) - new Date(b.start));
+}
+
 function redrawAfterEventChange(removedId = '') {
   if (removedId) state.sharedEvents = state.sharedEvents.filter(event => event.id !== removedId);
   render();
@@ -914,12 +932,11 @@ function timeToMinutes(t) {
 }
 
 function getCurrentShareDefaults() {
-  const saved = loadShareDefaults();
-  if (saved.visibility) return {};
   if (!isSharedSource()) return {};
   return {
     defaultShareGroupId: state.groupId,
     defaultShareVisibility: 'shared_detail',
+    preferDefaultShareGroup: true,
   };
 }
 
@@ -1093,16 +1110,21 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
     ? savedShareDefaults.groupIds.filter(id => shareGroups.some(group => group.id === id))
     : [];
   const selectedShareGroups = new Set(Array.isArray(event?.sharedGroupIds) ? event.sharedGroupIds : []);
-  if (!isEdit && validSavedGroupIds.length) {
+  const hasDefaultShareGroup = !isEdit
+    && options.defaultShareGroupId
+    && shareGroups.some(group => group.id === options.defaultShareGroupId);
+  if (hasDefaultShareGroup && options.preferDefaultShareGroup) {
+    selectedShareGroups.add(options.defaultShareGroupId);
+  } else if (!isEdit && validSavedGroupIds.length) {
     validSavedGroupIds.forEach(id => selectedShareGroups.add(id));
   }
-  if (!isEdit && !validSavedGroupIds.length && options.defaultShareGroupId) selectedShareGroups.add(options.defaultShareGroupId);
-  if (!isEdit && !validSavedGroupIds.length && !options.defaultShareGroupId && shareGroups.length === 1) {
+  if (!isEdit && !validSavedGroupIds.length && hasDefaultShareGroup) selectedShareGroups.add(options.defaultShareGroupId);
+  if (!isEdit && !validSavedGroupIds.length && !hasDefaultShareGroup && shareGroups.length === 1) {
     selectedShareGroups.add(shareGroups[0].id);
   }
   const currentShareVisibility = event?.shareVisibility
-    || (!isEdit && savedShareDefaults.visibility)
     || options.defaultShareVisibility
+    || (!isEdit && savedShareDefaults.visibility)
     || (!isEdit && selectedShareGroups.size ? 'shared_detail' : 'private');
   const hideFromMonth = !!event?.hideFromMonth;
 
@@ -1303,11 +1325,26 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
     });
   });
 
+  const ensureShareGroupSelection = () => {
+    const selectedVisibility = body.querySelector('[name="ev-share-visibility"]:checked')?.value || 'private';
+    if (selectedVisibility === 'private') return;
+    const checked = body.querySelectorAll('#ev-share-groups input[type="checkbox"]:checked');
+    if (checked.length) return;
+    const fallbackId = hasDefaultShareGroup
+      ? options.defaultShareGroupId
+      : (shareGroups.length === 1 ? shareGroups[0].id : '');
+    if (!fallbackId) return;
+    const fallback = [...body.querySelectorAll('#ev-share-groups input[type="checkbox"]')]
+      .find(input => input.value === fallbackId);
+    if (fallback) fallback.checked = true;
+  };
+
   body.querySelectorAll('.event-share-choice input').forEach(input => {
     input.addEventListener('change', () => {
       body.querySelectorAll('.event-share-choice').forEach(label => {
         label.classList.toggle('selected', label.querySelector('input')?.checked);
       });
+      ensureShareGroupSelection();
     });
   });
 
@@ -1485,7 +1522,11 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
 
     const checkedShareGroups = [...body.querySelectorAll('#ev-share-groups input[type="checkbox"]:checked')].map(input => input.value);
     const shareVisibility = body.querySelector('[name="ev-share-visibility"]:checked')?.value || 'private';
-    const effectiveShareGroups = shareVisibility === 'private' ? [] : checkedShareGroups;
+    if (shareVisibility !== 'private' && checkedShareGroups.length === 0) {
+      if (hasDefaultShareGroup) checkedShareGroups.push(options.defaultShareGroupId);
+      else if (shareGroups.length === 1) checkedShareGroups.push(shareGroups[0].id);
+    }
+    const effectiveShareGroups = shareVisibility === 'private' ? [] : [...new Set(checkedShareGroups)];
     const effectiveShareVisibility = effectiveShareGroups.length ? shareVisibility : 'private';
 
     const newData = {
@@ -1534,7 +1575,8 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
         createRecurringEvents(newData, recurType, recurEndStr);
         toast('繰り返し予定を追加しました', 'success');
       } else {
-        addEvent(newData);
+        const created = addEvent(newData);
+        appendSharedPreviewEvent(created);
         toast(`「${title}」を追加しました`, 'success');
       }
     }
