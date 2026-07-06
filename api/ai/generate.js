@@ -53,6 +53,15 @@ const ACTION_COSTS = {
   batch_tags: 5,
 };
 
+function todayLocalStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function withUsageDate(usage) {
+  return usage ? { ...usage, usageDate: usage.usageDate || todayLocalStr() } : null;
+}
+
 function getBearerToken(req) {
   const header = req.headers.authorization || req.headers.Authorization || '';
   const match = String(header).match(/^Bearer\s+(.+)$/i);
@@ -149,11 +158,11 @@ export default async function handler(req, res) {
   let usage = null;
   try {
     await requireAuthenticatedUser(token);
-    usage = await claimUsage(token, body);
+    usage = withUsageDate(await claimUsage(token, body));
   } catch (error) {
     res.status(error?.status || 500).json({
       error: error?.message || 'AI usage check failed.',
-      usage: error?.usage || null,
+      usage: withUsageDate(error?.usage || null),
     });
     return;
   }

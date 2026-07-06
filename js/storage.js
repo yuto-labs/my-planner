@@ -328,12 +328,39 @@ const DEFAULT_AI_RUNTIME = {
   message: '',
 };
 
+function todayLocalStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function normalizeAiUsage(runtime) {
+  const usage = runtime?.usage;
+  if (!usage) return null;
+  const usageDate = usage.usageDate || usage.date || usage.day || String(usage.createdAt || '').slice(0, 10);
+  const checkedDate = runtime?.checkedAt ? todayLocalStrFromTs(runtime.checkedAt) : '';
+  const effectiveDate = usageDate || checkedDate;
+  if (effectiveDate && effectiveDate !== todayLocalStr()) return null;
+  return usageDate ? { ...usage, usageDate } : usage;
+}
+
+function todayLocalStrFromTs(ts) {
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export function getSettings() { return { ...DEFAULT_SETTINGS, ...load(KEY.SETS, {}) }; }
 export function saveSettings(s) { save(KEY.SETS, { ...getSettings(), ...s }); }
 
 export function getApiKey() { return getSettings().apiKey || ''; }
-export function getAiRuntime() { return { ...DEFAULT_AI_RUNTIME, ...load(KEY.AI_RUNTIME, {}) }; }
-export function saveAiRuntime(patch) { save(KEY.AI_RUNTIME, { ...getAiRuntime(), ...patch }); }
+export function getAiRuntime() {
+  const runtime = { ...DEFAULT_AI_RUNTIME, ...load(KEY.AI_RUNTIME, {}) };
+  return { ...runtime, usage: normalizeAiUsage(runtime) };
+}
+export function saveAiRuntime(patch) {
+  const runtime = { ...getAiRuntime(), ...patch };
+  save(KEY.AI_RUNTIME, { ...runtime, usage: normalizeAiUsage(runtime) });
+}
 export function isAiAvailable() {
   const settings = getSettings();
   const runtime = getAiRuntime();

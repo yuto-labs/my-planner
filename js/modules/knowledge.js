@@ -273,7 +273,7 @@ function renderList() {
         <!-- AI input shortcut -->
         <button class="kn-ai-input-btn" id="kn-ai-input-btn">
           <span class="kn-ai-input-btn-main">✨ AIに整理してもらう</span>
-          <span class="kn-ai-input-btn-sub">テキストを貼り付けてブロック形式に整形 · Haiku 使用</span>
+          <span class="kn-ai-input-btn-sub">テキストを貼り付けてブロック形式に整形</span>
         </button>
       ` : ''}
 
@@ -456,7 +456,7 @@ function openAIInputSheet() {
       <!-- Loading -->
       <div class="kn-ai-loading hidden" id="kn-ai-loading">
         <span class="ai-spinner"></span>
-        <span>Haiku が整理中…</span>
+        <span>AIが整理中…</span>
       </div>
 
       <!-- Step 2: Preview -->
