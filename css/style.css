@@ -2809,7 +2809,7 @@ button { cursor: pointer; font-family: inherit; }
   position: relative;
 }
 .kn-block-text {
-  flex: 1; outline: none; min-height: 1.5em;
+  flex: 1 1 auto; width: 100%; min-width: 0; outline: none; min-height: 1.5em;
   font-size: 14px; line-height: 1.65; color: var(--text);
   font-family: inherit; word-break: break-word;
   white-space: pre-wrap;
@@ -2858,16 +2858,30 @@ button { cursor: pointer; font-family: inherit; }
 .kn-block-prefix--toggle { font-size: 11px; color: var(--text-dim); margin-top: 5px; }
 .kn-block-toggle-children-edit { padding-left: 22px; border-left: 2px solid var(--border); margin-left: 8px; }
 .kn-block-controls {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  z-index: 3;
   opacity: 0;
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  margin-left: auto;
-  padding-left: 4px;
-  transition: opacity var(--transition);
+  margin-left: 0;
+  padding: 2px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
+  transition: opacity var(--transition), transform var(--transition);
+  transform: translateY(-2px);
 }
 .kn-block:hover > .kn-block-controls,
-.kn-block:focus-within > .kn-block-controls { opacity: 1; }
+.kn-block:focus-within > .kn-block-controls {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
 .kn-block-move,
 .kn-block-del {
   background: var(--bg-hover); border: 1px solid var(--border);
