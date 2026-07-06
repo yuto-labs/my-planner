@@ -1386,12 +1386,16 @@ function renderEditMode(container) {
 function renderBlockEdit(block, idx) {
   const colorStyle = block.color ? `style="color:${block.color}"` : '';
   const typeClass  = `kn-block--${block.type}`;
+  const insertRow = renderBlockInsertRow(block.id);
   const controls = `
     <div class="kn-block-controls">
-      <button type="button" class="kn-block-move" data-block-action="up" data-block-id="${esc(block.id)}" title="上へ">↑</button>
-      <button type="button" class="kn-block-move" data-block-action="down" data-block-id="${esc(block.id)}" title="下へ">↓</button>
-      <button type="button" class="kn-block-move" data-block-action="indent" data-block-id="${esc(block.id)}" title="上のトグルの中へ">→</button>
-      <button type="button" class="kn-block-move" data-block-action="outdent" data-block-id="${esc(block.id)}" title="外へ">←</button>
+      <select class="kn-block-type-select" data-block-type-select data-block-id="${esc(block.id)}" title="ブロック種類">
+        ${renderBlockTypeOptions(block.type)}
+      </select>
+      <button type="button" class="kn-block-move" data-block-action="up" data-block-id="${esc(block.id)}" title="上へ" aria-label="上へ移動">↑</button>
+      <button type="button" class="kn-block-move" data-block-action="down" data-block-id="${esc(block.id)}" title="下へ" aria-label="下へ移動">↓</button>
+      <button type="button" class="kn-block-move" data-block-action="indent" data-block-id="${esc(block.id)}" title="上のトグルの中へ" aria-label="内側へ移動">→</button>
+      <button type="button" class="kn-block-move" data-block-action="outdent" data-block-id="${esc(block.id)}" title="外へ" aria-label="外側へ移動">←</button>
       <button type="button" class="kn-block-del" data-del-id="${esc(block.id)}" aria-label="削除">×</button>
     </div>`;
 
@@ -1400,7 +1404,8 @@ function renderBlockEdit(block, idx) {
       <div class="kn-block kn-block--divider" data-block-id="${esc(block.id)}">
         <hr class="kn-view-divider">
         ${controls}
-      </div>`;
+      </div>
+      ${insertRow}`;
   }
 
   if (block.type === 'math') {
@@ -1411,7 +1416,8 @@ function renderBlockEdit(block, idx) {
           placeholder="数式を入力 (例: E=mc^2, \frac{a}{b})">${esc(block.text)}</textarea>
         <div class="kn-block-math-preview" data-katex-preview="${esc(block.id)}"></div>
         ${controls}
-      </div>`;
+      </div>
+      ${insertRow}`;
   }
 
   const placeholder = {
@@ -1444,7 +1450,24 @@ function renderBlockEdit(block, idx) {
           ${(block.children || []).map((c, ci) => renderBlockEdit(c, ci)).join('')}
         </div>` : ''}
       ${controls}
+    </div>
+    ${insertRow}`;
+}
+
+function renderBlockInsertRow(blockId) {
+  const id = esc(blockId);
+  return `
+    <div class="kn-block-insert-row" data-insert-after="${id}">
+      <button type="button" class="kn-block-insert-btn" data-insert-block-type="paragraph" data-insert-after="${id}">＋ テキスト</button>
+      <button type="button" class="kn-block-insert-btn" data-insert-block-type="h2" data-insert-after="${id}">＋ 見出し</button>
+      <button type="button" class="kn-block-insert-btn kn-block-insert-btn--subtle" data-insert-block-type="bullet" data-insert-after="${id}">＋ リスト</button>
     </div>`;
+}
+
+function renderBlockTypeOptions(currentType) {
+  return BLOCK_TYPES
+    .map(bt => `<option value="${esc(bt.type)}"${bt.type === currentType ? ' selected' : ''}>${esc(bt.label)}</option>`)
+    .join('');
 }
 
 function wireBlocksEdit(container) {
@@ -1502,8 +1525,29 @@ function wireBlocksEdit(container) {
     if (block) highlightToolbarType(container, block.type);
   });
 
+  wrap.addEventListener('change', e => {
+    const select = e.target.closest('[data-block-type-select]');
+    if (!select) return;
+    const blockId = select.dataset.blockId;
+    const type = select.value || 'paragraph';
+    if (!blockId) return;
+    changeBlockType(blockId, type, container);
+  });
+
   // Delete buttons
   wrap.addEventListener('click', e => {
+    const insertBtn = e.target.closest('[data-insert-block-type]');
+    if (insertBtn) {
+      const afterId = insertBtn.dataset.insertAfter;
+      const type = insertBtn.dataset.insertBlockType || 'paragraph';
+      const inserted = insertBlockAfter(afterId, type);
+      if (inserted) {
+        rerenderBlocks(container);
+        focusBlock(inserted.id, container);
+      }
+      return;
+    }
+
     const moveBtn = e.target.closest('[data-block-action]');
     if (moveBtn) {
       const blockId = moveBtn.dataset.blockId;
@@ -1528,9 +1572,10 @@ function wireBlocksEdit(container) {
       }
       return;
     }
-    const blockEl = btn.closest('.kn-block');
-    const nextFocusId = blockEl?.previousElementSibling?.dataset?.blockId
-      || blockEl?.nextElementSibling?.dataset?.blockId
+    const loc = findBlockLocation(delId);
+    const nextFocusId = loc?.blocks[loc.idx - 1]?.id
+      || loc?.blocks[loc.idx + 1]?.id
+      || loc?.parent?.id
       || edState.blocks.find(b => b.id !== delId)?.id;
     removeBlockById(delId);
     removeBlockElement(delId, container);
@@ -1688,6 +1733,15 @@ function changeBlockType(blockId, type, container) {
   if (type !== 'toggle') delete block.children;
   rerenderBlocks(container);
   focusBlock(blockId, container, true);
+}
+
+function insertBlockAfter(blockId, type = 'paragraph') {
+  const loc = findBlockLocation(blockId);
+  if (!loc) return null;
+  const newBlock = { ...defaultBlock(), type };
+  if (type === 'toggle') newBlock.children = [];
+  loc.blocks.splice(loc.idx + 1, 0, newBlock);
+  return newBlock;
 }
 
 function syncFocusedEditableBlock(container, blockId) {

@@ -2952,10 +2952,27 @@ button { cursor: pointer; font-family: inherit; }
 .kn-block-move,
 .kn-block-del {
   background: var(--bg-hover); border: 1px solid var(--border);
-  border-radius: 999px; width: 22px; height: 22px;
-  font-size: 10px; color: var(--text-dim); cursor: pointer;
+  border-radius: 999px; width: 24px; height: 24px;
+  font-size: 11px; color: var(--text-dim); cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+.kn-block-type-select {
+  max-width: 92px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 0 6px;
+  outline: none;
+}
+.kn-block-type-select:focus {
+  border-color: var(--primary-border);
+  color: var(--primary);
 }
 .kn-block-move:active {
   color: var(--primary);
@@ -2963,6 +2980,44 @@ button { cursor: pointer; font-family: inherit; }
   background: var(--primary-bg);
 }
 .kn-block-del:hover { color: var(--danger); border-color: var(--danger); }
+.kn-block-insert-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 1px 0 3px 26px;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity var(--transition), transform var(--transition);
+}
+.kn-block:hover + .kn-block-insert-row,
+.kn-block:focus-within + .kn-block-insert-row,
+.kn-block-insert-row:hover,
+.kn-block-insert-row:focus-within {
+  opacity: 1;
+  transform: translateY(0);
+}
+.kn-block-insert-btn {
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  background: var(--bg-card);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  min-height: 24px;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+.kn-block-insert-btn:active,
+.kn-block-insert-btn:focus {
+  color: var(--primary);
+  border-color: var(--primary-border);
+  background: var(--primary-bg);
+}
+.kn-block-insert-btn--subtle {
+  color: var(--text-dim);
+}
 .kn-block--removing {
   opacity: 0;
   transform: translateY(-2px);
