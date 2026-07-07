@@ -884,7 +884,7 @@ function setupFAB() {
 
   // Show/hide based on view
   const updateFab = () => {
-    const hidden = ['home', 'settings', 'ai-settings', 'analytics', 'knowledge-graph', 'knowledge-detail', 'goals'];
+    const hidden = ['home', 'settings', 'ai-settings', 'analytics', 'knowledge-graph', 'knowledge-detail', 'goals', 'review'];
     fab.classList.toggle('hidden', hidden.includes(currentView));
     if (currentView === 'tasks') {
       fab.setAttribute('aria-label', 'Open AI planner');
