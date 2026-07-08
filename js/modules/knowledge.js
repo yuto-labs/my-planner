@@ -1653,6 +1653,7 @@ function insertLineBreakInBlock(editable) {
   range.deleteContents();
   const lineBreak = document.createTextNode('\n');
   range.insertNode(lineBreak);
+  if (!lineBreak.nextSibling) editable.appendChild(document.createElement('br'));
 
   range.setStartAfter(lineBreak);
   range.collapse(true);
