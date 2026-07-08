@@ -1651,11 +1651,8 @@ function insertLineBreakInBlock(editable) {
   if (!editable.contains(range.commonAncestorContainer)) return;
 
   range.deleteContents();
-  const lineBreak = document.createElement('br');
+  const lineBreak = document.createTextNode('\n');
   range.insertNode(lineBreak);
-
-  // A trailing second BR keeps the new empty line visible and editable.
-  if (!lineBreak.nextSibling) editable.appendChild(document.createElement('br'));
 
   range.setStartAfter(lineBreak);
   range.collapse(true);
