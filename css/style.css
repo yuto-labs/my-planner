@@ -2835,6 +2835,28 @@ button { cursor: pointer; font-family: inherit; }
 .kn-toolbar::-webkit-scrollbar { display: none; }
 .kn-toolbar-types,
 .kn-toolbar-inline { display: flex; gap: 2px; }
+.kn-toolbar-type-field {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.kn-toolbar-type-select {
+  width: 104px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--bg-hover);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 28px 0 10px;
+  outline: none;
+}
+.kn-toolbar-type-select:focus {
+  border-color: var(--primary-border);
+  box-shadow: 0 0 0 2px var(--primary-bg);
+}
 .kn-toolbar-btn {
   min-width: 32px; height: 32px; padding: 0 6px;
   border-radius: var(--radius-xs);
@@ -2957,23 +2979,6 @@ button { cursor: pointer; font-family: inherit; }
   display: flex; align-items: center; justify-content: center;
   transition: background var(--transition), color var(--transition), border-color var(--transition);
 }
-.kn-block-type-select {
-  max-width: 92px;
-  height: 24px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg-hover);
-  color: var(--text-muted);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 0 6px;
-  outline: none;
-}
-.kn-block-type-select:focus {
-  border-color: var(--primary-border);
-  color: var(--primary);
-}
 .kn-block-move:active {
   color: var(--primary);
   border-color: var(--primary-border);
@@ -2983,9 +2988,8 @@ button { cursor: pointer; font-family: inherit; }
 .kn-block-insert-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  min-height: 24px;
-  padding: 1px 0 3px 26px;
+  min-height: 12px;
+  padding: 0 0 0 2px;
   opacity: 0;
   transform: translateY(-2px);
   transition: opacity var(--transition), transform var(--transition);
@@ -2998,15 +3002,17 @@ button { cursor: pointer; font-family: inherit; }
   transform: translateY(0);
 }
 .kn-block-insert-btn {
-  border: 1px dashed var(--border);
-  border-radius: 999px;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
   background: var(--bg-card);
   color: var(--text-muted);
   font: inherit;
-  font-size: 11px;
+  font-size: 15px;
   font-weight: 700;
-  min-height: 24px;
-  padding: 3px 9px;
+  line-height: 1;
+  padding: 0;
   cursor: pointer;
 }
 .kn-block-insert-btn:active,
@@ -3015,8 +3021,19 @@ button { cursor: pointer; font-family: inherit; }
   border-color: var(--primary-border);
   background: var(--primary-bg);
 }
-.kn-block-insert-btn--subtle {
-  color: var(--text-dim);
+@media (max-width: 640px) {
+  .kn-toolbar {
+    padding: 5px 10px;
+  }
+  .kn-toolbar-type-select {
+    width: 92px;
+  }
+  .kn-blocks-wrap {
+    padding-inline: 12px;
+  }
+  .kn-block-controls {
+    top: -28px;
+  }
 }
 .kn-block--removing {
   opacity: 0;

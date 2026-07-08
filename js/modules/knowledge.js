@@ -29,6 +29,7 @@ const undoToast = (msg, cb)   => window.AppNav?.showUndoToast(msg, cb);
 
 let currentMemoId  = null;  // null = new memo
 let pendingNewOpts = null;  // { tags:[], content:'' }
+let activeEditorBlockId = null;
 
 // ---- Navigation history for swipe-back ----
 let _knHistory           = [];  // [{memoId: string|null, scrollTop: number}]
@@ -1291,9 +1292,12 @@ function renderEditMode(container) {
       <!-- Block toolbar -->
       <div class="kn-toolbar" id="kn-toolbar">
         <div class="kn-toolbar-types">
-          ${BLOCK_TYPES.map(bt => `
-            <button class="kn-toolbar-btn" data-block-type="${esc(bt.type)}" title="${esc(bt.label)}">${esc(bt.icon)}</button>
-          `).join('')}
+          <label class="kn-toolbar-type-field">
+            <span class="sr-only">ブロック種類</span>
+            <select class="kn-toolbar-type-select" id="kn-toolbar-type-select" title="本文・見出しなどを変更">
+              ${renderBlockTypeOptions('paragraph')}
+            </select>
+          </label>
         </div>
         <div class="kn-toolbar-inline">
           <button class="kn-toolbar-btn" data-inline-command="bold" title="太字">B</button>
@@ -1389,9 +1393,6 @@ function renderBlockEdit(block, idx) {
   const insertRow = renderBlockInsertRow(block.id);
   const controls = `
     <div class="kn-block-controls">
-      <select class="kn-block-type-select" data-block-type-select data-block-id="${esc(block.id)}" title="ブロック種類">
-        ${renderBlockTypeOptions(block.type)}
-      </select>
       <button type="button" class="kn-block-move" data-block-action="up" data-block-id="${esc(block.id)}" title="上へ" aria-label="上へ移動">↑</button>
       <button type="button" class="kn-block-move" data-block-action="down" data-block-id="${esc(block.id)}" title="下へ" aria-label="下へ移動">↓</button>
       <button type="button" class="kn-block-move" data-block-action="indent" data-block-id="${esc(block.id)}" title="上のトグルの中へ" aria-label="内側へ移動">→</button>
@@ -1458,9 +1459,8 @@ function renderBlockInsertRow(blockId) {
   const id = esc(blockId);
   return `
     <div class="kn-block-insert-row" data-insert-after="${id}">
-      <button type="button" class="kn-block-insert-btn" data-insert-block-type="paragraph" data-insert-after="${id}">＋ テキスト</button>
-      <button type="button" class="kn-block-insert-btn" data-insert-block-type="h2" data-insert-after="${id}">＋ 見出し</button>
-      <button type="button" class="kn-block-insert-btn kn-block-insert-btn--subtle" data-insert-block-type="bullet" data-insert-after="${id}">＋ リスト</button>
+      <button type="button" class="kn-block-insert-btn" data-insert-block-type="paragraph"
+        data-insert-after="${id}" title="ここにブロックを追加" aria-label="ここにブロックを追加">＋</button>
     </div>`;
 }
 
@@ -1521,17 +1521,9 @@ function wireBlocksEdit(container) {
     const el = e.target;
     const blockId = el.dataset.blockId;
     if (!blockId) return;
+    activeEditorBlockId = blockId;
     const block = findBlockInAllBlocks(edState.blocks, blockId);
     if (block) highlightToolbarType(container, block.type);
-  });
-
-  wrap.addEventListener('change', e => {
-    const select = e.target.closest('[data-block-type-select]');
-    if (!select) return;
-    const blockId = select.dataset.blockId;
-    const type = select.value || 'paragraph';
-    if (!blockId) return;
-    changeBlockType(blockId, type, container);
   });
 
   // Delete buttons
@@ -1644,21 +1636,17 @@ function handleBlockKeydown(e, blockId, container) {
 }
 
 function wireToolbar(container) {
-  // Block type buttons
-  container.querySelectorAll('[data-block-type]').forEach(btn => {
-    btn.addEventListener('mousedown', e => e.preventDefault());
-    btn.addEventListener('click', () => {
-      const type = btn.dataset.blockType;
-      const focusedBlockId = getFocusedBlockId(container);
-      if (focusedBlockId) {
-        changeBlockType(focusedBlockId, type, container);
-      } else {
-        // Add new block of that type
-        edState.blocks.push({ ...defaultBlock(), type });
-        rerenderBlocks(container);
-        focusLastBlock(container);
-      }
-    });
+  const typeSelect = container.querySelector('#kn-toolbar-type-select');
+  typeSelect?.addEventListener('change', () => {
+    const type = typeSelect.value || 'paragraph';
+    const focusedBlockId = getFocusedBlockId(container) || activeEditorBlockId;
+    if (focusedBlockId) {
+      changeBlockType(focusedBlockId, type, container);
+      return;
+    }
+    edState.blocks.push({ ...defaultBlock(), type });
+    rerenderBlocks(container);
+    focusLastBlock(container);
   });
 
   container.querySelectorAll('[data-inline-command]').forEach(btn => {
@@ -1720,9 +1708,8 @@ function getFocusedBlockId(container) {
 }
 
 function highlightToolbarType(container, type) {
-  container.querySelectorAll('[data-block-type]').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.blockType === type);
-  });
+  const select = container.querySelector('#kn-toolbar-type-select');
+  if (select) select.value = type;
 }
 
 function changeBlockType(blockId, type, container) {
