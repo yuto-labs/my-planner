@@ -1501,8 +1501,8 @@ function wireBlocksEdit(container) {
     } else if (el.contentEditable === 'true') {
       const block = findBlockInAllBlocks(edState.blocks, blockId);
       if (block) {
-        block.text = el.textContent;
-        block.html = sanitizeBlockHtml(el.innerHTML);
+        block.text = el.textContent.replace(/\u200B/g, '');
+        block.html = sanitizeBlockHtml(el.innerHTML).replace(/\u200B/g, '');
       }
     }
   });
@@ -1514,6 +1514,18 @@ function wireBlocksEdit(container) {
     const blockId = el.dataset.blockId;
     if (!blockId) return;
     handleBlockKeydown(e, blockId, container);
+  });
+
+  // Some mobile keyboards send only beforeinput for the return key.
+  wrap.addEventListener('beforeinput', e => {
+    const el = e.target;
+    if (el.contentEditable !== 'true' || e.isComposing) return;
+    if (e.inputType !== 'insertParagraph' && e.inputType !== 'insertLineBreak') return;
+    const blockId = el.dataset.blockId;
+    if (!blockId) return;
+    e.preventDefault();
+    insertBlockLineBreak(el);
+    syncEditableBlock(blockId, el);
   });
 
   // Focus tracking for toolbar highlight
@@ -1543,8 +1555,11 @@ function wireBlocksEdit(container) {
     const moveBtn = e.target.closest('[data-block-action]');
     if (moveBtn) {
       const blockId = moveBtn.dataset.blockId;
+      const scrollOwner = document.getElementById('main-content');
+      const scrollTop = scrollOwner?.scrollTop || 0;
       if (moveBlock(blockId, moveBtn.dataset.blockAction)) {
         rerenderBlocks(container);
+        if (scrollOwner) scrollOwner.scrollTop = scrollTop;
         focusBlock(blockId, container, true);
       }
       return;
@@ -1593,8 +1608,10 @@ function renderMathPreviews(container) {
 
 function handleBlockKeydown(e, blockId, container) {
   if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
-    // Keep the browser's native line break inside this editable block.
+    e.preventDefault();
     e.stopPropagation();
+    insertBlockLineBreak(e.target);
+    syncEditableBlock(blockId, e.target);
     return;
   }
 
@@ -1628,6 +1645,33 @@ function handleBlockKeydown(e, blockId, container) {
       if (prevBlock) focusBlock(prevBlock.id, container, true);
     }
   }
+}
+
+function insertBlockLineBreak(editable) {
+  if (document.execCommand?.('insertLineBreak', false, null)) return;
+
+  const selection = window.getSelection();
+  if (!selection?.rangeCount) return;
+  const range = selection.getRangeAt(0);
+  if (!editable.contains(range.commonAncestorContainer)) return;
+
+  range.deleteContents();
+  const fragment = document.createDocumentFragment();
+  const lineBreak = document.createElement('br');
+  const caretAnchor = document.createTextNode('\u200B');
+  fragment.append(lineBreak, caretAnchor);
+  range.insertNode(fragment);
+  range.setStart(caretAnchor, 0);
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function syncEditableBlock(blockId, editable) {
+  const block = findBlockInAllBlocks(edState.blocks, blockId);
+  if (!block) return;
+  block.text = editable.textContent.replace(/\u200B/g, '');
+  block.html = sanitizeBlockHtml(editable.innerHTML).replace(/\u200B/g, '');
 }
 
 function wireToolbar(container) {

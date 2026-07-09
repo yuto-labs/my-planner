@@ -3031,8 +3031,44 @@ button { cursor: pointer; font-family: inherit; }
   .kn-blocks-wrap {
     padding-inline: 12px;
   }
+  .kn-block {
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    padding: 4px 0;
+  }
   .kn-block-controls {
-    top: -28px;
+    position: static;
+    order: -2;
+    width: 100%;
+    min-height: 30px;
+    justify-content: flex-end;
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+    margin: 0 0 2px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    transition: none;
+  }
+  .kn-block:hover > .kn-block-controls,
+  .kn-block:focus-within > .kn-block-controls {
+    transform: none;
+  }
+  .kn-block-move,
+  .kn-block-del {
+    width: 30px;
+    height: 30px;
+    background: var(--bg-card);
+  }
+  .kn-block-text {
+    flex: 1 1 calc(100% - 30px);
+  }
+  .kn-block-insert-row {
+    opacity: 1;
+    transform: none;
   }
 }
 .kn-block--removing {
