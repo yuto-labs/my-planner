@@ -558,22 +558,55 @@ export async function processBatchQueue(onProgress) {
 
 // ---- Whole-app AI helpers ----
 export async function interpretPlannerInput(text, context = {}) {
-  const now = new Date().toISOString();
+  const localToday = context.today || today();
+  const localTomorrow = addDaysToDateString(localToday, 1);
+  const localDayAfterTomorrow = addDaysToDateString(localToday, 2);
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local';
+  const localTime = new Intl.DateTimeFormat('ja-JP', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date());
   const result = await callAPI(
     SONNET,
     [
       'You are the command brain for a planner app. Decide what the user wants and return JSON only.',
-      'Schema: {"action":"task|event|schedule|memo|database","title":"...","date":"YYYY-MM-DD|null","startTime":"HH:MM|null","endTime":"HH:MM|null","dueDate":"YYYY-MM-DD|null","dueTime":"HH:MM|null","weight":"large|medium|small","estimatedMinutes":number|null,"tags":["..."],"memo":"...","blocks":[{"type":"paragraph|h2|bullet","text":"..."}],"fields":["..."],"rows":[{"...":"..."}],"message":"..."}.',
+      'Schema: {"action":"task|event|schedule|memo|database|delete_event|delete_task|delete_memo","title":"...","targetTitle":"...","date":"YYYY-MM-DD|null","startTime":"HH:MM|null","endTime":"HH:MM|null","dueDate":"YYYY-MM-DD|null","dueTime":"HH:MM|null","weight":"large|medium|small","estimatedMinutes":number|null,"tags":["..."],"memo":"...","blocks":[{"type":"paragraph|h2|bullet","text":"..."}],"fields":["..."],"rows":[{"...":"..."}],"message":"..."}.',
       'Use task for todos, event for calendar appointments, schedule for time blocks, memo for notes, database for table-like collections or when the user asks to create a database.',
+      'Use delete_event, delete_task, or delete_memo only when the user explicitly asks to delete an existing item. Put only the existing item name in targetTitle.',
+      `The user's local date is ${localToday}, tomorrow is ${localTomorrow}, and the day after tomorrow is ${localDayAfterTomorrow}. The local time is ${localTime} (${timeZone}).`,
+      'Resolve Japanese relative dates from those exact local dates. Never use UTC to shift today or tomorrow.',
       'Dates and times must be concrete when inferable. Never return prose outside JSON.',
     ].join(' '),
-    JSON.stringify({ now, text, context }),
+    JSON.stringify({ localToday, localTomorrow, localDayAfterTomorrow, localTime, timeZone, text, context }),
     900,
     'json'
   );
   const parsed = tryParseJSON(result);
   if (!parsed?.action) throw new Error('AI response was empty');
+  const explicitDate = resolveRelativeDate(text, localToday);
+  if (explicitDate) {
+    if (parsed.action === 'task' || parsed.action === 'delete_task') parsed.dueDate = explicitDate;
+    else parsed.date = explicitDate;
+  }
   return parsed;
+}
+
+function addDaysToDateString(dateString, days) {
+  const date = new Date(`${dateString}T12:00:00`);
+  date.setDate(date.getDate() + days);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function resolveRelativeDate(text, localToday) {
+  const value = String(text || '');
+  if (value.includes('明後日')) return addDaysToDateString(localToday, 2);
+  if (value.includes('明日')) return addDaysToDateString(localToday, 1);
+  if (value.includes('今日') || value.includes('本日')) return localToday;
+  return null;
 }
 
 export async function generateTaskSchedule(payload) {

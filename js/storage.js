@@ -723,25 +723,33 @@ export function restoreTrashItem(id) {
   const items = getTrashItems();
   const item = items.find(entry => entry.id === id);
   if (!item) return null;
+  const payload = normalizeTrashPayload(item.payload);
+  const entityId = item.entityId || payload?.id || null;
+  if (!payload || !entityId) return null;
 
   if (item.entityType === 'task') {
     const tasks = getTasks();
-    if (!tasks.find(t => t.id === item.entityId)) {
-      tasks.push(item.payload);
+    if (!tasks.find(t => t.id === entityId)) {
+      tasks.push({ ...payload, id: entityId, updatedAt: new Date().toISOString() });
       tasks.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
       saveTasks(tasks);
     }
   } else if (item.entityType === 'event') {
     const events = getEvents();
-    if (!events.find(e => e.id === item.entityId)) {
-      events.push(item.payload);
+    if (!events.find(e => e.id === entityId)) {
+      events.push({ ...payload, id: entityId, updatedAt: new Date().toISOString() });
       saveEvents(events);
     }
   } else if (item.entityType === 'memo') {
     const memos = getKnowledgeMemos();
-    if (!memos.find(m => m.id === item.entityId)) {
-      memos.push(item.payload);
-      saveKnowledgeMemos(memos);
+    if (!memos.find(m => m.id === entityId)) {
+      const restoredMemo = {
+        title: '', blocks: [], tags: [], starred: false, url: '', summary: '',
+        ...payload,
+        id: entityId,
+        updatedAt: new Date().toISOString(),
+      };
+      saveKnowledgeMemos([restoredMemo, ...memos]);
     }
   } else {
     return null;
@@ -749,6 +757,18 @@ export function restoreTrashItem(id) {
 
   removeTrashItem(id);
   return item;
+}
+
+function normalizeTrashPayload(payload) {
+  if (!payload) return null;
+  if (typeof payload === 'object') return payload;
+  if (typeof payload !== 'string') return null;
+  try {
+    const parsed = JSON.parse(payload);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 export function deleteTrashItemsByMonth(yyyymm) {

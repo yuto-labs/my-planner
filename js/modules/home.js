@@ -5,7 +5,9 @@
 import {
   getTasks, getEvents, isAiAvailable,
   getCategoryById, updateTask, getCategories, addEvent, addTask,
-  addScheduleItem, addKnowledgeMemo, getScheduleItemsForDate, getMyScheduleColor, getReviewsForDate,
+  addScheduleItem, addKnowledgeMemo, getKnowledgeMemos,
+  deleteEvent, deleteTask, deleteKnowledgeMemo,
+  getScheduleItemsForDate, getMyScheduleColor, getReviewsForDate,
 } from '../storage.js';
 import { interpretPlannerInput } from '../ai.js';
 import {
@@ -338,7 +340,19 @@ async function handleNLInput(input, btn, container) {
     const tags = Array.isArray(parsed.tags) ? parsed.tags : [];
     let message = parsed.message || '';
 
-    if (parsed.action === 'event') {
+    if (parsed.action === 'delete_event' || parsed.action === 'delete_task' || parsed.action === 'delete_memo') {
+      const deletion = resolveAiDeletion(parsed);
+      if (!deletion) throw new Error('削除する項目が見つかりませんでした。名前や時間をもう少し具体的に入力してください');
+      if (deletion.ambiguous) {
+        throw new Error(`候補が複数あります: ${deletion.matches.map(item => item.title).slice(0, 3).join('、')}`);
+      }
+      if (!window.confirm(`「${deletion.item.title}」を削除しますか？`)) {
+        message = '削除をキャンセルしました';
+      } else {
+        deletion.remove(deletion.item.id);
+        message = `「${deletion.item.title}」を削除しました`;
+      }
+    } else if (parsed.action === 'event') {
       const cats = getCategories();
       const cat = cats.find(c => c.name === parsed.categoryName) || cats[cats.length - 1];
       const start = parsed.start || (parsed.date && parsed.startTime ? parsed.date + 'T' + parsed.startTime + ':00' : null);
@@ -383,6 +397,53 @@ async function handleNLInput(input, btn, container) {
     btn.disabled = false;
     input.disabled = false;
   }
+}
+
+function resolveAiDeletion(parsed) {
+  const action = parsed.action;
+  const query = normalizeSearchText(parsed.targetTitle || parsed.title || '');
+  let items = [];
+  let remove = null;
+
+  if (action === 'delete_event') {
+    items = getEvents();
+    if (parsed.date) items = getEventsForDate(items, parsed.date);
+    if (parsed.startTime) {
+      items = items.filter(item => String(item.start || '').slice(11, 16) === parsed.startTime);
+    }
+    remove = deleteEvent;
+  } else if (action === 'delete_task') {
+    items = getTasks();
+    if (parsed.dueDate || parsed.date) {
+      const dueDate = parsed.dueDate || parsed.date;
+      items = items.filter(item => item.dueDate === dueDate);
+    }
+    remove = deleteTask;
+  } else if (action === 'delete_memo') {
+    items = getKnowledgeMemos();
+    remove = deleteKnowledgeMemo;
+  }
+
+  if (query) {
+    const exact = items.filter(item => normalizeSearchText(item.title) === query);
+    items = exact.length
+      ? exact
+      : items.filter(item => {
+          const title = normalizeSearchText(item.title);
+          return title.includes(query) || query.includes(title);
+        });
+  }
+
+  if (!items.length || !remove) return null;
+  if (items.length > 1) return { ambiguous: true, matches: items };
+  return { ambiguous: false, item: items[0], remove };
+}
+
+function normalizeSearchText(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .toLocaleLowerCase('ja-JP')
+    .replace(/\s+/g, '');
 }
 
 function buildMemoBlocksFromInput(rawText, memo, isDatabase, fields, rows) {
