@@ -1307,6 +1307,13 @@ function renderEditMode(container) {
           <button class="kn-toolbar-btn kn-toolbar-mark-btn" data-inline-command="highlight" title="マーカー">MARK</button>
         </div>
         <button class="kn-toolbar-btn kn-toolbar-color-btn" id="kn-color-btn" title="文字色">🎨</button>
+        <div class="kn-toolbar-block-actions" aria-label="ブロック操作">
+          <button type="button" class="kn-toolbar-block-btn" data-toolbar-block-action="up" title="上へ" aria-label="上へ移動">↑</button>
+          <button type="button" class="kn-toolbar-block-btn" data-toolbar-block-action="down" title="下へ" aria-label="下へ移動">↓</button>
+          <button type="button" class="kn-toolbar-block-btn" data-toolbar-block-action="indent" title="トグルの中へ" aria-label="内側へ移動">→</button>
+          <button type="button" class="kn-toolbar-block-btn" data-toolbar-block-action="outdent" title="外へ" aria-label="外側へ移動">←</button>
+          <button type="button" class="kn-toolbar-block-btn kn-toolbar-block-btn--danger" data-toolbar-block-action="delete" title="削除" aria-label="ブロックを削除">×</button>
+        </div>
       </div>
 
       <!-- Color picker (hidden by default) -->
@@ -1567,26 +1574,7 @@ function wireBlocksEdit(container) {
 
     const btn = e.target.closest('[data-del-id]');
     if (!btn) return;
-    const delId = btn.dataset.delId;
-    if (edState.blocks.length <= 1) {
-      const block = findBlockInAllBlocks(edState.blocks, delId);
-      const el = container.querySelector(`.kn-block-focusable[data-block-id="${delId}"]`);
-      if (block) block.text = '';
-      if (el) {
-        if (el.tagName === 'TEXTAREA') el.value = '';
-        else el.textContent = '';
-        el.focus();
-      }
-      return;
-    }
-    const loc = findBlockLocation(delId);
-    const nextFocusId = loc?.blocks[loc.idx - 1]?.id
-      || loc?.blocks[loc.idx + 1]?.id
-      || loc?.parent?.id
-      || edState.blocks.find(b => b.id !== delId)?.id;
-    removeBlockById(delId);
-    removeBlockElement(delId, container);
-    if (nextFocusId) focusBlock(nextFocusId, container, true);
+    deleteEditorBlock(btn.dataset.delId, container);
   });
 
   renderMathPreviews(container);
@@ -1688,6 +1676,25 @@ function wireToolbar(container) {
     focusLastBlock(container);
   });
 
+  container.querySelectorAll('[data-toolbar-block-action]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const blockId = getFocusedBlockId(container) || activeEditorBlockId;
+      if (!blockId) return;
+      const action = btn.dataset.toolbarBlockAction;
+      if (action === 'delete') {
+        deleteEditorBlock(blockId, container);
+        return;
+      }
+
+      const scrollOwner = document.getElementById('main-content');
+      const scrollTop = scrollOwner?.scrollTop || 0;
+      if (!moveBlock(blockId, action)) return;
+      rerenderBlocks(container);
+      if (scrollOwner) scrollOwner.scrollTop = scrollTop;
+      focusBlock(blockId, container, true);
+    });
+  });
+
   container.querySelectorAll('[data-inline-command]').forEach(btn => {
     btn.addEventListener('mousedown', e => e.preventDefault());
     btn.addEventListener('click', () => {
@@ -1739,6 +1746,34 @@ function wireToolbar(container) {
       container.querySelector('#kn-color-picker')?.classList.add('hidden');
     });
   });
+}
+
+function deleteEditorBlock(blockId, container) {
+  if (!blockId) return;
+  if (edState.blocks.length <= 1) {
+    const block = findBlockInAllBlocks(edState.blocks, blockId);
+    const el = container.querySelector(`.kn-block-focusable[data-block-id="${blockId}"]`);
+    if (block) {
+      block.text = '';
+      delete block.html;
+    }
+    if (el) {
+      if (el.tagName === 'TEXTAREA') el.value = '';
+      else el.innerHTML = '';
+      focusEditableWithoutScroll(el);
+    }
+    return;
+  }
+
+  const loc = findBlockLocation(blockId);
+  const nextFocusId = loc?.blocks[loc.idx - 1]?.id
+    || loc?.blocks[loc.idx + 1]?.id
+    || loc?.parent?.id
+    || edState.blocks.find(block => block.id !== blockId)?.id;
+  removeBlockById(blockId);
+  rerenderBlocks(container);
+  activeEditorBlockId = nextFocusId || null;
+  if (nextFocusId) focusBlock(nextFocusId, container, true);
 }
 
 function getFocusedBlockId(container) {
