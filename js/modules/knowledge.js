@@ -1516,18 +1516,6 @@ function wireBlocksEdit(container) {
     handleBlockKeydown(e, blockId, container);
   });
 
-  // Mobile keyboards often emit beforeinput without a reliable Enter keydown.
-  wrap.addEventListener('beforeinput', e => {
-    const el = e.target;
-    if (el.contentEditable !== 'true' || e.isComposing) return;
-    if (e.inputType !== 'insertParagraph' && e.inputType !== 'insertLineBreak') return;
-    const blockId = el.dataset.blockId;
-    if (!blockId) return;
-    e.preventDefault();
-    insertLineBreakInBlock(el);
-    syncBlockFromEditable(blockId, el);
-  });
-
   // Focus tracking for toolbar highlight
   wrap.addEventListener('focusin', e => {
     const el = e.target;
@@ -1605,10 +1593,8 @@ function renderMathPreviews(container) {
 
 function handleBlockKeydown(e, blockId, container) {
   if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
-    e.preventDefault();
+    // Keep the browser's native line break inside this editable block.
     e.stopPropagation();
-    insertLineBreakInBlock(e.target);
-    syncBlockFromEditable(blockId, e.target);
     return;
   }
 
@@ -1642,30 +1628,6 @@ function handleBlockKeydown(e, blockId, container) {
       if (prevBlock) focusBlock(prevBlock.id, container, true);
     }
   }
-}
-
-function insertLineBreakInBlock(editable) {
-  const selection = window.getSelection();
-  if (!selection?.rangeCount) return;
-  const range = selection.getRangeAt(0);
-  if (!editable.contains(range.commonAncestorContainer)) return;
-
-  range.deleteContents();
-  const lineBreak = document.createTextNode('\n');
-  range.insertNode(lineBreak);
-  if (!lineBreak.nextSibling) editable.appendChild(document.createElement('br'));
-
-  range.setStartAfter(lineBreak);
-  range.collapse(true);
-  selection.removeAllRanges();
-  selection.addRange(range);
-}
-
-function syncBlockFromEditable(blockId, editable) {
-  const block = findBlockInAllBlocks(edState.blocks, blockId);
-  if (!block) return;
-  block.text = editable.textContent;
-  block.html = sanitizeBlockHtml(editable.innerHTML);
 }
 
 function wireToolbar(container) {
@@ -2203,7 +2165,7 @@ function getBlockEditorHtml(block) {
 function sanitizeBlockHtml(html) {
   const template = document.createElement('template');
   template.innerHTML = String(html || '');
-  const allowedTags = new Set(['BR', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'SPAN', 'MARK', 'CODE', 'A', 'FONT']);
+  const allowedTags = new Set(['BR', 'DIV', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'SPAN', 'MARK', 'CODE', 'A', 'FONT']);
   const allowedStyles = new Set(['color', 'background-color']);
 
   const cleanNode = (node) => {
