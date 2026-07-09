@@ -334,6 +334,12 @@ async function handleNLInput(input, btn, container) {
       today: today(),
       categories: getCategories().map(c => c.name),
       recentTasks: getTasks().slice(-8).map(t => ({ title: t.title, dueDate: t.dueDate, tags: t.tags || [] })),
+      recentEvents: getEvents().slice(-12).map(event => ({
+        title: event.title,
+        start: event.start,
+        end: event.end || null,
+      })),
+      recentMemos: getKnowledgeMemos().slice(0, 12).map(memo => ({ title: memo.title })),
     });
 
     const title = parsed.title || text;

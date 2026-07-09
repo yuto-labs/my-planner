@@ -10,7 +10,7 @@ import {
   getKnowledgeMemoById, updateKnowledgeMemo,
 } from './storage.js';
 import { getSession } from './supabase.js';
-import { today } from './utils.js';
+import { parseJapaneseTimes, today } from './utils.js';
 
 const SERVER_STATUS_URL = '/api/ai/status';
 const SERVER_GENERATE_URL = '/api/ai/generate';
@@ -576,6 +576,7 @@ export async function interpretPlannerInput(text, context = {}) {
       'Use delete_event, delete_task, or delete_memo only when the user explicitly asks to delete an existing item. Put only the existing item name in targetTitle.',
       `The user's local date is ${localToday}, tomorrow is ${localTomorrow}, and the day after tomorrow is ${localDayAfterTomorrow}. The local time is ${localTime} (${timeZone}).`,
       'Resolve Japanese relative dates from those exact local dates. Never use UTC to shift today or tomorrow.',
+      'For Japanese clock times, an hour without 午後, 夕方, or 夜 is not PM: 10時半 means 10:30, never 22:30. 夜10時半 and 午後10時半 mean 22:30. 午前12時 means 00:00 and 午後12時 means 12:00.',
       'Dates and times must be concrete when inferable. Never return prose outside JSON.',
     ].join(' '),
     JSON.stringify({ localToday, localTomorrow, localDayAfterTomorrow, localTime, timeZone, text, context }),
@@ -589,7 +590,23 @@ export async function interpretPlannerInput(text, context = {}) {
     if (parsed.action === 'task' || parsed.action === 'delete_task') parsed.dueDate = explicitDate;
     else parsed.date = explicitDate;
   }
+  applyExplicitTimes(parsed, text);
   return parsed;
+}
+
+function applyExplicitTimes(parsed, text) {
+  const times = parseJapaneseTimes(text);
+  if (!times.length) return;
+
+  if (parsed.action === 'task' || parsed.action === 'delete_task') {
+    parsed.dueTime = times[0];
+    return;
+  }
+
+  if (['event', 'schedule', 'delete_event'].includes(parsed.action)) {
+    parsed.startTime = times[0];
+    if (times[1]) parsed.endTime = times[1];
+  }
 }
 
 function addDaysToDateString(dateString, days) {

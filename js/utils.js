@@ -40,6 +40,39 @@ export function toTimeStr(date) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
+/**
+ * Extract explicit Japanese clock times without guessing AM/PM.
+ * "10時半" => 10:30, while "夜10時半" => 22:30.
+ */
+export function parseJapaneseTimes(input) {
+  const value = String(input || '').normalize('NFKC');
+  const pattern = /(?:(午前|午後|朝|昼|夕方|夜)\s*の?\s*)?(\d{1,2})(?::(\d{1,2})|時(?:(\d{1,2})分|(半))?)/g;
+  const times = [];
+  let match;
+
+  while ((match = pattern.exec(value)) !== null) {
+    const period = match[1] || '';
+    let hour = Number(match[2]);
+    const minute = match[3] !== undefined
+      ? Number(match[3])
+      : match[4] !== undefined
+        ? Number(match[4])
+        : match[5]
+          ? 30
+          : 0;
+
+    if (!Number.isInteger(hour) || !Number.isInteger(minute) || minute < 0 || minute > 59) continue;
+
+    if (['午後', '昼', '夕方', '夜'].includes(period) && hour < 12) hour += 12;
+    if (['午前', '朝'].includes(period) && hour === 12) hour = 0;
+    if (hour < 0 || hour > 23) continue;
+
+    times.push(`${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`);
+  }
+
+  return times;
+}
+
 /** Returns value suitable for datetime-local input (in local time) */
 export function toDateTimeLocal(isoStr) {
   if (!isoStr) return '';
