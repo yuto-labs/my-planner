@@ -1281,13 +1281,57 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
         <label class="form-label">繰り返し期間</label>
         <input type="hidden" id="ev-recurring-end">
         <div class="ev-recurring-periods">
+          <button type="button" class="ev-recurring-period" data-recur-days="7">1週</button>
+          <button type="button" class="ev-recurring-period" data-recur-days="14">2週</button>
           <button type="button" class="ev-recurring-period" data-recur-days="30">1か月</button>
+          <button type="button" class="ev-recurring-period" data-recur-days="60">2か月</button>
           <button type="button" class="ev-recurring-period selected" data-recur-days="90">3か月</button>
           <button type="button" class="ev-recurring-period" data-recur-days="180">6か月</button>
+          <button type="button" class="ev-recurring-period" data-recur-days="270">9か月</button>
           <button type="button" class="ev-recurring-period" data-recur-days="365">1年</button>
         </div>
         <button class="dp-trigger dp-trigger--full" id="ev-recurring-end-btn">📅 終了日を選ぶ</button>
-        <p class="form-help">指定しない場合は3か月分作成します。長すぎる繰り返しは後から編集できます。</p>
+        <div class="ev-recurring-exclude">
+          <label class="form-label">除外する曜日</label>
+          <div class="ev-recurring-weekdays">
+              <label class="ev-recurring-weekday">
+                <input type="checkbox" value="0">
+                <span>日</span>
+              </label>
+
+              <label class="ev-recurring-weekday">
+                <input type="checkbox" value="1">
+                <span>月</span>
+              </label>
+
+              <label class="ev-recurring-weekday">
+                <input type="checkbox" value="2">
+                <span>火</span>
+              </label>
+
+              <label class="ev-recurring-weekday">
+                <input type="checkbox" value="3">
+                <span>水</span>
+              </label>
+
+              <label class="ev-recurring-weekday">
+                <input type="checkbox" value="4">
+                <span>木</span>
+              </label>
+
+              <label class="ev-recurring-weekday">
+                <input type="checkbox" value="5">
+                <span>金</span>
+              </label>
+
+              <label class="ev-recurring-weekday">
+                <input type="checkbox" value="6">
+                <span>土</span>
+              </label>
+
+          </div>
+        </div>
+        <p class="form-help">選んだ期間まで作成します。除外した曜日には繰り返し予定を作りません。</p>
       </div>
     ` : ''}
   `;
@@ -1621,9 +1665,16 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
     } else {
       const recurType = body.querySelector('#ev-recurring')?.value || '';
       const recurEndStr = body.querySelector('#ev-recurring-end')?.value || '';
+      const excludeWeekdays = [...body.querySelectorAll('.ev-recurring-weekday input:checked')]
+        .map(input => Number(input.value))
+        .filter(day => Number.isInteger(day) && day >= 0 && day <= 6);
       if (recurType) {
-        createRecurringEvents(newData, recurType, recurEndStr);
-        toast('繰り返し予定を追加しました', 'success');
+        const createdCount = createRecurringEvents(newData, recurType, recurEndStr, excludeWeekdays);
+        if (!createdCount) {
+          toast('条件に合う繰り返し予定がありません。期間か除外曜日を見直してください', 'error');
+          return;
+        }
+        toast(createdCount + '件の繰り返し予定を追加しました', 'success');
       } else {
         const created = addEvent(newData);
         appendSharedPreviewEvent(created);
@@ -1638,26 +1689,33 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
   saveBtn.onclick = () => saveEvent(false);
 }
 
-function createRecurringEvents(eventData, recurType, endDateStr) {
+function createRecurringEvents(eventData, recurType, endDateStr, excludeWeekdays = []) {
   const recurringId = generateId();
   const endDate = endDateStr ? new Date(endDateStr) : addDays(new Date(eventData.start), 90);
   const duration = eventData.end
     ? new Date(eventData.end) - new Date(eventData.start)
     : 3600000;
+  const excluded = new Set((Array.isArray(excludeWeekdays) ? excludeWeekdays : [])
+    .map(Number)
+    .filter(day => Number.isInteger(day) && day >= 0 && day <= 6));
 
   let cursor = new Date(eventData.start);
-  let count = 0;
+  let iterations = 0;
+  let created = 0;
   const MAX = 200;
 
-  while (cursor <= endDate && count < MAX) {
-    const recurringEvent = {
-      ...eventData,
-      start: cursor.toISOString(),
-      end: new Date(cursor.getTime() + duration).toISOString(),
-      recurringId,
-    };
-    addEvent(recurringEvent);
-    rememberEventTitle(recurringEvent);
+  while (cursor <= endDate && iterations < MAX) {
+    if (!excluded.has(cursor.getDay())) {
+      const recurringEvent = {
+        ...eventData,
+        start: cursor.toISOString(),
+        end: new Date(cursor.getTime() + duration).toISOString(),
+        recurringId,
+      };
+      addEvent(recurringEvent);
+      rememberEventTitle(recurringEvent);
+      created++;
+    }
 
     if (recurType === 'daily') cursor = addDays(cursor, 1);
     else if (recurType === 'weekly') cursor = addDays(cursor, 7);
@@ -1666,8 +1724,10 @@ function createRecurringEvents(eventData, recurType, endDateStr) {
         cursor.getDate(), cursor.getHours(), cursor.getMinutes());
     } else break;
 
-    count++;
+    iterations++;
   }
+
+  return created;
 }
 
 function getEventTitleSuggestions(query, excludeId = null) {

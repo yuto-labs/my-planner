@@ -5104,6 +5104,39 @@ kbd {
   background: rgba(190,230,200,0.2);
 }
 
+.ev-recurring-exclude {
+  margin-top: 10px;
+}
+.ev-recurring-weekdays {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.ev-recurring-weekday {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 6px 9px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+}
+.ev-recurring-weekday:has(input:checked) {
+  color: var(--text);
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+.ev-recurring-weekday input {
+  margin: 0;
+  accent-color: var(--danger);
+}
+
 
 /* Event form: date + time side by side */
 .ev-dt-btns {
