@@ -1267,9 +1267,9 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
       </div>
     ` : ''}
 
-    ${!isEdit ? `
+    ${(!isEdit || !event.recurringId) ? `
       <div class="form-group">
-        <label class="form-label">繰り返し</label>
+        <label class="form-label">繰り返し${isEdit ? 'にする' : ''}</label>
         <select class="select" id="ev-recurring">
           <option value="">なし</option>
           <option value="daily">毎日</option>
@@ -1418,7 +1418,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
     });
   });
 
-  if (!isEdit) {
+  if (!isEdit || !event?.recurringId) {
     const recSel = body.querySelector('#ev-recurring');
     const recEndWrap = body.querySelector('#ev-recurring-end-wrap');
     const startLabel = body.querySelector('#ev-recurring-start-label');
@@ -1630,21 +1630,38 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
 
     if (isEdit) {
       const scope = body.querySelector('[name="recurring-scope"]:checked')?.value || 'this';
-      updateEvent(event.id, newData);
-      if (scope === 'future' && event.recurringId) {
-        const allEvents = getEvents();
-        allEvents
-          .filter(e => e.recurringId === event.recurringId && e.start >= event.start && e.id !== event.id)
-          .forEach(e => {
-            const diff = new Date(newData.start) - new Date(event.start);
-            updateEvent(e.id, {
-              ...newData,
-              start: new Date(new Date(e.start).getTime() + diff).toISOString(),
-              end: newData.end ? new Date(new Date(e.end).getTime() + diff).toISOString() : null,
+      const recurType = body.querySelector('#ev-recurring')?.value || '';
+      const recurEndStr = body.querySelector('#ev-recurring-end')?.value || '';
+      const excludeWeekdays = [...body.querySelectorAll('.ev-recurring-weekday input:checked')]
+        .map(input => Number(input.value))
+        .filter(day => Number.isInteger(day) && day >= 0 && day <= 6);
+
+      if (!event.recurringId && recurType) {
+        if (!recurEndStr) {
+          toast('繰り返しの終了日を選んでください', 'error');
+          return;
+        }
+        const recurringId = generateId();
+        updateEvent(event.id, { ...newData, recurringId });
+        const createdCount = createRecurringEvents(newData, recurType, recurEndStr, excludeWeekdays, { recurringId, skipFirst: true });
+        toast((createdCount + 1) + '件の繰り返し予定にしました', 'success');
+      } else {
+        updateEvent(event.id, newData);
+        if (scope === 'future' && event.recurringId) {
+          const allEvents = getEvents();
+          allEvents
+            .filter(e => e.recurringId === event.recurringId && e.start >= event.start && e.id !== event.id)
+            .forEach(e => {
+              const diff = new Date(newData.start) - new Date(event.start);
+              updateEvent(e.id, {
+                ...newData,
+                start: new Date(new Date(e.start).getTime() + diff).toISOString(),
+                end: newData.end ? new Date(new Date(e.end).getTime() + diff).toISOString() : null,
+              });
             });
-          });
+        }
+        toast('予定を更新しました', 'success');
       }
-      toast('予定を更新しました', 'success');
     } else {
       const recurType = body.querySelector('#ev-recurring')?.value || '';
       const recurEndStr = body.querySelector('#ev-recurring-end')?.value || '';
@@ -1676,8 +1693,8 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
   saveBtn.onclick = () => saveEvent(false);
 }
 
-function createRecurringEvents(eventData, recurType, endDateStr, excludeWeekdays = []) {
-  const recurringId = generateId();
+function createRecurringEvents(eventData, recurType, endDateStr, excludeWeekdays = [], options = {}) {
+  const recurringId = options.recurringId || generateId();
   const endDate = endDateStr ? new Date(endDateStr) : addDays(new Date(eventData.start), 90);
   const duration = eventData.end
     ? new Date(eventData.end) - new Date(eventData.start)
@@ -1692,7 +1709,8 @@ function createRecurringEvents(eventData, recurType, endDateStr, excludeWeekdays
   const MAX = 200;
 
   while (cursor <= endDate && iterations < MAX) {
-    if (!excluded.has(cursor.getDay())) {
+    const isFirst = iterations === 0;
+    if (!(options.skipFirst && isFirst) && !excluded.has(cursor.getDay())) {
       const recurringEvent = {
         ...eventData,
         start: cursor.toISOString(),
