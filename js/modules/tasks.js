@@ -1,5 +1,5 @@
 ﻿// ============================================================
-// tasks.js 窶・Task management module
+// tasks.js - Task management module
 // ============================================================
 
 import {
@@ -43,6 +43,7 @@ let state = {
 };
 
 const PRESET_TAGS = ['就活', '授業', '研究', '娯楽'];
+const TASK_TAG_DEFAULTS_KEY = 'mp_task_tag_defaults';
 const TASK_HIGHLIGHT_OPTIONS = [
   { value: '', label: '通常', color: '' },
   { value: '#F5C542', label: '黄', color: '#F5C542' },
@@ -51,10 +52,28 @@ const TASK_HIGHLIGHT_OPTIONS = [
   { value: '#32D49A', label: '緑', color: '#32D49A' },
 ];
 
+function loadLastTaskTags() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(TASK_TAG_DEFAULTS_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed.filter(Boolean).map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLastTaskTags(tags) {
+  try {
+    localStorage.setItem(TASK_TAG_DEFAULTS_KEY, JSON.stringify(Array.isArray(tags) ? tags : []));
+  } catch {}
+}
+
 // ---- Public ----
 
 export function initTasks(container) {
   state.container = container;
+  if (!state.addTitle && !state.addTags.length) {
+    state.addTags = loadLastTaskTags();
+  }
   if (openPlannerHandler) window.removeEventListener('tasks:open-planner', openPlannerHandler);
   openPlannerHandler = () => {
     const shouldOpen = !state.codexPanelOpen;
@@ -893,7 +912,7 @@ function adjustTasksForOverflow(tasks, periodStart, periodEnd, activeStart, acti
     }));
   }
 
-  // Step 2: per-deadline group 窶・if tasks due by D still overflow available time up to D, scale that group down further
+  // Step 2: per-deadline group - if tasks due by D still overflow available time up to D, scale that group down further
   const groups = {};
   scaled.forEach(t => {
     const key = t.dueDate && t.dueDate <= periodEnd ? t.dueDate : '_later';
@@ -1136,6 +1155,7 @@ function handleAdd() {
   const recurrence = recurFreq ? { freq: recurFreq } : null;
   const tags       = [...state.addTags];
   const taskType   = state.addTaskType;
+  saveLastTaskTags(tags);
 
   // Clear form immediately for instant feel
   input.value = '';
@@ -1145,7 +1165,7 @@ function handleAdd() {
   state.addDueTime = null;
   state.addEstimate = null;
   state.addRecurrence = '';
-  state.addTags    = [];
+  state.addTags    = loadLastTaskTags();
   state.addTaskType = 'normal';
   state.addCustomTagOpen = false;
   // Reset type buttons
@@ -1158,13 +1178,29 @@ function handleAdd() {
   if (_tb) { _tb.textContent = '🕐 時刻'; _tb.classList.remove('dp-trigger--set'); }
   // Reset tag chips
   const _tce = c.querySelector('#add-tag-chips');
-  if (_tce) _tce.innerHTML = '';
-  c.querySelectorAll('[data-preset-tag]').forEach(btn => btn.classList.remove('active'));
+  if (_tce) {
+    _tce.innerHTML = state.addTags.map(t =>
+      `<span class="task-tag-chip">${esc(t)}<button class="tag-chip-x" data-rm="${esc(t)}">✕</button></span>`
+    ).join('');
+    _tce.querySelectorAll('[data-rm]').forEach(btn => {
+      btn.onclick = () => {
+        state.addTags = state.addTags.filter(x => x !== btn.dataset.rm);
+        saveLastTaskTags(state.addTags);
+        btn.closest('.task-tag-chip')?.remove();
+        c.querySelectorAll('[data-preset-tag]').forEach(preset => {
+          preset.classList.toggle('active', state.addTags.includes(preset.dataset.presetTag));
+        });
+      };
+    });
+  }
+  c.querySelectorAll('[data-preset-tag]').forEach(btn => {
+    btn.classList.toggle('active', state.addTags.includes(btn.dataset.presetTag));
+  });
   const _eb = c.querySelector('#task-estimate-btn');
   if (_eb) { _eb.textContent = '⏱ 工数'; _eb.classList.remove('dp-trigger--set'); }
   input.focus();
 
-  // Persist synchronously 窶・addTask returns the new task object
+  // Persist synchronously - addTask returns the new task object
   const newTask = addTask({ title, weight, dueDate, dueTime, estimatedMinutes, recurrence, tags, taskType });
 
   // 笏笏 Optimistic: insert new item into DOM without full rerender 笏笏
@@ -1752,7 +1788,3 @@ function recurrenceLabel(r) {
     default: return '';
   }
 }
-
-
-
-

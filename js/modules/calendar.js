@@ -972,7 +972,7 @@ function saveEventTitleHistory(history) {
   } catch {}
 }
 
-function rememberEventTitle({ title, start, end, updatedAt, createdAt } = {}) {
+function rememberEventTitle({ title, start, end, categoryId, updatedAt, createdAt } = {}) {
   const cleanTitle = String(title || '').trim();
   if (!cleanTitle || !start || !end) return;
   const sd = new Date(start);
@@ -985,7 +985,7 @@ function rememberEventTitle({ title, start, end, updatedAt, createdAt } = {}) {
   const key = `${cleanTitle.toLowerCase()}|${startTime}|${endTime}`;
   const latest = new Date(updatedAt || createdAt || start).getTime() || Date.now();
   const rest = loadEventTitleHistory().filter(item => item.key !== key);
-  saveEventTitleHistory([{ key, title: cleanTitle, startTime, endTime, latest, count: 1 }, ...rest]);
+  saveEventTitleHistory([{ key, title: cleanTitle, startTime, endTime, categoryId: categoryId || '', latest, count: 1 }, ...rest]);
 }
 
 function seedEventTitleHistoryFromExistingEvents() {
@@ -1013,6 +1013,7 @@ function seedEventTitleHistoryFromExistingEvents() {
       endTime,
       latest: Math.max(prev?.latest || 0, latest),
       count: (prev?.count || 0) + 1,
+      categoryId: prev?.categoryId || ev.categoryId || '',
     });
     if (!prev) changed = true;
   });
@@ -1126,6 +1127,15 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
     || options.defaultShareVisibility
     || (!isEdit && savedShareDefaults.visibility)
     || (!isEdit && selectedShareGroups.size ? 'shared_detail' : 'private');
+  const findRememberedCategoryId = (title = '') => {
+    const q = String(title || '').trim().toLowerCase();
+    if (!q) return '';
+    const exact = loadEventTitleHistory()
+      .filter(item => String(item.title || '').trim().toLowerCase() === q && item.categoryId)
+      .sort((a, b) => (b.latest || 0) - (a.latest || 0))[0];
+    return exact?.categoryId && cats.some(c => c.id === exact.categoryId) ? exact.categoryId : '';
+  };
+  const defaultCategoryId = event?.categoryId || findRememberedCategoryId(event?.title) || cats[0]?.id || '';
   const hideFromMonth = !!event?.hideFromMonth;
 
   const defStart = defaultStart || (defaultDate
@@ -1179,7 +1189,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
       <label class="form-label">カテゴリ</label>
       <div class="event-cat-select" id="ev-cat-list">
         ${cats.map(c => `
-          <button type="button" class="event-cat-btn${event?.categoryId === c.id || (!event && c.id === cats[0].id) ? ' selected' : ''}"
+          <button type="button" class="event-cat-btn${defaultCategoryId === c.id ? ' selected' : ''}"
             data-cat-id="${c.id}" style="background:${c.color}">
             ${esc(c.name)}
           </button>
@@ -1268,9 +1278,16 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
         </select>
       </div>
       <div class="form-group hidden" id="ev-recurring-end-wrap">
-        <label class="form-label">繰り返し終了日</label>
+        <label class="form-label">繰り返し期間</label>
         <input type="hidden" id="ev-recurring-end">
+        <div class="ev-recurring-periods">
+          <button type="button" class="ev-recurring-period" data-recur-days="30">1か月</button>
+          <button type="button" class="ev-recurring-period selected" data-recur-days="90">3か月</button>
+          <button type="button" class="ev-recurring-period" data-recur-days="180">6か月</button>
+          <button type="button" class="ev-recurring-period" data-recur-days="365">1年</button>
+        </div>
         <button class="dp-trigger dp-trigger--full" id="ev-recurring-end-btn">📅 終了日を選ぶ</button>
+        <p class="form-help">指定しない場合は3か月分作成します。長すぎる繰り返しは後から編集できます。</p>
       </div>
     ` : ''}
   `;
@@ -1286,6 +1303,13 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
     if (eh) eh.value = evEnd.date && evEnd.time ? `${evEnd.date}T${evEnd.time}` : '';
   };
 
+  const selectEventCategory = (categoryId) => {
+    if (!categoryId || !cats.some(c => c.id === categoryId)) return;
+    body.querySelectorAll('.event-cat-btn').forEach(b => {
+      b.classList.toggle('selected', b.dataset.catId === categoryId);
+    });
+  };
+
   const titleInput = body.querySelector('#ev-title');
   const renderTitleSuggestions = () => {
     const q = titleInput?.value.trim().toLowerCase() || '';
@@ -1298,7 +1322,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
       btn.className = 'ev-title-sugg-btn';
       btn.innerHTML = `
         <span class="ev-title-sugg-main">${esc(sugg.title)}</span>
-        <span class="ev-title-sugg-time">${esc(sugg.startTime)}-${esc(sugg.endTime)}</span>
+        <span class="ev-title-sugg-time">${esc(sugg.startTime)}-${esc(sugg.endTime)}${sugg.categoryName ? ` / ${esc(sugg.categoryName)}` : ''}</span>
       `;
       btn.onclick = () => {
         if (titleInput) titleInput.value = sugg.title;
@@ -1309,13 +1333,18 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
         const eb = body.querySelector('#ev-end-time-btn');
         if (sb) sb.textContent = '🕐 ' + sugg.startTime;
         if (eb) eb.textContent = '🕐 ' + sugg.endTime;
+        selectEventCategory(sugg.categoryId);
         _syncHidden();
         suggWrap.innerHTML = '';
       };
       suggWrap.appendChild(btn);
     });
   };
-  titleInput?.addEventListener('input', renderTitleSuggestions);
+  titleInput?.addEventListener('input', () => {
+    const rememberedCategoryId = findRememberedCategoryId(titleInput?.value);
+    if (rememberedCategoryId && !isEdit) selectEventCategory(rememberedCategoryId);
+    renderTitleSuggestions();
+  });
   titleInput?.addEventListener('focus', renderTitleSuggestions);
 
   body.querySelectorAll('.event-cat-btn').forEach(btn => {
@@ -1351,8 +1380,28 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
   if (!isEdit) {
     const recSel = body.querySelector('#ev-recurring');
     const recEndWrap = body.querySelector('#ev-recurring-end-wrap');
+    const setRecurEndByDays = (days = 90) => {
+      const baseDate = evStart.date ? new Date(`${evStart.date}T00:00:00`) : new Date();
+      const end = addDays(baseDate, Number(days) || 90);
+      evRecurEnd = toDateStr(end);
+      const hidden = body.querySelector('#ev-recurring-end');
+      if (hidden) hidden.value = evRecurEnd;
+      const btn = body.querySelector('#ev-recurring-end-btn');
+      if (btn) {
+        btn.textContent = formatPickerDate(evRecurEnd);
+        btn.classList.add('dp-trigger--set');
+      }
+    };
     recSel?.addEventListener('change', () => {
       recEndWrap.classList.toggle('hidden', !recSel.value);
+      if (recSel.value && !evRecurEnd) setRecurEndByDays(90);
+    });
+    body.querySelectorAll('[data-recur-days]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        body.querySelectorAll('[data-recur-days]').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        setRecurEndByDays(btn.dataset.recurDays);
+      });
     });
   }
 
@@ -1424,6 +1473,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
         if (b) {
           b.textContent = formatPickerDate(d);
           b.classList.add('dp-trigger--set');
+          body.querySelectorAll('[data-recur-days]').forEach(period => period.classList.remove('selected'));
         }
       },
       onClear: () => {
@@ -1627,7 +1677,7 @@ function getEventTitleSuggestions(query, excludeId = null) {
   const suggestions = new Map();
   seedEventTitleHistoryFromExistingEvents();
 
-  const addSuggestion = ({ title, startTime, endTime, latest = 0, count = 1 }) => {
+  const addSuggestion = ({ title, startTime, endTime, categoryId = '', latest = 0, count = 1 }) => {
     const cleanTitle = String(title || '').trim();
     if (!cleanTitle || !startTime || !endTime) return;
     const hay = cleanTitle.toLowerCase();
@@ -1639,6 +1689,8 @@ function getEventTitleSuggestions(query, excludeId = null) {
       startTime,
       endTime,
       count: (prev?.count || 0) + count,
+      categoryId: categoryId || prev?.categoryId || '',
+      categoryName: getCategoryById(categoryId || prev?.categoryId || '')?.name || '',
       latest: Math.max(prev?.latest || 0, latest || 0),
       score: (hay.startsWith(q) ? 1000 : 0)
         + ((prev?.count || 0) + count) * 20
@@ -1665,6 +1717,7 @@ function getEventTitleSuggestions(query, excludeId = null) {
       endTime,
       latest: updatedAt,
       count: 1,
+      categoryId: ev.categoryId || '',
     });
   });
 
@@ -1827,5 +1880,3 @@ function confirmGlobal(message, opts = {}) {
     okBtn.onclick = () => { close(); resolve(true); };
   });
 }
-
-

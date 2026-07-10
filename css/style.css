@@ -5075,6 +5075,35 @@ kbd {
   background: rgba(190,230,200,0.08);
 }
 .dp-trigger--full { width: 100%; justify-content: center; }
+.ev-recurring-periods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 8px;
+}
+.ev-recurring-period {
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition), transform var(--transition-fast);
+}
+.ev-recurring-period:hover {
+  color: var(--text);
+  border-color: var(--primary-border);
+  background: rgba(190,230,200,0.12);
+}
+.ev-recurring-period:active { transform: translateY(1px); }
+.ev-recurring-period.selected {
+  color: var(--text);
+  border-color: var(--primary);
+  background: rgba(190,230,200,0.2);
+}
+
 
 /* Event form: date + time side by side */
 .ev-dt-btns {
