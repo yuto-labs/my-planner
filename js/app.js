@@ -593,7 +593,7 @@ function applyAccentTheme(rgb, tuningInput) {
 async function init() {
   try { await refreshAiRuntimeStatus({ force: true }); } catch {}
 
-  // Supabase sync: 繝輔ャ繧ｯ繧堤匳骭ｲ縺励※襍ｷ蜍墓凾 pull
+  // Supabase sync: register hooks and pull on startup.
   try {
     initSync();
     const authResult = await handleAuthRedirect();
@@ -686,7 +686,7 @@ async function init() {
     if (h !== currentView) navigate(MODULES[h] ? h : 'home');
   });
 
-  // 繝輔か繧｢繧ｰ繝ｩ繧ｦ繝ｳ繝牙ｾｩ蟶ｰ譎ゅ↓譛譁ｰ繝・・繧ｿ繧・pull 竊・繧ｹ繧ｱ繧ｸ繝･繝ｼ繝ｫ蟾ｮ蛻・ｒ蜊ｳ蜿肴丐
+  // Pull latest data when returning to foreground so schedule differences appear quickly.
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
     try { autoArchiveTasks(); } catch {}
@@ -781,7 +781,7 @@ function setupConnectivityMonitor() {
           <path d="M24 8.98A16.88 16.88 0 0 0 12 4C7.31 4 3.07 5.9 0 8.98L12 21 24 8.98zM2.92 9.07C5.51 7.08 8.67 6 12 6s6.49 1.08 9.08 3.07L12 18.17 2.92 9.07zm0 0"/>
           <line x1="2" y1="2" x2="22" y2="22" stroke="currentColor" stroke-width="2"/>
         </svg>
-        繧ｪ繝輔Λ繧､繝ｳ
+        オフライン
       `;
       document.getElementById('app-header')?.appendChild(el);
     }
@@ -806,7 +806,7 @@ function setupConnectivityMonitor() {
           }
         }).catch(e => console.warn('[Batch] auto-process failed:', e));
       }
-      // 繧ｪ繝ｳ繝ｩ繧､繝ｳ蠕ｩ蟶ｰ譎ゅ↓ Supabase 縺九ｉ譛譁ｰ繝・・繧ｿ繧・pull
+      // Pull latest data from Supabase when coming back online.
       if (isUserEditing() || hasPendingSyncWork()) {
         deferSyncWhileEditing({ needsPull: true });
         return;
@@ -891,8 +891,8 @@ function setupFAB() {
       fab.title = 'Open AI planner';
       fab.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M7 2v2H5c-1.1 0-2 .9-2 2v13c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-2V2h-2v2H9V2H7zm12 8H5V8h14v2zm-8 3h2v2h-2v-2zm4 0h2v2h-2v-2zm-8 0h2v2H7v-2z"/></svg>';
     } else {
-      fab.setAttribute('aria-label', '霑ｽ蜉');
-      fab.title = '霑ｽ蜉';
+      fab.setAttribute('aria-label', '追加');
+      fab.title = '追加';
       fab.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" width="26" height="26"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>';
     }
   };

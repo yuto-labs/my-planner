@@ -270,7 +270,8 @@ export async function pullAll(forceReplace = false) {
 async function _pullTasks(client, userId, forceReplace = false) {
   const { data, error } = await client
     .from('tasks').select('*').eq('user_id', userId);
-  if (error || !data) return;
+  if (error) throw error;
+  if (!data) return;
 
   const remoteActive  = _filterPendingDeletes('tasks', data.filter(r => !r.archived_at).map(rowToTask));
   const remoteArchive = _filterPendingDeletes('tasks', data.filter(r =>  r.archived_at).map(rowToTask));
@@ -294,7 +295,8 @@ async function _pullEvents(client, userId, forceReplace = false) {
 async function _pullGoals(client, userId, forceReplace = false) {
   const { data, error } = await client
     .from('goals').select('*').eq('user_id', userId);
-  if (error || !data) return;
+  if (error) throw error;
+  if (!data) return;
   const remote = _filterPendingDeletes('goals', data.map(rowToGoal));
   return _writeIfChanged('mp_goals', forceReplace ? _mergeProtectedLocalItems('goals', 'mp_goals', remote) : _merge(_ls('mp_goals', []), remote));
 }
@@ -302,7 +304,8 @@ async function _pullGoals(client, userId, forceReplace = false) {
 async function _pullMemos(client, userId, forceReplace = false) {
   const { data, error } = await client
     .from('knowledge_memos').select('*').eq('user_id', userId);
-  if (error || !data) return;
+  if (error) throw error;
+  if (!data) return;
   const remote = _filterPendingDeletes('knowledge_memos', data.map(rowToMemo));
   return _writeIfChanged('mp_knowledge', forceReplace
     ? _mergeProtectedLocalItems('knowledge_memos', 'mp_knowledge', remote)
@@ -312,7 +315,8 @@ async function _pullMemos(client, userId, forceReplace = false) {
 async function _pullTrash(client, userId, forceReplace = false) {
   const { data, error } = await client
     .from('trash_items').select('*').eq('user_id', userId);
-  if (error || !data) return;
+  if (error) throw error;
+  if (!data) return;
   const remote = _filterPendingDeletes('trash_items', data.map(rowToTrash));
   return _writeIfChanged('mp_trash', forceReplace ? _mergeProtectedLocalItems('trash_items', 'mp_trash', remote) : _merge(_ls('mp_trash', []), remote));
 }
@@ -320,7 +324,8 @@ async function _pullTrash(client, userId, forceReplace = false) {
 async function _pullSchedule(client, userId, forceReplace = false) {
   const { data, error } = await client
     .from('schedule_items').select('*').eq('user_id', userId);
-  if (error || !data) return;
+  if (error) throw error;
+  if (!data) return;
   const remote = _filterPendingDeletes('schedule_items', data.map(rowToSchedItem));
   return _writeIfChanged('mp_schedule', forceReplace
     ? _mergeProtectedLocalItems('schedule_items', 'mp_schedule', remote)
@@ -330,7 +335,8 @@ async function _pullSchedule(client, userId, forceReplace = false) {
 async function _pullTags(client, userId, forceReplace = false) {
   const { data, error } = await client
     .from('tags').select('name').eq('user_id', userId);
-  if (error || !data) return;
+  if (error) throw error;
+  if (!data) return;
   const remoteTags = _filterPendingTagDeletes(data.map(r => r.name));
   const localTags  = _ls('mp_tags', []);
   const merged = forceReplace
@@ -342,7 +348,8 @@ async function _pullTags(client, userId, forceReplace = false) {
 async function _pullReviewSchedule(client, userId, forceReplace = false) {
   const { data, error } = await client
     .from('review_schedule').select('*').eq('user_id', userId);
-  if (error || !data) return;
+  if (error) throw error;
+  if (!data) return;
   const remote = Object.fromEntries(data.map(rowToReviewEntry));
   const local = _ls('mp_reviews', {});
   return _writeIfChanged('mp_reviews', _mergeReviewSchedules(local, remote, forceReplace));

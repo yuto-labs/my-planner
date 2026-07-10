@@ -228,7 +228,7 @@ function render() {
   container.innerHTML = `
     <!-- Toolbar: title + mode tabs -->
     <div class="cal-toolbar">
-      <button class="cal-nav-arrow" id="cal-prev-btn" aria-label="蜑阪∈">&#8249;</button>
+      <button class="cal-nav-arrow" id="cal-prev-btn" aria-label="前へ">&#8249;</button>
       <div class="cal-title-wrap">
         <button class="cal-title" id="cal-title-btn">${getViewTitle()}</button>
       </div>
@@ -1695,20 +1695,47 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
 
 function createRecurringEvents(eventData, recurType, endDateStr, excludeWeekdays = [], options = {}) {
   const recurringId = options.recurringId || generateId();
+  const startDate = new Date(eventData.start);
   const endDate = endDateStr ? new Date(`${endDateStr}T23:59:59.999`) : addDays(new Date(eventData.start), 90);
   const duration = eventData.end
-    ? new Date(eventData.end) - new Date(eventData.start)
+    ? new Date(eventData.end) - startDate
     : 3600000;
   const excluded = new Set((Array.isArray(excludeWeekdays) ? excludeWeekdays : [])
     .map(Number)
     .filter(day => Number.isInteger(day) && day >= 0 && day <= 6));
 
-  let cursor = new Date(eventData.start);
+  const lastDayOfMonth = (year, month) => new Date(year, month + 1, 0).getDate();
+  const addMonthsClamped = (monthOffset) => {
+    const targetMonthIndex = startDate.getMonth() + monthOffset;
+    const targetYear = startDate.getFullYear() + Math.floor(targetMonthIndex / 12);
+    const targetMonth = ((targetMonthIndex % 12) + 12) % 12;
+    return new Date(
+      targetYear,
+      targetMonth,
+      Math.min(startDate.getDate(), lastDayOfMonth(targetYear, targetMonth)),
+      startDate.getHours(),
+      startDate.getMinutes(),
+      startDate.getSeconds(),
+      startDate.getMilliseconds()
+    );
+  };
+  const estimateIterations = () => {
+    const ms = Math.max(0, endDate - startDate);
+    if (recurType === 'daily') return Math.ceil(ms / 86400000) + 2;
+    if (recurType === 'weekly') return Math.ceil(ms / (86400000 * 7)) + 2;
+    if (recurType === 'monthly') {
+      const months = (endDate.getFullYear() - startDate.getFullYear()) * 12 + (endDate.getMonth() - startDate.getMonth());
+      return Math.max(1, months + 2);
+    }
+    return 1;
+  };
+
+  let cursor = new Date(startDate);
   let iterations = 0;
   let created = 0;
-  const MAX = 200;
+  const maxIterations = Math.min(Math.max(estimateIterations(), 1), 5000);
 
-  while (cursor <= endDate && iterations < MAX) {
+  while (cursor <= endDate && iterations < maxIterations) {
     const isFirst = iterations === 0;
     if (!(options.skipFirst && isFirst) && !excluded.has(cursor.getDay())) {
       const recurringEvent = {
@@ -1725,8 +1752,7 @@ function createRecurringEvents(eventData, recurType, endDateStr, excludeWeekdays
     if (recurType === 'daily') cursor = addDays(cursor, 1);
     else if (recurType === 'weekly') cursor = addDays(cursor, 7);
     else if (recurType === 'monthly') {
-      cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1,
-        cursor.getDate(), cursor.getHours(), cursor.getMinutes());
+      cursor = addMonthsClamped(iterations + 1);
     } else break;
 
     iterations++;

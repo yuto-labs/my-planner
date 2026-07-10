@@ -6,27 +6,6 @@
 -- ================================================================
 -- MIGRATIONS (既存DBへの追加列 — 新規セットアップ時は不要)
 -- ================================================================
-alter table tasks          add column if not exists task_type         text    default 'normal';
-alter table tasks          add column if not exists estimated_minutes integer;
-alter table tasks          add column if not exists highlight_color   text;
-alter table tasks          add column if not exists abandoned         boolean default false;
-alter table tasks          add column if not exists abandoned_at      timestamptz;
-alter table schedule_items add column if not exists source            text;
-alter table schedule_items add column if not exists task_id           text;
-alter table schedule_items add column if not exists note              text    default '';
-alter table events         add column if not exists memo              text    default '';
-alter table events         add column if not exists share_visibility  text    not null default 'private';
-alter table events         add column if not exists shared_group_ids  text[]  not null default '{}';
-
-do $$
-begin
-  if not exists (select 1 from pg_constraint where conname = 'events_share_visibility_check') then
-    alter table events
-      add constraint events_share_visibility_check
-      check (share_visibility in ('private', 'shared_busy', 'shared_detail'));
-  end if;
-end $$;
-
 -- ================================================================
 -- TASKS (アクティブ + アーカイブ両方を格納 / archived_at で区別)
 -- ================================================================
@@ -537,6 +516,32 @@ create policy "schedule_items: own data only" on schedule_items
   for all using (user_id = auth.uid());
 
 -- ================================================================
+-- SAFE MIGRATIONS
+-- Keep this block after the base tables so the schema can be run on
+-- both a fresh Supabase project and an existing one.
+-- ================================================================
+alter table tasks          add column if not exists task_type         text    default 'normal';
+alter table tasks          add column if not exists estimated_minutes integer;
+alter table tasks          add column if not exists highlight_color   text;
+alter table tasks          add column if not exists abandoned         boolean default false;
+alter table tasks          add column if not exists abandoned_at      timestamptz;
+alter table schedule_items add column if not exists source            text;
+alter table schedule_items add column if not exists task_id           text;
+alter table schedule_items add column if not exists note              text    default '';
+alter table events         add column if not exists memo              text    default '';
+alter table events         add column if not exists share_visibility  text    not null default 'private';
+alter table events         add column if not exists shared_group_ids  text[]  not null default '{}';
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'events_share_visibility_check') then
+    alter table events
+      add constraint events_share_visibility_check
+      check (share_visibility in ('private', 'shared_busy', 'shared_detail'));
+  end if;
+end $$;
+
+-- ================================================================
 -- TAGS (グローバルタグリスト)
 -- ================================================================
 create table if not exists tags (
@@ -623,11 +628,12 @@ as $$
 declare
   v_user_id uuid := auth.uid();
   v_cost integer := greatest(1, least(coalesce(p_cost, 1), 20));
-  v_day_start timestamptz := date_trunc('day', now());
+  v_day_start timestamptz := (date_trunc('day', now() at time zone 'Asia/Tokyo') at time zone 'Asia/Tokyo');
   v_minute_start timestamptz := now() - interval '1 minute';
   v_user_used integer := 0;
   v_app_used integer := 0;
   v_minute_used integer := 0;
+  v_event_id uuid;
 begin
   if v_user_id is null then
     return jsonb_build_object('ok', false, 'reason', 'not_authenticated', 'message', 'AIを使うにはログインしてください。');
@@ -685,10 +691,12 @@ begin
   end if;
 
   insert into ai_usage_events (user_id, action_type, cost)
-  values (v_user_id, coalesce(nullif(left(p_action_type, 60), ''), 'ai_request'), v_cost);
+  values (v_user_id, coalesce(nullif(left(p_action_type, 60), ''), 'ai_request'), v_cost)
+  returning id into v_event_id;
 
   return jsonb_build_object(
     'ok', true,
+    'claimId', v_event_id,
     'cost', v_cost,
     'userUsedToday', v_user_used + v_cost,
     'userDailyLimit', p_user_daily_limit,
@@ -699,3 +707,32 @@ end;
 $$;
 
 grant execute on function claim_ai_usage(integer, text, integer, integer, integer) to authenticated;
+
+drop function if exists refund_ai_usage(uuid);
+
+create or replace function refund_ai_usage(
+  p_claim_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_deleted integer := 0;
+begin
+  if v_user_id is null then
+    return jsonb_build_object('ok', false, 'reason', 'not_authenticated');
+  end if;
+
+  delete from ai_usage_events
+    where id = p_claim_id
+      and user_id = v_user_id;
+
+  get diagnostics v_deleted = row_count;
+  return jsonb_build_object('ok', true, 'refunded', v_deleted);
+end;
+$$;
+
+grant execute on function refund_ai_usage(uuid) to authenticated;

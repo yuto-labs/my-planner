@@ -53,13 +53,19 @@ const ACTION_COSTS = {
   batch_tags: 5,
 };
 
-function todayLocalStr() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+function todayJstStr() {
+  const parts = new Intl.DateTimeFormat('en', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.filter(p => p.type !== 'literal').map(p => [p.type, p.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 function withUsageDate(usage) {
-  return usage ? { ...usage, usageDate: usage.usageDate || todayLocalStr() } : null;
+  return usage ? { ...usage, usageDate: usage.usageDate || todayJstStr() } : null;
 }
 
 function getBearerToken(req) {
@@ -139,6 +145,25 @@ async function claimUsage(token, body) {
   return data;
 }
 
+async function refundUsage(token, usage) {
+  const claimId = usage?.claimId;
+  if (!claimId) return;
+  const cfg = getSupabaseConfig();
+  try {
+    await fetch(`${cfg.url}/rest/v1/rpc/refund_ai_usage`, {
+      method: 'POST',
+      headers: {
+        apikey: cfg.anonKey,
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ p_claim_id: claimId }),
+    });
+  } catch {
+    // Usage refund is best-effort; the user-facing error should stay about AI.
+  }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
 
@@ -193,6 +218,7 @@ export default async function handler(req, res) {
   try {
     let { upstream, data } = await requestGemini(key, model, payload);
     if (!upstream.ok) {
+      await refundUsage(token, usage);
       const msg = data?.error?.message || `Gemini upstream error ${upstream.status}`;
       res.status(upstream.status).json({ error: msg });
       return;
@@ -210,6 +236,7 @@ export default async function handler(req, res) {
       };
       ({ upstream, data } = await requestGemini(key, model, retryPayload));
       if (!upstream.ok) {
+        await refundUsage(token, usage);
         const msg = data?.error?.message || `Gemini upstream error ${upstream.status}`;
         res.status(upstream.status).json({ error: msg });
         return;
@@ -218,6 +245,7 @@ export default async function handler(req, res) {
     }
 
     if (!text) {
+      await refundUsage(token, usage);
       const blockReason = data?.promptFeedback?.blockReason;
       res.status(502).json({ error: blockReason ? `Gemini blocked the request: ${blockReason}` : 'Gemini returned an empty response.' });
       return;
@@ -225,6 +253,7 @@ export default async function handler(req, res) {
 
     res.status(200).json({ text, model, usage });
   } catch (error) {
+    await refundUsage(token, usage);
     res.status(500).json({ error: error?.message || 'Gemini request failed.' });
   }
 }
