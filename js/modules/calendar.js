@@ -1280,17 +1280,14 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
       <div class="form-group hidden" id="ev-recurring-end-wrap">
         <label class="form-label">繰り返し期間</label>
         <input type="hidden" id="ev-recurring-end">
-        <div class="ev-recurring-periods">
-          <button type="button" class="ev-recurring-period" data-recur-days="7">1週</button>
-          <button type="button" class="ev-recurring-period" data-recur-days="14">2週</button>
-          <button type="button" class="ev-recurring-period" data-recur-days="30">1か月</button>
-          <button type="button" class="ev-recurring-period" data-recur-days="60">2か月</button>
-          <button type="button" class="ev-recurring-period selected" data-recur-days="90">3か月</button>
-          <button type="button" class="ev-recurring-period" data-recur-days="180">6か月</button>
-          <button type="button" class="ev-recurring-period" data-recur-days="270">9か月</button>
-          <button type="button" class="ev-recurring-period" data-recur-days="365">1年</button>
+        <div class="ev-recurring-range">
+          <div class="ev-recurring-range-side">
+            <span class="ev-recurring-range-label">開始</span>
+            <strong id="ev-recurring-start-label">${formatPickerDate(evStart.date)}</strong>
+          </div>
+          <div class="ev-recurring-range-arrow">→</div>
+          <button class="dp-trigger dp-trigger--full ev-recurring-end-trigger" id="ev-recurring-end-btn">終了日を選ぶ</button>
         </div>
-        <button class="dp-trigger dp-trigger--full" id="ev-recurring-end-btn">📅 終了日を選ぶ</button>
         <div class="ev-recurring-exclude">
           <label class="form-label">除外する曜日</label>
           <div class="ev-recurring-weekdays">
@@ -1424,28 +1421,13 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
   if (!isEdit) {
     const recSel = body.querySelector('#ev-recurring');
     const recEndWrap = body.querySelector('#ev-recurring-end-wrap');
-    const setRecurEndByDays = (days = 90) => {
-      const baseDate = evStart.date ? new Date(`${evStart.date}T00:00:00`) : new Date();
-      const end = addDays(baseDate, Number(days) || 90);
-      evRecurEnd = toDateStr(end);
-      const hidden = body.querySelector('#ev-recurring-end');
-      if (hidden) hidden.value = evRecurEnd;
-      const btn = body.querySelector('#ev-recurring-end-btn');
-      if (btn) {
-        btn.textContent = formatPickerDate(evRecurEnd);
-        btn.classList.add('dp-trigger--set');
-      }
+    const startLabel = body.querySelector('#ev-recurring-start-label');
+    const refreshRecurringStartLabel = () => {
+      if (startLabel) startLabel.textContent = evStart.date ? formatPickerDate(evStart.date) : '開始日未設定';
     };
     recSel?.addEventListener('change', () => {
       recEndWrap.classList.toggle('hidden', !recSel.value);
-      if (recSel.value && !evRecurEnd) setRecurEndByDays(90);
-    });
-    body.querySelectorAll('[data-recur-days]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        body.querySelectorAll('[data-recur-days]').forEach(b => b.classList.remove('selected'));
-        btn.classList.add('selected');
-        setRecurEndByDays(btn.dataset.recurDays);
-      });
+      refreshRecurringStartLabel();
     });
   }
 
@@ -1456,6 +1438,8 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
         evStart.date = d;
         const b = body.querySelector('#ev-start-date-btn');
         if (b) b.textContent = formatPickerDate(d);
+        const recurStart = body.querySelector('#ev-recurring-start-label');
+        if (recurStart) recurStart.textContent = formatPickerDate(d);
         _syncHidden();
       },
     });
@@ -1517,7 +1501,6 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
         if (b) {
           b.textContent = formatPickerDate(d);
           b.classList.add('dp-trigger--set');
-          body.querySelectorAll('[data-recur-days]').forEach(period => period.classList.remove('selected'));
         }
       },
       onClear: () => {
@@ -1525,7 +1508,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
         body.querySelector('#ev-recurring-end').value = '';
         const b = body.querySelector('#ev-recurring-end-btn');
         if (b) {
-          b.textContent = '📅 終了日を選ぶ';
+          b.textContent = '終了日を選ぶ';
           b.classList.remove('dp-trigger--set');
         }
       },
@@ -1669,6 +1652,10 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
         .map(input => Number(input.value))
         .filter(day => Number.isInteger(day) && day >= 0 && day <= 6);
       if (recurType) {
+        if (!recurEndStr) {
+          toast('繰り返しの終了日を選んでください', 'error');
+          return;
+        }
         const createdCount = createRecurringEvents(newData, recurType, recurEndStr, excludeWeekdays);
         if (!createdCount) {
           toast('条件に合う繰り返し予定がありません。期間か除外曜日を見直してください', 'error');

@@ -5075,35 +5075,43 @@ kbd {
   background: rgba(190,230,200,0.08);
 }
 .dp-trigger--full { width: 100%; justify-content: center; }
-.ev-recurring-periods {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 6px 0 8px;
+.ev-recurring-range {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.2fr);
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 10px;
 }
-.ev-recurring-period {
+.ev-recurring-range-side {
   border: 1px solid var(--border);
   background: var(--bg-elevated);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  min-width: 0;
+}
+.ev-recurring-range-label {
+  display: block;
   color: var(--text-muted);
-  border-radius: 999px;
-  padding: 6px 10px;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
-  cursor: pointer;
-  transition: background var(--transition), border-color var(--transition), color var(--transition), transform var(--transition-fast);
+  letter-spacing: 0.06em;
+  margin-bottom: 2px;
 }
-.ev-recurring-period:hover {
+.ev-recurring-range-side strong {
+  display: block;
   color: var(--text);
-  border-color: var(--primary-border);
-  background: rgba(190,230,200,0.12);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.ev-recurring-period:active { transform: translateY(1px); }
-.ev-recurring-period.selected {
-  color: var(--text);
-  border-color: var(--primary);
-  background: rgba(190,230,200,0.2);
+.ev-recurring-range-arrow {
+  color: var(--text-muted);
+  font-weight: 800;
 }
-
+.ev-recurring-end-trigger {
+  min-height: 42px;
+}
 .ev-recurring-exclude {
   margin-top: 10px;
 }
