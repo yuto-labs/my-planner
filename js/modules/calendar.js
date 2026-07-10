@@ -1493,7 +1493,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
 
   body.querySelector('#ev-recurring-end-btn')?.addEventListener('click', () => {
     openDatePicker({
-      value: evRecurEnd || null,
+      value: evRecurEnd || evStart.date || null,
       onConfirm: d => {
         evRecurEnd = d;
         body.querySelector('#ev-recurring-end').value = d;
@@ -1695,7 +1695,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
 
 function createRecurringEvents(eventData, recurType, endDateStr, excludeWeekdays = [], options = {}) {
   const recurringId = options.recurringId || generateId();
-  const endDate = endDateStr ? new Date(endDateStr) : addDays(new Date(eventData.start), 90);
+  const endDate = endDateStr ? new Date(`${endDateStr}T23:59:59.999`) : addDays(new Date(eventData.start), 90);
   const duration = eventData.end
     ? new Date(eventData.end) - new Date(eventData.start)
     : 3600000;
