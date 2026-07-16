@@ -321,7 +321,7 @@ export async function collectSharedCalendarEvents(groupId = '') {
       .neq('share_visibility', 'private')
       .overlaps('shared_group_ids', groupIds);
     data = fallback.data;
-    error = fallback.error || rpcError;
+    error = fallback.error;
   }
 
   if (error || !data) return { groups, events: [], userId, error };

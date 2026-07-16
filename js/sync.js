@@ -80,6 +80,7 @@ const DELETE_TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const RECENT_UPSERT_KEY = 'mp_sync_recent_upserts';
 const SYNC_STATUS_KEY = 'mp_sync_status';
 const RECENT_UPSERT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const RECENT_WRITE_WINDOW_MS = 2 * 60 * 1000;
 const PUSH_RETRY_MS = 2500;
 let _realtimeChannel = null;
 let _realtimeUserId = null;
@@ -186,7 +187,16 @@ async function _pushTable(tableKey) {
   const sourceItems = tableKey === 'review_schedule' ? Object.entries(localData) : localData;
   if (!sourceItems.length) return;
 
-  const rows = sourceItems.map(item => toRow(item, userId));
+  const recentIds = new Set(
+    _getRecentUpserts()
+      .filter(entry => entry.table === tableKey && entry.id)
+      .map(entry => entry.id)
+  );
+  const dirtyItems = recentIds.size && tableKey !== 'review_schedule'
+    ? sourceItems.filter(item => item?.id && recentIds.has(item.id))
+    : sourceItems;
+  if (!dirtyItems.length) return true;
+  const rows = dirtyItems.map(item => toRow(item, userId));
   const { error } = await _upsertRowsCompat(client, dbTable, rows, conflict);
 
   if (error) {
@@ -401,22 +411,24 @@ function _scheduleDelete(payload) {
     if (!client || !userId) return;
 
     try {
+      let result = null;
       if (payload.table === 'tags' && payload.name) {
-        await client.from('tags')
+        result = await client.from('tags')
           .delete()
           .eq('user_id', userId)
           .eq('name', payload.name);
       } else if (payload.table === 'review_schedule' && payload.id) {
-        await client.from('review_schedule')
+        result = await client.from('review_schedule')
           .delete()
           .eq('memo_id', payload.id)
           .eq('user_id', userId);
       } else if (payload.id) {
-        await client.from(payload.table)
+        result = await client.from(payload.table)
           .delete()
           .eq('id', payload.id)
           .eq('user_id', userId);
       }
+      if (result?.error) throw result.error;
       _clearPendingDelete(payload);
     } catch (e) {
       console.warn(`[Sync] delete ${payload.table} failed:`, e);
@@ -540,7 +552,7 @@ function _saveRecentUpserts(entries) {
 function _markRecentUpserts(tableKey) {
   const entries = _getRecentUpserts();
   const expiresAt = Date.now() + RECENT_UPSERT_TTL_MS;
-  const threshold = Date.now() - RECENT_UPSERT_TTL_MS;
+  const threshold = Date.now() - RECENT_WRITE_WINDOW_MS;
 
   if (tableKey === 'tags') {
     const names = _ls('mp_tags', []);

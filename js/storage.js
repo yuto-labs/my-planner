@@ -36,6 +36,10 @@ const USER_CONTENT_KEYS = [
   TAGS_KEY_SAFE(),
   HABITS_KEY_SAFE(),
   HABIT_DONE_KEY_SAFE(),
+  'mp_shared_calendar_groups',
+  'mp_calendar_share_defaults',
+  'mp_calendar_event_title_history',
+  'mp_task_tag_defaults',
 ];
 
 function SCHED_KEY_SAFE() { return 'mp_schedule'; }
@@ -159,6 +163,10 @@ export function saveTasks(tasks) { save(KEY.TASKS, tasks); _notifySync('tasks');
 
 export function addTask(task) {
   const tasks = getTasks();
+  const nextSortOrder = tasks.reduce((max, item) => {
+    const value = Number(item?.sortOrder);
+    return Number.isFinite(value) ? Math.max(max, value) : max;
+  }, -1) + 1;
   const newTask = {
     title: '',
     weight: 'medium',
@@ -175,6 +183,7 @@ export function addTask(task) {
     memo: '',         // free-form text memo
     tags: [],         // string array
     highlightColor: null,
+    sortOrder: nextSortOrder,
     ...task,
     id: task.id || generateId(),
     createdAt: new Date().toISOString(),
@@ -204,8 +213,22 @@ export function updateTask(id, updates) {
   if (updates.completed === true && !prev.completed && prev.recurrence) {
     const nextDue = calcNextDueDate(prev.dueDate, prev.recurrence);
     if (nextDue) {
+      const seriesId = prev.recurrence.seriesId || prev.id;
+      const nextRecurrence = {
+        ...prev.recurrence,
+        seriesId,
+        spawnedFromId: prev.id,
+      };
+      const alreadyCreated = tasks.some(task =>
+        task.id !== prev.id
+        && !task.completed
+        && task.dueDate === nextDue
+        && (task.recurrence?.seriesId || task.id) === seriesId
+      );
       const { id: _id, createdAt: _c, updatedAt: _u, completedAt: _ca, completed: _co, ...rest } = prev;
-      addTask({ ...rest, dueDate: nextDue, completed: false, completedAt: null });
+      if (!alreadyCreated) {
+        addTask({ ...rest, recurrence: nextRecurrence, dueDate: nextDue, completed: false, completedAt: null });
+      }
     }
   }
 
@@ -222,7 +245,11 @@ export function deleteTask(id) {
 
 /** 完了済みタスクを一括削除 */
 export function deleteCompletedTasks() {
-  saveTasks(getTasks().filter(t => !t.completed));
+  const tasks = getTasks();
+  const completed = tasks.filter(task => task.completed);
+  completed.forEach(task => addTrashItem({ entityType: 'task', payload: task, title: task.title }));
+  saveTasks(tasks.filter(task => !task.completed));
+  completed.forEach(task => _notifyDelete({ table: 'tasks', id: task.id }));
 }
 
 /** タスクの順序を変更（ドラッグ&ドロップ用）*/
@@ -233,13 +260,20 @@ export function reorderTask(draggedId, targetId) {
   if (from < 0 || to < 0 || from === to) return;
   const [moved] = tasks.splice(from, 1);
   tasks.splice(to, 0, moved);
+  const now = new Date().toISOString();
+  tasks.forEach((task, index) => {
+    task.sortOrder = index;
+    task.updatedAt = now;
+  });
   saveTasks(tasks);
 }
 
 /** 繰り返しタスクの次の日付を計算 */
 function calcNextDueDate(currentDueDate, recurrence) {
   if (!recurrence || !recurrence.freq) return null;
-  const base = currentDueDate ? new Date(currentDueDate) : new Date();
+  const base = currentDueDate
+    ? new Date(`${currentDueDate}T00:00:00`)
+    : new Date();
   const next = new Date(base);
   switch (recurrence.freq) {
     case 'daily':    next.setDate(next.getDate() + 1); break;
@@ -249,7 +283,14 @@ function calcNextDueDate(currentDueDate, recurrence) {
       break;
     }
     case 'weekly':   next.setDate(next.getDate() + 7); break;
-    case 'monthly':  next.setMonth(next.getMonth() + 1); break;
+    case 'monthly': {
+      const day = next.getDate();
+      next.setDate(1);
+      next.setMonth(next.getMonth() + 1);
+      const lastDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+      next.setDate(Math.min(day, lastDay));
+      break;
+    }
     default: return null;
   }
   return toDateStr_simple(next);
@@ -1068,6 +1109,20 @@ export function applyUndo() {
     removeTrashItemByEntity('task', action.task.id);
   } else if (action.type === 'complete_task') {
     updateTask(action.taskId, { completed: action.wasCompleted, completedAt: action.completedAt ?? null });
+    if (!action.wasCompleted) {
+      const completedAt = new Date(action.completedAt || 0).getTime();
+      const spawned = getTasks().filter(task => {
+        const createdAt = new Date(task.createdAt || 0).getTime();
+        return !task.completed
+          && task.recurrence?.spawnedFromId === action.taskId
+          && (!Number.isFinite(completedAt) || createdAt >= completedAt);
+      });
+      if (spawned.length) {
+        const spawnedIds = new Set(spawned.map(task => task.id));
+        saveTasks(getTasks().filter(task => !spawnedIds.has(task.id)));
+        spawned.forEach(task => _notifyDelete({ table: 'tasks', id: task.id }));
+      }
+    }
     removeFocusLogsAfter(action.taskId, action.completedAt);
   } else if (action.type === 'delete_event') {
     const events = getEvents();

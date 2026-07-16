@@ -15,7 +15,10 @@ import { initTasks }    from './modules/tasks.js';
 import { initGoals }    from './modules/goals.js';
 import { initSettings, initAISettings } from './modules/settings.js';
 import { initToday }    from './modules/today.js';
-import { initKnowledge, initKnowledgeDetail, openKnowledgeMemo, backFromKnowledgeDetail } from './modules/knowledge.js';
+import {
+  initKnowledge, initKnowledgeDetail, openKnowledgeMemo, backFromKnowledgeDetail,
+  hasUnsavedKnowledgeChanges, confirmDiscardKnowledgeChanges,
+} from './modules/knowledge.js';
 import { initReview } from './modules/review.js';
 import { initKnowledgeGraph } from './modules/knowledge-graph.js';
 import { initAnalytics } from './modules/analytics.js';
@@ -93,9 +96,7 @@ function hasUnsavedDraft() {
     if (document.getElementById('task-estimate-btn')?.classList.contains('dp-trigger--set')) return true;
   }
 
-  if (currentView === 'knowledge-detail' && document.querySelector('.kn-edit-page')) {
-    return true;
-  }
+  if (currentView === 'knowledge-detail' && hasUnsavedKnowledgeChanges()) return true;
 
   if (currentView === 'calendar' && (hasOpenModal() || hasOpenDatePicker() || hasOpenCalendarSheet())) {
     return true;
@@ -127,7 +128,8 @@ function flushDeferredSyncWork() {
   if (shouldPull) {
     getSession().then(session => {
       if (!session) return;
-      pullAll(true).then(pulled => {
+      pullAll(true).then(async pulled => {
+        await startRealtimeSync();
         if (pulled && shouldRefresh) refreshCurrentView({ preserveScroll: true });
       }).catch(() => {});
     }).catch(() => {});
@@ -178,6 +180,12 @@ function setupEditActivityGuard() {
     markUserEditing();
     scheduleDeferredSyncWork();
   });
+
+  window.addEventListener('beforeunload', e => {
+    if (!hasUnsavedKnowledgeChanges()) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
 }
 
 // ---- Navigation ----
@@ -185,6 +193,14 @@ function setupEditActivityGuard() {
 export function navigate(view, options = {}) {
   if (!MODULES[view]) view = 'home';
   if (view === currentView) return;
+  if (currentView === 'knowledge-detail'
+    && !options.skipUnsavedGuard
+    && !confirmDiscardKnowledgeChanges()) {
+    if (window.location.hash !== `#${currentView}`) {
+      window.history.replaceState(null, '', `#${currentView}`);
+    }
+    return false;
+  }
   const preserveScroll = !!options.preserveScroll;
 
   // Cleanup previous module
@@ -235,6 +251,7 @@ export function navigate(view, options = {}) {
     main.style.scrollBehavior = '';
   });
   document.dispatchEvent(new CustomEvent('appNavigated', { detail: { view } }));
+  return true;
 }
 
 export function refreshCurrentView(options = {}) {
@@ -609,13 +626,15 @@ async function init() {
         deferSyncWhileEditing({ needsPull: true });
       } else {
         (async () => {
-          const pulledFirst = await pullAll(true);
-          if (!pulledFirst && !await isMigratedForCurrentUser()) {
+          const alreadyMigrated = await isMigratedForCurrentUser();
+          const pulledFirst = await pullAll(alreadyMigrated);
+          let pulledAfterMigration = false;
+          if (!alreadyMigrated) {
             await migrateToSupabase(() => {});
-            await pullAll(true);
+            pulledAfterMigration = await pullAll(true);
           }
           await startRealtimeSync();
-          return pulledFirst;
+          return pulledFirst || pulledAfterMigration;
         })().then(pulled => {
           if (!pulled || !currentView) return;
           refreshCurrentView();

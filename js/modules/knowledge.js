@@ -19,7 +19,7 @@ import {
 } from '../ai.js';
 import { esc, generateId, today, formatDate, fmtDays, daysSince } from '../utils.js';
 
-const nav       = (view) => window.AppNav?.navigate(view);
+const nav       = (view, options = {}) => window.AppNav?.navigate(view, options);
 const toast     = (msg, type) => window.AppNav?.showToast(msg, type);
 const undoToast = (msg, cb)   => window.AppNav?.showUndoToast(msg, cb);
 
@@ -30,6 +30,7 @@ const undoToast = (msg, cb)   => window.AppNav?.showUndoToast(msg, cb);
 let currentMemoId  = null;  // null = new memo
 let pendingNewOpts = null;  // { tags:[], content:'' }
 let activeEditorBlockId = null;
+let editorBaseline = '';
 
 // ---- Navigation history for swipe-back ----
 let _knHistory           = [];  // [{memoId: string|null, scrollTop: number}]
@@ -57,12 +58,13 @@ export function openKnowledgeMemo(id) {
 }
 
 export function backFromKnowledgeDetail() {
+  if (!confirmDiscardKnowledgeChanges()) return;
   const prev = _knHistory.pop();
   if (!prev || prev.memoId === null) {
     _pendingListScrollTop = prev?.scrollTop || 0;
     _pendingListAnchorId = prev?.anchorId || null;
     _backFromDetail = true;
-    window.AppNav?.navigate('knowledge', { preserveScroll: true });
+    window.AppNav?.navigate('knowledge', { preserveScroll: true, skipUnsavedGuard: true });
   } else {
     currentMemoId = prev.memoId;
     _pendingDetailScrollTop = prev.scrollTop || 0;
@@ -70,6 +72,29 @@ export function backFromKnowledgeDetail() {
     if (main?.dataset.view === 'knowledge-detail') initKnowledgeDetail(main);
     else nav('knowledge-detail');
   }
+}
+
+function editorSnapshot() {
+  return JSON.stringify({
+    title: edState.title,
+    blocks: edState.blocks,
+    tags: edState.tags,
+    url: edState.url,
+    starred: edState.starred,
+  });
+}
+
+function markEditorBaseline() {
+  editorBaseline = editorSnapshot();
+}
+
+export function hasUnsavedKnowledgeChanges() {
+  return !!edState?.isEdit && editorSnapshot() !== editorBaseline;
+}
+
+export function confirmDiscardKnowledgeChanges() {
+  return !hasUnsavedKnowledgeChanges()
+    || window.confirm('未保存の変更があります。破棄して移動しますか？');
 }
 
 const knBack = backFromKnowledgeDetail;
@@ -105,6 +130,15 @@ const BLOCK_COLORS = [
   { id: 'orange',  label: '橙',         css: '#F5C542'        },
   { id: 'blue',    label: '青',         css: '#60A5FA'        },
   { id: 'muted',   label: '薄字',       css: 'var(--text-muted)' },
+];
+
+const HIGHLIGHT_COLORS = [
+  { id: 'clear',  label: 'マーカーを解除', css: 'transparent' },
+  { id: 'yellow', label: '黄色',           css: '#F5C542' },
+  { id: 'green',  label: '緑',             css: '#8FD0A6' },
+  { id: 'blue',   label: '水色',           css: '#8EC5FF' },
+  { id: 'pink',   label: 'ピンク',         css: '#F5A3C7' },
+  { id: 'purple', label: '紫',             css: '#C9A7F5' },
 ];
 
 const TEMPLATES = {
@@ -711,6 +745,7 @@ export function initKnowledgeDetail(container) {
       starred: !!memo.starred,
       isEdit:  false,
     };
+    activeEditorBlockId = null;
   } else {
     // New memo
     const tpl = pendingNewOpts?.templateKey ? TEMPLATES[pendingNewOpts.templateKey] : null;
@@ -723,8 +758,11 @@ export function initKnowledgeDetail(container) {
       starred: false,
       isEdit:  true, // new memo starts in edit mode
     };
+    activeEditorBlockId = edState.blocks[0]?.id || null;
     pendingNewOpts = null;
   }
+
+  markEditorBaseline();
 
   renderDetail(container);
 
@@ -738,6 +776,7 @@ export function initKnowledgeDetail(container) {
   return () => {
     cleanupSwipe?.();
     if (_detailGestureCleanup === cleanupSwipe) _detailGestureCleanup = null;
+    document.body.classList.remove('knowledge-editor-open');
   };
 }
 
@@ -878,8 +917,10 @@ function renderDetail(container, options = {}) {
   if (titleEl) titleEl.textContent = isEdit ? (id ? 'メモを編集' : '新規メモ') : (title || '無題のメモ');
 
   if (isEdit) {
+    document.body.classList.add('knowledge-editor-open');
     renderEditMode(container);
   } else {
+    document.body.classList.remove('knowledge-editor-open');
     renderViewMode(container);
   }
 
@@ -1021,6 +1062,8 @@ function renderViewMode(container) {
 
   // Wire controls
   container.querySelector('#kn-edit-btn')?.addEventListener('click', () => {
+    activeEditorBlockId = edState.blocks[0]?.id || null;
+    markEditorBaseline();
     edState.isEdit = true;
     renderDetail(container, { preserveScroll: true });
   });
@@ -1058,17 +1101,14 @@ function renderViewMode(container) {
     window.AppNav?.showToast(`ステージを Lv.${e.target.value} に変更しました`, 'success');
   });
 
-  // Wire toggle blocks
-  container.querySelectorAll('.kn-block-toggle-arrow').forEach(arrow => {
-    arrow.addEventListener('click', () => {
-      const blockEl = arrow.closest('[data-view-block-id]');
-      const blockId = blockEl?.dataset.viewBlockId;
-      if (!blockId) return;
-      const block = findBlockById(edState.blocks, blockId);
-      if (block) {
-        block.collapsed = !block.collapsed;
-        renderDetail(container, { preserveScroll: true });
-      }
+  // Toggle rows are clickable in view mode. Nested toggles use the same lookup.
+  container.querySelectorAll('[data-view-toggle-id]').forEach(row => {
+    row.addEventListener('click', e => {
+      if (e.target.closest('a')) return;
+      const block = findBlockInAllBlocks(edState.blocks, row.dataset.viewToggleId);
+      if (!block) return;
+      block.collapsed = !block.collapsed;
+      renderDetail(container, { preserveScroll: true });
     });
   });
 
@@ -1117,11 +1157,14 @@ function renderBlockView(block, numCounter = 0, indent = 0) {
   const inlineText = getBlockRichHtml(block);
 
   if (block.type === 'toggle') {
-    const collapsed = !!block.collapsed;
     const children = block.children || [];
+    const collapsed = block.collapsed ?? !children.length;
     return `
-      <div class="kn-view-toggle${collapsed ? ' collapsed' : ''}" ${id}>
-        <span class="kn-block-toggle-arrow">${collapsed ? '▶' : '▼'}</span>
+      <div class="kn-view-toggle${collapsed ? ' collapsed' : ''}" ${id}
+        data-view-toggle-id="${esc(block.id || '')}">
+        <button type="button" class="kn-block-toggle-arrow"
+          aria-label="${collapsed ? 'トグルを開く' : 'トグルを閉じる'}"
+          aria-expanded="${String(!collapsed)}">${collapsed ? '▶' : '▼'}</button>
         <span class="kn-view-toggle-text" ${style}>${inlineText || '<span style="color:var(--text-dim)">トグル</span>'}</span>
       </div>
       ${collapsed ? '' : `<div class="kn-view-toggle-children">${renderBlocksView(children, indent + 1)}</div>`}
@@ -1304,17 +1347,22 @@ function renderEditMode(container) {
           <button class="kn-toolbar-btn" data-inline-command="italic" title="斜体"><em>I</em></button>
           <button class="kn-toolbar-btn" data-inline-command="underline" title="下線"><u>U</u></button>
           <button class="kn-toolbar-btn" data-inline-command="strikeThrough" title="取り消し線"><s>S</s></button>
-          <button class="kn-toolbar-btn kn-toolbar-mark-btn" data-inline-command="highlight" title="マーカー">MARK</button>
+          <button class="kn-toolbar-btn kn-toolbar-mark-btn" id="kn-highlight-btn"
+            title="マーカー色" aria-expanded="false">MARK</button>
         </div>
         <button class="kn-toolbar-btn kn-toolbar-color-btn" id="kn-color-btn" title="文字色">🎨</button>
+        <button type="button" class="kn-toolbar-block-menu-btn" id="kn-block-actions-toggle"
+          aria-label="ブロック操作" aria-expanded="false" title="ブロック操作">•••</button>
         <div class="kn-toolbar-block-actions" aria-label="ブロック操作">
           <button type="button" class="kn-toolbar-block-btn" data-toolbar-block-action="up" title="上へ" aria-label="上へ移動">↑</button>
           <button type="button" class="kn-toolbar-block-btn" data-toolbar-block-action="down" title="下へ" aria-label="下へ移動">↓</button>
-          <button type="button" class="kn-toolbar-block-btn" data-toolbar-block-action="indent" title="トグルの中へ" aria-label="内側へ移動">→</button>
+          <button type="button" class="kn-toolbar-block-btn" data-toolbar-block-action="indent" title="トグル内へ移動" aria-label="トグル内へ移動">→</button>
           <button type="button" class="kn-toolbar-block-btn" data-toolbar-block-action="outdent" title="外へ" aria-label="外側へ移動">←</button>
           <button type="button" class="kn-toolbar-block-btn kn-toolbar-block-btn--danger" data-toolbar-block-action="delete" title="削除" aria-label="ブロックを削除">×</button>
         </div>
       </div>
+
+      <div class="kn-toggle-target-picker hidden" id="kn-toggle-target-picker" aria-label="移動先トグル"></div>
 
       <!-- Color picker (hidden by default) -->
       <div class="kn-color-picker hidden" id="kn-color-picker">
@@ -1327,19 +1375,30 @@ function renderEditMode(container) {
 
       <!-- Blocks -->
       <div class="kn-blocks-wrap" id="kn-blocks-wrap">
-        ${blocks.map((b, i) => renderBlockEdit(b, i)).join('')}
+        ${renderBlocksEdit(blocks)}
       </div>
 
-      <!-- Add block -->
+      <div class="kn-color-picker kn-highlight-picker hidden" id="kn-highlight-picker" aria-label="マーカー色">
+        <span class="kn-color-picker-label">マーカー</span>
+        ${HIGHLIGHT_COLORS.map(c => `
+          <button class="kn-color-swatch kn-highlight-swatch${c.id === 'clear' ? ' kn-highlight-swatch--clear' : ''}"
+            data-highlight-id="${esc(c.id)}" title="${esc(c.label)}" aria-label="${esc(c.label)}"
+            style="--swatch-color:${c.css}">
+          </button>
+        `).join('')}
+      </div>
+
+      <!-- Add one block below the active block -->
       <button class="kn-add-block-btn" id="kn-add-block-btn">
         <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-        ブロックを追加
+        下にブロックを追加
       </button>
     </div>
   `;
 
   // Wire top actions
   container.querySelector('#kn-cancel-btn')?.addEventListener('click', () => {
+    if (!confirmDiscardKnowledgeChanges()) return;
     if (id) {
       edState.isEdit = false;
       // Reload from storage to discard changes
@@ -1348,9 +1407,11 @@ function renderEditMode(container) {
         edState = { ...edState, title: memo.title, blocks: deepClone(memo.blocks || [defaultBlock()]),
           tags: [...(memo.tags || [])], url: memo.url || '', starred: !!memo.starred, isEdit: false };
       }
+      activeEditorBlockId = null;
+      markEditorBaseline();
       renderDetail(container, { preserveScroll: true });
     } else {
-      nav('knowledge');
+      nav('knowledge', { skipUnsavedGuard: true });
     }
   });
 
@@ -1380,9 +1441,11 @@ function renderEditMode(container) {
 
   // Wire add block button
   container.querySelector('#kn-add-block-btn')?.addEventListener('click', () => {
-    edState.blocks.push(defaultBlock());
+    const focusedBlockId = resolveActiveEditorBlockId(container);
+    const inserted = focusedBlockId ? insertBlockAfter(focusedBlockId) : null;
+    if (!inserted) edState.blocks.push(defaultBlock());
     rerenderBlocks(container);
-    focusLastBlock(container);
+    focusBlock(inserted?.id || edState.blocks[edState.blocks.length - 1]?.id, container);
   });
 
   // Paste detection for long text
@@ -1394,10 +1457,24 @@ function renderEditMode(container) {
   });
 }
 
-function renderBlockEdit(block, idx) {
+function renderBlocksEdit(blocks) {
+  let listNumber = 0;
+  return blocks.map((block, idx) => {
+    listNumber = block.type === 'numbered' ? listNumber + 1 : 0;
+    return renderBlockEdit(block, idx, listNumber);
+  }).join('');
+}
+
+function renderBlockEdit(block, idx, listNumber = 0) {
   const colorStyle = block.color ? `style="color:${block.color}"` : '';
   const typeClass  = `kn-block--${block.type}`;
+  const toggleCollapsed = block.type === 'toggle'
+    ? (block.collapsed ?? !(block.children?.length))
+    : false;
   const insertRow = renderBlockInsertRow(block.id);
+  const dragHandle = `
+    <button type="button" class="kn-block-drag-handle" data-drag-block-id="${esc(block.id)}"
+      title="掴んで移動" aria-label="ブロックを掴んで移動">⠿</button>`;
   const controls = `
     <div class="kn-block-controls">
       <button type="button" class="kn-block-move" data-block-action="up" data-block-id="${esc(block.id)}" title="上へ" aria-label="上へ移動">↑</button>
@@ -1409,8 +1486,13 @@ function renderBlockEdit(block, idx) {
 
   if (block.type === 'divider') {
     return `
-      <div class="kn-block kn-block--divider" data-block-id="${esc(block.id)}">
+      <div class="kn-block kn-block--divider${block.id === activeEditorBlockId ? ' kn-block--active' : ''}"
+        data-block-id="${esc(block.id)}" tabindex="0" role="separator"
+        aria-label="区切り線。選択後、ブロック操作から移動または削除できます">
+        ${dragHandle}
         <hr class="kn-view-divider">
+        <button type="button" class="kn-divider-delete" data-del-id="${esc(block.id)}"
+          title="区切り線を削除" aria-label="区切り線を削除">×</button>
         ${controls}
       </div>
       ${insertRow}`;
@@ -1418,7 +1500,8 @@ function renderBlockEdit(block, idx) {
 
   if (block.type === 'math') {
     return `
-      <div class="kn-block kn-block--math" data-block-id="${esc(block.id)}">
+      <div class="kn-block kn-block--math${block.id === activeEditorBlockId ? ' kn-block--active' : ''}" data-block-id="${esc(block.id)}">
+        ${dragHandle}
         <div class="kn-block-math-label">∑ KaTeX</div>
         <textarea class="kn-block-math-input kn-block-focusable" data-block-id="${esc(block.id)}"
           placeholder="数式を入力 (例: E=mc^2, \frac{a}{b})">${esc(block.text)}</textarea>
@@ -1441,21 +1524,24 @@ function renderBlockEdit(block, idx) {
 
   const prefix = {
     bullet:   '<span class="kn-block-prefix">•</span>',
-    numbered: `<span class="kn-block-prefix">${idx + 1}.</span>`,
+    numbered: `<span class="kn-block-prefix">${listNumber || 1}.</span>`,
     quote:    '<span class="kn-block-prefix kn-block-prefix--quote">❝</span>',
-    toggle:   '<span class="kn-block-prefix kn-block-prefix--toggle">▶</span>',
+    toggle:   `<button type="button" class="kn-block-prefix kn-block-prefix--toggle kn-toggle-edit-btn"
+      data-toggle-edit-id="${esc(block.id)}" aria-label="${toggleCollapsed ? 'トグルを開く' : 'トグルを閉じる'}"
+      aria-expanded="${String(!toggleCollapsed)}">${toggleCollapsed ? '▶' : '▼'}</button>`,
   }[block.type] || '';
 
   return `
-    <div class="kn-block ${typeClass}" data-block-id="${esc(block.id)}">
+    <div class="kn-block ${typeClass}${block.id === activeEditorBlockId ? ' kn-block--active' : ''}" data-block-id="${esc(block.id)}">
+      ${dragHandle}
       ${prefix}
       <div class="kn-block-text kn-block-focusable" contenteditable="true"
         data-block-id="${esc(block.id)}"
         data-placeholder="${esc(placeholder)}"
         ${colorStyle}>${getBlockEditorHtml(block)}</div>
-      ${block.type === 'toggle' && block.children?.length ? `
+      ${block.type === 'toggle' && !toggleCollapsed && block.children?.length ? `
         <div class="kn-block-toggle-children-edit">
-          ${(block.children || []).map((c, ci) => renderBlockEdit(c, ci)).join('')}
+          ${renderBlocksEdit(block.children || [])}
         </div>` : ''}
       ${controls}
     </div>
@@ -1463,12 +1549,8 @@ function renderBlockEdit(block, idx) {
 }
 
 function renderBlockInsertRow(blockId) {
-  const id = esc(blockId);
-  return `
-    <div class="kn-block-insert-row" data-insert-after="${id}">
-      <button type="button" class="kn-block-insert-btn" data-insert-block-type="paragraph"
-        data-insert-after="${id}" title="ここにブロックを追加" aria-label="ここにブロックを追加">＋</button>
-    </div>`;
+  // One add control is enough. Per-row buttons were easy to leave behind after a block was removed.
+  return '';
 }
 
 function renderBlockTypeOptions(currentType) {
@@ -1485,6 +1567,7 @@ function wireBlocksEdit(container) {
     return;
   }
   wrap.dataset.wired = '1';
+  wireBlockDrag(container, wrap);
 
   // Sync text on input
   wrap.addEventListener('input', e => {
@@ -1531,6 +1614,15 @@ function wireBlocksEdit(container) {
     const blockId = el.dataset.blockId;
     if (!blockId) return;
     e.preventDefault();
+    const block = findBlockInAllBlocks(edState.blocks, blockId);
+    if (block?.type === 'toggle') {
+      openToggleForEditing(blockId, container);
+      return;
+    }
+    if (block?.type === 'bullet' || block?.type === 'numbered') {
+      continueListFromBlock(blockId, container, el);
+      return;
+    }
     insertBlockLineBreak(el);
     syncEditableBlock(blockId, el);
   });
@@ -1541,12 +1633,29 @@ function wireBlocksEdit(container) {
     const blockId = el.dataset.blockId;
     if (!blockId) return;
     activeEditorBlockId = blockId;
+    wrap.querySelectorAll('.kn-block--active').forEach(blockEl => blockEl.classList.remove('kn-block--active'));
+    el.closest('.kn-block')?.classList.add('kn-block--active');
     const block = findBlockInAllBlocks(edState.blocks, blockId);
     if (block) highlightToolbarType(container, block.type);
   });
 
   // Delete buttons
   wrap.addEventListener('click', e => {
+    const selectedBlock = e.target.closest('.kn-block[data-block-id]');
+    if (selectedBlock) {
+      activeEditorBlockId = selectedBlock.dataset.blockId;
+      wrap.querySelectorAll('.kn-block--active').forEach(blockEl => blockEl.classList.remove('kn-block--active'));
+      selectedBlock.classList.add('kn-block--active');
+      const selected = findBlockInAllBlocks(edState.blocks, activeEditorBlockId);
+      if (selected) highlightToolbarType(container, selected.type);
+    }
+
+    const toggleBtn = e.target.closest('[data-toggle-edit-id]');
+    if (toggleBtn) {
+      toggleEditorBlock(toggleBtn.dataset.toggleEditId, container);
+      return;
+    }
+
     const insertBtn = e.target.closest('[data-insert-block-type]');
     if (insertBtn) {
       const afterId = insertBtn.dataset.insertAfter;
@@ -1562,6 +1671,10 @@ function wireBlocksEdit(container) {
     const moveBtn = e.target.closest('[data-block-action]');
     if (moveBtn) {
       const blockId = moveBtn.dataset.blockId;
+      if (moveBtn.dataset.blockAction === 'indent') {
+        showToggleTargetPicker(container, blockId);
+        return;
+      }
       const scrollOwner = document.getElementById('main-content');
       const scrollTop = scrollOwner?.scrollTop || 0;
       if (moveBlock(blockId, moveBtn.dataset.blockAction)) {
@@ -1578,6 +1691,135 @@ function wireBlocksEdit(container) {
   });
 
   renderMathPreviews(container);
+}
+
+function wireBlockDrag(container, wrap) {
+  let dragState = null;
+  const clearIndicators = () => {
+    wrap.querySelectorAll('.kn-block--drop-before, .kn-block--drop-after, .kn-block--drop-inside')
+      .forEach(el => el.classList.remove('kn-block--drop-before', 'kn-block--drop-after', 'kn-block--drop-inside'));
+  };
+  const finishDrag = (cancelled = false) => {
+    if (!dragState) return;
+    const state = dragState;
+    dragState = null;
+    clearIndicators();
+    document.body.classList.remove('kn-block-drag-active');
+    wrap.querySelector(`[data-block-id="${state.blockId}"]`)?.classList.remove('kn-block--dragging');
+
+    if (!cancelled && state.dragging && state.targetId && state.placement) {
+      if (moveBlockByDrop(state.blockId, state.targetId, state.placement)) {
+        activeEditorBlockId = state.blockId;
+        rerenderBlocks(container);
+      }
+      return;
+    }
+
+    if (!state.dragging) {
+      activeEditorBlockId = state.blockId;
+      wrap.querySelectorAll('.kn-block--active').forEach(el => el.classList.remove('kn-block--active'));
+      const blockEl = wrap.querySelector(`[data-block-id="${state.blockId}"]`);
+      blockEl?.classList.add('kn-block--active');
+      const block = findBlockInAllBlocks(edState.blocks, state.blockId);
+      if (block) highlightToolbarType(container, block.type);
+    }
+  };
+
+  wrap.addEventListener('pointerdown', e => {
+    const handle = e.target.closest('[data-drag-block-id]');
+    if (!handle || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    const blockId = handle.dataset.dragBlockId;
+    const movingBlock = findBlockInAllBlocks(edState.blocks, blockId);
+    if (!movingBlock) return;
+    dragState = {
+      blockId,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      dragging: false,
+      targetId: null,
+      placement: null,
+      blockedIds: collectBlockIds(movingBlock),
+    };
+    activeEditorBlockId = blockId;
+    handle.setPointerCapture?.(e.pointerId);
+  });
+
+  wrap.addEventListener('pointermove', e => {
+    if (!dragState || dragState.pointerId !== e.pointerId) return;
+    const distance = Math.hypot(e.clientX - dragState.startX, e.clientY - dragState.startY);
+    if (!dragState.dragging && distance < 6) return;
+    if (!dragState.dragging) {
+      dragState.dragging = true;
+      document.body.classList.add('kn-block-drag-active');
+      wrap.querySelector(`[data-block-id="${dragState.blockId}"]`)?.classList.add('kn-block--dragging');
+    }
+    e.preventDefault();
+    clearIndicators();
+
+    const hit = document.elementFromPoint(e.clientX, e.clientY);
+    const targetEl = hit?.closest?.('.kn-block[data-block-id]');
+    const targetId = targetEl?.dataset.blockId;
+    if (!targetEl || !targetId || dragState.blockedIds.has(targetId)) {
+      dragState.targetId = null;
+      dragState.placement = null;
+      return;
+    }
+
+    const placement = resolveBlockDropPlacement(targetEl, e.clientX, e.clientY);
+    dragState.targetId = targetId;
+    dragState.placement = placement;
+    targetEl.classList.add(`kn-block--drop-${placement}`);
+
+    const scrollOwner = document.getElementById('main-content');
+    if (scrollOwner) {
+      if (e.clientY < 92) scrollOwner.scrollTop -= 14;
+      else if (e.clientY > window.innerHeight - 92) scrollOwner.scrollTop += 14;
+    }
+  });
+
+  wrap.addEventListener('pointerup', e => {
+    if (!dragState || dragState.pointerId !== e.pointerId) return;
+    finishDrag(false);
+  });
+  wrap.addEventListener('pointercancel', () => finishDrag(true));
+
+  wrap.addEventListener('keydown', e => {
+    const handle = e.target.closest('[data-drag-block-id]');
+    if (!handle) return;
+    const blockId = handle.dataset.dragBlockId;
+    const action = {
+      ArrowUp: 'up',
+      ArrowDown: 'down',
+      ArrowLeft: 'outdent',
+    }[e.key];
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      showToggleTargetPicker(container, blockId);
+      return;
+    }
+    if (!action) return;
+    e.preventDefault();
+    if (!moveBlock(blockId, action)) return;
+    activeEditorBlockId = blockId;
+    rerenderBlocks(container);
+    requestAnimationFrame(() => container.querySelector(`[data-drag-block-id="${blockId}"]`)?.focus());
+  });
+}
+
+function resolveBlockDropPlacement(targetEl, clientX, clientY) {
+  const targetId = targetEl.dataset.blockId;
+  const target = findBlockInAllBlocks(edState.blocks, targetId);
+  const titleEl = [...targetEl.children].find(el => el.classList?.contains('kn-block-text'));
+  const rect = (titleEl || targetEl).getBoundingClientRect();
+  const inset = Math.min(8, rect.height * 0.22);
+  if (target?.type === 'toggle'
+    && clientX >= rect.left - 4
+    && clientY >= rect.top + inset
+    && clientY <= rect.bottom - inset) {
+    return 'inside';
+  }
+  return clientY < rect.top + rect.height / 2 ? 'before' : 'after';
 }
 
 function renderMathPreviews(container) {
@@ -1598,6 +1840,17 @@ function handleBlockKeydown(e, blockId, container) {
   if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
     e.preventDefault();
     e.stopPropagation();
+    const block = findBlockInAllBlocks(edState.blocks, blockId);
+    if (block?.type === 'toggle' && !e.shiftKey) {
+      openToggleForEditing(blockId, container);
+      return;
+    }
+    if (!e.shiftKey) {
+      if (block?.type === 'bullet' || block?.type === 'numbered') {
+        continueListFromBlock(blockId, container, e.target);
+        return;
+      }
+    }
     insertBlockLineBreak(e.target);
     syncEditableBlock(blockId, e.target);
     return;
@@ -1635,6 +1888,91 @@ function handleBlockKeydown(e, blockId, container) {
   }
 }
 
+function openToggleForEditing(blockId, container) {
+  syncFocusedEditableBlock(container, blockId);
+  const block = findBlockInAllBlocks(edState.blocks, blockId);
+  if (!block || block.type !== 'toggle') return;
+  block.children = block.children || [];
+  if (!block.children.length) block.children.push(defaultBlock());
+  block.collapsed = false;
+  const childId = block.children[0].id;
+  rerenderBlocks(container);
+  focusBlock(childId, container);
+}
+
+function toggleEditorBlock(blockId, container) {
+  syncFocusedEditableBlock(container, blockId);
+  const block = findBlockInAllBlocks(edState.blocks, blockId);
+  if (!block || block.type !== 'toggle') return;
+
+  if (!block.collapsed && block.children?.length) {
+    block.collapsed = true;
+    rerenderBlocks(container);
+    focusBlock(blockId, container, true);
+    return;
+  }
+
+  openToggleForEditing(blockId, container);
+}
+
+function splitEditableAtCaret(editable) {
+  const selection = window.getSelection();
+  if (!editable || !selection?.rangeCount) return null;
+  const caret = selection.getRangeAt(0).cloneRange();
+  if (!editable.contains(caret.commonAncestorContainer)) return null;
+  if (!caret.collapsed) {
+    caret.deleteContents();
+    caret.collapse(true);
+  }
+
+  const extract = range => {
+    const holder = document.createElement('div');
+    holder.appendChild(range.cloneContents());
+    return {
+      text: holder.textContent.replace(/\u200B/g, ''),
+      html: sanitizeBlockHtml(holder.innerHTML).replace(/\u200B/g, ''),
+    };
+  };
+  const beforeRange = document.createRange();
+  beforeRange.selectNodeContents(editable);
+  beforeRange.setEnd(caret.startContainer, caret.startOffset);
+  const afterRange = document.createRange();
+  afterRange.selectNodeContents(editable);
+  afterRange.setStart(caret.startContainer, caret.startOffset);
+  return { before: extract(beforeRange), after: extract(afterRange) };
+}
+
+function continueListFromBlock(blockId, container, editable = null) {
+  syncFocusedEditableBlock(container, blockId);
+  const loc = findBlockLocation(blockId);
+  if (!loc) return;
+  const currentBlock = loc.blocks[loc.idx];
+  if (!currentBlock) return;
+
+  // Enter on an empty list item finishes that list item, like ordinary note editors.
+  if (!(currentBlock.text || '').trim()) {
+    currentBlock.type = 'paragraph';
+    rerenderBlocks(container);
+    focusBlock(blockId, container);
+    return;
+  }
+
+  const split = splitEditableAtCaret(editable);
+  if (split) {
+    currentBlock.text = split.before.text;
+    currentBlock.html = split.before.html;
+  }
+
+  const nextBlock = insertBlockAfter(blockId, currentBlock.type);
+  if (!nextBlock) return;
+  if (split) {
+    nextBlock.text = split.after.text;
+    nextBlock.html = split.after.html;
+  }
+  rerenderBlocks(container);
+  focusBlock(nextBlock.id, container);
+}
+
 function insertBlockLineBreak(editable) {
   if (document.execCommand?.('insertLineBreak', false, null)) return;
 
@@ -1663,10 +2001,29 @@ function syncEditableBlock(blockId, editable) {
 }
 
 function wireToolbar(container) {
+  let savedHighlightSelection = null;
+  const blockMenuToggle = container.querySelector('#kn-block-actions-toggle');
+  const blockMenu = container.querySelector('.kn-toolbar-block-actions');
+  const closeBlockMenu = () => {
+    blockMenu?.classList.remove('is-open');
+    blockMenuToggle?.setAttribute('aria-expanded', 'false');
+  };
+  blockMenuToggle?.addEventListener('click', e => {
+    e.stopPropagation();
+    const isOpen = blockMenu?.classList.toggle('is-open');
+    blockMenuToggle.setAttribute('aria-expanded', String(!!isOpen));
+  });
+  container.querySelector('.kn-edit-page')?.addEventListener('click', e => {
+    if (!e.target.closest('#kn-block-actions-toggle, .kn-toolbar-block-actions')) closeBlockMenu();
+    if (!e.target.closest('#kn-toggle-target-picker, [data-block-action="indent"], [data-toolbar-block-action="indent"]')) {
+      container.querySelector('#kn-toggle-target-picker')?.classList.add('hidden');
+    }
+  });
+
   const typeSelect = container.querySelector('#kn-toolbar-type-select');
   typeSelect?.addEventListener('change', () => {
     const type = typeSelect.value || 'paragraph';
-    const focusedBlockId = getFocusedBlockId(container) || activeEditorBlockId;
+    const focusedBlockId = resolveActiveEditorBlockId(container);
     if (focusedBlockId) {
       changeBlockType(focusedBlockId, type, container);
       return;
@@ -1678,11 +2035,16 @@ function wireToolbar(container) {
 
   container.querySelectorAll('[data-toolbar-block-action]').forEach(btn => {
     btn.addEventListener('click', () => {
-      const blockId = getFocusedBlockId(container) || activeEditorBlockId;
+      const blockId = resolveActiveEditorBlockId(container);
       if (!blockId) return;
       const action = btn.dataset.toolbarBlockAction;
+      closeBlockMenu();
       if (action === 'delete') {
         deleteEditorBlock(blockId, container);
+        return;
+      }
+      if (action === 'indent') {
+        showToggleTargetPicker(container, blockId);
         return;
       }
 
@@ -1701,12 +2063,7 @@ function wireToolbar(container) {
       const focusedBlockId = getFocusedBlockId(container);
       if (!focusedBlockId) return;
       const command = btn.dataset.inlineCommand;
-      if (command === 'highlight') {
-        const ok = document.execCommand?.('hiliteColor', false, '#F5C542');
-        if (!ok) document.execCommand?.('backColor', false, '#F5C542');
-      } else {
-        document.execCommand?.(command, false, null);
-      }
+      document.execCommand?.(command, false, null);
       syncFocusedEditableBlock(container, focusedBlockId);
       focusEditableWithoutScroll(container.querySelector(`.kn-block-focusable[data-block-id="${focusedBlockId}"]`));
     });
@@ -1718,6 +2075,65 @@ function wireToolbar(container) {
   colorBtn?.addEventListener('click', () => {
     const picker = container.querySelector('#kn-color-picker');
     picker?.classList.toggle('hidden');
+    container.querySelector('#kn-highlight-picker')?.classList.add('hidden');
+    container.querySelector('#kn-highlight-btn')?.setAttribute('aria-expanded', 'false');
+  });
+
+  const highlightBtn = container.querySelector('#kn-highlight-btn');
+  highlightBtn?.addEventListener('mousedown', e => {
+    const focusedBlockId = getFocusedBlockId(container);
+    const active = focusedBlockId
+      ? container.querySelector(`.kn-block-focusable[data-block-id="${focusedBlockId}"]:focus`)
+      : null;
+    const selection = window.getSelection();
+    if (active && selection?.rangeCount && !selection.isCollapsed
+      && active.contains(selection.anchorNode) && active.contains(selection.focusNode)) {
+      savedHighlightSelection = {
+        blockId: focusedBlockId,
+        range: selection.getRangeAt(0).cloneRange(),
+      };
+    } else {
+      savedHighlightSelection = null;
+    }
+    e.preventDefault();
+  });
+  highlightBtn?.addEventListener('click', () => {
+    const picker = container.querySelector('#kn-highlight-picker');
+    const willOpen = picker?.classList.contains('hidden');
+    picker?.classList.toggle('hidden');
+    highlightBtn.setAttribute('aria-expanded', String(!!willOpen));
+    container.querySelector('#kn-color-picker')?.classList.add('hidden');
+  });
+
+  container.querySelectorAll('[data-highlight-id]').forEach(swatch => {
+    swatch.addEventListener('mousedown', e => e.preventDefault());
+    swatch.addEventListener('click', () => {
+      const color = HIGHLIGHT_COLORS.find(item => item.id === swatch.dataset.highlightId);
+      const focusedBlockId = savedHighlightSelection?.blockId || getFocusedBlockId(container);
+      const active = focusedBlockId
+        ? container.querySelector(`.kn-block-focusable[data-block-id="${focusedBlockId}"]`)
+        : null;
+      const selection = window.getSelection();
+      if (active && savedHighlightSelection?.range) {
+        selection?.removeAllRanges();
+        selection?.addRange(savedHighlightSelection.range);
+      }
+      const hasSelectedText = active && selection?.rangeCount && !selection.isCollapsed
+        && active.contains(selection.anchorNode) && active.contains(selection.focusNode);
+
+      if (!color || !hasSelectedText) {
+        toast('マーカーを付ける文字を選択してください', 'info');
+      } else {
+        const ok = document.execCommand?.('hiliteColor', false, color.css);
+        if (!ok) document.execCommand?.('backColor', false, color.css);
+        syncFocusedEditableBlock(container, focusedBlockId);
+        focusEditableWithoutScroll(active);
+      }
+
+      container.querySelector('#kn-highlight-picker')?.classList.add('hidden');
+      highlightBtn?.setAttribute('aria-expanded', 'false');
+      savedHighlightSelection = null;
+    });
   });
 
   // Color swatches
@@ -1750,22 +2166,24 @@ function wireToolbar(container) {
 
 function deleteEditorBlock(blockId, container) {
   if (!blockId) return;
-  if (edState.blocks.length <= 1) {
-    const block = findBlockInAllBlocks(edState.blocks, blockId);
-    const el = container.querySelector(`.kn-block-focusable[data-block-id="${blockId}"]`);
+  const loc = findBlockLocation(blockId);
+  if (!loc) return;
+  if (!loc.parent && edState.blocks.length <= 1) {
+    const block = loc.blocks[loc.idx];
     if (block) {
+      block.type = 'paragraph';
       block.text = '';
+      block.color = null;
       delete block.html;
+      delete block.children;
     }
-    if (el) {
-      if (el.tagName === 'TEXTAREA') el.value = '';
-      else el.innerHTML = '';
-      focusEditableWithoutScroll(el);
-    }
+    activeEditorBlockId = blockId;
+    rerenderBlocks(container);
+    highlightToolbarType(container, 'paragraph');
+    focusBlock(blockId, container);
     return;
   }
 
-  const loc = findBlockLocation(blockId);
   const nextFocusId = loc?.blocks[loc.idx - 1]?.id
     || loc?.blocks[loc.idx + 1]?.id
     || loc?.parent?.id
@@ -1781,17 +2199,45 @@ function getFocusedBlockId(container) {
   return el?.dataset.blockId || null;
 }
 
+function resolveActiveEditorBlockId(container) {
+  const candidate = getFocusedBlockId(container) || activeEditorBlockId;
+  if (candidate && findBlockInAllBlocks(edState.blocks, candidate)) return candidate;
+  activeEditorBlockId = edState.blocks[0]?.id || null;
+  return activeEditorBlockId;
+}
+
 function highlightToolbarType(container, type) {
   const select = container.querySelector('#kn-toolbar-type-select');
   if (select) select.value = type;
 }
 
 function changeBlockType(blockId, type, container) {
-  const block = findBlockInAllBlocks(edState.blocks, blockId);
-  if (!block) return;
+  const loc = findBlockLocation(blockId);
+  const block = loc?.blocks[loc.idx];
+  if (!block || !loc) return;
+  if (type === 'divider') {
+    const divider = insertBlockAfter(blockId, 'divider');
+    if (!divider) return;
+    activeEditorBlockId = divider.id;
+    rerenderBlocks(container);
+    focusBlock(divider.id, container);
+    return;
+  }
+  const releasedChildren = block.type === 'toggle' && type !== 'toggle'
+    ? [...(block.children || [])]
+    : [];
+
   block.type = type;
-  if (type === 'toggle') block.children = block.children || [];
-  if (type !== 'toggle') delete block.children;
+  if (type === 'toggle') {
+    block.children = block.children || [];
+    block.collapsed = block.collapsed ?? block.children.length === 0;
+  } else {
+    delete block.children;
+    delete block.collapsed;
+    if (releasedChildren.length) {
+      loc.blocks.splice(loc.idx + 1, 0, ...releasedChildren);
+    }
+  }
   rerenderBlocks(container);
   focusBlock(blockId, container, true);
 }
@@ -1823,6 +2269,116 @@ function findBlockLocation(blockId, blocks = edState.blocks, parent = null) {
     }
   }
   return null;
+}
+
+function collectBlockIds(block, ids = new Set()) {
+  if (!block) return ids;
+  ids.add(block.id);
+  (block.children || []).forEach(child => collectBlockIds(child, ids));
+  return ids;
+}
+
+function collectToggleTargets(blocks, excludedIds, currentParentId, depth = 0, result = []) {
+  for (const block of blocks || []) {
+    if (block.type === 'toggle' && !excludedIds.has(block.id) && block.id !== currentParentId) {
+      result.push({
+        id: block.id,
+        label: (block.text || '').trim() || '無題のトグル',
+        depth,
+      });
+    }
+    if (block.children?.length) {
+      collectToggleTargets(block.children, excludedIds, currentParentId, depth + 1, result);
+    }
+  }
+  return result;
+}
+
+function showToggleTargetPicker(container, blockId) {
+  syncFocusedEditableBlock(container, blockId);
+  const picker = container.querySelector('#kn-toggle-target-picker');
+  const movingBlock = findBlockInAllBlocks(edState.blocks, blockId);
+  const loc = findBlockLocation(blockId);
+  if (!picker || !movingBlock || !loc) return;
+
+  const targets = collectToggleTargets(
+    edState.blocks,
+    collectBlockIds(movingBlock),
+    loc.parent?.id || null,
+  );
+  if (!targets.length) {
+    picker.classList.add('hidden');
+    toast('移動先にできるトグルがありません', 'info');
+    return;
+  }
+
+  picker.innerHTML = `
+    <div class="kn-toggle-target-head">
+      <span>移動先のトグル</span>
+      <button type="button" class="kn-toggle-target-close" aria-label="閉じる">×</button>
+    </div>
+    <div class="kn-toggle-target-list">
+      ${targets.map(target => `
+        <button type="button" class="kn-toggle-target-option" data-toggle-target-id="${esc(target.id)}"
+          style="padding-left:${10 + Math.min(target.depth, 3) * 12}px">
+          <span class="kn-toggle-target-arrow">↳</span>
+          <span>${esc(target.label)}</span>
+        </button>
+      `).join('')}
+    </div>
+  `;
+  picker.classList.remove('hidden');
+  picker.querySelector('.kn-toggle-target-close')?.addEventListener('click', () => picker.classList.add('hidden'));
+  picker.querySelectorAll('[data-toggle-target-id]').forEach(option => {
+    option.addEventListener('click', () => {
+      if (!moveBlockIntoToggle(blockId, option.dataset.toggleTargetId)) return;
+      picker.classList.add('hidden');
+      activeEditorBlockId = blockId;
+      rerenderBlocks(container);
+      focusBlock(blockId, container, true);
+      toast('ブロックをトグル内へ移動しました', 'success');
+    });
+  });
+}
+
+function moveBlockIntoToggle(blockId, targetToggleId) {
+  const loc = findBlockLocation(blockId);
+  const movingBlock = loc?.blocks[loc.idx];
+  const target = findBlockInAllBlocks(edState.blocks, targetToggleId);
+  if (!loc || !movingBlock || target?.type !== 'toggle') return false;
+  if (collectBlockIds(movingBlock).has(targetToggleId)) return false;
+
+  loc.blocks.splice(loc.idx, 1);
+  target.children = target.children || [];
+  target.children.push(movingBlock);
+  target.collapsed = false;
+
+  let ancestor = findBlockLocation(targetToggleId)?.parent || null;
+  while (ancestor) {
+    ancestor.collapsed = false;
+    ancestor = findBlockLocation(ancestor.id)?.parent || null;
+  }
+  return true;
+}
+
+function moveBlockByDrop(blockId, targetId, placement) {
+  if (!blockId || !targetId || blockId === targetId) return false;
+  if (placement === 'inside') return moveBlockIntoToggle(blockId, targetId);
+
+  const movingLoc = findBlockLocation(blockId);
+  const movingBlock = movingLoc?.blocks[movingLoc.idx];
+  if (!movingLoc || !movingBlock || collectBlockIds(movingBlock).has(targetId)) return false;
+
+  movingLoc.blocks.splice(movingLoc.idx, 1);
+  const targetLoc = findBlockLocation(targetId);
+  if (!targetLoc) {
+    movingLoc.blocks.splice(Math.min(movingLoc.idx, movingLoc.blocks.length), 0, movingBlock);
+    return false;
+  }
+
+  const insertAt = targetLoc.idx + (placement === 'after' ? 1 : 0);
+  targetLoc.blocks.splice(insertAt, 0, movingBlock);
+  return true;
 }
 
 function moveBlock(blockId, action) {
@@ -1869,7 +2425,7 @@ function moveBlock(blockId, action) {
 function rerenderBlocks(container) {
   const wrap = container.querySelector('#kn-blocks-wrap');
   if (!wrap) return;
-  wrap.innerHTML = edState.blocks.map((b, i) => renderBlockEdit(b, i)).join('');
+  wrap.innerHTML = renderBlocksEdit(edState.blocks);
   wireBlocksEdit(container);
 }
 
@@ -1895,7 +2451,12 @@ function removeBlockElement(blockId, container) {
 function focusBlock(id, container, atEnd = false) {
   requestAnimationFrame(() => {
     const el = container.querySelector(`.kn-block-focusable[data-block-id="${id}"]`);
-    if (!el) return;
+    if (!el) {
+      const blockEl = container.querySelector(`.kn-block[data-block-id="${id}"]`);
+      activeEditorBlockId = id;
+      blockEl?.focus({ preventScroll: true });
+      return;
+    }
     focusEditableWithoutScroll(el);
     if (atEnd && el.contentEditable === 'true') {
       const range = document.createRange();
@@ -2162,6 +2723,7 @@ function saveMemo(container) {
     }
     updateKnowledgeMemo(edState.id, memoData);
     toast('メモを保存しました ✓', 'success');
+    markEditorBaseline();
     edState.isEdit = false;
     renderDetail(container, { preserveScroll: true });
   } else {
@@ -2183,6 +2745,7 @@ function saveMemo(container) {
     } else {
       toast('メモを作成しました ✨', 'success');
     }
+    markEditorBaseline();
     edState.isEdit = false;
     renderDetail(container, { preserveScroll: true });
   }

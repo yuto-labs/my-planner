@@ -1649,14 +1649,20 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
         updateEvent(event.id, newData);
         if (scope === 'future' && event.recurringId) {
           const allEvents = getEvents();
+          const startShiftMs = new Date(newData.start).getTime() - new Date(event.start).getTime();
+          const nextDurationMs = newData.end
+            ? Math.max(0, new Date(newData.end).getTime() - new Date(newData.start).getTime())
+            : null;
           allEvents
             .filter(e => e.recurringId === event.recurringId && e.start >= event.start && e.id !== event.id)
             .forEach(e => {
-              const diff = new Date(newData.start) - new Date(event.start);
+              const shiftedStart = new Date(new Date(e.start).getTime() + startShiftMs);
               updateEvent(e.id, {
                 ...newData,
-                start: new Date(new Date(e.start).getTime() + diff).toISOString(),
-                end: newData.end ? new Date(new Date(e.end).getTime() + diff).toISOString() : null,
+                start: shiftedStart.toISOString(),
+                end: nextDurationMs == null
+                  ? null
+                  : new Date(shiftedStart.getTime() + nextDurationMs).toISOString(),
               });
             });
         }

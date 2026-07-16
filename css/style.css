@@ -2532,13 +2532,23 @@ button { cursor: pointer; font-family: inherit; }
 }
 .kn-view-toggle {
   display: flex; align-items: flex-start; gap: 8px;
-  margin: 4px 0; cursor: pointer;
+  margin: 4px 0; padding: 3px 4px;
+  border-radius: var(--radius-xs); cursor: pointer;
+}
+.kn-view-toggle:hover,
+.kn-view-toggle:focus-within {
+  background: var(--bg-hover);
 }
 .kn-block-toggle-arrow {
+  display: inline-grid; place-items: center;
+  width: 24px; height: 24px; padding: 0;
+  border: none; border-radius: 4px; background: transparent;
   font-size: 11px; color: var(--text-dim); flex-shrink: 0;
-  margin-top: 4px; transition: transform var(--transition); cursor: pointer;
+  transition: background var(--transition), color var(--transition); cursor: pointer;
   user-select: none;
 }
+.kn-block-toggle-arrow:hover,
+.kn-block-toggle-arrow:focus-visible { background: var(--primary-bg); color: var(--primary); outline: none; }
 .kn-view-toggle-text { font-size: 14px; font-weight: 600; flex: 1; }
 .kn-view-toggle-children { padding-left: 20px; margin-bottom: 4px; }
 
@@ -2720,7 +2730,9 @@ button { cursor: pointer; font-family: inherit; }
 }
 
 /* ---- EDIT MODE ---- */
-.kn-edit-page { min-height: 100%; padding-bottom: 60px; }
+.knowledge-editor-open #app-header,
+.knowledge-editor-open #bottom-nav { display: none !important; }
+.kn-edit-page { min-height: 100%; padding-bottom: max(24px, env(safe-area-inset-bottom)); }
 
 .kn-edit-topbar {
   display: flex; justify-content: space-between; align-items: center;
@@ -2872,6 +2884,27 @@ button { cursor: pointer; font-family: inherit; }
 }
 .kn-toolbar-color-btn { font-size: 14px; }
 .kn-toolbar-mark-btn { min-width: 46px; color: #b77900; }
+.kn-toolbar-mark-btn[aria-expanded="true"] {
+  background: rgba(245, 197, 66, 0.18);
+  color: #8d5c00;
+}
+.kn-toolbar-block-menu-btn {
+  display: none;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 800;
+}
+.kn-toolbar-block-menu-btn[aria-expanded="true"] {
+  color: var(--primary);
+  border-color: var(--primary-border);
+  background: var(--primary-bg);
+}
 .kn-toolbar-block-actions { display: none; }
 .kn-toolbar-block-btn {
   width: 32px;
@@ -2902,6 +2935,12 @@ button { cursor: pointer; font-family: inherit; }
   background: var(--bg-card);
   border-bottom: 1px solid var(--border);
 }
+.kn-color-picker-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
 .kn-color-swatch {
   width: 22px; height: 22px; border-radius: 50%;
   border: 2px solid transparent; cursor: pointer;
@@ -2909,6 +2948,62 @@ button { cursor: pointer; font-family: inherit; }
 }
 .kn-color-swatch:active { transform: scale(0.85); }
 .kn-color-swatch:hover  { border-color: var(--text); }
+.kn-highlight-swatch { background: var(--swatch-color); }
+.kn-highlight-swatch--clear {
+  position: relative;
+  border-color: var(--border);
+  background: var(--bg-card);
+}
+.kn-highlight-swatch--clear::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  top: 8px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--danger);
+  transform: rotate(-38deg);
+}
+.kn-toggle-target-picker {
+  position: sticky;
+  top: 96px;
+  z-index: 10;
+  padding: 8px 12px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm);
+}
+.kn-toggle-target-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-bottom: 6px;
+  color: var(--text-muted); font-size: 12px; font-weight: 700;
+}
+.kn-toggle-target-close {
+  width: 30px; height: 30px; border: none; border-radius: 50%;
+  background: var(--bg-hover); color: var(--text-muted);
+  font: inherit; font-size: 16px; cursor: pointer;
+}
+.kn-toggle-target-list {
+  display: grid; gap: 4px; max-height: 220px; overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.kn-toggle-target-option {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; min-width: 0; min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid transparent; border-radius: var(--radius-xs);
+  background: transparent; color: var(--text); text-align: left;
+  font: inherit; font-size: 13px; cursor: pointer;
+}
+.kn-toggle-target-option:hover,
+.kn-toggle-target-option:focus-visible {
+  border-color: var(--primary-border); background: var(--primary-bg); outline: none;
+}
+.kn-toggle-target-option span:last-child {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.kn-toggle-target-arrow { color: var(--primary); font-weight: 700; }
 
 /* Blocks wrapper */
 .kn-blocks-wrap { padding: 8px 16px; display: flex; flex-direction: column; gap: 2px; }
@@ -2916,8 +3011,45 @@ button { cursor: pointer; font-family: inherit; }
 /* Individual block */
 .kn-block {
   display: flex; align-items: flex-start; gap: 8px;
-  padding: 3px 0;
+  padding: 3px 0 3px 32px;
   position: relative;
+}
+.kn-block-drag-handle {
+  position: absolute; left: 1px; top: 2px; z-index: 4;
+  display: inline-grid; place-items: center;
+  width: 27px; height: 30px; padding: 0;
+  border: none; border-radius: 5px; background: transparent;
+  color: var(--text-dim); font: inherit; font-size: 17px; line-height: 1;
+  opacity: 0.32; cursor: grab; touch-action: none; user-select: none;
+  transition: opacity var(--transition), background var(--transition), color var(--transition);
+}
+.kn-block:hover > .kn-block-drag-handle,
+.kn-block--active > .kn-block-drag-handle,
+.kn-block-drag-handle:focus-visible {
+  opacity: 1; color: var(--text-muted); background: var(--bg-hover); outline: none;
+}
+.kn-block-drag-handle:active { cursor: grabbing; color: var(--primary); background: var(--primary-bg); }
+.kn-block-drag-active { user-select: none; }
+.kn-block-drag-active * { cursor: grabbing !important; }
+.kn-block--dragging { opacity: 0.42; }
+.kn-block--drop-before::after,
+.kn-block--drop-after::after {
+  content: '';
+  position: absolute; left: 24px; right: 0; z-index: 8;
+  height: 3px; border-radius: 3px; background: var(--primary);
+  box-shadow: 0 0 0 2px var(--bg-card);
+  pointer-events: none;
+}
+.kn-block--drop-before::after { top: -2px; }
+.kn-block--drop-after::after { bottom: -2px; }
+.kn-block--drop-inside {
+  background: var(--primary-bg);
+  box-shadow: inset 0 0 0 2px var(--primary-border);
+}
+.kn-block--active {
+  border-radius: var(--radius-xs);
+  box-shadow: inset 2px 0 0 var(--primary);
+  background: color-mix(in srgb, var(--primary-bg) 55%, transparent);
 }
 .kn-block-text {
   flex: 1 1 auto; width: 100%; min-width: 0; outline: none; min-height: 1.5em;
@@ -2949,7 +3081,41 @@ button { cursor: pointer; font-family: inherit; }
   border-left: 3px solid var(--primary); padding-left: 12px;
   color: var(--text-muted); font-style: italic;
 }
-.kn-block--divider { padding: 6px 0; }
+.kn-block--divider {
+  align-items: center;
+  min-height: 38px;
+  padding: 6px 2px 6px 32px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  outline: none;
+}
+.kn-block--divider .kn-view-divider {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+.kn-block--divider.kn-block--active,
+.kn-block--divider:focus {
+  background: var(--primary-bg);
+  box-shadow: inset 0 0 0 1px var(--primary-border);
+}
+.kn-divider-delete {
+  display: none;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg-card);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}
+.kn-divider-delete:active {
+  border-color: var(--danger);
+  color: var(--danger);
+}
 .kn-block--math { flex-direction: column; gap: 6px; }
 .kn-block-math-label { font-size: 10px; color: var(--text-dim); font-weight: 700; letter-spacing: 0.05em; }
 .kn-block-math-input {
@@ -2962,12 +3128,37 @@ button { cursor: pointer; font-family: inherit; }
 .kn-block-math-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-bg); }
 .kn-block-math-preview { padding: 8px 4px; overflow-x: auto; }
 .kn-block-prefix {
-  flex-shrink: 0; color: var(--primary); font-weight: 700;
-  font-size: 14px; margin-top: 3px; min-width: 18px;
+  flex-shrink: 0; color: var(--text); font-weight: 400;
+  font-size: 14px; margin-top: 0; min-width: 20px;
+  line-height: 1.65; text-align: center;
+}
+.kn-block--bullet,
+.kn-block--numbered { gap: 4px; }
+.kn-block--bullet .kn-block-prefix {
+  font-size: 13px;
+  min-width: 18px;
+}
+.kn-block--numbered .kn-block-prefix {
+  font-size: 13px;
+  min-width: 24px;
+  text-align: right;
 }
 .kn-block-prefix--quote { color: var(--primary); font-size: 16px; }
-.kn-block-prefix--toggle { font-size: 11px; color: var(--text-dim); margin-top: 5px; }
-.kn-block-toggle-children-edit { padding-left: 22px; border-left: 2px solid var(--border); margin-left: 8px; }
+.kn-block-prefix--toggle { font-size: 11px; color: var(--text-dim); margin-top: 0; }
+.kn-toggle-edit-btn {
+  width: 24px; height: 28px; padding: 0;
+  border: none; border-radius: 4px; background: transparent;
+  cursor: pointer;
+}
+.kn-toggle-edit-btn:hover,
+.kn-toggle-edit-btn:focus-visible { background: var(--primary-bg); color: var(--primary); outline: none; }
+.kn-block--toggle { flex-wrap: wrap; align-items: flex-start; }
+.kn-block--toggle > .kn-block-text { flex: 1 1 calc(100% - 32px); width: auto; }
+.kn-block--toggle > .kn-block-toggle-children-edit {
+  flex: 0 0 calc(100% - 32px); width: calc(100% - 32px); min-width: 0;
+  margin: 4px 0 2px 32px; padding-left: 12px;
+  border-left: 2px solid var(--border);
+}
 .kn-block-controls {
   position: absolute;
   top: 2px;
@@ -3008,13 +3199,7 @@ button { cursor: pointer; font-family: inherit; }
 }
 .kn-block-del:hover { color: var(--danger); border-color: var(--danger); }
 .kn-block-insert-row {
-  display: flex;
-  align-items: center;
-  min-height: 12px;
-  padding: 0 0 0 2px;
-  opacity: 0;
-  transform: translateY(-2px);
-  transition: opacity var(--transition), transform var(--transition);
+  display: none !important;
 }
 .kn-block:hover + .kn-block-insert-row,
 .kn-block:focus-within + .kn-block-insert-row,
@@ -3024,18 +3209,7 @@ button { cursor: pointer; font-family: inherit; }
   transform: translateY(0);
 }
 .kn-block-insert-btn {
-  width: 22px;
-  height: 22px;
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  background: var(--bg-card);
-  color: var(--text-muted);
-  font: inherit;
-  font-size: 15px;
-  font-weight: 700;
-  line-height: 1;
-  padding: 0;
-  cursor: pointer;
+  display: none !important;
 }
 .kn-block-insert-btn:active,
 .kn-block-insert-btn:focus {
@@ -3045,37 +3219,73 @@ button { cursor: pointer; font-family: inherit; }
 }
 @media (max-width: 640px) {
   .kn-toolbar {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
     padding: 5px 10px;
-    overflow-x: visible;
+    overflow-x: auto;
+    overflow-y: hidden;
   }
   .kn-toolbar-type-select {
-    width: 92px;
+    width: 84px;
+    padding-inline: 8px 22px;
+  }
+  .kn-toolbar-mark-btn {
+    min-width: 40px;
+    padding-inline: 4px;
   }
   .kn-blocks-wrap {
     padding-inline: 12px;
   }
   .kn-block {
     gap: 8px;
-    padding: 4px 0;
+    padding: 4px 0 4px 36px;
+  }
+  .kn-block-drag-handle {
+    width: 32px;
+    height: 36px;
+    opacity: 0.62;
   }
   .kn-block-controls {
     display: none;
   }
+  .kn-block--divider {
+    min-height: 44px;
+  }
+  .kn-divider-delete {
+    display: inline-grid;
+    place-items: center;
+  }
+  .kn-toolbar-block-menu-btn {
+    display: inline-grid;
+    place-items: center;
+  }
   .kn-toolbar-block-actions {
-    display: flex;
+    display: none;
+    position: fixed;
+    top: 100px;
+    right: 10px;
+    z-index: 20;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: center;
     gap: 6px;
-    width: 100%;
-    padding-top: 5px;
-    border-top: 1px solid var(--border-light);
+    padding: 7px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    box-shadow: var(--shadow-md);
+  }
+  .kn-toolbar-block-actions.is-open {
+    display: flex;
+  }
+  .kn-toolbar-block-btn {
+    width: 40px;
+    height: 40px;
   }
   .kn-block-insert-row {
-    opacity: 1;
-    transform: none;
+    display: none !important;
   }
 }
+.knowledge-editor-open .kn-toolbar { top: 53px; }
 .kn-block--removing {
   opacity: 0;
   transform: translateY(-2px);

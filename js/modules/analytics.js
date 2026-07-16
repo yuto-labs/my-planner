@@ -64,26 +64,21 @@ function calcMonthlyTrend() {
   });
 }
 
-function calcProcrastination() {
-  const tasks = allTasks().filter(t =>
-    t.completed && t.createdAt && t.completedAt && t.tags?.length
-  );
-  const tagMap = {};
-  tasks.forEach(t => {
-    const days = Math.max(0, Math.round((new Date(t.completedAt) - new Date(t.createdAt)) / 86400000));
-    t.tags.forEach(tag => {
-      if (!tagMap[tag]) tagMap[tag] = [];
-      tagMap[tag].push(days);
-    });
+function calcWeightCompletion() {
+  const mb = monthBounds();
+  const labels = { large: '大', medium: '中', small: '小' };
+  const tasks = allTasks().filter(t => t.dueDate && t.dueDate >= mb.s && t.dueDate <= mb.e);
+  return ['large', 'medium', 'small'].map(weight => {
+    const items = tasks.filter(t => (t.weight || 'small') === weight);
+    const completed = items.filter(t => t.completed).length;
+    return {
+      weight,
+      label: labels[weight],
+      total: items.length,
+      completed,
+      rate: items.length ? Math.round(completed / items.length * 100) : null,
+    };
   });
-  return Object.entries(tagMap)
-    .map(([tag, arr]) => ({
-      tag,
-      avg: Math.round(arr.reduce((s, v) => s + v, 0) / arr.length),
-      count: arr.length,
-    }))
-    .sort((a, b) => b.avg - a.avg)
-    .slice(0, 8);
 }
 
 function calcPlanAccuracy(mode = 'week') {
@@ -244,7 +239,7 @@ function renderAccuracyContent(acc) {
 function renderTasksTab() {
   const score = calcWeekScore();
   const trend = calcMonthlyTrend();
-  const proc  = calcProcrastination();
+  const weightCompletion = calcWeightCompletion();
   const acc   = calcPlanAccuracy('week');
 
   const trendActive = trend.filter(t => t.plannedPts > 0);
@@ -256,7 +251,7 @@ function renderTasksTab() {
     trendDelta = ` <span class="analytics-delta ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '+' : ''}${delta}%</span>`;
   }
 
-  const maxProcDays = proc[0]?.avg || 1;
+  const hasWeightData = weightCompletion.some(item => item.total > 0);
 
   return `
     <!-- 週次スコア -->
@@ -290,19 +285,17 @@ function renderTasksTab() {
       ${renderLineChart(trend)}
     </div>
 
-    <!-- カテゴリ別先延ばし指数 -->
+    <!-- Task size completion -->
     <div class="analytics-section">
-      <div class="analytics-section-title">カテゴリ別先延ばし指数</div>
-      ${proc.length === 0
-        ? noData('タグ付き完了タスクがまだありません')
-        : `<div class="analytics-proc-table">
-             ${proc.map(p => `
-               <div class="analytics-proc-row">
-                 <div class="analytics-proc-tag">${esc(p.tag)}</div>
-                 <div class="analytics-proc-bar-wrap">
-                   <div class="analytics-proc-bar" style="width:${Math.min(100, Math.round(p.avg / Math.max(maxProcDays, 1) * 100))}%"></div>
-                 </div>
-                 <div class="analytics-proc-days">${p.avg}日</div>
+      <div class="analytics-section-title">今月のタスク規模別 完了率</div>
+      ${!hasWeightData
+        ? noData('今月は期限付きタスクがありません')
+        : `<div class="analytics-stat-grid">
+             ${weightCompletion.filter(item => item.total > 0).map(item => `
+               <div class="analytics-stat-card">
+                 <div class="analytics-stat-value" style="color:${item.rate >= 80 ? 'var(--success)' : item.rate >= 50 ? 'var(--warning)' : 'var(--danger)'}">${item.rate}%</div>
+                 <div class="analytics-stat-label">${item.label}タスク</div>
+                 <div class="analytics-stat-sub">${item.completed}/${item.total}件を完了</div>
                </div>`).join('')}
            </div>`
       }
@@ -567,6 +560,6 @@ export function initAnalytics(container) {
     });
   });
 
-  // Monthly AI summary (async, appended after render)
-  maybeGenerateSummary(container, currentMonth);
+  // Analytics stays evidence-based. AI summaries remain available in the module,
+  // but are not generated automatically from this screen.
 }
