@@ -33,6 +33,7 @@ export async function refreshAiRuntimeStatus({ force = false } = {}) {
       provider: data.provider || 'gemini',
       mode: data.mode || 'server',
       configured: !!data.configured,
+      models: data.models || null,
       limits: data.limits || null,
       checkedAt: Date.now(),
       message: data.message || '',
@@ -214,7 +215,8 @@ export async function getDailyMessage(tasks = [], events = [], goals = []) {
     'Return JSON only: {"message":"50文字以内","focus":"60文字以内"}',
     ctx,
     160,
-    'json'
+    'json',
+    'daily_message'
   );
 
   const parsed = tryParseJSON(result) || {
@@ -239,7 +241,8 @@ export async function parseNaturalLanguageEvent(text, categories = []) {
     `Extract event info. Current datetime: ${nowStr}. Categories: ${catNames}. Return JSON only: {"title":"...","start":"YYYY-MM-DDTHH:mm:00","end":"YYYY-MM-DDTHH:mm:00","categoryName":"...","isTentative":false}`,
     text,
     200,
-    'json'
+    'json',
+    'event_parse'
   );
 
   const parsed = tryParseJSON(result);
@@ -262,7 +265,8 @@ export async function analyzeEnergyPatterns(focusLogs) {
     'Analyze focus logs. Return JSON only: {"insight":"80文字以内","peakTime":"例 10-12時","recommendation":"60文字以内"}',
     summary,
     200,
-    'json'
+    'json',
+    'energy_patterns'
   );
 
   const parsed = tryParseJSON(result) || {
@@ -331,7 +335,8 @@ export async function analyzeHabitCorrelations(habitLogs, focusLogs) {
     'Write 3 concise Japanese insights with numbers. Return JSON only: {"insights":["...","...","..."],"advice":"80文字以内"}',
     `n=${valid.length} exercise_r=${exCorr} sleep_r=${slCorr} exercise_focus=${exFocus} no_exercise_focus=${noExFocus}`,
     300,
-    'json'
+    'json',
+    'analytics_summary'
   );
 
   const parsed = tryParseJSON(result) || { insights: ['データが増えると傾向が見えてきます。'], advice: '' };
@@ -365,7 +370,8 @@ export async function generateMonthlyReport(prevMonth, data) {
     'Generate a Japanese monthly review. Return JSON only: {"title":"...","highlights":["...","...","..."],"achievements":"80文字以内","learning":"80文字以内","advice":"100文字以内","score":0}',
     `month:${prevMonth} tasks:${data.tasksCompleted}/${data.tasksTotal} goals:${data.goalsCount} memos:${data.knowledgeMemos} focus:${data.avgFocus || 'n/a'} habitDays:${data.habitDays}`,
     600,
-    'json'
+    'json',
+    'monthly_report'
   );
   return tryParseJSON(result) || {
     title: `${prevMonth}の振り返り`,
@@ -383,7 +389,8 @@ export async function generateAnalyticsSummary(monthStr, data) {
     '日本語のみ。3段落以内。数字を含む読みやすい月次サマリーを返してください。',
     `month:${monthStr} ${JSON.stringify(data)}`,
     250,
-    'text'
+    'text',
+    'analytics_summary'
   );
   return text.trim();
 }
@@ -398,7 +405,8 @@ export async function suggestKnowledgeTags(title, textPreview) {
     'Suggest up to 5 Japanese academic/topic tags. Return JSON only: {"tags":["t1","t2","t3"]}',
     `title:${title}\n${textPreview.slice(0, 300)}`,
     120,
-    'json'
+    'json',
+    'tag_suggest'
   );
 
   const parsed = tryParseJSON(result);
@@ -413,7 +421,8 @@ export async function explainTerm(term, context = '') {
     'Explain the term in Japanese in 80-150 chars. Plain text only.',
     `term:${term}\ncontext:${context.slice(0, 200)}`,
     200,
-    'text'
+    'text',
+    'term_explain'
   );
   return result.trim();
 }
@@ -428,7 +437,7 @@ export async function formatKnowledgeMemo(rawText, existingMemosCtx = '') {
   const user = 'Text to organize:\n' + rawText.slice(0, 1800)
     + (existingMemosCtx ? '\n\nExisting memo context:\n' + existingMemosCtx : '');
 
-  const raw = await callAPI(HAIKU, system, user, 1400, 'json');
+  const raw = await callAPI(HAIKU, system, user, 1400, 'json', 'memo_format');
   const parsed = tryParseJSON(raw);
   if (!parsed?.blocks) throw new Error('AI memo format failed');
   return {
@@ -444,7 +453,8 @@ export async function summarizeAndTagText(text) {
     'Summarize in Japanese and suggest tags. Return JSON only: {"summary":"150文字以内","tags":["t1","t2"]}',
     text.slice(0, 2000),
     250,
-    'json'
+    'json',
+    'memo_summary'
   );
   return tryParseJSON(result) || { summary: '', tags: [] };
 }
@@ -499,7 +509,8 @@ export async function splitGoalToTasks(goal) {
     'Break down the goal into actionable tasks. Return JSON only: {"tasks":[{"title":"...","weight":"large|medium|small","dueDate":"YYYY-MM-DD","description":"..."},{"title":"...","weight":"medium","dueDate":"YYYY-MM-DD","description":"..."}],"advice":"100文字以内"}',
     `goal:${goal.title} type:${typeLabel} due:${goal.targetDate || 'none'} desc:${goal.description?.slice(0, 100) || 'none'} today:${today()}`,
     1200,
-    'json'
+    'json',
+    'goal_split'
   );
 
   const parsed = tryParseJSON(result);
@@ -529,7 +540,8 @@ export async function processBatchQueue(onProgress) {
           'For each memo, suggest up to 4 Japanese tags. Return JSON only: [{"id":"...","tags":["t1","t2"]}]',
           JSON.stringify(batch),
           Math.min(200 * batch.length, 1500),
-          'json'
+          'json',
+          'batch_tags'
         );
 
         const parsed = tryParseJSON(result);
@@ -581,7 +593,8 @@ export async function interpretPlannerInput(text, context = {}) {
     ].join(' '),
     JSON.stringify({ localToday, localTomorrow, localDayAfterTomorrow, localTime, timeZone, text, context }),
     900,
-    'json'
+    'json',
+    'planner_action'
   );
   const parsed = tryParseJSON(result);
   if (!parsed?.action) throw new Error('AI response was empty');

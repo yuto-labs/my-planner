@@ -6,11 +6,28 @@ function readBody(req) {
 }
 
 function pickModel(pref) {
-  const fastModel = process.env.GEMINI_MODEL_FAST || 'gemini-2.5-flash';
+  const fastModel = process.env.GEMINI_MODEL_FAST || 'gemini-3.5-flash';
   const qualityModel = process.env.GEMINI_MODEL_QUALITY || fastModel;
   const raw = String(pref || '').toLowerCase();
   if (raw.includes('sonnet') || raw === 'quality') return qualityModel;
   return fastModel;
+}
+
+function pickThinkingConfig(model, actionType) {
+  const complexActions = new Set([
+    'analytics_summary',
+    'batch_tags',
+    'goal_split',
+    'memo_format',
+    'memo_summary',
+    'monthly_report',
+    'task_schedule',
+  ]);
+  const isComplex = complexActions.has(String(actionType || ''));
+  if (String(model).startsWith('gemini-2.5-')) {
+    return { thinkingBudget: isComplex ? 2048 : 512 };
+  }
+  return { thinkingLevel: isComplex ? 'medium' : 'low' };
 }
 
 function extractText(data) {
@@ -39,6 +56,7 @@ const APP_MINUTE_LIMIT = Number(process.env.AI_APP_MINUTE_LIMIT || 30);
 
 const ACTION_COSTS = {
   event_parse: 1,
+  planner_action: 1,
   task_split: 1,
   tag_suggest: 1,
   term_explain: 1,
@@ -205,7 +223,7 @@ export default async function handler(req, res) {
       maxOutputTokens: Number(body.maxTokens || 300),
       temperature: responseFormat === 'json' ? 0.2 : 0.4,
       responseMimeType: responseFormat === 'json' ? 'application/json' : 'text/plain',
-      thinkingConfig: { thinkingBudget: 0 },
+      thinkingConfig: pickThinkingConfig(model, body.actionType),
     },
   };
 
@@ -231,7 +249,7 @@ export default async function handler(req, res) {
         generationConfig: {
           ...payload.generationConfig,
           maxOutputTokens: Math.max(Number(body.maxTokens || 300) * 2, 512),
-          thinkingConfig: { thinkingBudget: 0 },
+          thinkingConfig: pickThinkingConfig(model, body.actionType),
         },
       };
       ({ upstream, data } = await requestGemini(key, model, retryPayload));
