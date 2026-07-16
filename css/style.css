@@ -4342,6 +4342,20 @@ button { cursor: pointer; font-family: inherit; }
   font-size: 12px;
 }
 .codex-plan-actions .btn { flex: 1 1 132px; }
+.codex-plan-advanced {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+}
+.codex-plan-advanced summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.codex-plan-advanced[open] summary { margin-bottom: 8px; }
 .codex-plan-textarea {
   width: 100%;
   min-height: 74px;

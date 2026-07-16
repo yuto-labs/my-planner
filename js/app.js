@@ -34,7 +34,7 @@ const MODULES = {
   tasks:             { title: 'Tasks',      init: initTasks },
   goals:             { title: 'Goals',      init: initGoals,          back: 'tasks' },
   settings:          { title: 'Settings',   init: initSettings },
-  'ai-settings':     { title: 'AI Settings', init: initAISettings,      back: 'settings' },
+  'ai-settings':     { title: 'AI設定', init: initAISettings,      back: 'settings' },
   today:             { title: 'Today',      init: initToday,          back: 'home' },
   knowledge:         { title: 'Knowledge Notes', init: initKnowledge },
   'knowledge-detail':{ title: 'Note',       init: initKnowledgeDetail, back: 'knowledge', backAction: backFromKnowledgeDetail },

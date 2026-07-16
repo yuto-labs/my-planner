@@ -1,11 +1,10 @@
 // ============================================================
 // ai.js - AI client layer
-// Preferred path: same-origin server API (Gemini on Vercel)
-// Legacy fallback: browser-direct Anthropic when an old local key exists
+// Same-origin server API (Gemini on Vercel)
 // ============================================================
 
 import {
-  getApiKey, getAiCache, setAiCache, getAiRuntime, saveAiRuntime,
+  getAiCache, setAiCache, getAiRuntime, saveAiRuntime,
   getPendingAIQueue, removeFromPendingAIQueue,
   getKnowledgeMemoById, updateKnowledgeMemo,
 } from './storage.js';
@@ -15,13 +14,13 @@ import { parseJapaneseTimes, today } from './utils.js';
 const SERVER_STATUS_URL = '/api/ai/status';
 const SERVER_GENERATE_URL = '/api/ai/generate';
 
-const LEGACY_API_URL = 'https://api.anthropic.com/v1/messages';
-const HAIKU = 'claude-haiku-4-5';
-const SONNET = 'claude-sonnet-4-6';
+const FAST_MODEL = 'fast';
+const QUALITY_MODEL = 'quality';
 
 export async function refreshAiRuntimeStatus({ force = false } = {}) {
   const current = getAiRuntime();
-  if (!force && current.checkedAt && (Date.now() - current.checkedAt) < 10 * 60 * 1000) {
+  const cacheDuration = current.configured ? 10 * 60 * 1000 : 30 * 1000;
+  if (!force && current.checkedAt && (Date.now() - current.checkedAt) < cacheDuration) {
     return current;
   }
 
@@ -81,7 +80,7 @@ async function callServerAI(modelPreference, systemText, userText, maxTokens, re
       msg = data.error || msg;
       usage = data.usage || null;
     } catch {}
-    const err = new Error(msg);
+    const err = new Error(getFriendlyAiError(res.status, msg));
     err.status = res.status;
     err.usage = usage;
     throw err;
@@ -92,66 +91,27 @@ async function callServerAI(modelPreference, systemText, userText, maxTokens, re
     const runtime = getAiRuntime();
     saveAiRuntime({ ...runtime, usage: data.usage, checkedAt: Date.now() });
   }
-  return data.text ?? '';
-}
-
-async function callLegacyAnthropic(model, systemText, userText, maxTokens) {
-  const key = getApiKey();
-  if (!key) throw new Error('AI is not configured.');
-
-  const res = await fetch(LEGACY_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: maxTokens,
-      system: [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }],
-      messages: [{ role: 'user', content: userText }],
-    }),
-  });
-
-  if (!res.ok) {
-    let msg = `AI Error ${res.status}`;
-    try {
-      const data = await res.json();
-      msg = data.error?.message || msg;
-    } catch {}
-    throw new Error(msg);
-  }
-
-  const data = await res.json();
-  return data.content?.[0]?.text ?? '';
+  const text = data.text ?? '';
+  if (!String(text).trim()) throw new Error('AIの応答が空でした。少し時間を置いてもう一度お試しください。');
+  return text;
 }
 
 async function callAPI(modelPreference, systemText, userText, maxTokens, responseFormat = 'text', actionType = 'ai_request') {
-  const runtime = getAiRuntime();
-  const legacyKey = getApiKey();
-  const shouldTryServer = runtime.configured || !legacyKey;
-
-  let serverError = null;
-  if (shouldTryServer) {
-    try {
-      return await callServerAI(modelPreference, systemText, userText, maxTokens, responseFormat, actionType);
-    } catch (err) {
-      serverError = err;
-      if (runtime.configured === true) throw err;
-      if ([401, 403, 429, 503].includes(Number(err?.status))) throw err;
-    }
-  }
-
-  if (legacyKey) {
-    return callLegacyAnthropic(modelPreference, systemText, userText, maxTokens);
-  }
-
-  throw serverError || new Error('AI is not available.');
+  return callServerAI(modelPreference, systemText, userText, maxTokens, responseFormat, actionType);
 }
 
-export async function streamText({ model = HAIKU, system, userContent, maxTokens = 200, onChunk }) {
+function getFriendlyAiError(status, message) {
+  const raw = String(message || '');
+  if (/[ぁ-んァ-ヶ一-龠]/.test(raw)) return raw;
+  if (status === 401) return 'AIを使うにはログインしてください。';
+  if (status === 403) return 'このアカウントではAIを利用できません。';
+  if (status === 429) return 'AIの利用が集中しています。少し時間を置いてもう一度お試しください。';
+  if (status === 503) return 'AIサーバーを利用できません。通信状態を確認してもう一度お試しください。';
+  if (status >= 500) return 'AIから正常な応答を受け取れませんでした。もう一度お試しください。';
+  return raw || `AIエラー (${status})`;
+}
+
+export async function streamText({ model = FAST_MODEL, system, userContent, maxTokens = 200, onChunk }) {
   const full = await callAPI(model, system || '', userContent, maxTokens, 'text', 'daily_message');
   let acc = '';
   for (const ch of full) {
@@ -172,7 +132,7 @@ export async function streamDailyMessage(tasks = [], events = [], goals = [], on
     + `goal:${topGoal.slice(0, 20) || 'none'}`;
 
   return streamText({
-    model: HAIKU,
+    model: FAST_MODEL,
     system: '日本語のみ。50文字以内。前置きなし。絵文字は1個まで。',
     userContent: `要約: ${ctx}`,
     maxTokens: 120,
@@ -211,7 +171,7 @@ export async function getDailyMessage(tasks = [], events = [], goals = []) {
     + `goal:${topGoal || 'none'}`;
 
   const result = await callAPI(
-    HAIKU,
+    FAST_MODEL,
     'Return JSON only: {"message":"50文字以内","focus":"60文字以内"}',
     ctx,
     160,
@@ -228,17 +188,25 @@ export async function getDailyMessage(tasks = [], events = [], goals = []) {
 }
 
 export async function parseNaturalLanguageEvent(text, categories = []) {
-  const cacheKey = `nlparse_${text}`;
+  const now = new Date();
+  const localToday = today();
+  const nowStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const catNames = categories.map(c => c.name).join(',');
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local';
+  const cacheKey = `nlparse_${localToday}_${catNames}_${text}`;
   const cached = getAiCache(cacheKey);
   if (cached) return cached;
 
-  const now = new Date();
-  const nowStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  const catNames = categories.map(c => c.name).join(',');
-
   const result = await callAPI(
-    HAIKU,
-    `Extract event info. Current datetime: ${nowStr}. Categories: ${catNames}. Return JSON only: {"title":"...","start":"YYYY-MM-DDTHH:mm:00","end":"YYYY-MM-DDTHH:mm:00","categoryName":"...","isTentative":false}`,
+    FAST_MODEL,
+    [
+      `Extract one calendar event. Current local datetime: ${nowStr} (${timeZone}). Categories: ${catNames || 'none'}.`,
+      'Return JSON only: {"title":"...","start":"YYYY-MM-DDTHH:mm:00|null","end":"YYYY-MM-DDTHH:mm:00|null","categoryName":"...|null","isTentative":false}.',
+      'Use only details stated by the user. Never invent a date, time, duration, category, person, or place.',
+      'Choose categoryName only from the supplied categories; otherwise return null.',
+      'In Japanese, 10時半 means 10:30, never 22:30. Only 午後, 夕方, or 夜 indicates PM. 午前12時 is 00:00 and 午後12時 is 12:00.',
+      'If only one clock time is supplied, use it as start and keep end null unless a duration is explicitly supplied.',
+    ].join(' '),
     text,
     200,
     'json',
@@ -246,6 +214,13 @@ export async function parseNaturalLanguageEvent(text, categories = []) {
   );
 
   const parsed = tryParseJSON(result);
+  const explicitDate = resolveRelativeDate(text, localToday);
+  const explicitTimes = parseJapaneseTimes(text);
+  if (parsed && explicitDate && explicitTimes.length) {
+    parsed.start = `${explicitDate}T${explicitTimes[0]}:00`;
+    if (explicitTimes[1]) parsed.end = `${explicitDate}T${explicitTimes[1]}:00`;
+    else if (!/\d+\s*(?:分|時間)/.test(String(text || ''))) parsed.end = null;
+  }
   if (parsed) setAiCache(cacheKey, parsed, 3_600_000);
   return parsed;
 }
@@ -261,7 +236,7 @@ export async function analyzeEnergyPatterns(focusLogs) {
     .join(',');
 
   const result = await callAPI(
-    HAIKU,
+    FAST_MODEL,
     'Analyze focus logs. Return JSON only: {"insight":"80文字以内","peakTime":"例 10-12時","recommendation":"60文字以内"}',
     summary,
     200,
@@ -331,7 +306,7 @@ export async function analyzeHabitCorrelations(habitLogs, focusLogs) {
   const noExFocus = avg(valid.filter(i => exArr[valid.indexOf(i)] === 0).map(i => fsArr[valid.indexOf(i)])).toFixed(2);
 
   const result = await callAPI(
-    HAIKU,
+    FAST_MODEL,
     'Write 3 concise Japanese insights with numbers. Return JSON only: {"insights":["...","...","..."],"advice":"80文字以内"}',
     `n=${valid.length} exercise_r=${exCorr} sleep_r=${slCorr} exercise_focus=${exFocus} no_exercise_focus=${noExFocus}`,
     300,
@@ -366,7 +341,7 @@ function avg(arr) {
 
 export async function generateMonthlyReport(prevMonth, data) {
   const result = await callAPI(
-    SONNET,
+    QUALITY_MODEL,
     'Generate a Japanese monthly review. Return JSON only: {"title":"...","highlights":["...","...","..."],"achievements":"80文字以内","learning":"80文字以内","advice":"100文字以内","score":0}',
     `month:${prevMonth} tasks:${data.tasksCompleted}/${data.tasksTotal} goals:${data.goalsCount} memos:${data.knowledgeMemos} focus:${data.avgFocus || 'n/a'} habitDays:${data.habitDays}`,
     600,
@@ -385,7 +360,7 @@ export async function generateMonthlyReport(prevMonth, data) {
 
 export async function generateAnalyticsSummary(monthStr, data) {
   const text = await callAPI(
-    HAIKU,
+    FAST_MODEL,
     '日本語のみ。3段落以内。数字を含む読みやすい月次サマリーを返してください。',
     `month:${monthStr} ${JSON.stringify(data)}`,
     250,
@@ -401,7 +376,7 @@ export async function suggestKnowledgeTags(title, textPreview) {
   if (cached) return cached;
 
   const result = await callAPI(
-    HAIKU,
+    FAST_MODEL,
     'Suggest up to 5 Japanese academic/topic tags. Return JSON only: {"tags":["t1","t2","t3"]}',
     `title:${title}\n${textPreview.slice(0, 300)}`,
     120,
@@ -417,7 +392,7 @@ export async function suggestKnowledgeTags(title, textPreview) {
 
 export async function explainTerm(term, context = '') {
   const result = await callAPI(
-    HAIKU,
+    FAST_MODEL,
     'Explain the term in Japanese in 80-150 chars. Plain text only.',
     `term:${term}\ncontext:${context.slice(0, 200)}`,
     200,
@@ -437,9 +412,9 @@ export async function formatKnowledgeMemo(rawText, existingMemosCtx = '') {
   const user = 'Text to organize:\n' + rawText.slice(0, 1800)
     + (existingMemosCtx ? '\n\nExisting memo context:\n' + existingMemosCtx : '');
 
-  const raw = await callAPI(HAIKU, system, user, 1400, 'json', 'memo_format');
+  const raw = await callAPI(FAST_MODEL, system, user, 1400, 'json', 'memo_format');
   const parsed = tryParseJSON(raw);
-  if (!parsed?.blocks) throw new Error('AI memo format failed');
+  if (!parsed?.blocks) throw new Error('AIがメモを正しい形式に整えられませんでした。内容を短くしてもう一度お試しください。');
   return {
     title: parsed.title || '',
     blocks: Array.isArray(parsed.blocks) ? parsed.blocks : [],
@@ -449,7 +424,7 @@ export async function formatKnowledgeMemo(rawText, existingMemosCtx = '') {
 
 export async function summarizeAndTagText(text) {
   const result = await callAPI(
-    HAIKU,
+    FAST_MODEL,
     'Summarize in Japanese and suggest tags. Return JSON only: {"summary":"150文字以内","tags":["t1","t2"]}',
     text.slice(0, 2000),
     250,
@@ -465,7 +440,7 @@ export async function detectKnowledgeGaps(goalTitle, existingTags) {
   if (cached) return cached;
 
   const result = await callAPI(
-    HAIKU,
+    FAST_MODEL,
     'List missing study topics. Return JSON only: {"gaps":["topic1","topic2","topic3"]}',
     `goal:${goalTitle}\nhave:${existingTags.join(',') || 'none'}`,
     150,
@@ -484,7 +459,7 @@ export async function suggestUnstudiedTopics(goalTitle, knowledgeTags) {
   if (cached) return cached;
 
   const result = await callAPI(
-    HAIKU,
+    FAST_MODEL,
     'List unstudied topics. Return JSON only: {"topics":["t1","t2","t3"]}',
     `goal:${goalTitle}\nhave:${knowledgeTags.join(',') || 'none'}`,
     150,
@@ -505,7 +480,7 @@ export async function splitGoalToTasks(goal) {
   const typeLabel = goal.type === 'monthly' ? '月次' : goal.type === 'weekly' ? '週次' : '日次';
 
   const result = await callAPI(
-    SONNET,
+    QUALITY_MODEL,
     'Break down the goal into actionable tasks. Return JSON only: {"tasks":[{"title":"...","weight":"large|medium|small","dueDate":"YYYY-MM-DD","description":"..."},{"title":"...","weight":"medium","dueDate":"YYYY-MM-DD","description":"..."}],"advice":"100文字以内"}',
     `goal:${goal.title} type:${typeLabel} due:${goal.targetDate || 'none'} desc:${goal.description?.slice(0, 100) || 'none'} today:${today()}`,
     1200,
@@ -536,7 +511,7 @@ export async function processBatchQueue(onProgress) {
     if (batch.length) {
       try {
         const result = await callAPI(
-          HAIKU,
+          FAST_MODEL,
           'For each memo, suggest up to 4 Japanese tags. Return JSON only: [{"id":"...","tags":["t1","t2"]}]',
           JSON.stringify(batch),
           Math.min(200 * batch.length, 1500),
@@ -580,7 +555,7 @@ export async function interpretPlannerInput(text, context = {}) {
     hour12: false,
   }).format(new Date());
   const result = await callAPI(
-    SONNET,
+    QUALITY_MODEL,
     [
       'You are the command brain for a planner app. Decide what the user wants and return JSON only.',
       'Schema: {"action":"task|event|schedule|memo|database|delete_event|delete_task|delete_memo","title":"...","targetTitle":"...","date":"YYYY-MM-DD|null","startTime":"HH:MM|null","endTime":"HH:MM|null","dueDate":"YYYY-MM-DD|null","dueTime":"HH:MM|null","weight":"large|medium|small","estimatedMinutes":number|null,"tags":["..."],"memo":"...","blocks":[{"type":"paragraph|h2|bullet","text":"..."}],"fields":["..."],"rows":[{"...":"..."}],"message":"..."}.',
@@ -600,7 +575,7 @@ export async function interpretPlannerInput(text, context = {}) {
     'planner_action'
   );
   const parsed = tryParseJSON(result);
-  if (!parsed?.action) throw new Error('AI response was empty');
+  if (!parsed?.action) throw new Error('AIが操作内容を判断できませんでした。予定名・日付・時刻をもう少し具体的に入力してください。');
   const explicitDate = resolveRelativeDate(text, localToday);
   if (explicitDate) {
     if (parsed.action === 'task' || parsed.action === 'delete_task') parsed.dueDate = explicitDate;
@@ -644,7 +619,7 @@ function resolveRelativeDate(text, localToday) {
 
 export async function generateTaskSchedule(payload) {
   const result = await callAPI(
-    SONNET,
+    QUALITY_MODEL,
     [
       'You schedule tasks inside a planner app. Return JSON only.',
       'Output exactly this schema: {"scheduleItems":[{"taskId":"...","title":"...","date":"YYYY-MM-DD","startTime":"HH:MM","endTime":"HH:MM","note":"..."}]}.',
@@ -662,5 +637,5 @@ export async function generateTaskSchedule(payload) {
   const parsed = tryParseJSON(result);
   if (Array.isArray(parsed)) return { scheduleItems: parsed };
   if (parsed?.scheduleItems || parsed?.mySchedule || parsed?.blocks || parsed?.plan || parsed?.items) return parsed;
-  throw new Error('AI response did not include scheduleItems');
+  throw new Error('AIがタスクの割り振り結果を作れませんでした。対象期間や活動時間を広げてもう一度お試しください。');
 }

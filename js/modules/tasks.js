@@ -472,13 +472,13 @@ function renderCodexPlannerPanel() {
     <section class="codex-plan-card">
       <div class="codex-plan-head">
         <div>
-          <div class="codex-plan-kicker">Planner AI Schedule</div>
+          <div class="codex-plan-kicker">AIタスク分配</div>
           <h3 class="codex-plan-title">タスクを活動時間に再配分</h3>
         </div>
         <button class="btn btn-ghost btn-sm" id="codex-close-btn" type="button">閉じる</button>
       </div>
       <p class="codex-plan-desc">
-        未完了の通常タスクと既存予定をコピーします。AIにはこのJSONを渡して、マイスケジュール用の作業ブロックだけを返してもらいます。
+        未完了タスク・予定・活動時間をもとに、空いている時間へAIが作業ブロックを作成します。
       </p>
       <div class="codex-plan-controls">
         <button class="dp-trigger" id="codex-start-date-btn">開始日 ${formatPickerDate(defaultStart)}</button>
@@ -496,11 +496,17 @@ function renderCodexPlannerPanel() {
       </div>
       <div class="codex-plan-actions">
         <button class="btn btn-primary" id="codex-ai-btn">AI\u3067\u5272\u308a\u632f\u308b</button>
-        <button class="btn btn-ghost" id="codex-copy-btn">AI\u7528\u306b\u30b3\u30d4\u30fc</button>
-        <button class="btn btn-ghost" id="codex-apply-btn">AI\u6848\u3092\u53cd\u6620</button>
       </div>
-      <textarea class="codex-plan-textarea" id="codex-export-text" readonly placeholder="コピーしたJSONがここに出ます"></textarea>
-      <textarea class="codex-plan-textarea" id="codex-import-text" placeholder="Claude / GPT / Codex が返したJSONを貼り付け"></textarea>
+      <details class="codex-plan-advanced">
+        <summary>外部AI用のJSON入出力</summary>
+        <p class="codex-plan-note">通常は開く必要はありません。別のAIへ渡す場合だけ使用します。</p>
+        <div class="codex-plan-actions">
+          <button class="btn btn-ghost" id="codex-copy-btn">AI\u7528\u306b\u30b3\u30d4\u30fc</button>
+          <button class="btn btn-ghost" id="codex-apply-btn">AI\u6848\u3092\u53cd\u6620</button>
+        </div>
+        <textarea class="codex-plan-textarea" id="codex-export-text" readonly placeholder="コピーしたJSONがここに出ます"></textarea>
+        <textarea class="codex-plan-textarea" id="codex-import-text" placeholder="外部AIが返したJSONを貼り付け"></textarea>
+      </details>
       <p class="codex-plan-note">反映先はマイスケジュールです。タスク本体の締切やメモは変更しません。</p>
     </section>
   `;
@@ -625,14 +631,14 @@ async function copyCodexPayload(container) {
   } catch {
     out?.focus();
     out?.select();
-    toast('Copy failed. Please copy manually.', 'info');
+    toast('コピーできませんでした。表示された内容を手動でコピーしてください', 'info');
   }
 }
 
 async function runCodexAiPlan(container, btn) {
-  if (!isAiAvailable()) { toast('AI is not available. Check settings.', 'error'); return; }
+  if (!isAiAvailable()) { toast('AIを利用できません。AI設定を確認してください', 'error'); return; }
   const payload = buildCodexPayload();
-  if (!payload.tasks.length) { toast('No unfinished tasks to schedule.', 'info'); return; }
+  if (!payload.tasks.length) { toast('割り振れる未完了タスクがありません', 'info'); return; }
 
   const original = btn?.textContent || 'AI\u3067\u5272\u308a\u632f\u308b';
   if (btn) { btn.textContent = 'AI\u5272\u308a\u632f\u308a\u4e2d...'; btn.disabled = true; }
@@ -642,7 +648,7 @@ async function runCodexAiPlan(container, btn) {
     if (input) input.value = JSON.stringify(plan, null, 2);
     applyCodexPlan(container, { skipConfirm: true, sourceLabel: 'AI' });
   } catch (e) {
-    toast('AI schedule error: ' + e.message, 'error');
+    toast('AIタスク分配エラー: ' + e.message, 'error');
   } finally {
     if (btn) { btn.textContent = original; btn.disabled = false; }
   }
@@ -652,7 +658,7 @@ function applyCodexPlan(container, options = {}) {
   const input = container.querySelector('#codex-import-text');
   const raw = input?.value?.trim();
   if (!raw) {
-    toast('Codex / GPT / Claude のJSONを貼り付けてください', 'error');
+    toast('外部AIが返したJSONを貼り付けてください', 'error');
     return;
   }
 
@@ -707,16 +713,16 @@ function applyCodexPlan(container, options = {}) {
     return;
   }
 
-  if (!options.skipConfirm && !confirm(`${blocks.length}件の作業ブロックをマイスケジュールに反映します。既存のCodex計画は置き換わります。`)) return;
+  if (!options.skipConfirm && !confirm(`${blocks.length}件の作業ブロックをマイスケジュールに反映します。対象期間内の既存AI計画は置き換わります。`)) return;
 
   getScheduleItems()
-    .filter(i => i.source === 'codex-plan')
+    .filter(i => i.source === 'codex-plan' && dateInPlanningPeriod(i.date))
     .forEach(i => deleteScheduleItem(i.id));
 
   blocks.forEach(b => {
     const task = b.taskId ? normalTasksById.get(b.taskId) : null;
     addScheduleItem({
-      title: b.title || task?.title || 'Codex plan',
+      title: b.title || task?.title || 'AI作業',
       date: b.date,
       startTime: b.startTime,
       endTime: b.endTime,
@@ -1003,6 +1009,7 @@ function getEventsInPlanningPeriod(startDate, endDate) {
 
 function getScheduleItemsInPlanningPeriod(startDate, endDate) {
   return getScheduleItems()
+    .filter(s => s.source !== 'codex-plan')
     .filter(s => !s.date || (s.date >= startDate && s.date <= endDate))
     .map(s => ({
       id: s.id,

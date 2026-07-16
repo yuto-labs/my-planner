@@ -405,7 +405,7 @@ export function saveAiRuntime(patch) {
 export function isAiAvailable() {
   const settings = getSettings();
   const runtime = getAiRuntime();
-  return settings.aiEnabled === true && (runtime.configured === true || !!settings.apiKey);
+  return settings.aiEnabled === true && runtime.configured === true;
 }
 export function getMyScheduleColor() { return getSettings().myScheduleColor || DEFAULT_SETTINGS.myScheduleColor; }
 

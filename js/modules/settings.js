@@ -142,8 +142,8 @@ function renderMainSettings(container) {
       <div class="settings-section">
         <button class="settings-link-card" id="open-ai-settings-btn">
           <span>
-            <strong>AI Settings</strong>
-            <small>AI, backup, and account details</small>
+            <strong>AI設定</strong>
+            <small>AI、バックアップ、アカウント</small>
           </span>
           <span class="settings-link-arrow">›</span>
         </button>
@@ -174,12 +174,12 @@ function renderAISettings(container) {
   container.innerHTML = `
     <div class="settings-page">
       <div class="settings-section">
-        <div class="settings-heading">AI Visibility</div>
+        <div class="settings-heading">AI機能の表示</div>
         <div class="ai-toggle-row" style="margin-top:4px">
           <div>
-            <label for="ai-enabled-toggle">Show AI features</label>
+            <label for="ai-enabled-toggle">AI機能を表示する</label>
             <p class="text-sm text-muted" style="margin-top:4px">
-              When off, AI inputs and AI summary actions stay hidden even if an API key is saved.
+              オフにすると、AI入力やAI要約などの操作を非表示にします。
             </p>
           </div>
           <input type="checkbox" id="ai-enabled-toggle" ${settings.aiEnabled === true ? 'checked' : ''}>
@@ -187,85 +187,85 @@ function renderAISettings(container) {
       </div>
 
       <div class="settings-section">
-        <div class="settings-heading">AI Provider</div>
+        <div class="settings-heading">AIプロバイダー</div>
         <div class="analytics-info-box" style="display:flex;flex-direction:column;gap:8px">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <strong>Server AI</strong>
+            <strong>Geminiサーバー</strong>
             <span class="chip">${esc(modelLabel)}</span>
             <span class="chip" style="background:${serverReady ? 'rgba(50,212,154,0.14)' : 'rgba(245,197,66,0.14)'};color:${serverReady ? 'var(--success)' : 'var(--warning)'}">
-              ${serverReady ? 'Ready' : 'Not configured'}
+              ${serverReady ? '利用可能' : '未設定'}
             </span>
           </div>
           <p class="text-sm text-muted">
-            AI runs through the deployed app server. Browser-side API keys are no longer required for normal use.
+            AI処理はアプリのサーバー経由で実行されます。端末ごとのAPIキー入力は必要ありません。
           </p>
           ${hasLegacyKey ? `
             <p class="text-sm text-muted">
-              A legacy browser key is still saved on this device for fallback compatibility.
+              旧ブラウザAIキーがこの端末に残っています。現在は使用されません。
             </p>
           ` : ''}
           <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn btn-ghost btn-sm" id="refresh-ai-status">Refresh status</button>
-            ${hasLegacyKey ? `<button class="btn btn-ghost btn-sm" id="clear-legacy-ai-key">Forget legacy key</button>` : ''}
+            <button class="btn btn-ghost btn-sm" id="refresh-ai-status">状態を更新</button>
+            ${hasLegacyKey ? `<button class="btn btn-ghost btn-sm" id="clear-legacy-ai-key">旧キーを削除</button>` : ''}
           </div>
         </div>
       </div>
 
       <div class="settings-section">
-        <div class="settings-heading">Backup</div>
+        <div class="settings-heading">バックアップ</div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn btn-ghost" id="export-btn">
             <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-            Export
+            書き出す
           </button>
           <button class="btn btn-ghost" id="import-btn">
             <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px"><path d="M19 15v4H5v-4H3v4c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-4h-2zM13 9l-1-1V3h-2v5L9 9 7 7l5 5 5-5-2 2z"/></svg>
-            Import
+            読み込む
           </button>
         </div>
         <p class="text-sm text-muted" style="margin-top:8px">
-          Exported backups do not include any server-side AI secret.
+          バックアップにサーバー側のAIキーは含まれません。
         </p>
         <input type="file" id="import-file" accept=".json" class="hidden">
-        <button class="btn btn-ghost btn-sm" id="clear-ai-cache" style="margin-top:8px">Clear AI cache</button>
+        <button class="btn btn-ghost btn-sm" id="clear-ai-cache" style="margin-top:8px">AIキャッシュを消去</button>
       </div>
 
       <div class="settings-section">
-        <div class="settings-heading">AI Processing Mode</div>
+        <div class="settings-heading">AI処理モード</div>
         <div class="batch-mode-select">
           <button class="batch-mode-btn${batchCfg.aiMode === 'immediate' ? ' active' : ''}" data-ai-mode="immediate">
-            <div class="batch-mode-icon">Now</div>
-            <div class="batch-mode-label">Immediate</div>
-            <div class="batch-mode-sub">Run AI when an item needs it.</div>
+            <div class="batch-mode-icon">今すぐ</div>
+            <div class="batch-mode-label">即時</div>
+            <div class="batch-mode-sub">必要になった時点でAIを実行します。</div>
           </button>
           <button class="batch-mode-btn${batchCfg.aiMode === 'batch' ? ' active' : ''}" data-ai-mode="batch">
-            <div class="batch-mode-icon">Batch</div>
-            <div class="batch-mode-label">Batch</div>
-            <div class="batch-mode-sub">Queue AI work and process it together.</div>
+            <div class="batch-mode-icon">まとめて</div>
+            <div class="batch-mode-label">一括処理</div>
+            <div class="batch-mode-sub">AI処理をためて指定時刻にまとめて実行します。</div>
           </button>
         </div>
 
         <div id="batch-schedule-wrap" style="${batchCfg.aiMode === 'batch' ? '' : 'display:none'}">
           <div class="batch-schedule-row">
-            <label class="form-label" style="margin:0">Batch time</label>
+            <label class="form-label" style="margin:0">実行時刻</label>
             <input class="input" id="batch-time" type="time" value="${esc(batchCfg.batchTime || '22:00')}"
               style="width:120px">
             <label class="batch-toggle-wrap">
               <input type="checkbox" id="batch-enabled" ${batchCfg.batchEnabled ? 'checked' : ''}>
-              <span class="batch-toggle-label">Enabled</span>
+              <span class="batch-toggle-label">有効</span>
             </label>
           </div>
         </div>
 
         ${pendingQueue.length ? `
           <div class="batch-queue-status">
-            <span>Waiting: <strong>${pendingQueue.length}</strong></span>
+            <span>待機中: <strong>${pendingQueue.length}</strong>件</span>
             <div style="display:flex;gap:8px">
-              <button class="btn btn-primary btn-sm" id="run-batch-now-btn">Run now</button>
-              <button class="btn btn-ghost btn-sm" id="clear-queue-btn">Clear queue</button>
+              <button class="btn btn-primary btn-sm" id="run-batch-now-btn">今すぐ実行</button>
+              <button class="btn btn-ghost btn-sm" id="clear-queue-btn">待機を消去</button>
             </div>
           </div>
-        ` : `<p class="text-sm text-muted" style="margin-top:8px">AI queue: empty</p>`}
+        ` : `<p class="text-sm text-muted" style="margin-top:8px">待機中のAI処理はありません</p>`}
       </div>
 
       <div class="settings-section" id="ai-account-section">
@@ -297,11 +297,11 @@ function renderAccountSection() {
   const cfg = getStoredConfig();
   const cloudHost = safeCloudHost(cfg.url);
   return `
-    <div class="settings-heading">Account</div>
+    <div class="settings-heading">アカウント</div>
     <div id="sb-auth-area">
-      <div id="sb-status" class="text-sm text-muted" style="margin-bottom:10px">Checking...</div>
+      <div id="sb-status" class="text-sm text-muted" style="margin-bottom:10px">確認中...</div>
       <div class="text-sm text-muted" style="margin-bottom:10px">
-        Cloud: ${esc(cloudHost)}
+        同期先: ${esc(cloudHost)}
       </div>
       <div id="sb-sync-status" class="text-sm text-muted" style="margin-bottom:10px">
         ${renderSyncStatus(syncStatus)}
@@ -309,34 +309,34 @@ function renderAccountSection() {
 
       <div id="sb-signin-wrap">
         <div class="form-group">
-          <label class="form-label">Email address</label>
+          <label class="form-label">メールアドレス</label>
           <input class="input" id="sb-email-input" type="email"
             placeholder="you@example.com" autocomplete="email">
         </div>
-        <button class="btn btn-primary btn-sm" id="sb-signin-btn">Send login code</button>
+        <button class="btn btn-primary btn-sm" id="sb-signin-btn">ログインコードを送信</button>
         <p class="text-sm text-muted" style="margin-top:6px">
-          Enter the code sent to your email. No password is needed.
+          メールに届くコードでログインします。パスワードは不要です。
         </p>
 
         <div id="sb-otp-wrap" class="hidden" style="margin-top:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:14px">
-          <p class="text-sm" style="margin-bottom:10px">Check your email and enter the login code.</p>
+          <p class="text-sm" style="margin-bottom:10px">メールを確認してログインコードを入力してください。</p>
           <input class="input" id="sb-otp-input" type="text" inputmode="numeric"
             pattern="[0-9]*" maxlength="8" placeholder="12345678"
             style="font-size:24px;letter-spacing:4px;text-align:center;font-weight:700">
-          <button class="btn btn-primary btn-sm btn-full" id="sb-otp-verify-btn" style="margin-top:10px">Sign in</button>
-          <button class="btn btn-ghost btn-sm btn-full" id="sb-resend-btn" style="margin-top:6px">Resend code</button>
+          <button class="btn btn-primary btn-sm btn-full" id="sb-otp-verify-btn" style="margin-top:10px">ログイン</button>
+          <button class="btn btn-ghost btn-sm btn-full" id="sb-resend-btn" style="margin-top:6px">コードを再送</button>
         </div>
       </div>
 
       <div id="sb-loggedin-wrap" class="hidden">
         <div id="sb-migrate-area" class="hidden" style="margin-bottom:12px">
           <p class="text-sm" style="margin-bottom:8px">
-            Move local data on this device to your cloud account. Local data will not be deleted.
+            この端末のデータをクラウドへ同期します。端末内のデータは削除されません。
           </p>
-          <button class="btn btn-primary btn-sm" id="sb-migrate-btn">Move local data to cloud</button>
+          <button class="btn btn-primary btn-sm" id="sb-migrate-btn">端末データをクラウドへ同期</button>
           <div id="sb-migrate-progress" class="hidden text-sm text-muted" style="margin-top:6px"></div>
         </div>
-        <button class="btn btn-ghost btn-sm" id="sb-signout-btn">Sign out</button>
+        <button class="btn btn-ghost btn-sm" id="sb-signout-btn">ログアウト</button>
       </div>
     </div>
   `;
@@ -346,17 +346,17 @@ function safeCloudHost(url) {
   try {
     return new URL(url).hostname;
   } catch {
-    return 'not configured';
+    return '未設定';
   }
 }
 
 function renderSyncStatus(status) {
-  const lastPush = status.lastPushAt ? formatSyncTime(status.lastPushAt) : 'not yet';
-  const lastPull = status.lastPullAt ? formatSyncTime(status.lastPullAt) : 'not yet';
+  const lastPush = status.lastPushAt ? formatSyncTime(status.lastPushAt) : 'まだありません';
+  const lastPull = status.lastPullAt ? formatSyncTime(status.lastPullAt) : 'まだありません';
   const error = status.lastErrorAt
-    ? `<br><span style="color:var(--danger)">Last error (${esc(status.lastErrorTable || 'sync')}): ${esc(status.lastErrorMessage || '')}</span>`
+    ? `<br><span style="color:var(--danger)">最終エラー (${esc(status.lastErrorTable || '同期')}): ${esc(status.lastErrorMessage || '')}</span>`
     : '';
-  return `Last push: ${esc(lastPush)} / Last pull: ${esc(lastPull)}${error}`;
+  return `最終送信: ${esc(lastPush)} / 最終取得: ${esc(lastPull)}${error}`;
 }
 
 function formatSyncTime(value) {
@@ -585,28 +585,28 @@ function wireCategories(container) {
 function wireAISettings(container) {
   container.querySelector('#ai-enabled-toggle')?.addEventListener('change', e => {
     saveSettings({ aiEnabled: e.target.checked });
-    toast(e.target.checked ? 'AI features are visible.' : 'AI features are hidden.', 'info');
+    toast(e.target.checked ? 'AI機能を表示しました' : 'AI機能を非表示にしました', 'info');
   });
 
   container.querySelector('#refresh-ai-status')?.addEventListener('click', async () => {
     try {
       await refreshAiRuntimeStatus({ force: true });
       renderAISettings(container);
-      toast('AI status refreshed.', 'success');
+      toast('AIの状態を更新しました', 'success');
     } catch (e) {
-      toast('Could not refresh AI status: ' + e.message, 'error');
+      toast('AIの状態を更新できませんでした: ' + e.message, 'error');
     }
   });
 
   container.querySelector('#clear-legacy-ai-key')?.addEventListener('click', () => {
     saveSettings({ apiKey: '' });
     renderAISettings(container);
-    toast('Legacy browser AI key removed.', 'info');
+    toast('旧ブラウザAIキーを削除しました', 'info');
   });
 
   container.querySelector('#clear-ai-cache')?.addEventListener('click', () => {
     clearAiCache();
-    toast('AI cache cleared.', 'info');
+    toast('AIキャッシュを消去しました', 'info');
   });
 
   container.querySelectorAll('[data-ai-mode]').forEach(btn => {
@@ -618,39 +618,39 @@ function wireAISettings(container) {
       );
       const scheduleWrap = container.querySelector('#batch-schedule-wrap');
       if (scheduleWrap) scheduleWrap.style.display = mode === 'batch' ? '' : 'none';
-      toast(`AI mode changed to ${mode}.`, 'info');
+      toast(`AI処理モードを${mode === 'batch' ? '一括処理' : '即時'}に変更しました`, 'info');
     });
   });
 
   container.querySelector('#batch-time')?.addEventListener('change', e => {
     saveBatchSettings({ batchTime: e.target.value });
-    toast('Batch time saved.', 'success');
+    toast('一括処理の時刻を保存しました', 'success');
   });
 
   container.querySelector('#batch-enabled')?.addEventListener('change', e => {
     saveBatchSettings({ batchEnabled: e.target.checked });
-    toast(e.target.checked ? 'Batch processing enabled.' : 'Batch processing disabled.', 'info');
+    toast(e.target.checked ? '一括処理を有効にしました' : '一括処理を無効にしました', 'info');
   });
 
   container.querySelector('#run-batch-now-btn')?.addEventListener('click', async () => {
     const btn = container.querySelector('#run-batch-now-btn');
     if (!btn) return;
-    btn.innerHTML = '<span class="ai-spinner"></span> Processing...';
+    btn.innerHTML = '<span class="ai-spinner"></span> 処理中...';
     btn.disabled = true;
     try {
       const result = await processBatchQueue();
-      toast(`AI batch complete: ${result.processed} items processed.`, 'success');
+      toast(`AI一括処理が完了しました: ${result.processed}件`, 'success');
       renderAISettings(container);
     } catch (e) {
-      toast('Error: ' + e.message, 'error');
+      toast('AI一括処理エラー: ' + e.message, 'error');
       btn.disabled = false;
-      btn.textContent = 'Run now';
+      btn.textContent = '今すぐ実行';
     }
   });
 
   container.querySelector('#clear-queue-btn')?.addEventListener('click', () => {
     clearPendingAIQueue();
-    toast('AI queue cleared.', 'info');
+    toast('待機中のAI処理を消去しました', 'info');
     renderAISettings(container);
   });
 }
@@ -665,7 +665,7 @@ function wireBackup(container) {
     a.download = `my-planner-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    toast('Exported.', 'success');
+    toast('バックアップを書き出しました', 'success');
   });
 
   container.querySelector('#import-btn')?.addEventListener('click', () => {
@@ -679,10 +679,10 @@ function wireBackup(container) {
     reader.onload = ev => {
       try {
         importBackup(ev.target.result);
-        toast('Imported. Reloading...', 'success');
+        toast('バックアップを読み込みました。再読み込みします...', 'success');
         setTimeout(() => location.reload(), 1500);
       } catch (err) {
-        toast('Import error: ' + err.message, 'error');
+        toast('読み込みエラー: ' + err.message, 'error');
       }
     };
     reader.readAsText(file);
@@ -693,22 +693,22 @@ function wireAccount(container, options = {}) {
   container.querySelector('#sb-signin-btn')?.addEventListener('click', async () => {
     const email = container.querySelector('#sb-email-input')?.value.trim();
     if (!email) {
-      toast('Enter your email address.', 'error');
+      toast('メールアドレスを入力してください', 'error');
       return;
     }
     const btn = container.querySelector('#sb-signin-btn');
     btn.disabled = true;
-    btn.textContent = 'Sending...';
+    btn.textContent = '送信中...';
     try {
       await signInWithEmail(email);
       container.querySelector('#sb-otp-wrap')?.classList.remove('hidden');
       container.querySelector('#sb-otp-input')?.focus();
-      toast(`Login code sent to ${email}.`, 'success');
+      toast(`${email} にログインコードを送信しました`, 'success');
     } catch (e) {
-      toast('Send error: ' + e.message, 'error');
+      toast('送信エラー: ' + e.message, 'error');
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Send login code again';
+      btn.textContent = 'ログインコードを再送';
     }
   });
 
@@ -716,37 +716,37 @@ function wireAccount(container, options = {}) {
     const email = container.querySelector('#sb-email-input')?.value.trim();
     const code = container.querySelector('#sb-otp-input')?.value.trim();
     if (!email) {
-      toast('Enter your email address.', 'error');
+      toast('メールアドレスを入力してください', 'error');
       return;
     }
     if (!code || code.length < 6) {
-      toast('Enter the login code.', 'error');
+      toast('ログインコードを入力してください', 'error');
       return;
     }
     const btn = container.querySelector('#sb-otp-verify-btn');
     btn.disabled = true;
-    btn.textContent = 'Signing in...';
+    btn.textContent = 'ログイン中...';
     try {
       const session = await verifyEmailOtp(email, code);
-      if (!session) throw new Error('Could not create a session.');
+      if (!session) throw new Error('ログインセッションを作成できませんでした');
       const nextUserId = session.user?.id || null;
       const previousUserId = getActiveUserId();
       if (previousUserId && nextUserId && previousUserId !== nextUserId) {
         clearUserContentLocal();
       }
       setActiveUserId(nextUserId);
-      toast('Signed in.', 'success');
+      toast('ログインしました', 'success');
       const alreadyMigrated = await isMigratedForCurrentUser();
       await pullAll(alreadyMigrated);
       if (!alreadyMigrated) {
-        btn.textContent = 'Syncing…';
+        btn.textContent = '同期中…';
         try {
           await migrateToSupabase(() => {});
           await pullAll(true);
-          toast('Sync complete ✓', 'success');
+          toast('同期が完了しました', 'success');
         } catch (e) {
           console.warn('[Sync] auto-migrate failed:', e);
-          toast('Sync failed — tap "Move local data to cloud" in AI Settings to retry.', 'error');
+          toast('同期に失敗しました。AI設定の「端末データをクラウドへ同期」から再実行してください', 'error');
         }
       }
       await startRealtimeSync();
@@ -759,10 +759,10 @@ function wireAccount(container, options = {}) {
       }
       window.AppNav?.refreshCurrentView?.({ preserveScroll: true });
     } catch (e) {
-      toast('Sign-in error: ' + e.message, 'error');
+      toast('ログインエラー: ' + e.message, 'error');
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Sign in';
+      btn.textContent = 'ログイン';
     }
     // refreshAccountStatus は認証エラーと無関係なので外側 try-catch の外で実行
     try {
@@ -784,7 +784,7 @@ function wireAccount(container, options = {}) {
     await stopRealtimeSync();
     await signOut();
     clearUserContentLocal();
-    toast('Signed out.', 'info');
+    toast('ログアウトしました', 'info');
     await refreshAccountStatus(container, options);
     window.AppNav?.refreshCurrentView?.({ preserveScroll: true });
   });
@@ -798,12 +798,12 @@ function wireAccount(container, options = {}) {
       await migrateToSupabase((step, pct) => {
         if (progress) progress.textContent = `${step}... (${pct}%)`;
       });
-      toast('Local data moved to cloud.', 'success');
-      if (progress) progress.textContent = 'Done.';
+      toast('端末データをクラウドへ同期しました', 'success');
+      if (progress) progress.textContent = '完了しました';
       container.querySelector('#sb-migrate-area')?.classList.add('hidden');
     } catch (e) {
-      toast('Migration error: ' + e.message, 'error');
-      if (progress) progress.textContent = 'Error: ' + e.message;
+      toast('同期エラー: ' + e.message, 'error');
+      if (progress) progress.textContent = 'エラー: ' + e.message;
       btn.disabled = false;
     }
   });
@@ -828,7 +828,7 @@ async function refreshAccountStatus(container, options = {}) {
       }
       if (section) section.classList.remove('hidden');
       if (statusEl) {
-        statusEl.innerHTML = `<span style="color:var(--success)">Signed in</span>: ${esc(email || session.user.id)}`;
+        statusEl.innerHTML = `<span style="color:var(--success)">ログイン中</span>: ${esc(email || session.user.id)}`;
       }
       signinWrap?.classList.add('hidden');
       loggedinWrap?.classList.remove('hidden');
@@ -836,13 +836,13 @@ async function refreshAccountStatus(container, options = {}) {
       else migrateArea?.classList.add('hidden');
     } else {
       if (section) section.classList.remove('hidden');
-      if (statusEl) statusEl.textContent = 'Not signed in';
+      if (statusEl) statusEl.textContent = 'ログインしていません';
       signinWrap?.classList.remove('hidden');
       loggedinWrap?.classList.add('hidden');
     }
   } catch {
     if (section) section.classList.remove('hidden');
-    if (statusEl) statusEl.textContent = 'Could not check sign-in status.';
+    if (statusEl) statusEl.textContent = 'ログイン状態を確認できませんでした';
     signinWrap?.classList.remove('hidden');
     loggedinWrap?.classList.add('hidden');
   }

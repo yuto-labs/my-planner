@@ -363,11 +363,11 @@ async function handleNLInput(input, btn, container) {
       const cat = cats.find(c => c.name === parsed.categoryName) || cats[cats.length - 1];
       const start = parsed.start || (parsed.date && parsed.startTime ? parsed.date + 'T' + parsed.startTime + ':00' : null);
       const end = parsed.end || (parsed.date && parsed.endTime ? parsed.date + 'T' + parsed.endTime + ':00' : null);
-      if (!start) throw new Error('event needs date and start time');
+      if (!start) throw new Error('予定を追加するには日付と開始時刻が必要です');
       addEvent({ title, start, end, categoryId: cat.id, isTentative: !!parsed.isTentative, isRoutine: false, memo: parsed.memo || '', tags });
       message = message || '\u4e88\u5b9a\u3092\u8ffd\u52a0\u3057\u307e\u3057\u305f';
     } else if (parsed.action === 'schedule') {
-      if (!parsed.date || !parsed.startTime || !parsed.endTime) throw new Error('schedule needs date, startTime, and endTime');
+      if (!parsed.date || !parsed.startTime || !parsed.endTime) throw new Error('作業時間を確保するには日付・開始時刻・終了時刻が必要です');
       addScheduleItem({ title, date: parsed.date, startTime: parsed.startTime, endTime: parsed.endTime, note: parsed.memo || '', source: 'ai-input' });
       message = message || '\u6d3b\u52d5\u6642\u9593\u306b\u8ffd\u52a0\u3057\u307e\u3057\u305f';
     } else if (parsed.action === 'memo' || parsed.action === 'database') {
