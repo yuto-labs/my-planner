@@ -12,7 +12,8 @@ import { processBatchQueue, refreshAiRuntimeStatus } from '../ai.js';
 import { esc, generateId } from '../utils.js';
 import {
   getSession, getUserEmail, getStoredConfig,
-  signInWithEmail, verifyEmailOtp, signOut, isMigratedForCurrentUser, setActiveUserId,
+  signInWithEmail, verifyEmailOtp, signOut, isMigratedForCurrentUser,
+  getActiveUserId, setActiveUserId,
 } from '../supabase.js';
 import { migrateToSupabase } from '../migrate.js';
 import { getSyncStatus, pullAll, startRealtimeSync, stopRealtimeSync } from '../sync.js';
@@ -747,10 +748,16 @@ function wireAccount(container, options = {}) {
     try {
       const session = await verifyEmailOtp(email, code);
       if (!session) throw new Error('Could not create a session.');
-      setActiveUserId(session.user?.id || null);
+      const nextUserId = session.user?.id || null;
+      const previousUserId = getActiveUserId();
+      if (previousUserId && nextUserId && previousUserId !== nextUserId) {
+        clearUserContentLocal();
+      }
+      setActiveUserId(nextUserId);
       toast('Signed in.', 'success');
-      const pulledFirst = await pullAll(true);
-      if (!pulledFirst && !await isMigratedForCurrentUser()) {
+      const alreadyMigrated = await isMigratedForCurrentUser();
+      await pullAll(alreadyMigrated);
+      if (!alreadyMigrated) {
         btn.textContent = 'Syncing…';
         try {
           await migrateToSupabase(() => {});
