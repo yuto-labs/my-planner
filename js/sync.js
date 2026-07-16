@@ -75,6 +75,7 @@ const CONFLICT_KEY = {
 const _timers = {};
 const _deleteTimers = new Map();
 const DELETE_GRACE_MS = 250;
+const DELETE_RETRY_MS = 5000;
 const DELETE_TOMBSTONE_KEY = 'mp_sync_pending_deletes';
 const DELETE_TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const RECENT_UPSERT_KEY = 'mp_sync_recent_upserts';
@@ -110,7 +111,10 @@ export async function startRealtimeSync() {
   const client = await getClient();
   const userId = await getUserId();
   if (!client || !userId || !client.channel) return false;
-  if (_realtimeChannel && _realtimeUserId === userId) return true;
+  if (_realtimeChannel && _realtimeUserId === userId) {
+    _resumePersistedSyncWork();
+    return true;
+  }
 
   await stopRealtimeSync();
 
@@ -136,6 +140,7 @@ export async function startRealtimeSync() {
   channel.subscribe();
   _realtimeChannel = channel;
   _realtimeUserId = userId;
+  _resumePersistedSyncWork();
   return true;
 }
 
@@ -395,7 +400,17 @@ export async function pullIfStale(minAgeMs = 30_000, forceReplace = false) {
 
 // ---- Utils ----
 
-function _scheduleDelete(payload) {
+function _resumePersistedSyncWork() {
+  _getPendingDeletes().forEach(payload => _scheduleDelete(payload));
+  const pendingTables = new Set(
+    _getRecentUpserts()
+      .map(entry => entry.table)
+      .filter(table => LS_KEYS[table] || table === 'tags')
+  );
+  pendingTables.forEach(table => _schedulePushRetry(table));
+}
+
+function _scheduleDelete(payload, delayMs = DELETE_GRACE_MS) {
   _markPendingDelete(payload);
   const key = _deleteKey(payload);
   clearTimeout(_deleteTimers.get(key));
@@ -430,12 +445,14 @@ function _scheduleDelete(payload) {
       }
       if (result?.error) throw result.error;
       _clearPendingDelete(payload);
+      _recordSyncSuccess('push');
     } catch (e) {
       console.warn(`[Sync] delete ${payload.table} failed:`, e);
-      if (_isStillDeleted(payload)) _scheduleDelete(payload);
+      _recordSyncError(payload.table, e);
+      if (_isStillDeleted(payload)) _scheduleDelete(payload, DELETE_RETRY_MS);
       else _clearPendingDelete(payload);
     }
-  }, DELETE_GRACE_MS));
+  }, delayMs));
 }
 
 function _deleteKey({ table, id, name }) {
@@ -620,15 +637,20 @@ function _mergeProtectedLocalItems(tableKey, lsKey, remoteItems) {
       .map(entry => entry.id)
   );
 
+  let needsRetry = false;
   const merged = remoteItems.map(remote => {
     const local = localById.get(remote.id);
     if (!local) return remote;
-    return _updatedTs(local) >= _updatedTs(remote) ? local : remote;
+    if (_updatedTs(local) >= _updatedTs(remote)) {
+      if (recentIds.has(local.id) && _updatedTs(local) > _updatedTs(remote)) needsRetry = true;
+      return local;
+    }
+    return remote;
   });
 
   const remoteIds = new Set(remoteItems.map(item => item.id));
   const appended = localItems.filter(item => item?.id && recentIds.has(item.id) && !remoteIds.has(item.id));
-  if (appended.length) _schedulePushRetry(tableKey);
+  if (appended.length || needsRetry) _schedulePushRetry(tableKey);
   return appended.length ? [...merged, ...appended] : merged;
 }
 

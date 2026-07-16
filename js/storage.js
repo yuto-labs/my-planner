@@ -702,9 +702,15 @@ export function updateKnowledgeMemo(id, updates) {
 export function deleteKnowledgeMemo(id) {
   const memos = getKnowledgeMemos();
   const target = memos.find(m => m.id === id);
-  if (target) addTrashItem({ entityType: 'memo', payload: target, title: target.title });
-  saveKnowledgeMemos(memos.filter(m => m.id !== id));
   const schedule = getReviewSchedule();
+  if (target) {
+    addTrashItem({
+      entityType: 'memo',
+      payload: { ...target, __reviewEntry: schedule[id] || null },
+      title: target.title,
+    });
+  }
+  saveKnowledgeMemos(memos.filter(m => m.id !== id));
   if (schedule[id]) {
     delete schedule[id];
     saveReviewSchedule(schedule);
@@ -784,13 +790,22 @@ export function restoreTrashItem(id) {
   } else if (item.entityType === 'memo') {
     const memos = getKnowledgeMemos();
     if (!memos.find(m => m.id === entityId)) {
+      const { __reviewEntry, ...memoPayload } = payload;
       const restoredMemo = {
         title: '', blocks: [], tags: [], starred: false, url: '', summary: '',
-        ...payload,
+        ...memoPayload,
         id: entityId,
         updatedAt: new Date().toISOString(),
       };
       saveKnowledgeMemos([restoredMemo, ...memos]);
+
+      const schedule = getReviewSchedule();
+      if (__reviewEntry) {
+        schedule[entityId] = __reviewEntry;
+        saveReviewSchedule(schedule);
+      } else if (!schedule[entityId]) {
+        scheduleFirstReview(entityId);
+      }
     }
   } else {
     return null;

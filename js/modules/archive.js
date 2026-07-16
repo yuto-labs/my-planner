@@ -70,6 +70,9 @@ function render(container) {
 
   container.querySelectorAll('[data-trash-delete]').forEach(btn => {
     btn.addEventListener('click', () => {
+      const item = getTrashItems().find(entry => entry.id === btn.dataset.trashDelete);
+      const title = item?.title?.slice(0, 30) || 'この項目';
+      if (!window.confirm(`「${title}」を Trash から完全削除しますか？この操作は元に戻せません。`)) return;
       removeTrashItem(btn.dataset.trashDelete);
       toast('Trash から削除しました', 'success');
       render(container);

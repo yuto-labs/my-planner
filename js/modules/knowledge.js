@@ -2764,7 +2764,7 @@ function confirmDelete(memoId, container) {
       <span class="modal-title">メモを削除</span>
       <button class="modal-close"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>
     </div>
-    <div class="modal-body"><p style="font-size:15px">このメモを削除しますか？この操作は元に戻せません。</p></div>
+    <div class="modal-body"><p style="font-size:15px">このメモを Trash へ移動します。Trash から復元できます。</p></div>
     <div class="modal-footer" style="justify-content:flex-end">
       <button class="btn btn-ghost btn-sm" id="del-cancel">キャンセル</button>
       <button class="btn btn-danger btn-sm" id="del-ok">削除</button>

@@ -82,7 +82,7 @@ function calcWeightCompletion() {
 }
 
 function calcPlanAccuracy(mode = 'week') {
-  const tasks = allTasks().filter(t => t.completed && t.dueDate && t.completedAt);
+  const tasks = allTasks().filter(t => t.dueDate);
   let filtered;
   if (mode === 'week') {
     const wb = weekBounds();
@@ -91,8 +91,9 @@ function calcPlanAccuracy(mode = 'week') {
     const mb = monthBounds();
     filtered = tasks.filter(t => t.dueDate >= mb.s && t.dueDate <= mb.e);
   }
+  filtered = filtered.filter(t => t.dueDate <= today() || t.completedAt);
   if (!filtered.length) return { rate: null, on: 0, total: 0 };
-  const onTime = filtered.filter(t => t.completedAt.slice(0, 10) === t.dueDate);
+  const onTime = filtered.filter(t => t.completedAt && t.completedAt.slice(0, 10) <= t.dueDate);
   return { rate: Math.round(onTime.length / filtered.length * 100), on: onTime.length, total: filtered.length };
 }
 
@@ -231,7 +232,7 @@ function renderAccuracyContent(acc) {
   const color = acc.rate >= 80 ? 'var(--success)' : acc.rate >= 50 ? 'var(--warning)' : 'var(--danger)';
   return `<div class="analytics-big-stat">
     <div class="analytics-big-val" style="color:${color}">${acc.rate}%</div>
-    <div class="analytics-big-sub">${acc.on}/${acc.total}タスクを予定通り完了</div>
+    <div class="analytics-big-sub">${acc.on}/${acc.total}件を期限内に完了</div>
   </div>`;
 }
 
@@ -301,9 +302,9 @@ function renderTasksTab() {
       }
     </div>
 
-    <!-- 計画精度 -->
+    <!-- 期限内完了率 -->
     <div class="analytics-section">
-      <div class="analytics-section-title">計画精度
+      <div class="analytics-section-title">期限内完了率
         <div class="analytics-mode-toggle">
           <button class="plan-accuracy-toggle active" data-mode="week">週</button>
           <button class="plan-accuracy-toggle" data-mode="month">月</button>
