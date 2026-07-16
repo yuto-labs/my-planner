@@ -21,6 +21,7 @@ function pickThinkingConfig(model, actionType) {
     'memo_format',
     'memo_summary',
     'monthly_report',
+    'planner_action',
     'task_schedule',
   ]);
   const isComplex = complexActions.has(String(actionType || ''));
@@ -28,6 +29,109 @@ function pickThinkingConfig(model, actionType) {
     return { thinkingBudget: isComplex ? 2048 : 512 };
   }
   return { thinkingLevel: isComplex ? 'medium' : 'low' };
+}
+
+function nullableString(description) {
+  return { type: 'STRING', nullable: true, description };
+}
+
+function stringArray(description) {
+  return { type: 'ARRAY', description, items: { type: 'STRING' } };
+}
+
+function getTaskIdsFromPrompt(userText) {
+  try {
+    const payload = JSON.parse(String(userText || ''));
+    return Array.isArray(payload?.tasks)
+      ? [...new Set(payload.tasks.map(task => String(task?.id || '')).filter(Boolean))]
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function pickResponseSchema(actionType, body) {
+  const action = String(actionType || '');
+  if (action === 'task_schedule') {
+    const taskIds = getTaskIdsFromPrompt(body.userText);
+    const taskId = { type: 'STRING', description: 'An exact task id from the supplied tasks array.' };
+    if (taskIds.length) taskId.enum = taskIds;
+    return {
+      type: 'OBJECT',
+      properties: {
+        scheduleItems: {
+          type: 'ARRAY',
+          description: 'Non-overlapping task blocks that fit all supplied constraints.',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              taskId,
+              title: { type: 'STRING', description: 'The supplied task title.' },
+              date: { type: 'STRING', description: 'Local date in YYYY-MM-DD format.' },
+              startTime: { type: 'STRING', description: 'Local start time in 24-hour HH:MM format.' },
+              endTime: { type: 'STRING', description: 'Local end time in 24-hour HH:MM format.' },
+              note: { type: 'STRING', description: 'A short placement reason, or an empty string.' },
+            },
+            required: ['taskId', 'title', 'date', 'startTime', 'endTime', 'note'],
+          },
+        },
+      },
+      required: ['scheduleItems'],
+    };
+  }
+
+  if (action === 'event_parse') {
+    return {
+      type: 'OBJECT',
+      properties: {
+        title: { type: 'STRING', description: 'Event title using only supplied details.' },
+        start: nullableString('Local start datetime in YYYY-MM-DDTHH:mm:00 format, or null.'),
+        end: nullableString('Local end datetime in YYYY-MM-DDTHH:mm:00 format, or null.'),
+        categoryName: nullableString('One exact supplied category name, or null.'),
+        isTentative: { type: 'BOOLEAN', description: 'True only when the event is tentative.' },
+      },
+      required: ['title', 'start', 'end', 'categoryName', 'isTentative'],
+    };
+  }
+
+  if (action === 'memo_format') {
+    return {
+      type: 'OBJECT',
+      properties: {
+        title: { type: 'STRING', description: 'A short Japanese title grounded in the memo.' },
+        blocks: {
+          type: 'ARRAY',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              type: { type: 'STRING', enum: ['paragraph', 'h1', 'h2', 'h3', 'bullet', 'numbered', 'quote', 'toggle', 'math', 'divider'] },
+              text: { type: 'STRING' },
+            },
+            required: ['type', 'text'],
+          },
+        },
+        tags: stringArray('Up to five short Japanese topic tags grounded in the memo.'),
+      },
+      required: ['title', 'blocks', 'tags'],
+    };
+  }
+
+  if (action === 'memo_summary') {
+    return {
+      type: 'OBJECT',
+      properties: {
+        summary: { type: 'STRING', description: 'A Japanese summary grounded only in the supplied text.' },
+        tags: stringArray('Short Japanese topic tags grounded in the supplied text.'),
+      },
+      required: ['summary', 'tags'],
+    };
+  }
+
+  if (action === 'tag_suggest') {
+    return { type: 'OBJECT', properties: { tags: stringArray('Up to five short Japanese topic tags.') }, required: ['tags'] };
+  }
+
+  return null;
 }
 
 function extractText(data) {
@@ -226,6 +330,11 @@ export default async function handler(req, res) {
       thinkingConfig: pickThinkingConfig(model, body.actionType),
     },
   };
+
+  const responseSchema = responseFormat === 'json'
+    ? pickResponseSchema(body.actionType, body)
+    : null;
+  if (responseSchema) payload.generationConfig.responseSchema = responseSchema;
 
   if (body.systemText) {
     payload.systemInstruction = {

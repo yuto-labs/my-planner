@@ -701,6 +701,12 @@ function applyCodexPlan(container, options = {}) {
     return;
   }
 
+  const internalOverlaps = findInternalScheduleOverlaps(blocks);
+  if (internalOverlaps.length) {
+    toast(`AIが作成した予定同士の重なりが ${internalOverlaps.length} 件あります。条件を調整して再実行してください`, 'error');
+    return;
+  }
+
   if (!options.skipConfirm && !confirm(`${blocks.length}件の作業ブロックをマイスケジュールに反映します。既存のCodex計画は置き換わります。`)) return;
 
   getScheduleItems()
@@ -833,6 +839,31 @@ function timeRangesOverlap(aStart, aEnd, bStart, bEnd) {
   const be = timeToMinutes(bEnd);
   if ([as, ae, bs, be].some(v => v == null)) return true;
   return as < be && ae > bs;
+}
+
+function findInternalScheduleOverlaps(blocks) {
+  const overlaps = [];
+  const byDate = new Map();
+  blocks.forEach(block => {
+    if (!byDate.has(block.date)) byDate.set(block.date, []);
+    byDate.get(block.date).push(block);
+  });
+
+  byDate.forEach(dayBlocks => {
+    const sorted = [...dayBlocks].sort((a, b) => a.startTime.localeCompare(b.startTime));
+    for (let index = 1; index < sorted.length; index++) {
+      if (timeRangesOverlap(
+        sorted[index - 1].startTime,
+        sorted[index - 1].endTime,
+        sorted[index].startTime,
+        sorted[index].endTime
+      )) {
+        overlaps.push(sorted[index]);
+      }
+    }
+  });
+
+  return overlaps;
 }
 
 function timeToMinutes(t) {
