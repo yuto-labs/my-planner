@@ -23,6 +23,7 @@ const undoToast = (msg, cb)   => window.AppNav?.showUndoToast(msg, cb);
 const SHARE_DEFAULTS_KEY = 'mp_calendar_share_defaults';
 const EVENT_TITLE_HISTORY_KEY = 'mp_calendar_event_title_history';
 const EVENT_TITLE_HISTORY_MAX = 240;
+const SHARED_REFRESH_MS = 15_000;
 
 // Module state
 let state = {
@@ -48,7 +49,21 @@ export function initCalendar(container) {
   }
   const cleanupSwipe = _setupSwipe(container); // register touch listeners for this mount only
   const onGroupsChanged = () => loadCalendarShareGroups();
+  const refreshSharedData = () => {
+    if (document.hidden || state.container !== container) return;
+    refreshCalendarBackground().catch(() => {});
+  };
+  const onVisibilityChange = () => {
+    if (!document.hidden) refreshSharedData();
+  };
+  const onRemoteChange = event => {
+    if (!event?.detail?.table || event.detail.table === 'events') refreshSharedData();
+  };
   document.addEventListener('shared-calendar:groups-changed', onGroupsChanged);
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  document.addEventListener('sync:remote-change', onRemoteChange);
+  window.addEventListener('online', refreshSharedData);
+  const sharedRefreshTimer = setInterval(refreshSharedData, SHARED_REFRESH_MS);
   render();
   handleCalendarInviteFromUrl()
     .catch(e => toast(e?.message || '招待リンクを処理できませんでした', 'error'))
@@ -57,6 +72,10 @@ export function initCalendar(container) {
   return () => {
     document.querySelector('.cal-day-sheet')?.remove();
     document.removeEventListener('shared-calendar:groups-changed', onGroupsChanged);
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+    document.removeEventListener('sync:remote-change', onRemoteChange);
+    window.removeEventListener('online', refreshSharedData);
+    clearInterval(sharedRefreshTimer);
     cleanupSwipe?.();
     if (state.container === container) state.container = null;
     _swipeLocked = false;
@@ -333,8 +352,10 @@ async function loadCalendarShareGroups() {
 }
 
 async function setCalendarSource(source, groupId = '') {
+  const previousGroupId = state.groupId;
   state.source = source;
   state.groupId = source === 'personal' ? '' : groupId;
+  if (source !== 'personal' && previousGroupId !== state.groupId) state.sharedEvents = [];
   _selectedDate = null;
   document.querySelector('.cal-day-sheet')?.remove();
   if (source === 'personal') {
@@ -346,23 +367,91 @@ async function setCalendarSource(source, groupId = '') {
   await refreshCalendarSharedEvents();
 }
 
-async function refreshCalendarSharedEvents() {
-  if (state.source === 'personal') return;
-  state.sharedLoading = true;
-  state.sharedError = null;
-  render();
+let sharedRefreshPromise = null;
+let sharedRefreshGroupId = '';
+let sharedRefreshVersion = 0;
+
+function sharedCalendarFingerprint() {
+  return JSON.stringify({
+    groups: (state.shareGroups || []).map(group => [group.id, group.name, group.updated_at]),
+    events: (state.sharedEvents || []).map(event => [
+      event.id,
+      event.updatedAt,
+      event.start,
+      event.end,
+      event.shareVisibility,
+      event.visibleTitle || event.title,
+    ]),
+    error: state.sharedError,
+  });
+}
+
+async function refreshCalendarBackground() {
+  if (!state.container || state.container.dataset.view !== 'calendar') return;
+  if (state.source !== 'personal') {
+    await refreshCalendarSharedEvents({ silent: true });
+    return;
+  }
+
+  const before = sharedCalendarFingerprint();
   try {
-    const result = await collectSharedCalendarEvents(state.groupId);
-    state.shareGroups = result.groups || state.shareGroups;
-    state.sharedEvents = result.events || [];
-    state.sharedError = result.error?.message || null;
-  } catch (e) {
-    state.sharedEvents = [];
-    state.sharedError = e?.message || '共有予定を読み込めませんでした';
-  } finally {
-    state.sharedLoading = false;
+    state.shareGroups = await loadSharedGroups();
+    if (sharedCalendarFingerprint() !== before) render();
+  } catch {}
+}
+
+async function refreshCalendarSharedEvents({ silent = false } = {}) {
+  if (state.source === 'personal') return;
+
+  const requestedGroupId = state.groupId;
+  if (sharedRefreshPromise && sharedRefreshGroupId === requestedGroupId) return sharedRefreshPromise;
+  const requestVersion = ++sharedRefreshVersion;
+  sharedRefreshGroupId = requestedGroupId;
+  const before = sharedCalendarFingerprint();
+  if (!silent) {
+    state.sharedLoading = true;
+    state.sharedError = null;
     render();
   }
+
+  sharedRefreshPromise = (async () => {
+    try {
+      const result = await collectSharedCalendarEvents(requestedGroupId);
+      if (
+        requestVersion !== sharedRefreshVersion
+        || state.source === 'personal'
+        || state.groupId !== requestedGroupId
+      ) return;
+      if (result.error) throw result.error;
+
+      state.shareGroups = result.groups || state.shareGroups;
+      if (!state.shareGroups.some(group => group.id === requestedGroupId)) {
+        state.source = 'personal';
+        state.groupId = '';
+        state.sharedEvents = [];
+      } else {
+        state.sharedEvents = result.events || [];
+      }
+      state.sharedError = null;
+    } catch (e) {
+      if (
+        requestVersion === sharedRefreshVersion
+        && state.source !== 'personal'
+        && state.groupId === requestedGroupId
+      ) {
+        state.sharedError = e?.message || '共有予定を読み込めませんでした';
+      }
+    } finally {
+      if (requestVersion === sharedRefreshVersion) {
+        state.sharedLoading = false;
+        if (!silent || sharedCalendarFingerprint() !== before) render();
+        sharedRefreshPromise = null;
+        sharedRefreshGroupId = '';
+      }
+    }
+  })();
+
+  return sharedRefreshPromise;
 }
 
 function isSharedSource() {
