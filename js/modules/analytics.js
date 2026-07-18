@@ -109,21 +109,6 @@ function calcFieldBalance() {
     .map(([tag, cnt]) => ({ tag, cnt, pct: Math.round(cnt / total * 100) }));
 }
 
-function calcLearningSpeed() {
-  const memos = getKnowledgeMemos();
-  const weeks = Array.from({ length: 8 }, (_, i) => {
-    const wb = weekBounds(i - 7);
-    const cnt = memos.filter(m =>
-      m.createdAt && m.createdAt.slice(0, 10) >= wb.s && m.createdAt.slice(0, 10) <= wb.e
-    ).length;
-    return { label: wb.s.slice(5), cnt };
-  });
-  const thisWeek = weeks[7].cnt;
-  const lastWeek = weeks[6].cnt;
-  const monthAvg = Math.round(weeks.reduce((s, w) => s + w.cnt, 0) / 2);
-  return { weeks, thisWeek, lastWeek, monthAvg };
-}
-
 function calcReviewSpeed() {
   const log = getReviewLog();
   const weeks = Array.from({ length: 8 }, (_, i) => {
@@ -150,23 +135,6 @@ function calcReviewByField() {
     .map(([tag, cnt]) => ({ tag, cnt, pct: Math.round(cnt / total * 100) }));
 }
 
-function calcNeglectedTopics() {
-  const memos = getKnowledgeMemos();
-  const tagLast = {};
-  memos.forEach(m => {
-    const date = (m.updatedAt || m.createdAt || '').slice(0, 10);
-    if (!date) return;
-    (m.tags || []).forEach(tag => {
-      if (!tagLast[tag] || date > tagLast[tag]) tagLast[tag] = date;
-    });
-  });
-  const cutoff = ds(new Date(Date.now() - 30 * 86400000));
-  return Object.entries(tagLast)
-    .filter(([, d]) => d < cutoff)
-    .sort((a, b) => a[1].localeCompare(b[1]))
-    .map(([tag, date]) => ({ tag, date }));
-}
-
 function calcReviewRate() {
   const schedule = getReviewSchedule();
   const entries  = Object.values(schedule).filter(e => e.stage < MASTERY_STAGE);
@@ -177,14 +145,17 @@ function calcReviewRate() {
   return { rate: Math.round(done / entries.length * 100), done, total: entries.length };
 }
 
-function calcDepthBreadth() {
+function calcLearningStages() {
   const memos = getKnowledgeMemos();
-  const tags  = new Set();
-  memos.forEach(m => (m.tags || []).forEach(t => tags.add(t)));
-  const breadth = tags.size;
-  const totalTagUse = memos.reduce((s, m) => s + (m.tags?.length || 0), 0);
-  const depth = breadth ? (totalTagUse / breadth).toFixed(1) : '0';
-  return { breadth, depth };
+  const schedule = getReviewSchedule();
+  const stages = { unreviewed: 0, learning: 0, mastered: 0 };
+  memos.forEach(memo => {
+    const stage = Number(schedule[memo.id]?.stage ?? -1);
+    if (stage < 0) stages.unreviewed += 1;
+    else if (stage >= MASTERY_STAGE) stages.mastered += 1;
+    else stages.learning += 1;
+  });
+  return { ...stages, total: memos.length };
 }
 
 /* ---- Render helpers ---- */
@@ -318,17 +289,14 @@ function renderTasksTab() {
 /* ---- Knowledge tab ---- */
 function renderKnowledgeTab() {
   const balance      = calcFieldBalance();
-  const addSpeed     = calcLearningSpeed();
   const revSpeed     = calcReviewSpeed();
   const revByField   = calcReviewByField();
-  const neglected    = calcNeglectedTopics();
   const review       = calcReviewRate();
-  const db           = calcDepthBreadth();
+  const stages       = calcLearningStages();
 
   const maxCnt        = balance[0]?.cnt || 1;
   const maxRevField   = revByField[0]?.cnt || 1;
   const maxRevWeekCnt = Math.max(...revSpeed.weeks.map(w => w.cnt), 1);
-  const maxAddWeekCnt = Math.max(...addSpeed.weeks.map(w => w.cnt), 1);
 
   return `
     <!-- 分野バランス（メモ数） -->
@@ -349,9 +317,33 @@ function renderKnowledgeTab() {
       }
     </div>
 
-    <!-- 復習速度（直近8週間） -->
+    <!-- 学習段階 -->
     <div class="analytics-section">
-      <div class="analytics-section-title">復習速度（直近8週間）</div>
+      <div class="analytics-section-title">メモの学習段階</div>
+      ${stages.total === 0
+        ? noData('メモがまだありません')
+        : `<div class="analytics-stat-grid">
+             <div class="analytics-stat-card">
+               <div class="analytics-stat-value">${stages.unreviewed}</div>
+               <div class="analytics-stat-label">未復習</div>
+               <div class="analytics-stat-sub">まだ復習記録なし</div>
+             </div>
+             <div class="analytics-stat-card">
+               <div class="analytics-stat-value" style="color:var(--warning)">${stages.learning}</div>
+               <div class="analytics-stat-label">学習中</div>
+               <div class="analytics-stat-sub">復習を継続中</div>
+             </div>
+             <div class="analytics-stat-card">
+               <div class="analytics-stat-value" style="color:var(--success)">${stages.mastered}</div>
+               <div class="analytics-stat-label">習得済み</div>
+               <div class="analytics-stat-sub">最終段階に到達</div>
+             </div>
+           </div>`}
+    </div>
+
+    <!-- 復習回数（直近8週間） -->
+    <div class="analytics-section">
+      <div class="analytics-section-title">復習回数（直近8週間）</div>
       ${revSpeed.weeks.every(w => w.cnt === 0)
         ? noData('まだ「学習した」ボタンを押したことがありません')
         : `<div class="analytics-speed-stats">
@@ -389,40 +381,6 @@ function renderKnowledgeTab() {
       }
     </div>
 
-    <!-- メモ追加速度（直近8週間） -->
-    <div class="analytics-section">
-      <div class="analytics-section-title">メモ追加速度（直近8週間）</div>
-      <div class="analytics-speed-stats">
-        <div class="analytics-speed-stat"><div class="analytics-speed-val">${addSpeed.thisWeek}</div><div class="analytics-speed-lbl">今週</div></div>
-        <div class="analytics-speed-stat"><div class="analytics-speed-val">${addSpeed.lastWeek}</div><div class="analytics-speed-lbl">先週</div></div>
-        <div class="analytics-speed-stat"><div class="analytics-speed-val">${addSpeed.monthAvg}</div><div class="analytics-speed-lbl">月平均</div></div>
-      </div>
-      <div class="analytics-chart-bars" style="padding-bottom:20px;gap:4px">
-        ${addSpeed.weeks.map(w => {
-          const h = w.cnt > 0 ? Math.round(w.cnt / maxAddWeekCnt * 48) : 2;
-          return `<div class="analytics-chart-col">
-            <div class="analytics-chart-bar" style="height:${h}px;background:var(--primary);opacity:0.75"></div>
-            <div class="analytics-chart-day">${w.label}</div>
-          </div>`;
-        }).join('')}
-      </div>
-    </div>
-
-    <!-- 放置トピック -->
-    <div class="analytics-section">
-      <div class="analytics-section-title">放置トピック（30日以上未活動）</div>
-      ${neglected.length === 0
-        ? `<div class="analytics-info-box" style="color:var(--success)">全タグが直近30日以内にアクティブです</div>`
-        : `<div class="analytics-neglect-list">
-             ${neglected.map(n => `
-               <div class="analytics-neglect-row">
-                 <div class="analytics-neglect-tag">${esc(n.tag)}</div>
-                 <div class="analytics-neglect-date">最終: ${n.date}</div>
-               </div>`).join('')}
-           </div>`
-      }
-    </div>
-
     <!-- 復習率 -->
     <div class="analytics-section">
       <div class="analytics-section-title">復習率（スペースドリピティション）</div>
@@ -435,25 +393,6 @@ function renderKnowledgeTab() {
       }
     </div>
 
-    <!-- 深さvs広さ -->
-    <div class="analytics-section">
-      <div class="analytics-section-title">深さ vs 広さ</div>
-      ${db.breadth === 0
-        ? noData('メモがまだありません')
-        : `<div class="analytics-stat-grid">
-             <div class="analytics-stat-card">
-               <div class="analytics-stat-value" style="color:var(--primary)">${db.breadth}</div>
-               <div class="analytics-stat-label">広さ</div>
-               <div class="analytics-stat-sub">ユニークタグ数</div>
-             </div>
-             <div class="analytics-stat-card">
-               <div class="analytics-stat-value" style="color:var(--success)">${db.depth}</div>
-               <div class="analytics-stat-label">深さ</div>
-               <div class="analytics-stat-sub">タグあたり平均メモ数</div>
-             </div>
-           </div>`
-      }
-    </div>
   `;
 }
 

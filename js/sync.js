@@ -74,6 +74,7 @@ const CONFLICT_KEY = {
 // ---- Push デバウンスタイマー ----
 const _timers = {};
 const _deleteTimers = new Map();
+const _pushPromises = new Map();
 const DELETE_GRACE_MS = 250;
 const DELETE_RETRY_MS = 5000;
 const DELETE_TOMBSTONE_KEY = 'mp_sync_pending_deletes';
@@ -83,6 +84,11 @@ const SYNC_STATUS_KEY = 'mp_sync_status';
 const RECENT_UPSERT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const RECENT_WRITE_WINDOW_MS = 2 * 60 * 1000;
 const PUSH_RETRY_MS = 2500;
+const PUSH_DEBOUNCE_MS = {
+  events: 200,
+  knowledge_memos: 350,
+  default: 650,
+};
 let _realtimeChannel = null;
 let _realtimeUserId = null;
 let _realtimePullTimer = null;
@@ -97,7 +103,7 @@ export function initSync() {
     _timers[table] = setTimeout(() => {
       _timers[table] = null;
       _pushTable(table);
-    }, 800);
+    }, PUSH_DEBOUNCE_MS[table] ?? PUSH_DEBOUNCE_MS.default);
   });
 
   // storage.js から削除通知を受け取る
@@ -162,7 +168,7 @@ export async function stopRealtimeSync() {
 }
 
 export function hasPendingSyncWork() {
-  return Object.values(_timers).some(Boolean) || _deleteTimers.size > 0;
+  return Object.values(_timers).some(Boolean) || _deleteTimers.size > 0 || _pushPromises.size > 0;
 }
 
 export function getSyncStatus() {
@@ -175,9 +181,36 @@ export function getSyncStatus() {
   });
 }
 
+export async function flushPendingSync() {
+  const tables = new Set([
+    ...Object.entries(_timers).filter(([, timer]) => !!timer).map(([table]) => table),
+    ..._getRecentUpserts().map(entry => entry.table).filter(Boolean),
+  ]);
+  if (!tables.size) return { attempted: 0, succeeded: 0 };
+
+  tables.forEach(table => {
+    clearTimeout(_timers[table]);
+    _timers[table] = null;
+  });
+  const results = await Promise.all([...tables].map(table => _pushTable(table)));
+  return {
+    attempted: results.length,
+    succeeded: results.filter(Boolean).length,
+  };
+}
+
 // ---- Push ----
 
-async function _pushTable(tableKey) {
+function _pushTable(tableKey) {
+  if (_pushPromises.has(tableKey)) return _pushPromises.get(tableKey);
+  const promise = _pushTableNow(tableKey).finally(() => {
+    if (_pushPromises.get(tableKey) === promise) _pushPromises.delete(tableKey);
+  });
+  _pushPromises.set(tableKey, promise);
+  return promise;
+}
+
+async function _pushTableNow(tableKey) {
   const client = await getClient();
   const userId = await getUserId();
   if (!client || !userId) return;
@@ -192,13 +225,14 @@ async function _pushTable(tableKey) {
   const sourceItems = tableKey === 'review_schedule' ? Object.entries(localData) : localData;
   if (!sourceItems.length) return;
 
-  const recentIds = new Set(
-    _getRecentUpserts()
-      .filter(entry => entry.table === tableKey && entry.id)
-      .map(entry => entry.id)
-  );
+  const pendingEntries = _getRecentUpserts()
+    .filter(entry => entry.table === tableKey);
+  const recentIds = new Set(pendingEntries.filter(entry => entry.id).map(entry => entry.id));
+  const recentNames = new Set(pendingEntries.filter(entry => entry.name).map(entry => entry.name));
   const dirtyItems = recentIds.size && tableKey !== 'review_schedule'
     ? sourceItems.filter(item => item?.id && recentIds.has(item.id))
+    : recentNames.size && tableKey === 'tags'
+      ? sourceItems.filter(item => recentNames.has(item))
     : sourceItems;
   if (!dirtyItems.length) return true;
   const rows = dirtyItems.map(item => toRow(item, userId));
@@ -212,7 +246,10 @@ async function _pushTable(tableKey) {
   }
 
   _recordSyncSuccess('push');
-  _clearRecentUpsertsForTable(tableKey);
+  _clearSentUpserts(tableKey, pendingEntries);
+  if (_getRecentUpserts().some(entry => entry.table === tableKey)) {
+    _schedulePushRetry(tableKey);
+  }
   return true;
 }
 
@@ -575,7 +612,7 @@ function _markRecentUpserts(tableKey) {
     const names = _ls('mp_tags', []);
     const survivors = entries.filter(entry => entry.table !== 'tags');
     names.forEach(name => {
-      survivors.push({ table: 'tags', name, expiresAt });
+      survivors.push({ table: 'tags', name, version: name, expiresAt });
     });
     _saveRecentUpserts(survivors);
     return;
@@ -586,8 +623,8 @@ function _markRecentUpserts(tableKey) {
   if (tableKey === 'review_schedule') {
     const schedule = _ls(lsKey, {});
     const survivors = entries.filter(entry => entry.table !== tableKey);
-    Object.keys(schedule).forEach(memoId => {
-      survivors.push({ table: tableKey, id: memoId, expiresAt });
+    Object.entries(schedule).forEach(([memoId, entry]) => {
+      survivors.push({ table: tableKey, id: memoId, version: String(_reviewEntryTs(entry)), expiresAt });
     });
     _saveRecentUpserts(survivors);
     return;
@@ -598,7 +635,12 @@ function _markRecentUpserts(tableKey) {
     if (!item?.id) return;
     const touchedAt = new Date(item.updatedAt || item.createdAt || 0).getTime();
     if (!Number.isFinite(touchedAt) || touchedAt < threshold) return;
-    survivors.push({ table: tableKey, id: item.id, expiresAt });
+    survivors.push({
+      table: tableKey,
+      id: item.id,
+      version: String(item.updatedAt || item.createdAt || ''),
+      expiresAt,
+    });
   });
   _saveRecentUpserts(survivors);
 }
@@ -641,8 +683,8 @@ function _mergeProtectedLocalItems(tableKey, lsKey, remoteItems) {
   const merged = remoteItems.map(remote => {
     const local = localById.get(remote.id);
     if (!local) return remote;
-    if (_updatedTs(local) >= _updatedTs(remote)) {
-      if (recentIds.has(local.id) && _updatedTs(local) > _updatedTs(remote)) needsRetry = true;
+    if (recentIds.has(local.id) && _updatedTs(local) >= _updatedTs(remote)) {
+      if (_updatedTs(local) > _updatedTs(remote)) needsRetry = true;
       return local;
     }
     return remote;
@@ -738,9 +780,16 @@ function _schedulePushRetry(tableKey) {
   }, PUSH_RETRY_MS);
 }
 
-function _clearRecentUpsertsForTable(tableKey) {
+function _syncEntryToken(entry) {
+  return `${entry?.table || ''}:${entry?.id || entry?.name || ''}:${entry?.version ?? 'legacy'}`;
+}
+
+function _clearSentUpserts(tableKey, sentEntries) {
   if (!LS_KEYS[tableKey] && tableKey !== 'tags') return;
-  const entries = _getRecentUpserts().filter(entry => entry.table !== tableKey);
+  const sent = new Set((sentEntries || []).map(_syncEntryToken));
+  const entries = _getRecentUpserts().filter(entry => (
+    entry.table !== tableKey || !sent.has(_syncEntryToken(entry))
+  ));
   _saveRecentUpserts(entries);
 }
 
@@ -757,6 +806,9 @@ function _recordSyncSuccess(type) {
   const next = {
     ...current,
     [type === 'pull' ? 'lastPullAt' : 'lastPushAt']: new Date().toISOString(),
+    lastErrorAt: null,
+    lastErrorTable: null,
+    lastErrorMessage: null,
   };
   localStorage.setItem(SYNC_STATUS_KEY, JSON.stringify(next));
 }

@@ -67,10 +67,10 @@ export function registerSyncHook(fn)       { _syncHook       = fn; }
 export function registerSyncDeleteHook(fn) { _syncDeleteHook = fn; }
 
 function _notifySync(tableKey) {
-  if (_syncHook) setTimeout(() => _syncHook(tableKey), 0);
+  if (_syncHook) _syncHook(tableKey);
 }
 function _notifyDelete(payload) {
-  if (_syncDeleteHook) setTimeout(() => _syncDeleteHook(payload), 0);
+  if (_syncDeleteHook) _syncDeleteHook(payload);
 }
 
 export const DEFAULT_CATEGORIES = [
@@ -369,38 +369,17 @@ const DEFAULT_AI_RUNTIME = {
   message: '',
 };
 
-function todayLocalStr() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function normalizeAiUsage(runtime) {
-  const usage = runtime?.usage;
-  if (!usage) return null;
-  const usageDate = usage.usageDate || usage.date || usage.day || String(usage.createdAt || '').slice(0, 10);
-  const checkedDate = runtime?.checkedAt ? todayLocalStrFromTs(runtime.checkedAt) : '';
-  const effectiveDate = usageDate || checkedDate;
-  if (effectiveDate && effectiveDate !== todayLocalStr()) return null;
-  return usageDate ? { ...usage, usageDate } : usage;
-}
-
-function todayLocalStrFromTs(ts) {
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return '';
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
 export function getSettings() { return { ...DEFAULT_SETTINGS, ...load(KEY.SETS, {}) }; }
 export function saveSettings(s) { save(KEY.SETS, { ...getSettings(), ...s }); }
 
 export function getApiKey() { return getSettings().apiKey || ''; }
 export function getAiRuntime() {
   const runtime = { ...DEFAULT_AI_RUNTIME, ...load(KEY.AI_RUNTIME, {}) };
-  return { ...runtime, usage: normalizeAiUsage(runtime) };
+  return { ...runtime, limits: null, usage: null };
 }
 export function saveAiRuntime(patch) {
   const runtime = { ...getAiRuntime(), ...patch };
-  save(KEY.AI_RUNTIME, { ...runtime, usage: normalizeAiUsage(runtime) });
+  save(KEY.AI_RUNTIME, { ...runtime, limits: null, usage: null });
 }
 export function isAiAvailable() {
   const settings = getSettings();

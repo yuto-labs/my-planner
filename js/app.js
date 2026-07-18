@@ -2,12 +2,11 @@
 // app.js 窶・Main SPA router & app shell
 // ============================================================
 
-import { getSettings, getBatchSettings, getPendingAIQueue, autoArchiveTasks, isAiAvailable, clearUserContentLocal, DEFAULT_ACCENT_RGB, DEFAULT_THEME_TUNING } from './storage.js';
+import { getSettings, getPendingAIQueue, autoArchiveTasks, isAiAvailable, clearUserContentLocal, DEFAULT_ACCENT_RGB, DEFAULT_THEME_TUNING } from './storage.js';
 import { processBatchQueue, refreshAiRuntimeStatus } from './ai.js';
-import { initSync, pullAll, pullIfStale, startRealtimeSync, hasPendingSyncWork } from './sync.js';
+import { initSync, pullAll, pullIfStale, startRealtimeSync, hasPendingSyncWork, flushPendingSync } from './sync.js';
 import { getSession, handleAuthRedirect, getActiveUserId, setActiveUserId, isMigratedForCurrentUser } from './supabase.js';
 import { migrateToSupabase } from './migrate.js';
-import { today } from './utils.js';
 import { initHome }     from './modules/home.js';
 import { initCalendar, openCalendarAddFlow } from './modules/calendar.js';
 import { initSharedCalendar } from './modules/shared-calendar.js';
@@ -512,9 +511,9 @@ function applySurfaceTheme(mode, tuningInput) {
   let glassAlpha;
 
   if (mode === 'light') {
-    bgLight = 99.2 - tone * 5.4;
-    cardLight = Math.max(92, Math.min(100, bgLight + 1.8 + contrastStrength * 3.2));
-    inputLight = Math.max(88, bgLight - (3.8 + contrastStrength * 2.6));
+    bgLight = 100 - tone * 12;
+    cardLight = Math.max(90, Math.min(100, bgLight + 2.2 + contrastStrength * 3.4));
+    inputLight = Math.max(84, bgLight - (4.2 + contrastStrength * 3.2));
     textLight = Math.max(14, 19 + tone * 10);
     textMutedAlpha = 0.54 + contrastStrength * 0.18;
     textDimAlpha = 0.28 + contrastStrength * 0.18;
@@ -541,8 +540,8 @@ function applySurfaceTheme(mode, tuningInput) {
     root.style.setProperty('--scrollbar', `rgba(142, 201, 187, ${scrollbarAlpha.toFixed(3)})`);
     root.style.setProperty('--surface-glass', `rgba(242, 241, 253, ${glassAlpha.toFixed(3)})`);
   } else {
-    bgLight = 10.5 - tone * 7.2;
-    cardLight = Math.max(8, Math.min(20, bgLight + 5.2 + contrastStrength * 5.2));
+    bgLight = 18 - tone * 13.5;
+    cardLight = Math.max(8, Math.min(27, bgLight + 5.2 + contrastStrength * 5.2));
     inputLight = Math.max(3, bgLight - (1.2 + contrastStrength * 1.8));
     textLight = Math.min(96, 88 + contrastStrength * 8 - tone * 3);
     textMutedAlpha = 0.56 + contrastStrength * 0.18;
@@ -690,9 +689,8 @@ async function init() {
 
   setupEditActivityGuard();
 
-  // Start connectivity monitor + batch scheduler
+  // Start connectivity monitor and foreground synchronization.
   setupConnectivityMonitor();
-  setupBatchScheduler();
   setupForegroundSync();
 
   // Route to initial view
@@ -707,7 +705,10 @@ async function init() {
 
   // Pull latest data when returning to foreground so schedule differences appear quickly.
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) return;
+    if (document.hidden) {
+      flushPendingSync().catch(() => {});
+      return;
+    }
     try { autoArchiveTasks(); } catch {}
     try { navigator.serviceWorker?.getRegistration?.().then(reg => reg?.update?.()).catch(() => {}); } catch {}
     if (isUserEditing() || hasPendingSyncWork()) {
@@ -720,6 +721,10 @@ async function init() {
         if (pulled) refreshCurrentView({ preserveScroll: true });
       }).catch(() => {});
     }).catch(() => {});
+  });
+
+  window.addEventListener('pagehide', () => {
+    flushPendingSync().catch(() => {});
   });
 
   document.addEventListener('sync:updated', () => {
@@ -816,9 +821,8 @@ function setupConnectivityMonitor() {
     if (isOnline) {
       try { await refreshAiRuntimeStatus({ force: true }); } catch {}
       // When back online: process AI queue if in immediate mode
-      const cfg = getBatchSettings();
       const queue = getPendingAIQueue();
-      if (queue.length && cfg.aiMode === 'immediate' && isAiAvailable()) {
+      if (queue.length && isAiAvailable()) {
         processBatchQueue((done, total) => {
           if (done === total && total > 0) {
             showToast(`Online again: completed ${total} AI jobs.`, 'success');
@@ -858,43 +862,6 @@ function setupForegroundSync() {
   }, 3000);
 }
 
-// ---- Batch AI scheduler ----
-// Fires every minute; when wall-clock matches batch time 竊・run once per day
-
-let _batchRanToday = '';
-
-function setupBatchScheduler() {
-  setInterval(async () => {
-    const cfg = getBatchSettings();
-    if (!cfg.batchEnabled || cfg.aiMode !== 'batch') return;
-
-    const queue = getPendingAIQueue();
-    if (!queue.length) return;
-
-    if (!isAiAvailable() || !navigator.onLine) return;
-
-    const now   = new Date();
-    const todayStr = today();
-    if (_batchRanToday === todayStr) return; // already ran
-
-    const [bh, bm] = (cfg.batchTime || '22:00').split(':').map(Number);
-    const nowH = now.getHours(), nowM = now.getMinutes();
-
-    // Match within the target minute
-    if (nowH !== bh || nowM !== bm) return;
-
-    _batchRanToday = todayStr;
-    showToast(`Starting AI batch (${queue.length} items)...`, 'info');
-
-    try {
-      const result = await processBatchQueue();
-      showToast(`Batch complete: processed ${result.processed} items.`, 'success');
-    } catch (e) {
-      showToast('Batch error: ' + e.message, 'error');
-    }
-  }, 60_000); // check every minute
-}
-
 // ---- FAB (Floating Action Button) ----
 
 function setupFAB() {
@@ -903,7 +870,7 @@ function setupFAB() {
 
   // Show/hide based on view
   const updateFab = () => {
-    const hidden = ['home', 'settings', 'ai-settings', 'analytics', 'knowledge-graph', 'knowledge-detail', 'goals', 'review'];
+    const hidden = ['home', 'settings', 'ai-settings', 'analytics', 'knowledge-graph', 'knowledge-detail', 'goals', 'review', 'archive'];
     fab.classList.toggle('hidden', hidden.includes(currentView));
     if (currentView === 'tasks') {
       fab.setAttribute('aria-label', 'Open AI planner');

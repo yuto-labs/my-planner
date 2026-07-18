@@ -9,7 +9,7 @@ import {
   scheduleFirstReview, getReviewEntry,
   rateReview, previewReviewIntervals, setReviewStage,
   MASTERY_STAGE, STAGE_INTERVALS,
-  getBatchSettings, addToPendingAIQueue, removeFromPendingAIQueue,
+  addToPendingAIQueue, removeFromPendingAIQueue,
   pushUndo, applyUndo, addReviewLog, getReviewLog,
   getTags, addTag,
 } from '../storage.js';
@@ -2732,16 +2732,13 @@ function saveMemo(container) {
     currentMemoId = saved.id;
     scheduleFirstReview(saved.id);
 
-    // Queue AI tagging if offline or batch mode
+    // Offline saves remain usable and can be tagged once connectivity returns.
     const isOffline = !navigator.onLine;
-    const batchCfg  = getBatchSettings();
-    const useBatch  = batchCfg.aiMode === 'batch';
 
-    if ((isOffline || useBatch) && !memoData.tags?.length) {
+    if (isOffline && !memoData.tags?.length) {
       updateKnowledgeMemo(saved.id, { pendingAI: true });
       addToPendingAIQueue({ id: saved.id, type: 'memo_tags', title: memoData.title || '無題' });
-      const reason = isOffline ? 'オフライン中' : 'バッチモード';
-      toast(`メモを作成しました ✨ (${reason}のためAIタグは後で処理されます)`, 'success');
+      toast('メモを作成しました ✨ (オフライン中のためAIタグは後で処理されます)', 'success');
     } else {
       toast('メモを作成しました ✨', 'success');
     }

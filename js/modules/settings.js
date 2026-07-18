@@ -5,7 +5,7 @@
 import {
   getSettings, saveSettings, getCategories, saveCategories,
   exportBackup, importBackup, clearAiCache, DEFAULT_CATEGORIES, DEFAULT_ACCENT_RGB, DEFAULT_THEME_TUNING,
-  getBatchSettings, saveBatchSettings, getPendingAIQueue, clearPendingAIQueue, getAiRuntime,
+  getPendingAIQueue, clearPendingAIQueue, getAiRuntime,
   clearUserContentLocal,
 } from '../storage.js';
 import { processBatchQueue, refreshAiRuntimeStatus } from '../ai.js';
@@ -16,7 +16,7 @@ import {
   getActiveUserId, setActiveUserId,
 } from '../supabase.js';
 import { migrateToSupabase } from '../migrate.js';
-import { getSyncStatus, pullAll, startRealtimeSync, stopRealtimeSync } from '../sync.js';
+import { getSyncStatus, pullAll, startRealtimeSync, stopRealtimeSync, flushPendingSync } from '../sync.js';
 import { consumePendingSharedInvite } from '../shared-calendar.js';
 import { openSharedCalendarSettings } from './shared-calendar.js';
 
@@ -91,13 +91,13 @@ function renderMainSettings(container) {
       </div>
 
       <div class="settings-section">
-        <div class="settings-heading">Theme</div>
+        <div class="settings-heading">背景と表示</div>
 
         <div class="theme-tuning-card">
           <div class="theme-tuning-top">
             <div>
-              <strong>Theme mode</strong>
-              <p class="text-sm text-muted">Choose a base mode, then fine-tune tone, contrast, glow, and vividness.</p>
+              <strong>背景モード</strong>
+              <p class="text-sm text-muted">白またはダークを選び、背景の明るさとカードの見え方を調整できます。</p>
             </div>
             <button class="btn btn-ghost btn-sm" id="theme-tuning-reset-btn" type="button">Reset</button>
           </div>
@@ -106,20 +106,20 @@ function renderMainSettings(container) {
             <button class="batch-mode-btn${settings.theme === 'light' ? ' active' : ''}" data-theme-mode="light" type="button">
               <div class="batch-mode-icon">White</div>
               <div class="batch-mode-label">White</div>
-              <div class="batch-mode-sub">Bright base with soft surfaces.</div>
+              <div class="batch-mode-sub">明るい背景で表示します。</div>
             </button>
             <button class="batch-mode-btn${settings.theme !== 'light' ? ' active' : ''}" data-theme-mode="dark" type="button">
               <div class="batch-mode-icon">Dark</div>
               <div class="batch-mode-label">Dark</div>
-              <div class="batch-mode-sub">Deeper base for lower-glare viewing.</div>
+              <div class="batch-mode-sub">暗い背景で表示します。</div>
             </button>
           </div>
 
           <div class="accent-rgb-grid">
-            ${renderThemeSlider('Tone', 'tune-tone-level', tuning.toneLevel)}
-            ${renderThemeSlider('Contrast', 'tune-card-contrast', tuning.cardContrast)}
-            ${renderThemeSlider('Glow', 'tune-glow-intensity', tuning.glowIntensity)}
-            ${renderThemeSlider('Vivid', 'tune-accent-vividness', tuning.accentVividness)}
+            ${renderThemeSlider('背景の濃さ', 'tune-tone-level', tuning.toneLevel)}
+            ${renderThemeSlider('カードの差', 'tune-card-contrast', tuning.cardContrast)}
+            ${renderThemeSlider('光の強さ', 'tune-glow-intensity', tuning.glowIntensity)}
+            ${renderThemeSlider('色の鮮やかさ', 'tune-accent-vividness', tuning.accentVividness)}
           </div>
         </div>
       </div>
@@ -162,7 +162,6 @@ function renderMainSettings(container) {
 
 function renderAISettings(container) {
   const settings = getSettings();
-  const batchCfg = getBatchSettings();
   const pendingQueue = getPendingAIQueue();
   const runtime = getAiRuntime();
   const hasLegacyKey = !!(settings.apiKey || '').trim();
@@ -199,6 +198,10 @@ function renderAISettings(container) {
           <p class="text-sm text-muted">
             AI処理はアプリのサーバー経由で実行されます。端末ごとのAPIキー入力は必要ありません。
           </p>
+          <p class="text-sm text-muted">
+            Geminiは入力した内容をその都度解析します。メモを勝手に学習したり、使うほど自動で成長したりはしません。
+            メモ整理では見出し・箇条書き・順序を読み取り、元の情報を増やさずに整形します。
+          </p>
           ${hasLegacyKey ? `
             <p class="text-sm text-muted">
               旧ブラウザAIキーがこの端末に残っています。現在は使用されません。
@@ -230,34 +233,9 @@ function renderAISettings(container) {
         <button class="btn btn-ghost btn-sm" id="clear-ai-cache" style="margin-top:8px">AIキャッシュを消去</button>
       </div>
 
-      <div class="settings-section">
-        <div class="settings-heading">AI処理モード</div>
-        <div class="batch-mode-select">
-          <button class="batch-mode-btn${batchCfg.aiMode === 'immediate' ? ' active' : ''}" data-ai-mode="immediate">
-            <div class="batch-mode-icon">今すぐ</div>
-            <div class="batch-mode-label">即時</div>
-            <div class="batch-mode-sub">必要になった時点でAIを実行します。</div>
-          </button>
-          <button class="batch-mode-btn${batchCfg.aiMode === 'batch' ? ' active' : ''}" data-ai-mode="batch">
-            <div class="batch-mode-icon">まとめて</div>
-            <div class="batch-mode-label">一括処理</div>
-            <div class="batch-mode-sub">AI処理をためて指定時刻にまとめて実行します。</div>
-          </button>
-        </div>
-
-        <div id="batch-schedule-wrap" style="${batchCfg.aiMode === 'batch' ? '' : 'display:none'}">
-          <div class="batch-schedule-row">
-            <label class="form-label" style="margin:0">実行時刻</label>
-            <input class="input" id="batch-time" type="time" value="${esc(batchCfg.batchTime || '22:00')}"
-              style="width:120px">
-            <label class="batch-toggle-wrap">
-              <input type="checkbox" id="batch-enabled" ${batchCfg.batchEnabled ? 'checked' : ''}>
-              <span class="batch-toggle-label">有効</span>
-            </label>
-          </div>
-        </div>
-
-        ${pendingQueue.length ? `
+      ${pendingQueue.length ? `
+        <div class="settings-section">
+          <div class="settings-heading">未処理のAI整理</div>
           <div class="batch-queue-status">
             <span>待機中: <strong>${pendingQueue.length}</strong>件</span>
             <div style="display:flex;gap:8px">
@@ -265,8 +243,8 @@ function renderAISettings(container) {
               <button class="btn btn-ghost btn-sm" id="clear-queue-btn">待機を消去</button>
             </div>
           </div>
-        ` : `<p class="text-sm text-muted" style="margin-top:8px">待機中のAI処理はありません</p>`}
-      </div>
+        </div>
+      ` : ''}
 
       <div class="settings-section" id="ai-account-section">
         ${renderAccountSection()}
@@ -336,6 +314,7 @@ function renderAccountSection() {
           <button class="btn btn-primary btn-sm" id="sb-migrate-btn">端末データをクラウドへ同期</button>
           <div id="sb-migrate-progress" class="hidden text-sm text-muted" style="margin-top:6px"></div>
         </div>
+        <button class="btn btn-primary btn-sm" id="sb-sync-now-btn">今すぐ同期</button>
         <button class="btn btn-ghost btn-sm" id="sb-signout-btn">ログアウト</button>
       </div>
     </div>
@@ -609,29 +588,6 @@ function wireAISettings(container) {
     toast('AIキャッシュを消去しました', 'info');
   });
 
-  container.querySelectorAll('[data-ai-mode]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const mode = btn.dataset.aiMode;
-      saveBatchSettings({ aiMode: mode });
-      container.querySelectorAll('[data-ai-mode]').forEach(b =>
-        b.classList.toggle('active', b.dataset.aiMode === mode)
-      );
-      const scheduleWrap = container.querySelector('#batch-schedule-wrap');
-      if (scheduleWrap) scheduleWrap.style.display = mode === 'batch' ? '' : 'none';
-      toast(`AI処理モードを${mode === 'batch' ? '一括処理' : '即時'}に変更しました`, 'info');
-    });
-  });
-
-  container.querySelector('#batch-time')?.addEventListener('change', e => {
-    saveBatchSettings({ batchTime: e.target.value });
-    toast('一括処理の時刻を保存しました', 'success');
-  });
-
-  container.querySelector('#batch-enabled')?.addEventListener('change', e => {
-    saveBatchSettings({ batchEnabled: e.target.checked });
-    toast(e.target.checked ? '一括処理を有効にしました' : '一括処理を無効にしました', 'info');
-  });
-
   container.querySelector('#run-batch-now-btn')?.addEventListener('click', async () => {
     const btn = container.querySelector('#run-batch-now-btn');
     if (!btn) return;
@@ -690,6 +646,32 @@ function wireBackup(container) {
 }
 
 function wireAccount(container, options = {}) {
+  container.querySelector('#sb-sync-now-btn')?.addEventListener('click', async () => {
+    const btn = container.querySelector('#sb-sync-now-btn');
+    const status = container.querySelector('#sb-sync-status');
+    if (!btn) return;
+    btn.disabled = true;
+    btn.textContent = '同期中...';
+    if (status) status.textContent = 'この端末の変更を送信し、クラウドの最新データを取得しています...';
+    try {
+      const pushed = await flushPendingSync();
+      if (pushed.attempted > pushed.succeeded) throw new Error('一部の変更を送信できませんでした');
+      await pullAll(true);
+      const syncStatus = getSyncStatus();
+      if (syncStatus.lastErrorAt) throw new Error(syncStatus.lastErrorMessage || '一部のデータを取得できませんでした');
+      await startRealtimeSync();
+      if (status) status.innerHTML = renderSyncStatus(syncStatus);
+      window.AppNav?.refreshCurrentView?.({ preserveScroll: true });
+      toast('最新のデータに同期しました', 'success');
+    } catch (e) {
+      if (status) status.innerHTML = renderSyncStatus(getSyncStatus());
+      toast('同期エラー: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '今すぐ同期';
+    }
+  });
+
   container.querySelector('#sb-signin-btn')?.addEventListener('click', async () => {
     const email = container.querySelector('#sb-email-input')?.value.trim();
     if (!email) {

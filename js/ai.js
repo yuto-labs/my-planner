@@ -33,7 +33,8 @@ export async function refreshAiRuntimeStatus({ force = false } = {}) {
       mode: data.mode || 'server',
       configured: !!data.configured,
       models: data.models || null,
-      limits: data.limits || null,
+      limits: null,
+      usage: null,
       checkedAt: Date.now(),
       message: data.message || '',
     };
@@ -87,10 +88,6 @@ async function callServerAI(modelPreference, systemText, userText, maxTokens, re
   }
 
   const data = await res.json();
-  if (data.usage) {
-    const runtime = getAiRuntime();
-    saveAiRuntime({ ...runtime, usage: data.usage, checkedAt: Date.now() });
-  }
   const text = data.text ?? '';
   if (!String(text).trim()) throw new Error('AIの応答が空でした。少し時間を置いてもう一度お試しください。');
   return text;
@@ -404,21 +401,39 @@ export async function explainTerm(term, context = '') {
 
 export async function formatKnowledgeMemo(rawText, existingMemosCtx = '') {
   const system = [
-    'Turn rough notes into a useful Japanese knowledge memo. Return JSON only.',
+    'You are a careful Japanese note editor. Turn rough notes into a structured memo without changing their meaning. Return JSON only.',
     'Schema: {"title":"short Japanese title","blocks":[{"type":"h2","text":"heading"},{"type":"paragraph","text":"body"},{"type":"bullet","text":"point"}],"tags":["tag1","tag2"]}.',
     'Use only block types paragraph, h1, h2, h3, bullet, numbered, quote, toggle, math, divider.',
-    'Do not invent facts. Preserve important details. Make the memo readable even from messy input.',
+    'Preserve the original order, dates, names, numbers, qualifications, headings, lists, and quoted wording.',
+    'Do not invent, infer, correct, or add facts that are not present in the input.',
+    'Use one idea per block. Use headings only when they describe a real section. Keep list items as list items.',
+    'Do not add generic introductions, conclusions, study advice, or filler.',
+    'Use toggle only when the input clearly contains collapsible detail. Use divider only for an explicit topic break.',
+    'Choose 1 to 5 short reusable tags from the actual content.',
+    'Existing memo context is only vocabulary context for titles and tags. Never copy its facts into the new memo.',
   ].join(' ');
   const user = 'Text to organize:\n' + rawText.slice(0, 1800)
     + (existingMemosCtx ? '\n\nExisting memo context:\n' + existingMemosCtx : '');
 
-  const raw = await callAPI(FAST_MODEL, system, user, 1400, 'json', 'memo_format');
+  const raw = await callAPI(QUALITY_MODEL, system, user, 1800, 'json', 'memo_format');
   const parsed = tryParseJSON(raw);
   if (!parsed?.blocks) throw new Error('AIがメモを正しい形式に整えられませんでした。内容を短くしてもう一度お試しください。');
+  const allowedTypes = new Set(['paragraph', 'h1', 'h2', 'h3', 'bullet', 'numbered', 'quote', 'toggle', 'math', 'divider']);
+  const blocks = Array.isArray(parsed.blocks)
+    ? parsed.blocks
+      .map(block => ({
+        type: allowedTypes.has(block?.type) ? block.type : 'paragraph',
+        text: String(block?.text || '').trim(),
+      }))
+      .filter(block => block.type === 'divider' || block.text)
+    : [];
+  if (!blocks.length) throw new Error('AIがメモ本文を整理できませんでした。内容を少し具体的にしてもう一度お試しください。');
   return {
-    title: parsed.title || '',
-    blocks: Array.isArray(parsed.blocks) ? parsed.blocks : [],
-    tags: Array.isArray(parsed.tags) ? parsed.tags : [],
+    title: String(parsed.title || '').trim(),
+    blocks,
+    tags: Array.isArray(parsed.tags)
+      ? [...new Set(parsed.tags.map(tag => String(tag || '').trim()).filter(Boolean))].slice(0, 5)
+      : [],
   };
 }
 
