@@ -9,7 +9,7 @@
 //   - pull は localStorage に直書き (storage.js を経由しない → 無限ループ防止)
 // ============================================================
 
-import { getClient, getUserId } from './supabase.js';
+import { getActiveUserId, getClient, getUserId } from './supabase.js';
 import { registerSyncHook, registerSyncDeleteHook } from './storage.js';
 import {
   taskToRow,  rowToTask,
@@ -84,6 +84,8 @@ const SYNC_STATUS_KEY = 'mp_sync_status';
 const EVENT_BACKFILL_VERSION = 1;
 const EVENT_REMOTE_SNAPSHOT_VERSION = 1;
 const EVENT_SYNC_BACKUP_LIMIT = 3;
+const SYNC_SNAPSHOT_VERSION = 1;
+const SYNC_BACKUP_LIMIT = 3;
 const RECENT_UPSERT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const RECENT_WRITE_WINDOW_MS = 2 * 60 * 1000;
 const PUSH_RETRY_MS = 2500;
@@ -95,6 +97,7 @@ const PUSH_DEBOUNCE_MS = {
 let _realtimeChannel = null;
 let _realtimeUserId = null;
 let _realtimePullTimer = null;
+let _syncEpoch = 0;
 
 // ---- init ----
 
@@ -172,6 +175,29 @@ export async function stopRealtimeSync() {
 
 export function hasPendingSyncWork() {
   return Object.values(_timers).some(Boolean) || _deleteTimers.size > 0 || _pushPromises.size > 0;
+}
+
+export async function resetSyncForUserSwitch({ flush = false } = {}) {
+  if (flush) {
+    try { await flushPendingSync(); } catch (error) {
+      console.warn('[Sync] could not flush before account change:', error);
+    }
+  }
+
+  _syncEpoch += 1;
+  Object.keys(_timers).forEach(table => {
+    clearTimeout(_timers[table]);
+    _timers[table] = null;
+  });
+  _deleteTimers.forEach(timer => clearTimeout(timer));
+  _deleteTimers.clear();
+  clearTimeout(_realtimePullTimer);
+  _realtimePullTimer = null;
+  await stopRealtimeSync();
+  await Promise.allSettled([..._pushPromises.values()]);
+  localStorage.removeItem(DELETE_TOMBSTONE_KEY);
+  localStorage.removeItem(RECENT_UPSERT_KEY);
+  localStorage.removeItem(SYNC_STATUS_KEY);
 }
 
 export function getSyncStatus() {
@@ -257,17 +283,18 @@ export async function flushPendingSync() {
 
 function _pushTable(tableKey) {
   if (_pushPromises.has(tableKey)) return _pushPromises.get(tableKey);
-  const promise = _pushTableNow(tableKey).finally(() => {
+  const epoch = _syncEpoch;
+  const promise = _pushTableNow(tableKey, epoch).finally(() => {
     if (_pushPromises.get(tableKey) === promise) _pushPromises.delete(tableKey);
   });
   _pushPromises.set(tableKey, promise);
   return promise;
 }
 
-async function _pushTableNow(tableKey) {
+async function _pushTableNow(tableKey, epoch = _syncEpoch) {
   const client = await getClient();
   const userId = await getUserId();
-  if (!client || !userId) return;
+  if (!client || !userId || epoch !== _syncEpoch) return false;
 
   const lsKey     = LS_KEYS[tableKey];
   const dbTable   = DB_TABLE[tableKey];
@@ -290,6 +317,7 @@ async function _pushTableNow(tableKey) {
     : sourceItems;
   if (!dirtyItems.length) return true;
   const rows = dirtyItems.map(item => toRow(item, userId));
+  if (epoch !== _syncEpoch) return false;
   const { error } = await _upsertRowsCompat(client, dbTable, rows, conflict);
 
   if (error) {
@@ -383,13 +411,25 @@ async function _pullTasks(client, userId, forceReplace = false) {
   if (error) throw error;
   if (!data) return;
 
-  const remoteActive  = _filterPendingDeletes('tasks', data.filter(r => !r.archived_at).map(rowToTask));
-  const remoteArchive = _filterPendingDeletes('tasks', data.filter(r =>  r.archived_at).map(rowToTask));
-
-  const nextActive = forceReplace ? _mergeProtectedLocalItems('tasks', 'mp_tasks', remoteActive) : _merge(_ls('mp_tasks', []), remoteActive);
-  const nextArchive = forceReplace ? _mergeProtectedLocalItems('tasks_archive', 'mp_task_archive', remoteArchive) : _merge(_ls('mp_task_archive', []), remoteArchive);
-  const changedActive = _writeIfChanged('mp_tasks', nextActive);
-  const changedArchive = _writeIfChanged('mp_task_archive', nextArchive);
+  const remote = _filterPendingDeletes('tasks', data.map(rowToTask));
+  const localActive = _ls('mp_tasks', []);
+  const localArchive = _ls('mp_task_archive', []);
+  const local = _dedupeById([...localActive, ...localArchive]);
+  const next = await _reconcileRemoteCollection({
+    client,
+    userId,
+    collectionKey: 'tasks',
+    dbTable: 'tasks',
+    local,
+    remote,
+    toRow: (task, uid) => taskToRow(task, uid, !!task.archivedAt),
+    pendingDeleteTable: 'tasks',
+    retryKeys: ['tasks', 'tasks_archive'],
+  });
+  const nextActive = next.filter(task => !task.archivedAt);
+  const nextArchive = next.filter(task => !!task.archivedAt);
+  const changedActive = _writeCollectionAfterSync('mp_tasks', localActive, nextActive, userId, 'tasks_active');
+  const changedArchive = _writeCollectionAfterSync('mp_task_archive', localArchive, nextArchive, userId, 'tasks_archive');
   return changedActive || changedArchive;
 }
 
@@ -405,54 +445,34 @@ async function _pullEvents(client, userId, forceReplace = false) {
   if (!data) return;
   const remote = _filterPendingDeletes('events', data.map(rowToEvent));
   const local = _ls('mp_events', []);
-  const snapshotKey = _eventRemoteSnapshotKey(userId);
-  const knownRemote = _ls(snapshotKey, {});
-  const pendingDeleteIds = new Set(
-    _getPendingDeletes()
-      .filter(entry => entry.table === 'events' && entry.id)
-      .map(entry => entry.id)
-  );
-  const reconciled = reconcileEventCollections(local, remote, knownRemote, pendingDeleteIds);
-  const next = reconciled.next;
-  const pushCandidates = new Map(reconciled.pushCandidates.map(event => [event.id, event]));
-
-  let pushedIds = new Set();
-  if (pushCandidates.size) {
-    const rows = [...pushCandidates.values()].map(event => eventToRow(event, userId));
-    const result = await _upsertRowsCompat(client, 'events', rows, 'id');
-    if (result.error) {
-      _recordSyncError('events', result.error);
-      _schedulePushRetry('events');
-    } else {
-      pushedIds = new Set(pushCandidates.keys());
-      _recordSyncSuccess('push', 'events');
-    }
-  }
-
-  const nextRemoteSnapshot = Object.fromEntries(
-    remote.map(event => [event.id, _updatedTs(event)])
-  );
-  pushedIds.forEach(id => {
-    const event = pushCandidates.get(id);
-    nextRemoteSnapshot[id] = _updatedTs(event);
+  const next = await _reconcileRemoteCollection({
+    client,
+    userId,
+    collectionKey: 'events',
+    dbTable: 'events',
+    local,
+    remote,
+    toRow: eventToRow,
+    pendingDeleteTable: 'events',
+    retryKeys: ['events'],
   });
-  localStorage.setItem(snapshotKey, JSON.stringify(nextRemoteSnapshot));
-  return _writeEventsAfterSync(local, next, userId);
+  return _writeCollectionAfterSync('mp_events', local, next, userId, 'events');
 }
 
 export function reconcileEventCollections(local, remote, knownRemote = {}, pendingDeleteIds = new Set()) {
   const deletedIds = pendingDeleteIds instanceof Set ? pendingDeleteIds : new Set(pendingDeleteIds);
-  const remoteById = new Map(remote.filter(event => event?.id).map(event => [event.id, event]));
+  const availableRemote = remote.filter(event => event?.id && !deletedIds.has(event.id));
+  const remoteById = new Map(availableRemote.map(event => [event.id, event]));
   const localById = new Map(
     local
       .filter(event => event?.id && !deletedIds.has(event.id))
       .map(event => [event.id, event])
   );
   const pushCandidates = new Map();
-  const next = remote.map(remoteEvent => {
+  const next = availableRemote.map(remoteEvent => {
     const localEvent = localById.get(remoteEvent.id);
     if (!localEvent) return remoteEvent;
-    if (_updatedTs(localEvent) > _updatedTs(remoteEvent)) {
+    if (_syncVersion(localEvent) > _syncVersion(remoteEvent)) {
       pushCandidates.set(localEvent.id, localEvent);
       return localEvent;
     }
@@ -462,7 +482,7 @@ export function reconcileEventCollections(local, remote, knownRemote = {}, pendi
   for (const localEvent of localById.values()) {
     if (remoteById.has(localEvent.id)) continue;
     const knownVersion = Number(knownRemote[localEvent.id]);
-    const localVersion = _updatedTs(localEvent);
+    const localVersion = _syncVersion(localEvent);
     const neverSeenInCloud = !Number.isFinite(knownVersion) || knownVersion <= 0;
     const editedAfterLastCloudCopy = Number.isFinite(localVersion) && localVersion > knownVersion;
     if (neverSeenInCloud || editedAfterLastCloudCopy) {
@@ -474,13 +494,81 @@ export function reconcileEventCollections(local, remote, knownRemote = {}, pendi
   return { next, pushCandidates: [...pushCandidates.values()] };
 }
 
+export function reconcileNamedCollections(local, remote, knownRemote = {}, pendingDeleteNames = new Set(), recentNames = new Set()) {
+  const deleted = pendingDeleteNames instanceof Set ? pendingDeleteNames : new Set(pendingDeleteNames);
+  const recent = recentNames instanceof Set ? recentNames : new Set(recentNames);
+  const remoteNames = [...new Set((remote || []).filter(Boolean))].filter(name => !deleted.has(name));
+  const next = new Set(remoteNames);
+  const pushCandidates = [];
+
+  [...new Set((local || []).filter(Boolean))].forEach(name => {
+    if (deleted.has(name) || next.has(name)) return;
+    if (!knownRemote[name] || recent.has(name)) {
+      next.add(name);
+      pushCandidates.push(name);
+    }
+  });
+
+  return { next: [...next].sort(), pushCandidates };
+}
+
+async function _reconcileRemoteCollection({
+  client,
+  userId,
+  collectionKey,
+  dbTable,
+  local,
+  remote,
+  toRow,
+  conflict = 'id',
+  pendingDeleteTable = dbTable,
+  retryKeys = [collectionKey],
+}) {
+  const snapshotKey = _remoteSnapshotKey(collectionKey, userId);
+  const knownRemote = _ls(snapshotKey, {});
+  const pendingDeleteIds = new Set(
+    _getPendingDeletes()
+      .filter(entry => entry.table === pendingDeleteTable && entry.id)
+      .map(entry => entry.id)
+  );
+  const reconciled = reconcileEventCollections(local, remote, knownRemote, pendingDeleteIds);
+  const pushCandidates = new Map(reconciled.pushCandidates.map(item => [item.id, item]));
+  let pushedIds = new Set();
+
+  if (pushCandidates.size) {
+    const rows = [...pushCandidates.values()].map(item => toRow(item, userId));
+    const result = await _upsertRowsCompat(client, dbTable, rows, conflict);
+    if (result.error) {
+      _recordSyncError(dbTable, result.error);
+      retryKeys.forEach(_schedulePushRetry);
+    } else {
+      pushedIds = new Set(pushCandidates.keys());
+      retryKeys.forEach(key => _recordSyncSuccess('push', key));
+    }
+  }
+
+  const nextRemoteSnapshot = Object.fromEntries(
+    remote.filter(item => item?.id).map(item => [item.id, _syncVersion(item)])
+  );
+  pushedIds.forEach(id => {
+    nextRemoteSnapshot[id] = _syncVersion(pushCandidates.get(id));
+  });
+  localStorage.setItem(snapshotKey, JSON.stringify(nextRemoteSnapshot));
+  return reconciled.next;
+}
+
 async function _pullGoals(client, userId, forceReplace = false) {
   const { data, error } = await client
     .from('goals').select('*').eq('user_id', userId);
   if (error) throw error;
   if (!data) return;
   const remote = _filterPendingDeletes('goals', data.map(rowToGoal));
-  return _writeIfChanged('mp_goals', forceReplace ? _mergeProtectedLocalItems('goals', 'mp_goals', remote) : _merge(_ls('mp_goals', []), remote));
+  const local = _ls('mp_goals', []);
+  const next = await _reconcileRemoteCollection({
+    client, userId, collectionKey: 'goals', dbTable: 'goals', local, remote,
+    toRow: goalToRow, pendingDeleteTable: 'goals', retryKeys: ['goals'],
+  });
+  return _writeCollectionAfterSync('mp_goals', local, next, userId, 'goals');
 }
 
 async function _pullMemos(client, userId, forceReplace = false) {
@@ -489,9 +577,12 @@ async function _pullMemos(client, userId, forceReplace = false) {
   if (error) throw error;
   if (!data) return;
   const remote = _filterPendingDeletes('knowledge_memos', data.map(rowToMemo));
-  return _writeIfChanged('mp_knowledge', forceReplace
-    ? _mergeProtectedLocalItems('knowledge_memos', 'mp_knowledge', remote)
-    : _merge(_ls('mp_knowledge', []), remote));
+  const local = _ls('mp_knowledge', []);
+  const next = await _reconcileRemoteCollection({
+    client, userId, collectionKey: 'knowledge_memos', dbTable: 'knowledge_memos', local, remote,
+    toRow: memoToRow, pendingDeleteTable: 'knowledge_memos', retryKeys: ['knowledge_memos'],
+  });
+  return _writeCollectionAfterSync('mp_knowledge', local, next, userId, 'knowledge_memos');
 }
 
 async function _pullTrash(client, userId, forceReplace = false) {
@@ -500,7 +591,12 @@ async function _pullTrash(client, userId, forceReplace = false) {
   if (error) throw error;
   if (!data) return;
   const remote = _filterPendingDeletes('trash_items', data.map(rowToTrash));
-  return _writeIfChanged('mp_trash', forceReplace ? _mergeProtectedLocalItems('trash_items', 'mp_trash', remote) : _merge(_ls('mp_trash', []), remote));
+  const local = _ls('mp_trash', []);
+  const next = await _reconcileRemoteCollection({
+    client, userId, collectionKey: 'trash_items', dbTable: 'trash_items', local, remote,
+    toRow: trashToRow, pendingDeleteTable: 'trash_items', retryKeys: ['trash_items'],
+  });
+  return _writeCollectionAfterSync('mp_trash', local, next, userId, 'trash_items');
 }
 
 async function _pullSchedule(client, userId, forceReplace = false) {
@@ -509,9 +605,12 @@ async function _pullSchedule(client, userId, forceReplace = false) {
   if (error) throw error;
   if (!data) return;
   const remote = _filterPendingDeletes('schedule_items', data.map(rowToSchedItem));
-  return _writeIfChanged('mp_schedule', forceReplace
-    ? _mergeProtectedLocalItems('schedule_items', 'mp_schedule', remote)
-    : _merge(_ls('mp_schedule', []), remote));
+  const local = _ls('mp_schedule', []);
+  const next = await _reconcileRemoteCollection({
+    client, userId, collectionKey: 'schedule_items', dbTable: 'schedule_items', local, remote,
+    toRow: schedItemToRow, pendingDeleteTable: 'schedule_items', retryKeys: ['schedule_items'],
+  });
+  return _writeCollectionAfterSync('mp_schedule', local, next, userId, 'schedule_items');
 }
 
 async function _pullTags(client, userId, forceReplace = false) {
@@ -521,10 +620,37 @@ async function _pullTags(client, userId, forceReplace = false) {
   if (!data) return;
   const remoteTags = _filterPendingTagDeletes(data.map(r => r.name));
   const localTags  = _ls('mp_tags', []);
-  const merged = forceReplace
-    ? _mergeRecentLocalTags(remoteTags)
-    : [...new Set([...localTags, ...remoteTags])].sort();
-  return _writeIfChanged('mp_tags', merged);
+  const snapshotKey = _remoteSnapshotKey('tags', userId);
+  const knownRemote = _ls(snapshotKey, {});
+  const pendingNames = new Set(
+    _getPendingDeletes()
+      .filter(entry => entry.table === 'tags' && entry.name)
+      .map(entry => entry.name)
+  );
+  const recentNames = new Set(
+    _getRecentUpserts()
+      .filter(entry => entry.table === 'tags' && entry.name)
+      .map(entry => entry.name)
+  );
+  const reconciled = reconcileNamedCollections(localTags, remoteTags, knownRemote, pendingNames, recentNames);
+  const pushedNames = new Set();
+
+  if (reconciled.pushCandidates.length) {
+    const rows = reconciled.pushCandidates.map(name => ({ user_id: userId, name }));
+    const result = await _upsertRowsCompat(client, 'tags', rows, 'user_id,name');
+    if (result.error) {
+      _recordSyncError('tags', result.error);
+      _schedulePushRetry('tags');
+    } else {
+      reconciled.pushCandidates.forEach(name => pushedNames.add(name));
+      _recordSyncSuccess('push', 'tags');
+    }
+  }
+
+  const nextSnapshot = Object.fromEntries(remoteTags.map(name => [name, 1]));
+  pushedNames.forEach(name => { nextSnapshot[name] = 1; });
+  localStorage.setItem(snapshotKey, JSON.stringify(nextSnapshot));
+  return _writeCollectionAfterSync('mp_tags', localTags, reconciled.next, userId, 'tags');
 }
 
 async function _pullReviewSchedule(client, userId, forceReplace = false) {
@@ -534,24 +660,33 @@ async function _pullReviewSchedule(client, userId, forceReplace = false) {
   if (!data) return;
   const remote = Object.fromEntries(data.map(rowToReviewEntry));
   const local = _ls('mp_reviews', {});
-  return _writeIfChanged('mp_reviews', _mergeReviewSchedules(local, remote, forceReplace));
-}
-
-// ---- Merge strategy: last-write-wins by updated_at ----
-
-function _merge(local, remote) {
-  const map = new Map(local.map(item => [item.id, item]));
-  for (const r of remote) {
-    const l = map.get(r.id);
-    if (!l) {
-      map.set(r.id, r);
-    } else {
-      const rt = new Date(r.updatedAt  || r.createdAt  || 0).getTime();
-      const lt = new Date(l.updatedAt  || l.createdAt  || 0).getTime();
-      if (rt > lt) map.set(r.id, r);
-    }
-  }
-  return [...map.values()];
+  const recentIds = new Set(
+    _getRecentUpserts()
+      .filter(entry => entry.table === 'review_schedule' && entry.id)
+      .map(entry => entry.id)
+  );
+  const localItems = Object.entries(local).map(([id, entry]) => ({
+    id,
+    entry,
+    syncVersion: recentIds.has(id) ? Number.MAX_SAFE_INTEGER : _reviewEntryVersion(entry),
+  }));
+  const remoteItems = Object.entries(remote).map(([id, entry]) => ({
+    id, entry, syncVersion: _reviewEntryVersion(entry),
+  }));
+  const nextItems = await _reconcileRemoteCollection({
+    client,
+    userId,
+    collectionKey: 'review_schedule',
+    dbTable: 'review_schedule',
+    local: localItems,
+    remote: remoteItems,
+    toRow: (item, uid) => reviewEntryToRow(item.id, item.entry, uid),
+    conflict: 'user_id,memo_id',
+    pendingDeleteTable: 'review_schedule',
+    retryKeys: ['review_schedule'],
+  });
+  const next = Object.fromEntries(nextItems.map(item => [item.id, item.entry]));
+  return _writeObjectAfterSync('mp_reviews', local, next, userId, 'review_schedule');
 }
 
 // ---- Stale pull (visibilitychange / foreground return) ----
@@ -578,46 +713,49 @@ function _resumePersistedSyncWork() {
 }
 
 function _scheduleDelete(payload, delayMs = DELETE_GRACE_MS) {
-  _markPendingDelete(payload);
-  const key = _deleteKey(payload);
+  const scopedPayload = { ...payload, userId: payload.userId || getActiveUserId() || null };
+  _markPendingDelete(scopedPayload);
+  const key = _deleteKey(scopedPayload);
+  const epoch = _syncEpoch;
   clearTimeout(_deleteTimers.get(key));
   _deleteTimers.set(key, setTimeout(async () => {
     _deleteTimers.delete(key);
-    if (!_isStillDeleted(payload)) {
-      _clearPendingDelete(payload);
+    if (epoch !== _syncEpoch || (scopedPayload.userId && scopedPayload.userId !== getActiveUserId())) return;
+    if (!_isStillDeleted(scopedPayload)) {
+      _clearPendingDelete(scopedPayload);
       return;
     }
 
     const client = await getClient();
     const userId = await getUserId();
-    if (!client || !userId) return;
+    if (!client || !userId || epoch !== _syncEpoch || (scopedPayload.userId && scopedPayload.userId !== userId)) return;
 
     try {
       let result = null;
-      if (payload.table === 'tags' && payload.name) {
+      if (scopedPayload.table === 'tags' && scopedPayload.name) {
         result = await client.from('tags')
           .delete()
           .eq('user_id', userId)
-          .eq('name', payload.name);
-      } else if (payload.table === 'review_schedule' && payload.id) {
+          .eq('name', scopedPayload.name);
+      } else if (scopedPayload.table === 'review_schedule' && scopedPayload.id) {
         result = await client.from('review_schedule')
           .delete()
-          .eq('memo_id', payload.id)
+          .eq('memo_id', scopedPayload.id)
           .eq('user_id', userId);
-      } else if (payload.id) {
-        result = await client.from(payload.table)
+      } else if (scopedPayload.id) {
+        result = await client.from(scopedPayload.table)
           .delete()
-          .eq('id', payload.id)
+          .eq('id', scopedPayload.id)
           .eq('user_id', userId);
       }
       if (result?.error) throw result.error;
-      _clearPendingDelete(payload);
-      _recordSyncSuccess('push', payload.table);
+      _clearPendingDelete(scopedPayload);
+      _recordSyncSuccess('push', scopedPayload.table);
     } catch (e) {
-      console.warn(`[Sync] delete ${payload.table} failed:`, e);
-      _recordSyncError(payload.table, e);
-      if (_isStillDeleted(payload)) _scheduleDelete(payload, DELETE_RETRY_MS);
-      else _clearPendingDelete(payload);
+      console.warn(`[Sync] delete ${scopedPayload.table} failed:`, e);
+      _recordSyncError(scopedPayload.table, e);
+      if (_isStillDeleted(scopedPayload)) _scheduleDelete(scopedPayload, DELETE_RETRY_MS);
+      else _clearPendingDelete(scopedPayload);
     }
   }, delayMs));
 }
@@ -656,9 +794,11 @@ function _hasId(key, id) {
 
 function _getPendingDeletes() {
   const now = Date.now();
+  const activeUserId = getActiveUserId();
   const all = _ls(DELETE_TOMBSTONE_KEY, []);
   const filtered = all.filter(entry => {
     if (!entry?.table) return false;
+    if (entry.userId && activeUserId && entry.userId !== activeUserId) return false;
     if ((entry.expiresAt || 0) < now) return false;
     if (!_isStillDeleted(entry)) return false;
     return true;
@@ -680,6 +820,7 @@ function _markPendingDelete(payload) {
     table: payload.table,
     id: payload.id || null,
     name: payload.name || null,
+    userId: payload.userId || getActiveUserId() || null,
     expiresAt: Date.now() + DELETE_TOMBSTONE_TTL_MS,
   };
   const idx = entries.findIndex(entry => _deleteKey(entry) === key);
@@ -716,9 +857,11 @@ function _filterPendingTagDeletes(tags) {
 
 function _getRecentUpserts() {
   const now = Date.now();
+  const activeUserId = getActiveUserId();
   const all = _ls(RECENT_UPSERT_KEY, []);
   const filtered = all.filter(entry => {
     if (!entry?.table) return false;
+    if (entry.userId && activeUserId && entry.userId !== activeUserId) return false;
     if ((entry.expiresAt || 0) < now) return false;
     if (!_isStillPresent(entry)) return false;
     return true;
@@ -735,6 +878,7 @@ function _saveRecentUpserts(entries) {
 
 function _markRecentUpserts(tableKey) {
   const entries = _getRecentUpserts();
+  const userId = getActiveUserId() || null;
   const expiresAt = Date.now() + RECENT_UPSERT_TTL_MS;
   const threshold = Date.now() - RECENT_WRITE_WINDOW_MS;
 
@@ -742,7 +886,7 @@ function _markRecentUpserts(tableKey) {
     const names = _ls('mp_tags', []);
     const survivors = entries.filter(entry => entry.table !== 'tags');
     names.forEach(name => {
-      survivors.push({ table: 'tags', name, version: name, expiresAt });
+      survivors.push({ table: 'tags', name, version: name, expiresAt, userId });
     });
     _saveRecentUpserts(survivors);
     return;
@@ -754,7 +898,7 @@ function _markRecentUpserts(tableKey) {
     const schedule = _ls(lsKey, {});
     const survivors = entries.filter(entry => entry.table !== tableKey);
     Object.entries(schedule).forEach(([memoId, entry]) => {
-      survivors.push({ table: tableKey, id: memoId, version: String(_reviewEntryTs(entry)), expiresAt });
+      survivors.push({ table: tableKey, id: memoId, version: String(_reviewEntryVersion(entry)), expiresAt, userId });
     });
     _saveRecentUpserts(survivors);
     return;
@@ -770,6 +914,7 @@ function _markRecentUpserts(tableKey) {
       id: item.id,
       version: String(item.updatedAt || item.createdAt || ''),
       expiresAt,
+      userId,
     });
   });
   _saveRecentUpserts(survivors);
@@ -787,100 +932,21 @@ function _isStillPresent(entry) {
   return _hasId(lsKey, entry.id);
 }
 
-function _appendRecentLocalItems(tableKey, lsKey, remoteItems) {
-  const recentIds = new Set(
-    _getRecentUpserts()
-      .filter(entry => entry.table === tableKey && entry.id)
-      .map(entry => entry.id)
-  );
-  if (!recentIds.size) return remoteItems;
-  const localItems = _ls(lsKey, []);
-  const remoteIds = new Set(remoteItems.map(item => item.id));
-  const appended = localItems.filter(item => item?.id && recentIds.has(item.id) && !remoteIds.has(item.id));
-  return appended.length ? [...remoteItems, ...appended] : remoteItems;
-}
-
-function _mergeProtectedLocalItems(tableKey, lsKey, remoteItems) {
-  const localItems = _ls(lsKey, []);
-  const localById = new Map(localItems.filter(item => item?.id).map(item => [item.id, item]));
-  const recentIds = new Set(
-    _getRecentUpserts()
-      .filter(entry => entry.table === tableKey && entry.id)
-      .map(entry => entry.id)
-  );
-
-  let needsRetry = false;
-  const merged = remoteItems.map(remote => {
-    const local = localById.get(remote.id);
-    if (!local) return remote;
-    if (recentIds.has(local.id) && _updatedTs(local) >= _updatedTs(remote)) {
-      if (_updatedTs(local) > _updatedTs(remote)) needsRetry = true;
-      return local;
-    }
-    return remote;
-  });
-
-  const remoteIds = new Set(remoteItems.map(item => item.id));
-  const appended = localItems.filter(item => item?.id && recentIds.has(item.id) && !remoteIds.has(item.id));
-  if (appended.length || needsRetry) _schedulePushRetry(tableKey);
-  return appended.length ? [...merged, ...appended] : merged;
-}
-
-function _mergeRecentLocalTags(remoteTags) {
-  const recentNames = new Set(
-    _getRecentUpserts()
-      .filter(entry => entry.table === 'tags' && entry.name)
-      .map(entry => entry.name)
-  );
-  const localRecent = _ls('mp_tags', []).filter(name => recentNames.has(name));
-  if (localRecent.some(name => !remoteTags.includes(name))) _schedulePushRetry('tags');
-  return [...new Set([...remoteTags, ...localRecent])].sort();
-}
-
-function _mergeReviewSchedules(localSchedule, remoteSchedule, protectRecent = false) {
-  const merged = { ...(remoteSchedule || {}) };
-  const recentIds = new Set(
-    _getRecentUpserts()
-      .filter(entry => entry.table === 'review_schedule' && entry.id)
-      .map(entry => entry.id)
-  );
-  let needsRetry = false;
-
-  Object.entries(localSchedule || {}).forEach(([memoId, localEntry]) => {
-    const remoteEntry = merged[memoId];
-    if (!remoteEntry) {
-      if (!protectRecent || recentIds.has(memoId)) {
-        merged[memoId] = localEntry;
-        needsRetry = true;
-      }
-      return;
-    }
-    if (recentIds.has(memoId)) {
-      merged[memoId] = localEntry;
-      if (JSON.stringify(localEntry) !== JSON.stringify(remoteEntry)) needsRetry = true;
-      return;
-    }
-    merged[memoId] = _newerReviewEntry(localEntry, remoteEntry);
-  });
-
-  if (needsRetry) _schedulePushRetry('review_schedule');
-  return merged;
-}
-
-function _newerReviewEntry(localEntry, remoteEntry) {
-  const localTime = _reviewEntryTs(localEntry);
-  const remoteTime = _reviewEntryTs(remoteEntry);
-  if (localTime !== remoteTime) return localTime > remoteTime ? localEntry : remoteEntry;
-  const localStage = Number(localEntry?.stage ?? 0);
-  const remoteStage = Number(remoteEntry?.stage ?? 0);
-  return localStage >= remoteStage ? localEntry : remoteEntry;
-}
-
 function _reviewEntryTs(entry) {
-  const candidates = [entry?.lastReview, entry?.nextReview]
-    .map(value => new Date(value || 0).getTime())
-    .filter(Number.isFinite);
-  return candidates.length ? Math.max(...candidates) : 0;
+  const lastReview = new Date(entry?.lastReview || 0).getTime();
+  if (Number.isFinite(lastReview) && lastReview > 0) return lastReview;
+  const nextReview = new Date(entry?.nextReview || 0).getTime();
+  return Number.isFinite(nextReview) ? nextReview : 0;
+}
+
+export function reviewEntryVersion(entry) {
+  return _reviewEntryVersion(entry);
+}
+
+function _reviewEntryVersion(entry) {
+  const rawStage = Number(entry?.stage);
+  const stage = Math.max(-1, Math.min(9, Number.isFinite(rawStage) ? rawStage : 0));
+  return (_reviewEntryTs(entry) * 16) + stage + 1;
 }
 
 function reviewEntryToRow(memoId, entry, userId) {
@@ -906,6 +972,11 @@ function _updatedTs(item) {
   return Number.isFinite(ts) ? ts : 0;
 }
 
+function _syncVersion(item) {
+  const explicit = Number(item?.syncVersion);
+  return Number.isFinite(explicit) ? explicit : _updatedTs(item);
+}
+
 function _schedulePushRetry(tableKey) {
   clearTimeout(_timers[tableKey]);
   _timers[tableKey] = setTimeout(() => {
@@ -927,40 +998,67 @@ function _clearSentUpserts(tableKey, sentEntries) {
   _saveRecentUpserts(entries);
 }
 
-function _writeIfChanged(key, value) {
-  const next = JSON.stringify(value);
-  const prev = localStorage.getItem(key);
-  if (prev === next) return false;
-  localStorage.setItem(key, next);
-  return true;
-}
-
 function _eventRemoteSnapshotKey(userId) {
   return `mp_event_remote_snapshot_v${EVENT_REMOTE_SNAPSHOT_VERSION}:${userId}`;
 }
 
-function _eventSyncBackupKey(userId) {
-  return `mp_event_sync_backups:${userId}`;
+function _remoteSnapshotKey(collectionKey, userId) {
+  if (collectionKey === 'events') return _eventRemoteSnapshotKey(userId);
+  return `mp_sync_remote_snapshot_v${SYNC_SNAPSHOT_VERSION}:${collectionKey}:${userId}`;
 }
 
-function _writeEventsAfterSync(previous, next, userId) {
+function _syncBackupKey(collectionKey, userId) {
+  if (collectionKey === 'events') return `mp_event_sync_backups:${userId}`;
+  return `mp_sync_backups:${collectionKey}:${userId}`;
+}
+
+function _writeSyncBackup(collectionKey, userId, value) {
+  try {
+    const key = _syncBackupKey(collectionKey, userId);
+    const backups = _ls(key, []);
+    const payload = collectionKey === 'events'
+      ? { at: new Date().toISOString(), events: value }
+      : { at: new Date().toISOString(), data: value };
+    backups.unshift(payload);
+    const limit = collectionKey === 'events' ? EVENT_SYNC_BACKUP_LIMIT : SYNC_BACKUP_LIMIT;
+    localStorage.setItem(key, JSON.stringify(backups.slice(0, limit)));
+  } catch (error) {
+    console.warn(`[Sync] could not create local ${collectionKey} backup:`, error);
+  }
+}
+
+function _writeCollectionAfterSync(key, previous, next, userId, collectionKey) {
   const prevJson = JSON.stringify(previous);
   const nextJson = JSON.stringify(next);
   if (prevJson === nextJson) return false;
 
   if (previous.length > next.length) {
-    try {
-      const key = _eventSyncBackupKey(userId);
-      const backups = _ls(key, []);
-      backups.unshift({ at: new Date().toISOString(), events: previous });
-      localStorage.setItem(key, JSON.stringify(backups.slice(0, EVENT_SYNC_BACKUP_LIMIT)));
-    } catch (error) {
-      console.warn('[Sync] could not create local event backup:', error);
-    }
+    _writeSyncBackup(collectionKey, userId, previous);
   }
 
-  localStorage.setItem('mp_events', nextJson);
+  localStorage.setItem(key, nextJson);
   return true;
+}
+
+function _writeObjectAfterSync(key, previous, next, userId, collectionKey) {
+  const prevJson = JSON.stringify(previous);
+  const nextJson = JSON.stringify(next);
+  if (prevJson === nextJson) return false;
+  if (Object.keys(previous || {}).length > Object.keys(next || {}).length) {
+    _writeSyncBackup(collectionKey, userId, previous);
+  }
+  localStorage.setItem(key, nextJson);
+  return true;
+}
+
+function _dedupeById(items) {
+  const byId = new Map();
+  (items || []).forEach(item => {
+    if (!item?.id) return;
+    const existing = byId.get(item.id);
+    if (!existing || _syncVersion(item) >= _syncVersion(existing)) byId.set(item.id, item);
+  });
+  return [...byId.values()];
 }
 
 function _recordSyncSuccess(type, table = null) {

@@ -4,7 +4,7 @@
 
 import { getSettings, getPendingAIQueue, autoArchiveTasks, isAiAvailable, clearUserContentLocal, DEFAULT_ACCENT_RGB, DEFAULT_THEME_TUNING } from './storage.js';
 import { processBatchQueue, refreshAiRuntimeStatus } from './ai.js';
-import { backfillLocalEvents, initSync, pullAll, pullIfStale, startRealtimeSync, hasPendingSyncWork, flushPendingSync } from './sync.js';
+import { backfillLocalEvents, initSync, pullAll, pullIfStale, startRealtimeSync, hasPendingSyncWork, flushPendingSync, resetSyncForUserSwitch } from './sync.js';
 import { getSession, handleAuthRedirect, getActiveUserId, setActiveUserId, isMigratedForCurrentUser } from './supabase.js';
 import { migrateToSupabase } from './migrate.js';
 import { initHome }     from './modules/home.js';
@@ -618,6 +618,7 @@ async function init() {
       const nextUserId = session.user?.id || null;
       const prevUserId = getActiveUserId();
       if (prevUserId && nextUserId && prevUserId !== nextUserId) {
+        await resetSyncForUserSwitch();
         clearUserContentLocal();
       }
       setActiveUserId(nextUserId);

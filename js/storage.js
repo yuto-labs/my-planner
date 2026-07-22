@@ -895,10 +895,11 @@ export function autoArchiveTasks() {
   const active   = load(KEY.TASKS, []);
   const toArchive = [];
   const remaining = [];
+  const archivedAt = new Date().toISOString();
 
   active.forEach(t => {
     if (t.completed && t.completedAt && new Date(t.completedAt) < cutoff) {
-      toArchive.push({ ...t, archivedAt: new Date().toISOString() });
+      toArchive.push({ ...t, archivedAt, updatedAt: archivedAt });
     } else {
       remaining.push(t);
     }
@@ -914,9 +915,10 @@ export function autoArchiveTasks() {
 
 /** Delete all archived tasks for a given YYYY-MM month */
 export function deleteArchivedByMonth(yyyymm) {
-  saveArchivedTasks(
-    getArchivedTasks().filter(t => !t.archivedAt || t.archivedAt.slice(0, 7) !== yyyymm)
-  );
+  const archived = getArchivedTasks();
+  const removed = archived.filter(t => t.archivedAt?.slice(0, 7) === yyyymm);
+  saveArchivedTasks(archived.filter(t => !t.archivedAt || t.archivedAt.slice(0, 7) !== yyyymm));
+  removed.forEach(task => _notifyDelete({ table: 'tasks', id: task.id }));
 }
 
 // ---- Subtasks ----

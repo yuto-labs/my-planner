@@ -16,7 +16,7 @@ import {
   getActiveUserId, setActiveUserId,
 } from '../supabase.js';
 import { migrateToSupabase } from '../migrate.js';
-import { getSyncStatus, pullAll, startRealtimeSync, stopRealtimeSync, flushPendingSync } from '../sync.js';
+import { getSyncStatus, pullAll, startRealtimeSync, flushPendingSync, resetSyncForUserSwitch } from '../sync.js';
 import { consumePendingSharedInvite } from '../shared-calendar.js';
 import { openSharedCalendarSettings } from './shared-calendar.js';
 
@@ -714,6 +714,7 @@ function wireAccount(container, options = {}) {
       const nextUserId = session.user?.id || null;
       const previousUserId = getActiveUserId();
       if (previousUserId && nextUserId && previousUserId !== nextUserId) {
+        await resetSyncForUserSwitch();
         clearUserContentLocal();
       }
       setActiveUserId(nextUserId);
@@ -763,7 +764,7 @@ function wireAccount(container, options = {}) {
   });
 
   container.querySelector('#sb-signout-btn')?.addEventListener('click', async () => {
-    await stopRealtimeSync();
+    await resetSyncForUserSwitch({ flush: true });
     await signOut();
     clearUserContentLocal();
     toast('ログアウトしました', 'info');
