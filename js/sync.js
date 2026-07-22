@@ -178,6 +178,7 @@ export function getSyncStatus() {
     lastErrorAt: null,
     lastErrorTable: null,
     lastErrorMessage: null,
+    tableErrors: {},
   });
 }
 
@@ -245,7 +246,7 @@ async function _pushTableNow(tableKey) {
     return false;
   }
 
-  _recordSyncSuccess('push');
+  _recordSyncSuccess('push', tableKey);
   _clearSentUpserts(tableKey, pendingEntries);
   if (_getRecentUpserts().some(entry => entry.table === tableKey)) {
     _schedulePushRetry(tableKey);
@@ -257,7 +258,8 @@ async function _upsertRowsCompat(client, dbTable, rows, conflict) {
   let attemptRows = rows;
   const strippedColumns = [];
 
-  for (let attempt = 0; attempt < 8; attempt += 1) {
+  const maxAttempts = Math.min(32, Object.keys(attemptRows[0] || {}).length + 1);
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const result = await client.from(dbTable)
       .upsert(attemptRows, { onConflict: conflict });
     if (!result.error) {
@@ -300,19 +302,22 @@ export async function pullAll(forceReplace = false) {
   const userId = await getUserId();
   if (!client || !userId) return false;
 
-  const results = await Promise.allSettled([
-    _pullTasks(client, userId, forceReplace),
-    _pullEvents(client, userId, forceReplace),
-    _pullGoals(client, userId, forceReplace),
-    _pullMemos(client, userId, forceReplace),
-    _pullTrash(client, userId, forceReplace),
-    _pullSchedule(client, userId, forceReplace),
-    _pullTags(client, userId, forceReplace),
-    _pullReviewSchedule(client, userId, forceReplace),
-  ]);
+  const pulls = [
+    ['tasks', _pullTasks(client, userId, forceReplace)],
+    ['events', _pullEvents(client, userId, forceReplace)],
+    ['goals', _pullGoals(client, userId, forceReplace)],
+    ['knowledge_memos', _pullMemos(client, userId, forceReplace)],
+    ['trash_items', _pullTrash(client, userId, forceReplace)],
+    ['schedule_items', _pullSchedule(client, userId, forceReplace)],
+    ['tags', _pullTags(client, userId, forceReplace)],
+    ['review_schedule', _pullReviewSchedule(client, userId, forceReplace)],
+  ];
+  const results = await Promise.allSettled(pulls.map(([, promise]) => promise));
 
-  const firstError = results.find(r => r.status === 'rejected');
-  if (firstError) _recordSyncError('pull', firstError.reason);
+  const firstErrorIndex = results.findIndex(r => r.status === 'rejected');
+  if (firstErrorIndex >= 0) {
+    _recordSyncError(pulls[firstErrorIndex][0], results[firstErrorIndex].reason, 'pull');
+  }
   else _recordSyncSuccess('pull');
   return results.some(r => r.status === 'fulfilled' && r.value === true);
 }
@@ -336,9 +341,14 @@ async function _pullTasks(client, userId, forceReplace = false) {
 }
 
 async function _pullEvents(client, userId, forceReplace = false) {
-  const { data, error } = await client
+  let { data, error } = await client
     .from('events').select('*').eq('user_id', userId);
-  if (error) throw error;
+  if (error) {
+    const rpcResult = await client.rpc('get_personal_calendar_events');
+    if (rpcResult.error) throw error;
+    data = rpcResult.data;
+    console.warn('[Sync] events: direct read failed; used personal calendar RPC fallback.');
+  }
   if (!data) return;
   const remote = _filterPendingDeletes('events', data.map(rowToEvent));
   return _writeIfChanged('mp_events', forceReplace ? _mergeProtectedLocalItems('events', 'mp_events', remote) : _merge(_ls('mp_events', []), remote));
@@ -482,7 +492,7 @@ function _scheduleDelete(payload, delayMs = DELETE_GRACE_MS) {
       }
       if (result?.error) throw result.error;
       _clearPendingDelete(payload);
-      _recordSyncSuccess('push');
+      _recordSyncSuccess('push', payload.table);
     } catch (e) {
       console.warn(`[Sync] delete ${payload.table} failed:`, e);
       _recordSyncError(payload.table, e);
@@ -805,25 +815,40 @@ function _writeIfChanged(key, value) {
   return true;
 }
 
-function _recordSyncSuccess(type) {
+function _recordSyncSuccess(type, table = null) {
   const current = getSyncStatus();
+  const tableErrors = { ...(current.tableErrors || {}) };
+  if (table) delete tableErrors[`${type}:${table}`];
+  else Object.entries(tableErrors).forEach(([key, value]) => {
+    if ((value?.type || 'push') === type) delete tableErrors[key];
+  });
+  const remaining = Object.values(tableErrors)
+    .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')))[0] || null;
   const next = {
     ...current,
     [type === 'pull' ? 'lastPullAt' : 'lastPushAt']: new Date().toISOString(),
-    lastErrorAt: null,
-    lastErrorTable: null,
-    lastErrorMessage: null,
+    lastErrorAt: remaining?.at || null,
+    lastErrorTable: remaining?.table || null,
+    lastErrorMessage: remaining?.message || null,
+    tableErrors,
   };
   localStorage.setItem(SYNC_STATUS_KEY, JSON.stringify(next));
 }
 
-function _recordSyncError(table, error) {
+function _recordSyncError(table, error, type = 'push') {
   const current = getSyncStatus();
+  const at = new Date().toISOString();
+  const message = error?.message || String(error || 'Unknown sync error');
+  const tableErrors = {
+    ...(current.tableErrors || {}),
+    [`${type}:${table}`]: { table, type, at, message },
+  };
   const next = {
     ...current,
-    lastErrorAt: new Date().toISOString(),
+    lastErrorAt: at,
     lastErrorTable: table,
-    lastErrorMessage: error?.message || String(error || 'Unknown sync error'),
+    lastErrorMessage: message,
+    tableErrors,
   };
   localStorage.setItem(SYNC_STATUS_KEY, JSON.stringify(next));
 }
