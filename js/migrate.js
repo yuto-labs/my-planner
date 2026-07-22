@@ -326,7 +326,7 @@ export function schedItemToRow(item, userId) {
     task_id:    item.taskId    || null,
     note:       item.note      || null,
     created_at: item.createdAt || _now(),
-    updated_at: _now(),
+    updated_at: item.updatedAt || _now(),
   };
 }
 

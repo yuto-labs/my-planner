@@ -10,6 +10,7 @@ import {
   getScheduleItemsForDate, getMyScheduleColor, getReviewsForDate,
 } from '../storage.js';
 import { interpretPlannerInput } from '../ai.js';
+import { openScheduleItemModal } from './today.js';
 import {
   esc, today, tomorrow, toDateStr, formatDate, formatTime, getGreeting, getGreetingPeriod,
   getEventsForDate, generateId,
@@ -157,6 +158,20 @@ export function initHome(container) {
   container.querySelector('#goto-today')?.addEventListener('click', () => nav('today'));
   container.querySelector('#goto-review')?.addEventListener('click', () => nav('review'));
 
+  container.querySelectorAll('[data-edit-schedule-id]').forEach(card => {
+    const openEditor = () => {
+      const item = todayMySchedule.find(entry => entry.id === card.dataset.editScheduleId);
+      if (!item) return;
+      openScheduleItemModal({ dateStr: todayStr, item, onSaved: () => initHome(container) });
+    };
+    card.addEventListener('click', openEditor);
+    card.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      openEditor();
+    });
+  });
+
   container.querySelectorAll('[data-task-id]').forEach(btn => {
     btn.addEventListener('click', () => {
       const taskId = btn.dataset.taskId;
@@ -263,7 +278,9 @@ function renderScheduleItem(event) {
     const color = getMyScheduleColor();
     const timeStr = `${event.startTime || '--:--'} – ${event.endTime || '--:--'}`;
     return `
-      <div class="schedule-item schedule-my-item" style="--cat-color:${color}">
+      <div class="schedule-item schedule-my-item schedule-item--editable" style="--cat-color:${color}"
+        data-edit-schedule-id="${esc(event.id)}" role="button" tabindex="0"
+        aria-label="${esc(event.title || 'My Schedule')}を編集">
         <span class="schedule-time">${esc(timeStr)}</span>
         <span class="schedule-title">${esc(event.title || 'My Schedule')}</span>
         <span class="chip schedule-my-chip">My</span>

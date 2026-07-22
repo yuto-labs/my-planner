@@ -5,7 +5,7 @@
 import {
   getTasks, updateTask,
   getEvents, getCategoryById,
-  getScheduleItemsForDate, addScheduleItem, deleteScheduleItem,
+  getScheduleItemsForDate, addScheduleItem, updateScheduleItem, deleteScheduleItem,
   getMyScheduleColor,
 } from '../storage.js';
 import { esc, today, formatDate, getEventsForDate, addDays, toDateStr } from '../utils.js';
@@ -128,7 +128,10 @@ function renderPage(container) {
   wireTaskMoreToggle(container);
   wireTimeline(container, todayStr);
   container.querySelector('#add-schedule-btn')
-    ?.addEventListener('click', () => openAddScheduleModal(todayStr, container));
+    ?.addEventListener('click', () => openScheduleItemModal({
+      dateStr: todayStr,
+      onSaved: () => renderPage(container),
+    }));
 
   // Study prompt — check if a study-related schedule block just ended
   if (isRealToday) renderStudyPromptIfNeeded(schedItems, nowMin, container);
@@ -515,7 +518,9 @@ function timelineCardHTML(item, nowMin) {
 
   // マイスケジュール
   const c = getMyScheduleColor();
-  return `<div class="timeline-card timeline-schedule${pastCls}${onCls}" style="--schedule-color:${c}" data-id="${esc(item.id)}">
+  return `<div class="timeline-card timeline-schedule${pastCls}${onCls}" style="--schedule-color:${c}"
+    data-id="${esc(item.id)}" data-schedule-id="${esc(item.id)}" role="button" tabindex="0"
+    aria-label="${esc(item.title || 'My Schedule')}を編集">
     <div class="timeline-time">${esc(timeRange)}</div>
     <div class="timeline-title">${esc(item.title)}</div>
     ${isOngoing ? '<div class="timeline-badge-ongoing">進行中</div>' : ''}
@@ -530,11 +535,26 @@ function timelineCardHTML(item, nowMin) {
 function wireTimeline(container, todayStr) {
   container.querySelector('#today-timeline')?.addEventListener('click', e => {
     const btn = e.target.closest('[data-delete-id]');
-    if (!btn) return;
-    e.stopPropagation();
-    deleteScheduleItem(btn.dataset.deleteId);
-    toast('削除しました', 'info');
-    renderPage(container);
+    if (btn) {
+      e.stopPropagation();
+      deleteScheduleItem(btn.dataset.deleteId);
+      toast('削除しました', 'info');
+      renderPage(container);
+      return;
+    }
+    const card = e.target.closest('[data-schedule-id]');
+    if (!card) return;
+    const item = getScheduleItemsForDate(todayStr).find(entry => entry.id === card.dataset.scheduleId);
+    if (item) openScheduleItemModal({ dateStr: todayStr, item, onSaved: () => renderPage(container) });
+  });
+
+  container.querySelector('#today-timeline')?.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const card = e.target.closest('[data-schedule-id]');
+    if (!card || e.target.closest('[data-delete-id]')) return;
+    e.preventDefault();
+    const item = getScheduleItemsForDate(todayStr).find(entry => entry.id === card.dataset.scheduleId);
+    if (item) openScheduleItemModal({ dateStr: todayStr, item, onSaved: () => renderPage(container) });
   });
 }
 
@@ -585,17 +605,23 @@ function renderStudyPromptIfNeeded(schedItems, nowMin, container) {
 // Add schedule modal (self-contained, no app.js dependency)
 // ============================================================
 
-function openAddScheduleModal(todayStr, container) {
+export function openScheduleItemModal({ dateStr = today(), item = null, onSaved = null } = {}) {
   const overlay = document.getElementById('modal-overlay');
   if (!overlay) return;
   overlay.innerHTML = '';
   overlay.classList.remove('hidden');
 
+  const isEdit = !!item?.id;
+  const initialTitle = item?.title || '';
+  const initialStart = item?.startTime || '09:00';
+  const initialEnd = item?.endTime || '10:00';
+  const isDateSpecific = isEdit ? !!item.date : true;
+
   const modal = document.createElement('div');
   modal.className = 'modal';
   modal.innerHTML = `
     <div class="modal-header">
-      <span class="modal-title">マイスケジュールを追加</span>
+      <span class="modal-title">マイスケジュールを${isEdit ? '編集' : '追加'}</span>
       <button class="modal-close" aria-label="閉じる">
         <svg viewBox="0 0 24 24" fill="currentColor">
           <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
@@ -605,35 +631,39 @@ function openAddScheduleModal(todayStr, container) {
     <div class="modal-body">
       <div class="form-group">
         <label class="form-label">タイトル <span style="color:var(--danger)">*</span></label>
-        <input class="input" id="sched-title" placeholder="例：朝食、通学、自習" autocomplete="off">
+        <input class="input" id="sched-title" placeholder="例：朝食、通学、自習" value="${esc(initialTitle)}" autocomplete="off">
       </div>
       <div class="form-row">
         <div class="form-group" style="flex:1">
           <label class="form-label">開始</label>
-          <input class="input" id="sched-start" type="time" value="09:00">
+          <input class="input" id="sched-start" type="time" value="${esc(initialStart)}">
         </div>
         <div class="form-group" style="flex:1">
           <label class="form-label">終了</label>
-          <input class="input" id="sched-end" type="time" value="10:00">
+          <input class="input" id="sched-end" type="time" value="${esc(initialEnd)}">
         </div>
       </div>
       <label class="form-label" style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:400">
-        <input type="checkbox" id="sched-today-only" checked style="width:16px;height:16px">
+        <input type="checkbox" id="sched-today-only"${isDateSpecific ? ' checked' : ''} style="width:16px;height:16px">
         今日のみ表示（チェックを外すと毎日表示）
       </label>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost btn-sm" id="sched-cancel">キャンセル</button>
-      <button class="btn btn-primary btn-sm" id="sched-save">追加する</button>
+      <button class="btn btn-primary btn-sm" id="sched-save">${isEdit ? '変更を保存' : '追加する'}</button>
     </div>
   `;
 
   overlay.appendChild(modal);
 
-  const close = () => { overlay.classList.add('hidden'); overlay.innerHTML = ''; };
+  const close = () => {
+    document.removeEventListener('keydown', keyH);
+    overlay.classList.add('hidden');
+    overlay.innerHTML = '';
+  };
   modal.querySelector('.modal-close').onclick = close;
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-  const keyH = e => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', keyH); } };
+  const keyH = e => { if (e.key === 'Escape') close(); };
   document.addEventListener('keydown', keyH);
 
   modal.querySelector('#sched-cancel').onclick = close;
@@ -652,9 +682,17 @@ function openAddScheduleModal(todayStr, container) {
     const endTime     = modal.querySelector('#sched-end').value   || '10:00';
     const todayOnly   = modal.querySelector('#sched-today-only').checked;
 
-    addScheduleItem({ title, startTime, endTime, date: todayOnly ? todayStr : null });
-    toast(`「${title}」を追加しました`, 'success');
+    if (endTime <= startTime) {
+      toast('終了時刻は開始時刻より後にしてください', 'error');
+      modal.querySelector('#sched-end').focus();
+      return;
+    }
+
+    const updates = { title, startTime, endTime, date: todayOnly ? dateStr : null };
+    if (isEdit) updateScheduleItem(item.id, updates);
+    else addScheduleItem(updates);
+    toast(`「${title}」を${isEdit ? '更新' : '追加'}しました`, 'success');
     close();
-    renderPage(container);
+    onSaved?.();
   };
 }

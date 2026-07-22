@@ -8,7 +8,8 @@ import {
   getTermExplanation, setTermExplanation, isAiAvailable,
   scheduleFirstReview, getReviewEntry,
   rateReview, previewReviewIntervals, setReviewStage,
-  MASTERY_STAGE, STAGE_INTERVALS,
+  setMemoReviewEnabled, isMemoReviewEnabled,
+  MASTERY_STAGE, REVIEW_DISABLED_STAGE, STAGE_INTERVALS,
   addToPendingAIQueue, removeFromPendingAIQueue,
   pushUndo, applyUndo, addReviewLog, getReviewLog,
   getTags, addTag,
@@ -81,6 +82,7 @@ function editorSnapshot() {
     tags: edState.tags,
     url: edState.url,
     starred: edState.starred,
+    reviewEnabled: edState.reviewEnabled,
   });
 }
 
@@ -415,7 +417,9 @@ function renderMemoCard(m) {
   const entry = getReviewEntry(m.id);
   const todayForBadge = new Date().toISOString().slice(0, 10);
   let reviewBadge = '';
-  if (entry?.stage >= MASTERY_STAGE) {
+  if (entry?.stage === REVIEW_DISABLED_STAGE) {
+    reviewBadge = '<span class="kn-review-badge kn-review-badge--off">復習なし</span>';
+  } else if (entry?.stage >= MASTERY_STAGE) {
     reviewBadge = '<span class="kn-review-badge kn-review-badge--done">🎓 習得済み</span>';
   } else if (!entry?.lastReview) {
     const ageMs = Date.now() - new Date(m.createdAt || 0).getTime();
@@ -722,6 +726,7 @@ let edState = {
   tags:    [],
   url:     '',
   starred: false,
+  reviewEnabled: true,
   isEdit:  false,
 };
 
@@ -743,6 +748,7 @@ export function initKnowledgeDetail(container) {
       tags:    [...(memo.tags || [])],
       url:     memo.url || '',
       starred: !!memo.starred,
+      reviewEnabled: isMemoReviewEnabled(memo.id),
       isEdit:  false,
     };
     activeEditorBlockId = null;
@@ -756,6 +762,7 @@ export function initKnowledgeDetail(container) {
       tags:    pendingNewOpts?.tags || [],
       url:     '',
       starred: false,
+      reviewEnabled: pendingNewOpts?.reviewEnabled !== false,
       isEdit:  true, // new memo starts in edit mode
     };
     activeEditorBlockId = edState.blocks[0]?.id || null;
@@ -975,6 +982,9 @@ function renderViewMode(container) {
       ${id ? (() => {
         const todayStr   = new Date().toISOString().slice(0, 10);
         const srsEntry   = getReviewEntry(id);
+        if (srsEntry?.stage === REVIEW_DISABLED_STAGE) {
+          return `<div class="kn-review-disabled-note">このメモは復習対象外です。編集画面からいつでも変更できます。</div>`;
+        }
         const stage      = srsEntry?.stage ?? 0;
         const isMastered = stage >= MASTERY_STAGE;
         const isDue      = !srsEntry?.lastReview || (srsEntry.nextReview <= todayStr && !isMastered);
@@ -1330,6 +1340,13 @@ function renderEditMode(container) {
           <div class="kn-tag-suggestions" id="kn-tag-suggestions"></div>
         </div>
         <input class="kn-url-input" id="kn-url-input" placeholder="参照URL (任意)" value="${esc(url)}" type="url" autocomplete="off">
+        <label class="kn-review-toggle" for="kn-review-enabled">
+          <input type="checkbox" id="kn-review-enabled"${edState.reviewEnabled ? ' checked' : ''}>
+          <span class="kn-review-toggle-copy">
+            <strong>復習する</strong>
+            <small>OFFにすると復習セッションへ表示しません</small>
+          </span>
+        </label>
       </div>
 
       <!-- Block toolbar -->
@@ -1405,7 +1422,8 @@ function renderEditMode(container) {
       const memo = getKnowledgeMemoById(id);
       if (memo) {
         edState = { ...edState, title: memo.title, blocks: deepClone(memo.blocks || [defaultBlock()]),
-          tags: [...(memo.tags || [])], url: memo.url || '', starred: !!memo.starred, isEdit: false };
+          tags: [...(memo.tags || [])], url: memo.url || '', starred: !!memo.starred,
+          reviewEnabled: isMemoReviewEnabled(memo.id), isEdit: false };
       }
       activeEditorBlockId = null;
       markEditorBaseline();
@@ -1425,6 +1443,10 @@ function renderEditMode(container) {
   // Wire URL input
   container.querySelector('#kn-url-input')?.addEventListener('input', e => {
     edState.url = e.target.value;
+  });
+
+  container.querySelector('#kn-review-enabled')?.addEventListener('change', e => {
+    edState.reviewEnabled = e.target.checked;
   });
 
   // Wire tag input
@@ -2722,6 +2744,7 @@ function saveMemo(container) {
       removeFromPendingAIQueue(edState.id, 'memo_tags');
     }
     updateKnowledgeMemo(edState.id, memoData);
+    setMemoReviewEnabled(edState.id, edState.reviewEnabled);
     toast('メモを保存しました ✓', 'success');
     markEditorBaseline();
     edState.isEdit = false;
@@ -2730,7 +2753,8 @@ function saveMemo(container) {
     const saved = addKnowledgeMemo(memoData);
     edState.id   = saved.id;
     currentMemoId = saved.id;
-    scheduleFirstReview(saved.id);
+    if (edState.reviewEnabled) scheduleFirstReview(saved.id);
+    else setMemoReviewEnabled(saved.id, false);
 
     // Offline saves remain usable and can be tagged once connectivity returns.
     const isOffline = !navigator.onLine;

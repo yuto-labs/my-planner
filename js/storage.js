@@ -570,6 +570,7 @@ const REVIEW_KEY = 'mp_reviews';
 
 export const STAGE_COUNT     = 7;
 export const MASTERY_STAGE   = STAGE_COUNT - 1; // 6
+export const REVIEW_DISABLED_STAGE = -1;
 export const STAGE_INTERVALS = [1, 3, 7, 14, 30, 60, 90]; // base days per stage
 
 // Rating-based intervals (days) indexed by new stage [0-6]
@@ -597,9 +598,36 @@ export function scheduleFirstReview(memoId) {
   saveReviewSchedule(schedule);
 }
 
+export function isMemoReviewEnabled(memoId) {
+  return getReviewSchedule()[memoId]?.stage !== REVIEW_DISABLED_STAGE;
+}
+
+export function setMemoReviewEnabled(memoId, enabled) {
+  if (!memoId) return null;
+  const schedule = getReviewSchedule();
+  if (!enabled) {
+    schedule[memoId] = {
+      stage: REVIEW_DISABLED_STAGE,
+      nextReview: null,
+      lastReview: schedule[memoId]?.lastReview || null,
+    };
+  } else if (schedule[memoId]?.stage === REVIEW_DISABLED_STAGE || !schedule[memoId]) {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    schedule[memoId] = {
+      stage: 0,
+      nextReview: toDateStr_simple(tomorrow),
+      lastReview: null,
+    };
+  }
+  saveReviewSchedule(schedule);
+  return schedule[memoId];
+}
+
 export function rateReview(memoId, rating) {
   const schedule = getReviewSchedule();
   const entry = schedule[memoId];
+  if (entry?.stage === REVIEW_DISABLED_STAGE) return;
   const stage = entry?.stage ?? 0;
   if (stage >= MASTERY_STAGE && rating !== 'again') return;
   const delta    = STAGE_DELTA[rating] ?? 1;
@@ -644,7 +672,7 @@ export function setReviewStage(memoId, stage) {
 export function getReviewsForDate(dateStr) {
   const schedule = getReviewSchedule();
   return Object.entries(schedule)
-    .filter(([, v]) => v.nextReview <= dateStr && v.stage < MASTERY_STAGE)
+    .filter(([, v]) => v.stage >= 0 && v.nextReview && v.nextReview <= dateStr && v.stage < MASTERY_STAGE)
     .map(([memoId, v]) => ({ memoId, ...v }));
 }
 function toDateStr_simple(d) {

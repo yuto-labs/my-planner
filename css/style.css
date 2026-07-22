@@ -699,6 +699,13 @@ button { cursor: pointer; font-family: inherit; }
   color: var(--cat-color, var(--primary));
   border: 1px solid color-mix(in srgb, var(--cat-color, var(--primary)) 30%, transparent);
 }
+.schedule-item--editable { cursor: pointer; }
+.schedule-item--editable:hover { background: var(--bg-hover); }
+.schedule-item--editable:focus-visible,
+.timeline-schedule[role="button"]:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
 
 /* Weekly goal bar */
 .goal-bar-wrap { margin-top: 4px; }
@@ -5939,6 +5946,32 @@ kbd {
 .kn-review-badge--new { background: rgba(190,230,200,0.15); color: var(--primary-dark); }
 .kn-review-badge--warn { background: rgba(245,197,66,0.2); color: #E5A800; }
 .kn-review-badge--urgent { background: rgba(240,96,122,0.18); color: var(--danger); }
+.kn-review-badge--off { background: var(--bg-hover); color: var(--text-muted); }
+
+.kn-review-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  cursor: pointer;
+}
+.kn-review-toggle input { width: 18px; height: 18px; flex: 0 0 auto; accent-color: var(--primary); }
+.kn-review-toggle-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.kn-review-toggle-copy strong { font-size: 13px; }
+.kn-review-toggle-copy small { color: var(--text-muted); font-size: 11px; line-height: 1.35; }
+.kn-review-disabled-note {
+  margin-top: 24px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  background: var(--bg-hover);
+  font-size: 13px;
+}
 
 /* ---- Rating buttons (shared between review session and memo detail) ---- */
 .rv-btn {

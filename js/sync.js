@@ -725,8 +725,12 @@ function _mergeReviewSchedules(localSchedule, remoteSchedule, protectRecent = fa
       }
       return;
     }
+    if (recentIds.has(memoId)) {
+      merged[memoId] = localEntry;
+      if (JSON.stringify(localEntry) !== JSON.stringify(remoteEntry)) needsRetry = true;
+      return;
+    }
     merged[memoId] = _newerReviewEntry(localEntry, remoteEntry);
-    if (merged[memoId] === localEntry && recentIds.has(memoId)) needsRetry = true;
   });
 
   if (needsRetry) _schedulePushRetry('review_schedule');
