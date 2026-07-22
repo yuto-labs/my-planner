@@ -139,21 +139,32 @@ export function updateEvent(id, updates) {
 export function deleteEvent(id) {
   const events = getEvents();
   const target = events.find(e => e.id === id);
-  if (target) addTrashItem({ entityType: 'event', payload: target, title: target.title });
+  if (!target) return null;
+  addTrashItem({ entityType: 'event', payload: target, title: target.title });
   saveEvents(events.filter(e => e.id !== id));
   _notifyDelete({ table: 'events', id });
+  return target;
 }
 
 export function deleteFutureRecurring(recurringId, fromDateISO) {
-  const from    = new Date(fromDateISO);
-  const removed = getEvents().filter(e =>
+  if (!recurringId) return [];
+  const from = new Date(fromDateISO);
+  if (Number.isNaN(from.getTime())) return [];
+
+  const events = getEvents();
+  const removed = events.filter(e =>
     e.recurringId === recurringId && new Date(e.start) >= from
   );
-  saveEvents(getEvents().filter(e =>
+  if (!removed.length) return [];
+
+  removed.forEach(event => {
+    addTrashItem({ entityType: 'event', payload: event, title: event.title });
+  });
+  saveEvents(events.filter(e =>
     e.recurringId !== recurringId || new Date(e.start) < from
   ));
-  // Notify delete for each removed event
   removed.forEach(e => _notifyDelete({ table: 'events', id: e.id }));
+  return removed;
 }
 
 // ---- Tasks ----

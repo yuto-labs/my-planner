@@ -1937,9 +1937,10 @@ async function handleDelete(event) {
       redrawAfterEventChange(event.id);
     };
     body.querySelector('#del-future').onclick = () => {
-      deleteFutureRecurring(event.recurringId, event.start);
-      toast('削除しました', 'success');
+      const removed = deleteFutureRecurring(event.recurringId, event.start);
+      toast(`${removed.length}件を削除してTrashへ移動しました`, 'success');
       closeChoice();
+      closeModalGlobal();
       redrawAfterEventChange(event.id);
     };
   } else {
