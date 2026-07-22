@@ -82,6 +82,8 @@ const DELETE_TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const RECENT_UPSERT_KEY = 'mp_sync_recent_upserts';
 const SYNC_STATUS_KEY = 'mp_sync_status';
 const EVENT_BACKFILL_VERSION = 1;
+const EVENT_REMOTE_SNAPSHOT_VERSION = 1;
+const EVENT_SYNC_BACKUP_LIMIT = 3;
 const RECENT_UPSERT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const RECENT_WRITE_WINDOW_MS = 2 * 60 * 1000;
 const PUSH_RETRY_MS = 2500;
@@ -402,7 +404,74 @@ async function _pullEvents(client, userId, forceReplace = false) {
   }
   if (!data) return;
   const remote = _filterPendingDeletes('events', data.map(rowToEvent));
-  return _writeIfChanged('mp_events', forceReplace ? _mergeProtectedLocalItems('events', 'mp_events', remote) : _merge(_ls('mp_events', []), remote));
+  const local = _ls('mp_events', []);
+  const snapshotKey = _eventRemoteSnapshotKey(userId);
+  const knownRemote = _ls(snapshotKey, {});
+  const pendingDeleteIds = new Set(
+    _getPendingDeletes()
+      .filter(entry => entry.table === 'events' && entry.id)
+      .map(entry => entry.id)
+  );
+  const reconciled = reconcileEventCollections(local, remote, knownRemote, pendingDeleteIds);
+  const next = reconciled.next;
+  const pushCandidates = new Map(reconciled.pushCandidates.map(event => [event.id, event]));
+
+  let pushedIds = new Set();
+  if (pushCandidates.size) {
+    const rows = [...pushCandidates.values()].map(event => eventToRow(event, userId));
+    const result = await _upsertRowsCompat(client, 'events', rows, 'id');
+    if (result.error) {
+      _recordSyncError('events', result.error);
+      _schedulePushRetry('events');
+    } else {
+      pushedIds = new Set(pushCandidates.keys());
+      _recordSyncSuccess('push', 'events');
+    }
+  }
+
+  const nextRemoteSnapshot = Object.fromEntries(
+    remote.map(event => [event.id, _updatedTs(event)])
+  );
+  pushedIds.forEach(id => {
+    const event = pushCandidates.get(id);
+    nextRemoteSnapshot[id] = _updatedTs(event);
+  });
+  localStorage.setItem(snapshotKey, JSON.stringify(nextRemoteSnapshot));
+  return _writeEventsAfterSync(local, next, userId);
+}
+
+export function reconcileEventCollections(local, remote, knownRemote = {}, pendingDeleteIds = new Set()) {
+  const deletedIds = pendingDeleteIds instanceof Set ? pendingDeleteIds : new Set(pendingDeleteIds);
+  const remoteById = new Map(remote.filter(event => event?.id).map(event => [event.id, event]));
+  const localById = new Map(
+    local
+      .filter(event => event?.id && !deletedIds.has(event.id))
+      .map(event => [event.id, event])
+  );
+  const pushCandidates = new Map();
+  const next = remote.map(remoteEvent => {
+    const localEvent = localById.get(remoteEvent.id);
+    if (!localEvent) return remoteEvent;
+    if (_updatedTs(localEvent) > _updatedTs(remoteEvent)) {
+      pushCandidates.set(localEvent.id, localEvent);
+      return localEvent;
+    }
+    return remoteEvent;
+  });
+
+  for (const localEvent of localById.values()) {
+    if (remoteById.has(localEvent.id)) continue;
+    const knownVersion = Number(knownRemote[localEvent.id]);
+    const localVersion = _updatedTs(localEvent);
+    const neverSeenInCloud = !Number.isFinite(knownVersion) || knownVersion <= 0;
+    const editedAfterLastCloudCopy = Number.isFinite(localVersion) && localVersion > knownVersion;
+    if (neverSeenInCloud || editedAfterLastCloudCopy) {
+      next.push(localEvent);
+      pushCandidates.set(localEvent.id, localEvent);
+    }
+  }
+
+  return { next, pushCandidates: [...pushCandidates.values()] };
 }
 
 async function _pullGoals(client, userId, forceReplace = false) {
@@ -863,6 +932,34 @@ function _writeIfChanged(key, value) {
   const prev = localStorage.getItem(key);
   if (prev === next) return false;
   localStorage.setItem(key, next);
+  return true;
+}
+
+function _eventRemoteSnapshotKey(userId) {
+  return `mp_event_remote_snapshot_v${EVENT_REMOTE_SNAPSHOT_VERSION}:${userId}`;
+}
+
+function _eventSyncBackupKey(userId) {
+  return `mp_event_sync_backups:${userId}`;
+}
+
+function _writeEventsAfterSync(previous, next, userId) {
+  const prevJson = JSON.stringify(previous);
+  const nextJson = JSON.stringify(next);
+  if (prevJson === nextJson) return false;
+
+  if (previous.length > next.length) {
+    try {
+      const key = _eventSyncBackupKey(userId);
+      const backups = _ls(key, []);
+      backups.unshift({ at: new Date().toISOString(), events: previous });
+      localStorage.setItem(key, JSON.stringify(backups.slice(0, EVENT_SYNC_BACKUP_LIMIT)));
+    } catch (error) {
+      console.warn('[Sync] could not create local event backup:', error);
+    }
+  }
+
+  localStorage.setItem('mp_events', nextJson);
   return true;
 }
 
