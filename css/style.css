@@ -2557,7 +2557,11 @@ button { cursor: pointer; font-family: inherit; }
 .kn-block-toggle-arrow:hover,
 .kn-block-toggle-arrow:focus-visible { background: var(--primary-bg); color: var(--primary); outline: none; }
 .kn-view-toggle-text { font-size: 14px; font-weight: 600; flex: 1; }
-.kn-view-toggle-children { padding-left: 20px; margin-bottom: 4px; }
+.kn-view-toggle-children {
+  margin: 2px 0 3px 14px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border-light);
+}
 
 .kn-inline-code {
   background: var(--bg-hover); border: 1px solid var(--border);
@@ -3013,21 +3017,21 @@ button { cursor: pointer; font-family: inherit; }
 .kn-toggle-target-arrow { color: var(--primary); font-weight: 700; }
 
 /* Blocks wrapper */
-.kn-blocks-wrap { padding: 8px 16px; display: flex; flex-direction: column; gap: 2px; }
+.kn-blocks-wrap { padding: 6px 12px; display: flex; flex-direction: column; gap: 0; }
 
 /* Individual block */
 .kn-block {
-  display: flex; align-items: flex-start; gap: 8px;
-  padding: 3px 0 3px 32px;
+  display: flex; align-items: flex-start; gap: 5px;
+  padding: 1px 0 1px 24px;
   position: relative;
 }
 .kn-block-drag-handle {
-  position: absolute; left: 1px; top: 2px; z-index: 4;
+  position: absolute; left: 0; top: 0; z-index: 4;
   display: inline-grid; place-items: center;
-  width: 27px; height: 30px; padding: 0;
+  width: 21px; height: 26px; padding: 0;
   border: none; border-radius: 5px; background: transparent;
-  color: var(--text-dim); font: inherit; font-size: 17px; line-height: 1;
-  opacity: 0.32; cursor: grab; touch-action: none; user-select: none;
+  color: var(--text-dim); font: inherit; font-size: 15px; line-height: 1;
+  opacity: 0.24; cursor: grab; touch-action: none; user-select: none;
   transition: opacity var(--transition), background var(--transition), color var(--transition);
 }
 .kn-block:hover > .kn-block-drag-handle,
@@ -3059,8 +3063,8 @@ button { cursor: pointer; font-family: inherit; }
   background: color-mix(in srgb, var(--primary-bg) 55%, transparent);
 }
 .kn-block-text {
-  flex: 1 1 auto; width: 100%; min-width: 0; outline: none; min-height: 1.5em;
-  font-size: 14px; line-height: 1.65; color: var(--text);
+  flex: 1 1 auto; width: 100%; min-width: 0; outline: none; min-height: 1.4em;
+  font-size: 14px; line-height: 1.55; color: var(--text);
   font-family: inherit; word-break: break-word;
   white-space: pre-wrap;
 }
@@ -3137,7 +3141,7 @@ button { cursor: pointer; font-family: inherit; }
 .kn-block-prefix {
   flex-shrink: 0; color: var(--text); font-weight: 400;
   font-size: 14px; margin-top: 0; min-width: 20px;
-  line-height: 1.65; text-align: center;
+  line-height: 1.55; text-align: center;
 }
 .kn-block--bullet,
 .kn-block--numbered { gap: 4px; }
@@ -3153,18 +3157,18 @@ button { cursor: pointer; font-family: inherit; }
 .kn-block-prefix--quote { color: var(--primary); font-size: 16px; }
 .kn-block-prefix--toggle { font-size: 11px; color: var(--text-dim); margin-top: 0; }
 .kn-toggle-edit-btn {
-  width: 24px; height: 28px; padding: 0;
+  width: 20px; height: 24px; padding: 0;
   border: none; border-radius: 4px; background: transparent;
   cursor: pointer;
 }
 .kn-toggle-edit-btn:hover,
 .kn-toggle-edit-btn:focus-visible { background: var(--primary-bg); color: var(--primary); outline: none; }
 .kn-block--toggle { flex-wrap: wrap; align-items: flex-start; }
-.kn-block--toggle > .kn-block-text { flex: 1 1 calc(100% - 32px); width: auto; }
+.kn-block--toggle > .kn-block-text { flex: 1 1 calc(100% - 24px); width: auto; }
 .kn-block--toggle > .kn-block-toggle-children-edit {
-  flex: 0 0 calc(100% - 32px); width: calc(100% - 32px); min-width: 0;
-  margin: 4px 0 2px 32px; padding-left: 12px;
-  border-left: 2px solid var(--border);
+  flex: 0 0 calc(100% - 20px); width: calc(100% - 20px); min-width: 0;
+  margin: 1px 0 1px 20px; padding-left: 6px;
+  border-left: 1px solid var(--border);
 }
 .kn-block-controls {
   position: absolute;
@@ -3241,22 +3245,22 @@ button { cursor: pointer; font-family: inherit; }
     padding-inline: 4px;
   }
   .kn-blocks-wrap {
-    padding-inline: 12px;
+    padding-inline: 8px;
   }
   .kn-block {
-    gap: 8px;
-    padding: 4px 0 4px 36px;
+    gap: 4px;
+    padding: 2px 0 2px 26px;
   }
   .kn-block-drag-handle {
-    width: 32px;
-    height: 36px;
-    opacity: 0.62;
+    width: 23px;
+    height: 28px;
+    opacity: 0.42;
   }
   .kn-block-controls {
     display: none;
   }
   .kn-block--divider {
-    min-height: 44px;
+    min-height: 34px;
   }
   .kn-divider-delete {
     display: inline-grid;
