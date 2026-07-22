@@ -4,7 +4,7 @@
 
 import { getSettings, getPendingAIQueue, autoArchiveTasks, isAiAvailable, clearUserContentLocal, DEFAULT_ACCENT_RGB, DEFAULT_THEME_TUNING } from './storage.js';
 import { processBatchQueue, refreshAiRuntimeStatus } from './ai.js';
-import { initSync, pullAll, pullIfStale, startRealtimeSync, hasPendingSyncWork, flushPendingSync } from './sync.js';
+import { backfillLocalEvents, initSync, pullAll, pullIfStale, startRealtimeSync, hasPendingSyncWork, flushPendingSync } from './sync.js';
 import { getSession, handleAuthRedirect, getActiveUserId, setActiveUserId, isMigratedForCurrentUser } from './supabase.js';
 import { migrateToSupabase } from './migrate.js';
 import { initHome }     from './modules/home.js';
@@ -626,7 +626,8 @@ async function init() {
       } else {
         (async () => {
           const alreadyMigrated = await isMigratedForCurrentUser();
-          const pulledFirst = await pullAll(alreadyMigrated);
+          const eventsBackfilled = await backfillLocalEvents();
+          const pulledFirst = await pullAll(alreadyMigrated && eventsBackfilled);
           let pulledAfterMigration = false;
           if (!alreadyMigrated) {
             await migrateToSupabase(() => {});

@@ -81,6 +81,7 @@ const DELETE_TOMBSTONE_KEY = 'mp_sync_pending_deletes';
 const DELETE_TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const RECENT_UPSERT_KEY = 'mp_sync_recent_upserts';
 const SYNC_STATUS_KEY = 'mp_sync_status';
+const EVENT_BACKFILL_VERSION = 1;
 const RECENT_UPSERT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const RECENT_WRITE_WINDOW_MS = 2 * 60 * 1000;
 const PUSH_RETRY_MS = 2500;
@@ -180,6 +181,56 @@ export function getSyncStatus() {
     lastErrorMessage: null,
     tableErrors: {},
   });
+}
+
+export async function backfillLocalEvents() {
+  const client = await getClient();
+  const userId = await getUserId();
+  if (!client || !userId) return false;
+
+  const markerKey = `mp_event_sync_backfill_v${EVENT_BACKFILL_VERSION}:${userId}`;
+  if (localStorage.getItem(markerKey) === '1') return true;
+
+  const localEvents = _ls('mp_events', []).filter(event => event?.id);
+  if (!localEvents.length) {
+    localStorage.setItem(markerKey, '1');
+    return true;
+  }
+
+  let { data: remoteRows, error } = await client
+    .from('events')
+    .select('id,updated_at')
+    .eq('user_id', userId);
+  if (error) {
+    const rpcResult = await client.rpc('get_personal_calendar_events');
+    if (rpcResult.error) {
+      _recordSyncError('events', error, 'pull');
+      return false;
+    }
+    remoteRows = rpcResult.data;
+  }
+
+  const remoteById = new Map((remoteRows || []).map(row => [row.id, row]));
+  const missingOrNewer = localEvents.filter(event => {
+    const remote = remoteById.get(event.id);
+    if (!remote) return true;
+    const localTime = new Date(event.updatedAt || event.createdAt || 0).getTime();
+    const remoteTime = new Date(remote.updated_at || 0).getTime();
+    return Number.isFinite(localTime) && Number.isFinite(remoteTime) && localTime > remoteTime;
+  });
+
+  if (missingOrNewer.length) {
+    const rows = missingOrNewer.map(event => eventToRow(event, userId));
+    const result = await _upsertRowsCompat(client, 'events', rows, 'id');
+    if (result.error) {
+      _recordSyncError('events', result.error);
+      return false;
+    }
+  }
+
+  localStorage.setItem(markerKey, '1');
+  _recordSyncSuccess('push', 'events');
+  return true;
 }
 
 export async function flushPendingSync() {
