@@ -2796,9 +2796,12 @@ function confirmDelete(memoId, container) {
   modal.querySelector('.modal-close').onclick = close;
   modal.querySelector('#del-cancel').onclick = close;
   modal.querySelector('#del-ok').onclick = () => {
-    const memo = getKnowledgeMemoById(memoId);
-    if (memo) pushUndo({ type: 'delete_memo', memo });
-    deleteKnowledgeMemo(memoId);
+    const deleted = deleteKnowledgeMemo(memoId);
+    if (!deleted) {
+      toast('削除できませんでした。メモは保持されています', 'error');
+      return;
+    }
+    pushUndo({ type: 'delete_memo', memo: deleted });
     close();
     nav('knowledge');
     // Show undo toast after navigation

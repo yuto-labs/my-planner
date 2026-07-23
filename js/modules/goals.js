@@ -182,7 +182,10 @@ function wireGoalActions(container) {
       if (goal) openGoalModal(goal);
     } else if (action === 'delete') {
       if (await promptDelete(goalId)) {
-        deleteGoal(goalId);
+        if (!deleteGoal(goalId)) {
+          toast('削除できませんでした。目標は保持されています', 'error');
+          return;
+        }
         toast('目標を削除しました', 'info');
         render();
       }
@@ -339,7 +342,11 @@ function openGoalModal(goal) {
     const delBtn = makeBtn('削除', 'btn btn-danger btn-sm');
     delBtn.onclick = async () => {
       if (await promptDelete(goal.id)) {
-        deleteGoal(goal.id); toast('削除しました', 'info'); close(); render();
+        if (!deleteGoal(goal.id)) {
+          toast('削除できませんでした。目標は保持されています', 'error');
+          return;
+        }
+        toast('削除しました', 'info'); close(); render();
       }
     };
     leftDiv.appendChild(delBtn);

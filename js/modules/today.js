@@ -537,7 +537,10 @@ function wireTimeline(container, todayStr) {
     const btn = e.target.closest('[data-delete-id]');
     if (btn) {
       e.stopPropagation();
-      deleteScheduleItem(btn.dataset.deleteId);
+      if (!deleteScheduleItem(btn.dataset.deleteId)) {
+        toast('削除できませんでした。予定は保持されています', 'error');
+        return;
+      }
       toast('削除しました', 'info');
       renderPage(container);
       return;

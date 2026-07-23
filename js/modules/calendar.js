@@ -1930,7 +1930,11 @@ async function handleDelete(event) {
     const closeChoice = openModalGlobal({ title: '削除の確認', body, footer: null });
 
     body.querySelector('#del-this').onclick = () => {
-      deleteEvent(event.id);
+      const deleted = deleteEvent(event.id);
+      if (!deleted) {
+        toast('削除できませんでした。予定は保持されています', 'error');
+        return;
+      }
       toast('削除しました', 'success');
       closeChoice();
       closeModalGlobal();
@@ -1938,6 +1942,10 @@ async function handleDelete(event) {
     };
     body.querySelector('#del-future').onclick = () => {
       const removed = deleteFutureRecurring(event.recurringId, event.start);
+      if (!removed.length) {
+        toast('削除できませんでした。予定は保持されています', 'error');
+        return;
+      }
       toast(`${removed.length}件を削除してTrashへ移動しました`, 'success');
       closeChoice();
       closeModalGlobal();
@@ -1945,8 +1953,12 @@ async function handleDelete(event) {
     };
   } else {
     if (await confirmGlobal(`「${event.title}」を削除しますか？`, { danger: true, okLabel: '削除' })) {
-      pushUndo({ type: 'delete_event', event });
-      deleteEvent(event.id);
+      const deleted = deleteEvent(event.id);
+      if (!deleted) {
+        toast('削除できませんでした。予定は保持されています', 'error');
+        return;
+      }
+      pushUndo({ type: 'delete_event', event: deleted });
       closeModalGlobal();
       redrawAfterEventChange(event.id);
       undoToast(`「${event.title.slice(0, 20)}」を削除しました`, () => {

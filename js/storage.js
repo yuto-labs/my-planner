@@ -847,7 +847,15 @@ export function restoreTrashItem(id) {
   if (item.entityType === 'task') {
     const tasks = getTasks();
     if (!tasks.find(t => t.id === entityId)) {
-      tasks.push({ ...payload, id: entityId, updatedAt: new Date().toISOString() });
+      const restoredAt = new Date().toISOString();
+      const wasArchived = !!payload.archivedAt;
+      tasks.push({
+        ...payload,
+        id: entityId,
+        archivedAt: wasArchived ? null : payload.archivedAt,
+        completedAt: wasArchived && payload.completed ? restoredAt : payload.completedAt,
+        updatedAt: restoredAt,
+      });
       tasks.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
       restored = saveTasks(tasks);
     } else restored = true;

@@ -442,7 +442,12 @@ function wireFilters(container) {
   container.querySelector('#tasks-clear-done')?.addEventListener('click', () => {
     const completed = getTasks().filter(t => t.completed);
     if (!completed.length) return;
-    deleteCompletedTasks();
+    const removedCount = deleteCompletedTasks();
+    if (removedCount !== completed.length) {
+      toast('削除できませんでした。タスクは保持されています', 'error');
+      refreshTaskUi(true);
+      return;
+    }
     refreshTaskUi(true);
     toast(`${completed.length}件の完了タスクを削除しました`, 'success');
   });
@@ -1365,15 +1370,20 @@ function handleDelete(taskId, li) {
   const task  = tasks.find(t => t.id === taskId);
   if (!task) return;
 
+  const deleted = deleteTask(taskId);
+  if (!deleted) {
+    toast('削除できませんでした。タスクは保持されています', 'error');
+    refreshTaskUi(true);
+    return;
+  }
+
   // 笏笏 Optimistic: animate out immediately 笏笏
   li.style.transition = 'opacity 0.18s ease, transform 0.18s ease';
   li.style.opacity    = '0';
   li.style.transform  = 'translateX(-8px)';
   setTimeout(() => li.remove(), 180);
 
-  // Persist
-  pushUndo({ type: 'delete_task', task });
-  deleteTask(taskId);
+  pushUndo({ type: 'delete_task', task: deleted });
   refreshTaskUi(false);
 
   undoToast(`「${task.title.slice(0, 20)}」を削除しました`, () => {
