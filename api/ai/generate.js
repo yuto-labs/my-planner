@@ -16,10 +16,7 @@ function pickModel(pref) {
 function pickThinkingConfig(model, actionType) {
   const complexActions = new Set([
     'analytics_summary',
-    'batch_tags',
     'goal_split',
-    'memo_format',
-    'memo_summary',
     'monthly_report',
     'planner_action',
     'task_schedule',
@@ -140,16 +137,23 @@ function extractText(data) {
 }
 
 async function requestGemini(key, model, payload) {
-  const upstream = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    }
-  );
-  const data = await upstream.json().catch(() => ({}));
-  return { upstream, data };
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 24_000);
+  try {
+    const upstream = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      }
+    );
+    const data = await upstream.json().catch(() => ({}));
+    return { upstream, data };
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 const DEFAULT_SUPABASE_URL = 'https://nhgbvlovptelaqcurobv.supabase.co';
@@ -316,6 +320,16 @@ export default async function handler(req, res) {
 
   const model = pickModel(body.modelPreference);
   const responseFormat = body.responseFormat === 'json' ? 'json' : 'text';
+  const generationConfig = {
+    maxOutputTokens: Number(body.maxTokens || 300),
+    responseMimeType: responseFormat === 'json' ? 'application/json' : 'text/plain',
+    thinkingConfig: pickThinkingConfig(model, body.actionType),
+  };
+  // Gemini 3.x is tuned for its default sampling values.
+  if (!String(model).startsWith('gemini-3')) {
+    generationConfig.temperature = responseFormat === 'json' ? 0.2 : 0.4;
+  }
+
   const payload = {
     contents: [
       {
@@ -323,12 +337,7 @@ export default async function handler(req, res) {
         parts: [{ text: String(body.userText || '') }],
       },
     ],
-    generationConfig: {
-      maxOutputTokens: Number(body.maxTokens || 300),
-      temperature: responseFormat === 'json' ? 0.2 : 0.4,
-      responseMimeType: responseFormat === 'json' ? 'application/json' : 'text/plain',
-      thinkingConfig: pickThinkingConfig(model, body.actionType),
-    },
+    generationConfig,
   };
 
   const responseSchema = responseFormat === 'json'
@@ -381,6 +390,11 @@ export default async function handler(req, res) {
     res.status(200).json({ text, model, usage });
   } catch (error) {
     await refundUsage(token, usage);
-    res.status(500).json({ error: error?.message || 'Gemini request failed.' });
+    const timedOut = error?.name === 'AbortError';
+    res.status(timedOut ? 504 : 500).json({
+      error: timedOut
+        ? 'Geminiの応答がタイムアウトしました。もう一度お試しください。'
+        : error?.message || 'Gemini request failed.',
+    });
   }
 }

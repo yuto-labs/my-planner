@@ -493,9 +493,11 @@ function openAIInputSheet() {
       </div>
 
       <!-- Loading -->
-      <div class="kn-ai-loading hidden" id="kn-ai-loading">
+      <div class="kn-ai-loading hidden" id="kn-ai-loading" aria-live="polite">
         <span class="ai-spinner"></span>
-        <span>AIが整理中…</span>
+        <strong>AIが整理中…</strong>
+        <span class="kn-ai-loading-detail" id="kn-ai-loading-detail">通常は数秒で完了します</span>
+        <button type="button" class="btn btn-ghost btn-sm" id="kn-ai-cancel">キャンセル</button>
       </div>
 
       <!-- Step 2: Preview -->
@@ -523,8 +525,12 @@ function openAIInputSheet() {
   requestAnimationFrame(() => sheet.classList.add('kn-ai-sheet--open'));
 
   let _aiResult = null;
+  let activeRequest = null;
+  let slowNoticeTimer = null;
 
   const close = () => {
+    activeRequest?.abort();
+    clearTimeout(slowNoticeTimer);
     sheet.classList.remove('kn-ai-sheet--open');
     setTimeout(() => sheet.remove(), 280);
   };
@@ -532,8 +538,18 @@ function openAIInputSheet() {
   sheet.querySelector('.kn-ai-sheet-close').onclick = close;
   sheet.addEventListener('click', e => { if (e.target === sheet) close(); });
 
+  const returnToInput = () => {
+    activeRequest?.abort();
+    activeRequest = null;
+    clearTimeout(slowNoticeTimer);
+    sheet.querySelector('#kn-ai-loading')?.classList.add('hidden');
+    sheet.querySelector('#kn-ai-step1')?.classList.remove('hidden');
+  };
+  sheet.querySelector('#kn-ai-cancel')?.addEventListener('click', returnToInput);
+
   // ---- Format button ----
   sheet.querySelector('#kn-ai-format-btn')?.addEventListener('click', async () => {
+    if (activeRequest) return;
     const rawText = sheet.querySelector('#kn-ai-textarea')?.value?.trim();
     if (!rawText) { toast('テキストを入力してください', 'error'); return; }
 
@@ -543,6 +559,15 @@ function openAIInputSheet() {
 
     step1.classList.add('hidden');
     loading.classList.remove('hidden');
+    activeRequest = new AbortController();
+    const request = activeRequest;
+    const loadingDetail = sheet.querySelector('#kn-ai-loading-detail');
+    if (loadingDetail) loadingDetail.textContent = '通常は数秒で完了します';
+    slowNoticeTimer = setTimeout(() => {
+      if (loadingDetail && request === activeRequest) {
+        loadingDetail.textContent = '少し時間がかかっています。続けて待つかキャンセルできます';
+      }
+    }, 8_000);
 
     try {
       // Compact context from existing memos (title + tags only)
@@ -551,7 +576,8 @@ function openAIInputSheet() {
         .map(m => `${m.title}[${(m.tags || []).join(',')}]`)
         .join(' / ');
 
-      const result = await formatKnowledgeMemo(rawText, existingCtx);
+      const result = await formatKnowledgeMemo(rawText, existingCtx, { signal: request.signal });
+      if (!sheet.isConnected || request !== activeRequest) return;
 
       // Attach block IDs and store on sheet element for cross-function access
       _aiResult = {
@@ -605,9 +631,15 @@ function openAIInputSheet() {
       }
 
     } catch (e) {
+      if (!sheet.isConnected || request !== activeRequest) return;
       loading.classList.add('hidden');
       step1.classList.remove('hidden');
-      toast('AIエラー: ' + e.message, 'error');
+      if (e?.name !== 'AbortError') {
+        toast('AIエラー: ' + e.message, 'error');
+      }
+    } finally {
+      if (request === activeRequest) activeRequest = null;
+      clearTimeout(slowNoticeTimer);
     }
   });
 

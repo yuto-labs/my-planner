@@ -6573,8 +6573,12 @@ kbd {
   flex: 1; display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   gap: 14px; color: var(--text-muted); font-size: 14px;
+  padding: 28px 20px;
+  text-align: center;
 }
 .kn-ai-loading.hidden { display: none; }
+.kn-ai-loading strong { color: var(--text); font-size: 15px; }
+.kn-ai-loading-detail { min-height: 1.5em; font-size: 12px; }
 
 /* Preview step */
 .kn-ai-title-input {

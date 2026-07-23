@@ -13,6 +13,7 @@ import { parseJapaneseTimes, today } from './utils.js';
 
 const SERVER_STATUS_URL = '/api/ai/status';
 const SERVER_GENERATE_URL = '/api/ai/generate';
+const AI_REQUEST_TIMEOUT_MS = 50_000;
 
 const FAST_MODEL = 'fast';
 const QUALITY_MODEL = 'quality';
@@ -54,24 +55,50 @@ export async function refreshAiRuntimeStatus({ force = false } = {}) {
   }
 }
 
-async function callServerAI(modelPreference, systemText, userText, maxTokens, responseFormat = 'text', actionType = 'ai_request') {
+async function callServerAI(
+  modelPreference,
+  systemText,
+  userText,
+  maxTokens,
+  responseFormat = 'text',
+  actionType = 'ai_request',
+  { signal } = {}
+) {
   const session = await getSession();
   const token = session?.access_token || '';
-  const res = await fetch(SERVER_GENERATE_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({
-      modelPreference,
-      systemText,
-      userText,
-      maxTokens,
-      responseFormat,
-      actionType,
-    }),
-  });
+  const controller = new AbortController();
+  const abortFromCaller = () => controller.abort();
+  const timeoutId = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
+  signal?.addEventListener('abort', abortFromCaller, { once: true });
+
+  let res;
+  try {
+    res = await fetch(SERVER_GENERATE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        modelPreference,
+        systemText,
+        userText,
+        maxTokens,
+        responseFormat,
+        actionType,
+      }),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      if (signal?.aborted) throw new DOMException('AI処理をキャンセルしました。', 'AbortError');
+      throw new Error('AIの応答に時間がかかりすぎました。通信状態を確認して、もう一度お試しください。');
+    }
+    throw new Error('AIサーバーに接続できませんでした。通信状態を確認して、もう一度お試しください。');
+  } finally {
+    clearTimeout(timeoutId);
+    signal?.removeEventListener('abort', abortFromCaller);
+  }
 
   if (!res.ok) {
     let msg = `AI Error ${res.status}`;
@@ -93,8 +120,16 @@ async function callServerAI(modelPreference, systemText, userText, maxTokens, re
   return text;
 }
 
-async function callAPI(modelPreference, systemText, userText, maxTokens, responseFormat = 'text', actionType = 'ai_request') {
-  return callServerAI(modelPreference, systemText, userText, maxTokens, responseFormat, actionType);
+async function callAPI(
+  modelPreference,
+  systemText,
+  userText,
+  maxTokens,
+  responseFormat = 'text',
+  actionType = 'ai_request',
+  options
+) {
+  return callServerAI(modelPreference, systemText, userText, maxTokens, responseFormat, actionType, options);
 }
 
 function getFriendlyAiError(status, message) {
@@ -399,7 +434,7 @@ export async function explainTerm(term, context = '') {
   return result.trim();
 }
 
-export async function formatKnowledgeMemo(rawText, existingMemosCtx = '') {
+export async function formatKnowledgeMemo(rawText, existingMemosCtx = '', options = {}) {
   const system = [
     'You are a careful Japanese note editor. Turn rough notes into a structured memo without changing their meaning. Return JSON only.',
     'Schema: {"title":"short Japanese title","blocks":[{"type":"h2","text":"heading"},{"type":"paragraph","text":"body"},{"type":"bullet","text":"point"}],"tags":["tag1","tag2"]}.',
@@ -415,7 +450,7 @@ export async function formatKnowledgeMemo(rawText, existingMemosCtx = '') {
   const user = 'Text to organize:\n' + rawText.slice(0, 1800)
     + (existingMemosCtx ? '\n\nExisting memo context:\n' + existingMemosCtx : '');
 
-  const raw = await callAPI(QUALITY_MODEL, system, user, 1800, 'json', 'memo_format');
+  const raw = await callAPI(QUALITY_MODEL, system, user, 1800, 'json', 'memo_format', options);
   const parsed = tryParseJSON(raw);
   if (!parsed?.blocks) throw new Error('AIがメモを正しい形式に整えられませんでした。内容を短くしてもう一度お試しください。');
   const allowedTypes = new Set(['paragraph', 'h1', 'h2', 'h3', 'bullet', 'numbered', 'quote', 'toggle', 'math', 'divider']);
