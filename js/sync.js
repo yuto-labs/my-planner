@@ -86,6 +86,8 @@ const EVENT_REMOTE_SNAPSHOT_VERSION = 1;
 const EVENT_SYNC_BACKUP_LIMIT = 3;
 const SYNC_SNAPSHOT_VERSION = 1;
 const SYNC_BACKUP_LIMIT = 3;
+const REMOTE_MISSING_STATE_VERSION = 1;
+const REMOTE_DELETE_CONFIRM_MS = 30_000;
 const RECENT_UPSERT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const RECENT_WRITE_WINDOW_MS = 2 * 60 * 1000;
 const PUSH_RETRY_MS = 2500;
@@ -94,6 +96,7 @@ const PUSH_DEBOUNCE_MS = {
   knowledge_memos: 350,
   default: 650,
 };
+const PULL_PAGE_SIZE = 1000;
 let _realtimeChannel = null;
 let _realtimeUserId = null;
 let _realtimePullTimer = null;
@@ -179,8 +182,12 @@ export function hasPendingSyncWork() {
 
 export async function resetSyncForUserSwitch({ flush = false } = {}) {
   if (flush) {
-    try { await flushPendingSync(); } catch (error) {
+    try {
+      const result = await flushPendingSync();
+      if (result.attempted > result.succeeded) return false;
+    } catch (error) {
       console.warn('[Sync] could not flush before account change:', error);
+      return false;
     }
   }
 
@@ -198,6 +205,7 @@ export async function resetSyncForUserSwitch({ flush = false } = {}) {
   localStorage.removeItem(DELETE_TOMBSTONE_KEY);
   localStorage.removeItem(RECENT_UPSERT_KEY);
   localStorage.removeItem(SYNC_STATUS_KEY);
+  return true;
 }
 
 export function getSyncStatus() {
@@ -225,10 +233,13 @@ export async function backfillLocalEvents() {
     return true;
   }
 
-  let { data: remoteRows, error } = await client
-    .from('events')
-    .select('id,updated_at')
-    .eq('user_id', userId);
+  let { data: remoteRows, error } = await _selectAllForUser(
+    client,
+    'events',
+    'id,updated_at',
+    userId,
+    'id'
+  );
   if (error) {
     const rpcResult = await client.rpc('get_personal_calendar_events');
     if (rpcResult.error) {
@@ -262,17 +273,26 @@ export async function backfillLocalEvents() {
 }
 
 export async function flushPendingSync() {
+  const pendingDeletes = _getPendingDeletes();
   const tables = new Set([
     ...Object.entries(_timers).filter(([, timer]) => !!timer).map(([table]) => table),
     ..._getRecentUpserts().map(entry => entry.table).filter(Boolean),
   ]);
-  if (!tables.size) return { attempted: 0, succeeded: 0 };
+  if (!tables.size && !pendingDeletes.length) return { attempted: 0, succeeded: 0 };
 
   tables.forEach(table => {
     clearTimeout(_timers[table]);
     _timers[table] = null;
   });
-  const results = await Promise.all([...tables].map(table => _pushTable(table)));
+  pendingDeletes.forEach(payload => {
+    const key = _deleteKey(payload);
+    clearTimeout(_deleteTimers.get(key));
+    _deleteTimers.delete(key);
+  });
+  const results = await Promise.all([
+    ...[...tables].map(table => _pushTable(table)),
+    ...pendingDeletes.map(payload => _executeDelete(payload)),
+  ]);
   return {
     attempted: results.length,
     succeeded: results.filter(Boolean).length,
@@ -405,9 +425,30 @@ export async function pullAll(forceReplace = false) {
 
 // ---- Pull helpers ----
 
+export async function selectAllForUser(client, table, columns, userId, orderColumn, pageSize = PULL_PAGE_SIZE) {
+  const rows = [];
+  let from = 0;
+
+  while (true) {
+    let query = client
+      .from(table)
+      .select(columns)
+      .eq('user_id', userId);
+    if (orderColumn) query = query.order(orderColumn, { ascending: true });
+    const { data, error } = await query.range(from, from + pageSize - 1);
+    if (error) return { data: null, error };
+
+    const page = Array.isArray(data) ? data : [];
+    rows.push(...page);
+    if (page.length < pageSize) return { data: rows, error: null };
+    from += pageSize;
+  }
+}
+
+const _selectAllForUser = selectAllForUser;
+
 async function _pullTasks(client, userId, forceReplace = false) {
-  const { data, error } = await client
-    .from('tasks').select('*').eq('user_id', userId);
+  const { data, error } = await _selectAllForUser(client, 'tasks', '*', userId, 'id');
   if (error) throw error;
   if (!data) return;
 
@@ -434,8 +475,7 @@ async function _pullTasks(client, userId, forceReplace = false) {
 }
 
 async function _pullEvents(client, userId, forceReplace = false) {
-  let { data, error } = await client
-    .from('events').select('*').eq('user_id', userId);
+  let { data, error } = await _selectAllForUser(client, 'events', '*', userId, 'id');
   if (error) {
     const rpcResult = await client.rpc('get_personal_calendar_events');
     if (rpcResult.error) throw error;
@@ -459,8 +499,17 @@ async function _pullEvents(client, userId, forceReplace = false) {
   return _writeCollectionAfterSync('mp_events', local, next, userId, 'events');
 }
 
-export function reconcileEventCollections(local, remote, knownRemote = {}, pendingDeleteIds = new Set()) {
+export function reconcileEventCollections(
+  local,
+  remote,
+  knownRemote = {},
+  pendingDeleteIds = new Set(),
+  protectedMissingIds = new Set()
+) {
   const deletedIds = pendingDeleteIds instanceof Set ? pendingDeleteIds : new Set(pendingDeleteIds);
+  const protectedIds = protectedMissingIds instanceof Set
+    ? protectedMissingIds
+    : new Set(protectedMissingIds);
   const availableRemote = remote.filter(event => event?.id && !deletedIds.has(event.id));
   const remoteById = new Map(availableRemote.map(event => [event.id, event]));
   const localById = new Map(
@@ -485,6 +534,10 @@ export function reconcileEventCollections(local, remote, knownRemote = {}, pendi
     const localVersion = _syncVersion(localEvent);
     const neverSeenInCloud = !Number.isFinite(knownVersion) || knownVersion <= 0;
     const editedAfterLastCloudCopy = Number.isFinite(localVersion) && localVersion > knownVersion;
+    if (protectedIds.has(localEvent.id) && !editedAfterLastCloudCopy) {
+      next.push(localEvent);
+      continue;
+    }
     if (neverSeenInCloud || editedAfterLastCloudCopy) {
       next.push(localEvent);
       pushCandidates.set(localEvent.id, localEvent);
@@ -494,15 +547,29 @@ export function reconcileEventCollections(local, remote, knownRemote = {}, pendi
   return { next, pushCandidates: [...pushCandidates.values()] };
 }
 
-export function reconcileNamedCollections(local, remote, knownRemote = {}, pendingDeleteNames = new Set(), recentNames = new Set()) {
+export function reconcileNamedCollections(
+  local,
+  remote,
+  knownRemote = {},
+  pendingDeleteNames = new Set(),
+  recentNames = new Set(),
+  protectedMissingNames = new Set()
+) {
   const deleted = pendingDeleteNames instanceof Set ? pendingDeleteNames : new Set(pendingDeleteNames);
   const recent = recentNames instanceof Set ? recentNames : new Set(recentNames);
+  const protectedNames = protectedMissingNames instanceof Set
+    ? protectedMissingNames
+    : new Set(protectedMissingNames);
   const remoteNames = [...new Set((remote || []).filter(Boolean))].filter(name => !deleted.has(name));
   const next = new Set(remoteNames);
   const pushCandidates = [];
 
   [...new Set((local || []).filter(Boolean))].forEach(name => {
     if (deleted.has(name) || next.has(name)) return;
+    if (protectedNames.has(name) && !recent.has(name)) {
+      next.add(name);
+      return;
+    }
     if (!knownRemote[name] || recent.has(name)) {
       next.add(name);
       pushCandidates.push(name);
@@ -531,7 +598,21 @@ async function _reconcileRemoteCollection({
       .filter(entry => entry.table === pendingDeleteTable && entry.id)
       .map(entry => entry.id)
   );
-  const reconciled = reconcileEventCollections(local, remote, knownRemote, pendingDeleteIds);
+  const protectedMissingIds = _trackRemoteMissingItems({
+    collectionKey,
+    userId,
+    local,
+    remote,
+    knownRemote,
+    pendingDeleteIds,
+  });
+  const reconciled = reconcileEventCollections(
+    local,
+    remote,
+    knownRemote,
+    pendingDeleteIds,
+    protectedMissingIds
+  );
   const pushCandidates = new Map(reconciled.pushCandidates.map(item => [item.id, item]));
   let pushedIds = new Set();
 
@@ -553,13 +634,15 @@ async function _reconcileRemoteCollection({
   pushedIds.forEach(id => {
     nextRemoteSnapshot[id] = _syncVersion(pushCandidates.get(id));
   });
+  protectedMissingIds.forEach(id => {
+    if (knownRemote[id]) nextRemoteSnapshot[id] = knownRemote[id];
+  });
   localStorage.setItem(snapshotKey, JSON.stringify(nextRemoteSnapshot));
   return reconciled.next;
 }
 
 async function _pullGoals(client, userId, forceReplace = false) {
-  const { data, error } = await client
-    .from('goals').select('*').eq('user_id', userId);
+  const { data, error } = await _selectAllForUser(client, 'goals', '*', userId, 'id');
   if (error) throw error;
   if (!data) return;
   const remote = _filterPendingDeletes('goals', data.map(rowToGoal));
@@ -572,8 +655,7 @@ async function _pullGoals(client, userId, forceReplace = false) {
 }
 
 async function _pullMemos(client, userId, forceReplace = false) {
-  const { data, error } = await client
-    .from('knowledge_memos').select('*').eq('user_id', userId);
+  const { data, error } = await _selectAllForUser(client, 'knowledge_memos', '*', userId, 'id');
   if (error) throw error;
   if (!data) return;
   const remote = _filterPendingDeletes('knowledge_memos', data.map(rowToMemo));
@@ -586,8 +668,7 @@ async function _pullMemos(client, userId, forceReplace = false) {
 }
 
 async function _pullTrash(client, userId, forceReplace = false) {
-  const { data, error } = await client
-    .from('trash_items').select('*').eq('user_id', userId);
+  const { data, error } = await _selectAllForUser(client, 'trash_items', '*', userId, 'id');
   if (error) throw error;
   if (!data) return;
   const remote = _filterPendingDeletes('trash_items', data.map(rowToTrash));
@@ -600,8 +681,7 @@ async function _pullTrash(client, userId, forceReplace = false) {
 }
 
 async function _pullSchedule(client, userId, forceReplace = false) {
-  const { data, error } = await client
-    .from('schedule_items').select('*').eq('user_id', userId);
+  const { data, error } = await _selectAllForUser(client, 'schedule_items', '*', userId, 'id');
   if (error) throw error;
   if (!data) return;
   const remote = _filterPendingDeletes('schedule_items', data.map(rowToSchedItem));
@@ -614,8 +694,7 @@ async function _pullSchedule(client, userId, forceReplace = false) {
 }
 
 async function _pullTags(client, userId, forceReplace = false) {
-  const { data, error } = await client
-    .from('tags').select('name').eq('user_id', userId);
+  const { data, error } = await _selectAllForUser(client, 'tags', 'name', userId, 'name');
   if (error) throw error;
   if (!data) return;
   const remoteTags = _filterPendingTagDeletes(data.map(r => r.name));
@@ -632,7 +711,22 @@ async function _pullTags(client, userId, forceReplace = false) {
       .filter(entry => entry.table === 'tags' && entry.name)
       .map(entry => entry.name)
   );
-  const reconciled = reconcileNamedCollections(localTags, remoteTags, knownRemote, pendingNames, recentNames);
+  const protectedMissingNames = _trackRemoteMissingItems({
+    collectionKey: 'tags',
+    userId,
+    local: localTags.map(name => ({ id: name, syncVersion: 1 })),
+    remote: remoteTags.map(name => ({ id: name, syncVersion: 1 })),
+    knownRemote,
+    pendingDeleteIds: pendingNames,
+  });
+  const reconciled = reconcileNamedCollections(
+    localTags,
+    remoteTags,
+    knownRemote,
+    pendingNames,
+    recentNames,
+    protectedMissingNames
+  );
   const pushedNames = new Set();
 
   if (reconciled.pushCandidates.length) {
@@ -649,13 +743,15 @@ async function _pullTags(client, userId, forceReplace = false) {
 
   const nextSnapshot = Object.fromEntries(remoteTags.map(name => [name, 1]));
   pushedNames.forEach(name => { nextSnapshot[name] = 1; });
+  protectedMissingNames.forEach(name => {
+    if (knownRemote[name]) nextSnapshot[name] = knownRemote[name];
+  });
   localStorage.setItem(snapshotKey, JSON.stringify(nextSnapshot));
   return _writeCollectionAfterSync('mp_tags', localTags, reconciled.next, userId, 'tags');
 }
 
 async function _pullReviewSchedule(client, userId, forceReplace = false) {
-  const { data, error } = await client
-    .from('review_schedule').select('*').eq('user_id', userId);
+  const { data, error } = await _selectAllForUser(client, 'review_schedule', '*', userId, 'memo_id');
   if (error) throw error;
   if (!data) return;
   const remote = Object.fromEntries(data.map(rowToReviewEntry));
@@ -720,44 +816,52 @@ function _scheduleDelete(payload, delayMs = DELETE_GRACE_MS) {
   clearTimeout(_deleteTimers.get(key));
   _deleteTimers.set(key, setTimeout(async () => {
     _deleteTimers.delete(key);
-    if (epoch !== _syncEpoch || (scopedPayload.userId && scopedPayload.userId !== getActiveUserId())) return;
-    if (!_isStillDeleted(scopedPayload)) {
-      _clearPendingDelete(scopedPayload);
-      return;
-    }
-
-    const client = await getClient();
-    const userId = await getUserId();
-    if (!client || !userId || epoch !== _syncEpoch || (scopedPayload.userId && scopedPayload.userId !== userId)) return;
-
-    try {
-      let result = null;
-      if (scopedPayload.table === 'tags' && scopedPayload.name) {
-        result = await client.from('tags')
-          .delete()
-          .eq('user_id', userId)
-          .eq('name', scopedPayload.name);
-      } else if (scopedPayload.table === 'review_schedule' && scopedPayload.id) {
-        result = await client.from('review_schedule')
-          .delete()
-          .eq('memo_id', scopedPayload.id)
-          .eq('user_id', userId);
-      } else if (scopedPayload.id) {
-        result = await client.from(scopedPayload.table)
-          .delete()
-          .eq('id', scopedPayload.id)
-          .eq('user_id', userId);
-      }
-      if (result?.error) throw result.error;
-      _clearPendingDelete(scopedPayload);
-      _recordSyncSuccess('push', scopedPayload.table);
-    } catch (e) {
-      console.warn(`[Sync] delete ${scopedPayload.table} failed:`, e);
-      _recordSyncError(scopedPayload.table, e);
-      if (_isStillDeleted(scopedPayload)) _scheduleDelete(scopedPayload, DELETE_RETRY_MS);
-      else _clearPendingDelete(scopedPayload);
-    }
+    await _executeDelete(scopedPayload, epoch);
   }, delayMs));
+}
+
+async function _executeDelete(scopedPayload, epoch = _syncEpoch) {
+  if (epoch !== _syncEpoch || (scopedPayload.userId && scopedPayload.userId !== getActiveUserId())) return false;
+  if (!_isStillDeleted(scopedPayload)) {
+    _clearPendingDelete(scopedPayload);
+    return true;
+  }
+
+  const client = await getClient();
+  const userId = await getUserId();
+  if (!client || !userId || epoch !== _syncEpoch || (scopedPayload.userId && scopedPayload.userId !== userId)) {
+    return false;
+  }
+
+  try {
+    let result = null;
+    if (scopedPayload.table === 'tags' && scopedPayload.name) {
+      result = await client.from('tags')
+        .delete()
+        .eq('user_id', userId)
+        .eq('name', scopedPayload.name);
+    } else if (scopedPayload.table === 'review_schedule' && scopedPayload.id) {
+      result = await client.from('review_schedule')
+        .delete()
+        .eq('memo_id', scopedPayload.id)
+        .eq('user_id', userId);
+    } else if (scopedPayload.id) {
+      result = await client.from(scopedPayload.table)
+        .delete()
+        .eq('id', scopedPayload.id)
+        .eq('user_id', userId);
+    }
+    if (result?.error) throw result.error;
+    _clearPendingDelete(scopedPayload);
+    _recordSyncSuccess('push', scopedPayload.table);
+    return true;
+  } catch (error) {
+    console.warn(`[Sync] delete ${scopedPayload.table} failed:`, error);
+    _recordSyncError(scopedPayload.table, error);
+    if (_isStillDeleted(scopedPayload)) _scheduleDelete(scopedPayload, DELETE_RETRY_MS);
+    else _clearPendingDelete(scopedPayload);
+    return false;
+  }
 }
 
 function _deleteKey({ table, id, name }) {
@@ -1005,6 +1109,77 @@ function _eventRemoteSnapshotKey(userId) {
 function _remoteSnapshotKey(collectionKey, userId) {
   if (collectionKey === 'events') return _eventRemoteSnapshotKey(userId);
   return `mp_sync_remote_snapshot_v${SYNC_SNAPSHOT_VERSION}:${collectionKey}:${userId}`;
+}
+
+function _remoteMissingStateKey(collectionKey, userId) {
+  return `mp_sync_remote_missing_v${REMOTE_MISSING_STATE_VERSION}:${collectionKey}:${userId}`;
+}
+
+export function resolveRemoteMissingProtection({
+  local = [],
+  remote = [],
+  knownRemote = {},
+  pendingDeleteIds = new Set(),
+  previousState = {},
+  now = Date.now(),
+  confirmMs = REMOTE_DELETE_CONFIRM_MS,
+} = {}) {
+  const pending = pendingDeleteIds instanceof Set
+    ? pendingDeleteIds
+    : new Set(pendingDeleteIds);
+  const remoteIds = new Set(remote.filter(item => item?.id).map(item => item.id));
+  const protectedIds = new Set();
+  const nextState = {};
+
+  local.forEach(item => {
+    const id = item?.id;
+    if (!id || pending.has(id) || remoteIds.has(id)) return;
+
+    const knownVersion = Number(knownRemote[id]);
+    const localVersion = _syncVersion(item);
+    if (!Number.isFinite(knownVersion) || knownVersion <= 0 || localVersion > knownVersion) return;
+
+    const previous = previousState[id];
+    const firstSeenAt = Number(previous?.firstSeenAt) || now;
+    const count = (Number(previous?.count) || 0) + 1;
+    const confirmed = count >= 2 && now - firstSeenAt >= confirmMs;
+    if (confirmed) return;
+
+    nextState[id] = { firstSeenAt, lastSeenAt: now, count };
+    protectedIds.add(id);
+  });
+
+  return { protectedIds, nextState };
+}
+
+function _trackRemoteMissingItems({
+  collectionKey,
+  userId,
+  local,
+  remote,
+  knownRemote,
+  pendingDeleteIds,
+}) {
+  const key = _remoteMissingStateKey(collectionKey, userId);
+  const previousState = _ls(key, {});
+  const result = resolveRemoteMissingProtection({
+    local,
+    remote,
+    knownRemote,
+    pendingDeleteIds,
+    previousState,
+  });
+  try {
+    localStorage.setItem(key, JSON.stringify(result.nextState));
+  } catch (error) {
+    console.warn(`[Sync] could not persist ${collectionKey} missing-item protection:`, error);
+    return new Set(
+      local
+        .filter(item => item?.id && !remote.some(remoteItem => remoteItem?.id === item.id))
+        .map(item => item.id)
+    );
+  }
+  return result.protectedIds;
 }
 
 function _syncBackupKey(collectionKey, userId) {

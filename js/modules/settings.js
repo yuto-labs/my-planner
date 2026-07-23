@@ -764,7 +764,11 @@ function wireAccount(container, options = {}) {
   });
 
   container.querySelector('#sb-signout-btn')?.addEventListener('click', async () => {
-    await resetSyncForUserSwitch({ flush: true });
+    const readyToSignOut = await resetSyncForUserSwitch({ flush: true });
+    if (!readyToSignOut) {
+      toast('未同期の変更があります。通信を確認して「今すぐ同期」してからログアウトしてください。', 'error');
+      return;
+    }
     await signOut();
     clearUserContentLocal();
     toast('ログアウトしました', 'info');

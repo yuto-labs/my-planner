@@ -185,6 +185,10 @@ function setupEditActivityGuard() {
     e.preventDefault();
     e.returnValue = '';
   });
+
+  document.addEventListener('storage:write-error', () => {
+    showToast('保存できませんでした。端末の空き容量を確認してください。元のデータは削除していません。', 'error');
+  });
 }
 
 // ---- Navigation ----

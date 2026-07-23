@@ -101,15 +101,26 @@ function load(key, fallback) {
 }
 
 function save(key, value) {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch (e) {
     console.error('Storage write failed:', e);
+    try {
+      document.dispatchEvent(new CustomEvent('storage:write-error', { detail: { key } }));
+    } catch {}
+    return false;
   }
 }
 
 // ---- Events ----
 
 export function getEvents() { return load(KEY.EVENTS, []); }
-export function saveEvents(events) { save(KEY.EVENTS, events); _notifySync('events'); }
+export function saveEvents(events) {
+  if (!save(KEY.EVENTS, events)) return false;
+  _notifySync('events');
+  return true;
+}
 
 export function addEvent(ev) {
   const events = getEvents();
@@ -140,8 +151,8 @@ export function deleteEvent(id) {
   const events = getEvents();
   const target = events.find(e => e.id === id);
   if (!target) return null;
-  addTrashItem({ entityType: 'event', payload: target, title: target.title });
-  saveEvents(events.filter(e => e.id !== id));
+  if (!addTrashItem({ entityType: 'event', payload: target, title: target.title })) return null;
+  if (!saveEvents(events.filter(e => e.id !== id))) return null;
   _notifyDelete({ table: 'events', id });
   return target;
 }
@@ -157,12 +168,13 @@ export function deleteFutureRecurring(recurringId, fromDateISO) {
   );
   if (!removed.length) return [];
 
-  removed.forEach(event => {
-    addTrashItem({ entityType: 'event', payload: event, title: event.title });
-  });
-  saveEvents(events.filter(e =>
-    e.recurringId !== recurringId || new Date(e.start) < from
+  const backedUp = removed.every(event => (
+    !!addTrashItem({ entityType: 'event', payload: event, title: event.title })
   ));
+  if (!backedUp) return [];
+  if (!saveEvents(events.filter(e =>
+    e.recurringId !== recurringId || new Date(e.start) < from
+  ))) return [];
   removed.forEach(e => _notifyDelete({ table: 'events', id: e.id }));
   return removed;
 }
@@ -170,7 +182,11 @@ export function deleteFutureRecurring(recurringId, fromDateISO) {
 // ---- Tasks ----
 
 export function getTasks() { return load(KEY.TASKS, []); }
-export function saveTasks(tasks) { save(KEY.TASKS, tasks); _notifySync('tasks'); }
+export function saveTasks(tasks) {
+  if (!save(KEY.TASKS, tasks)) return false;
+  _notifySync('tasks');
+  return true;
+}
 
 export function addTask(task) {
   const tasks = getTasks();
@@ -249,18 +265,24 @@ export function updateTask(id, updates) {
 export function deleteTask(id) {
   const tasks = getTasks();
   const target = tasks.find(t => t.id === id);
-  if (target) addTrashItem({ entityType: 'task', payload: target, title: target.title });
-  saveTasks(tasks.filter(t => t.id !== id));
+  if (!target) return null;
+  if (!addTrashItem({ entityType: 'task', payload: target, title: target.title })) return null;
+  if (!saveTasks(tasks.filter(t => t.id !== id))) return null;
   _notifyDelete({ table: 'tasks', id });
+  return target;
 }
 
 /** 完了済みタスクを一括削除 */
 export function deleteCompletedTasks() {
   const tasks = getTasks();
   const completed = tasks.filter(task => task.completed);
-  completed.forEach(task => addTrashItem({ entityType: 'task', payload: task, title: task.title }));
-  saveTasks(tasks.filter(task => !task.completed));
+  const backedUp = completed.every(task => (
+    !!addTrashItem({ entityType: 'task', payload: task, title: task.title })
+  ));
+  if (!backedUp) return 0;
+  if (!saveTasks(tasks.filter(task => !task.completed))) return 0;
   completed.forEach(task => _notifyDelete({ table: 'tasks', id: task.id }));
+  return completed.length;
 }
 
 /** タスクの順序を変更（ドラッグ&ドロップ用）*/
@@ -310,7 +332,11 @@ function calcNextDueDate(currentDueDate, recurrence) {
 // ---- Goals ----
 
 export function getGoals() { return load(KEY.GOALS, []); }
-export function saveGoals(goals) { save(KEY.GOALS, goals); _notifySync('goals'); }
+export function saveGoals(goals) {
+  if (!save(KEY.GOALS, goals)) return false;
+  _notifySync('goals');
+  return true;
+}
 
 export function addGoal(goal) {
   const goals = getGoals();
@@ -341,8 +367,13 @@ export function updateGoal(id, updates) {
 }
 
 export function deleteGoal(id) {
-  saveGoals(getGoals().filter(g => g.id !== id));
+  const goals = getGoals();
+  const target = goals.find(goal => goal.id === id);
+  if (!target) return null;
+  if (!addTrashItem({ entityType: 'goal', payload: target, title: target.title })) return null;
+  if (!saveGoals(goals.filter(goal => goal.id !== id))) return null;
   _notifyDelete({ table: 'goals', id });
+  return target;
 }
 
 // ---- Categories ----
@@ -470,7 +501,11 @@ export function saveBatchSettings(patch) {
 const SCHED_KEY = 'mp_schedule';
 
 export function getScheduleItems() { return load(SCHED_KEY, []); }
-export function saveScheduleItems(items) { save(SCHED_KEY, items); _notifySync('schedule_items'); }
+export function saveScheduleItems(items) {
+  if (!save(SCHED_KEY, items)) return false;
+  _notifySync('schedule_items');
+  return true;
+}
 
 export function addScheduleItem(item) {
   const items = getScheduleItems();
@@ -500,8 +535,13 @@ export function updateScheduleItem(id, updates) {
 }
 
 export function deleteScheduleItem(id) {
-  saveScheduleItems(getScheduleItems().filter(i => i.id !== id));
+  const items = getScheduleItems();
+  const target = items.find(item => item.id === id);
+  if (!target) return null;
+  if (!addTrashItem({ entityType: 'schedule', payload: target, title: target.title })) return null;
+  if (!saveScheduleItems(items.filter(item => item.id !== id))) return null;
   _notifyDelete({ table: 'schedule_items', id });
+  return target;
 }
 
 export function getScheduleItemsForDate(dateStr) {
@@ -587,8 +627,9 @@ const STAGE_DELTA = { again: -2, hard: 0, good: +1, easy: +1 };
 
 export function getReviewSchedule()              { return load(REVIEW_KEY, {}); }
 export function saveReviewSchedule(schedule) {
-  save(REVIEW_KEY, schedule);
+  if (!save(REVIEW_KEY, schedule)) return false;
   _notifySync('review_schedule');
+  return true;
 }
 export function scheduleFirstReview(memoId) {
   const schedule = getReviewSchedule();
@@ -687,7 +728,11 @@ const KNOWLEDGE_KEY = 'mp_knowledge';
 const TERM_KEY      = 'mp_terms';
 
 export function getKnowledgeMemos()          { return load(KNOWLEDGE_KEY, []); }
-export function saveKnowledgeMemos(memos)    { save(KNOWLEDGE_KEY, memos); _notifySync('knowledge_memos'); }
+export function saveKnowledgeMemos(memos) {
+  if (!save(KNOWLEDGE_KEY, memos)) return false;
+  _notifySync('knowledge_memos');
+  return true;
+}
 
 export function getKnowledgeMemoById(id) {
   return getKnowledgeMemos().find(m => m.id === id) || null;
@@ -720,21 +765,22 @@ export function updateKnowledgeMemo(id, updates) {
 export function deleteKnowledgeMemo(id) {
   const memos = getKnowledgeMemos();
   const target = memos.find(m => m.id === id);
+  if (!target) return null;
   const schedule = getReviewSchedule();
-  if (target) {
-    addTrashItem({
-      entityType: 'memo',
-      payload: { ...target, __reviewEntry: schedule[id] || null },
-      title: target.title,
-    });
-  }
-  saveKnowledgeMemos(memos.filter(m => m.id !== id));
+  if (!addTrashItem({
+    entityType: 'memo',
+    payload: { ...target, __reviewEntry: schedule[id] || null },
+    title: target.title,
+  })) return null;
+  if (!saveKnowledgeMemos(memos.filter(m => m.id !== id))) return null;
   if (schedule[id]) {
     delete schedule[id];
-    saveReviewSchedule(schedule);
-    _notifyDelete({ table: 'review_schedule', id });
+    if (saveReviewSchedule(schedule)) {
+      _notifyDelete({ table: 'review_schedule', id });
+    }
   }
   _notifyDelete({ table: 'knowledge_memos', id });
+  return target;
 }
 
 // ---- Trash ----
@@ -745,8 +791,9 @@ export function getTrashItems() {
 }
 
 export function saveTrashItems(items) {
-  save(TRASH_KEY, items);
+  if (!save(TRASH_KEY, items)) return false;
   _notifySync('trash_items');
+  return true;
 }
 
 export function addTrashItem({ entityType, payload, title }) {
@@ -765,23 +812,27 @@ export function addTrashItem({ entityType, payload, title }) {
   };
   if (existingIdx >= 0) items.splice(existingIdx, 1);
   items.unshift(item);
-  saveTrashItems(items);
+  if (!saveTrashItems(items)) return null;
   return item;
 }
 
 export function removeTrashItem(id) {
   const items = getTrashItems();
   const target = items.find(item => item.id === id);
-  saveTrashItems(items.filter(item => item.id !== id));
-  if (target) _notifyDelete({ table: 'trash_items', id: target.id });
+  if (!target) return null;
+  if (!saveTrashItems(items.filter(item => item.id !== id))) return null;
+  _notifyDelete({ table: 'trash_items', id: target.id });
+  return target;
 }
 
 export function removeTrashItemByEntity(entityType, entityId) {
   if (!entityType || !entityId) return;
   const items = getTrashItems();
   const removed = items.filter(item => item.entityType === entityType && item.entityId === entityId);
-  saveTrashItems(items.filter(item => !(item.entityType === entityType && item.entityId === entityId)));
+  if (!removed.length) return [];
+  if (!saveTrashItems(items.filter(item => !(item.entityType === entityType && item.entityId === entityId)))) return [];
   removed.forEach(item => _notifyDelete({ table: 'trash_items', id: item.id }));
+  return removed;
 }
 
 export function restoreTrashItem(id) {
@@ -791,20 +842,21 @@ export function restoreTrashItem(id) {
   const payload = normalizeTrashPayload(item.payload);
   const entityId = item.entityId || payload?.id || null;
   if (!payload || !entityId) return null;
+  let restored = false;
 
   if (item.entityType === 'task') {
     const tasks = getTasks();
     if (!tasks.find(t => t.id === entityId)) {
       tasks.push({ ...payload, id: entityId, updatedAt: new Date().toISOString() });
       tasks.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
-      saveTasks(tasks);
-    }
+      restored = saveTasks(tasks);
+    } else restored = true;
   } else if (item.entityType === 'event') {
     const events = getEvents();
     if (!events.find(e => e.id === entityId)) {
       events.push({ ...payload, id: entityId, updatedAt: new Date().toISOString() });
-      saveEvents(events);
-    }
+      restored = saveEvents(events);
+    } else restored = true;
   } else if (item.entityType === 'memo') {
     const memos = getKnowledgeMemos();
     if (!memos.find(m => m.id === entityId)) {
@@ -815,20 +867,36 @@ export function restoreTrashItem(id) {
         id: entityId,
         updatedAt: new Date().toISOString(),
       };
-      saveKnowledgeMemos([restoredMemo, ...memos]);
+      restored = saveKnowledgeMemos([restoredMemo, ...memos]);
 
-      const schedule = getReviewSchedule();
-      if (__reviewEntry) {
-        schedule[entityId] = __reviewEntry;
-        saveReviewSchedule(schedule);
-      } else if (!schedule[entityId]) {
-        scheduleFirstReview(entityId);
+      if (restored) {
+        const schedule = getReviewSchedule();
+        if (__reviewEntry) {
+          schedule[entityId] = __reviewEntry;
+          saveReviewSchedule(schedule);
+        } else if (!schedule[entityId]) {
+          scheduleFirstReview(entityId);
+        }
       }
-    }
+    } else restored = true;
+  } else if (item.entityType === 'goal') {
+    const goals = getGoals();
+    if (!goals.find(goal => goal.id === entityId)) {
+      restored = saveGoals([...goals, { ...payload, id: entityId, updatedAt: new Date().toISOString() }]);
+    } else restored = true;
+  } else if (item.entityType === 'schedule') {
+    const scheduleItems = getScheduleItems();
+    if (!scheduleItems.find(scheduleItem => scheduleItem.id === entityId)) {
+      restored = saveScheduleItems([
+        ...scheduleItems,
+        { ...payload, id: entityId, updatedAt: new Date().toISOString() },
+      ]);
+    } else restored = true;
   } else {
     return null;
   }
 
+  if (!restored) return null;
   removeTrashItem(id);
   return item;
 }
@@ -885,7 +953,11 @@ const ARCHIVE_KEY = 'mp_task_archive';
 const ARCHIVE_AFTER_DAYS = 7;
 
 export function getArchivedTasks()         { return load(ARCHIVE_KEY, []); }
-export function saveArchivedTasks(tasks)   { save(ARCHIVE_KEY, tasks); _notifySync('tasks_archive'); }
+export function saveArchivedTasks(tasks) {
+  if (!save(ARCHIVE_KEY, tasks)) return false;
+  _notifySync('tasks_archive');
+  return true;
+}
 
 /** Move completed tasks older than ARCHIVE_AFTER_DAYS to the archive store */
 export function autoArchiveTasks() {
@@ -906,9 +978,9 @@ export function autoArchiveTasks() {
   });
 
   if (toArchive.length) {
-    save(KEY.TASKS, remaining);
     const archive = getArchivedTasks();
-    saveArchivedTasks([...archive, ...toArchive]);
+    if (!saveArchivedTasks([...archive, ...toArchive])) return 0;
+    if (!save(KEY.TASKS, remaining)) return 0;
   }
   return toArchive.length;
 }
@@ -917,8 +989,13 @@ export function autoArchiveTasks() {
 export function deleteArchivedByMonth(yyyymm) {
   const archived = getArchivedTasks();
   const removed = archived.filter(t => t.archivedAt?.slice(0, 7) === yyyymm);
-  saveArchivedTasks(archived.filter(t => !t.archivedAt || t.archivedAt.slice(0, 7) !== yyyymm));
+  const backedUp = removed.every(task => (
+    !!addTrashItem({ entityType: 'task', payload: task, title: task.title })
+  ));
+  if (!backedUp) return 0;
+  if (!saveArchivedTasks(archived.filter(t => !t.archivedAt || t.archivedAt.slice(0, 7) !== yyyymm))) return 0;
   removed.forEach(task => _notifyDelete({ table: 'tasks', id: task.id }));
+  return removed.length;
 }
 
 // ---- Subtasks ----
@@ -961,7 +1038,11 @@ export function deleteSubtask(taskId, subtaskId) {
 const TAGS_KEY = 'mp_tags';
 
 export function getTags()             { return load(TAGS_KEY, []); }
-export function saveTags(tags)        { save(TAGS_KEY, tags); _notifySync('tags'); }
+export function saveTags(tags) {
+  if (!save(TAGS_KEY, tags)) return false;
+  _notifySync('tags');
+  return true;
+}
 
 export function addTag(name) {
   const trimmed = (name || '').trim();
@@ -976,8 +1057,11 @@ export function addTag(name) {
 }
 
 export function deleteTag(name) {
-  saveTags(getTags().filter(t => t !== name));
+  const tags = getTags();
+  if (!tags.includes(name)) return false;
+  if (!saveTags(tags.filter(tag => tag !== name))) return false;
   _notifyDelete({ table: 'tags', name });
+  return true;
 }
 
 // ---- Review entry getter (for knowledge memo display) ----

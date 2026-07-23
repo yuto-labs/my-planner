@@ -16,6 +16,8 @@ const TYPE_META = {
   task:  { label: 'Task',  icon: '✓' },
   event: { label: 'Event', icon: '📅' },
   memo:  { label: 'Note',  icon: '📝' },
+  goal:  { label: 'Goal',  icon: '◎' },
+  schedule: { label: 'Schedule', icon: '◫' },
 };
 
 export function initArchive(container) {
@@ -29,7 +31,7 @@ function render(container) {
     container.innerHTML = `
       <div class="archive-page">
         <div class="archive-intro">
-          <p>削除したタスク・予定・メモはここに入ります。</p>
+          <p>削除したタスク・予定・メモ・目標・マイスケジュールはここに入ります。</p>
         </div>
         <div class="empty-state" style="padding-top:48px">
           <div class="empty-state-icon">🗑</div>
