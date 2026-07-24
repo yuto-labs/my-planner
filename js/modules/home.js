@@ -16,7 +16,12 @@ import {
   esc, today, tomorrow, toDateStr, formatDate, formatTime, getGreeting, getGreetingPeriod,
   getEventsForDate, generateId,
 } from '../utils.js';
-import { deletePlannerImage, hydratePlannerImages, uploadPlannerImage } from '../media.js';
+import {
+  deletePlannerImage,
+  hydratePlannerImages,
+  uploadPlannerImage,
+  wirePlannerImageViewer,
+} from '../media.js';
 import { flushPendingSync } from '../sync.js';
 
 const nav   = (view) => window.AppNav?.navigate(view);
@@ -66,7 +71,9 @@ export function initHome(container) {
       <div class="home-intro${homeCover?.path ? ' home-intro--cover' : ''}">
         ${homeCover?.path ? `
           <div class="home-cover media-frame media-frame--loading">
-            <img data-media-path="${esc(homeCover.path)}" alt="${esc(homeCover.alt || 'ホームカバー')}">
+            <img data-media-path="${esc(homeCover.path)}" data-media-view="1"
+              tabindex="0" role="button" aria-label="カバー写真を拡大表示"
+              alt="${esc(homeCover.alt || 'ホームカバー')}">
           </div>
         ` : ''}
         <div class="home-greeting">
@@ -177,6 +184,7 @@ export function initHome(container) {
 
   // Wire events
   hydratePlannerImages(container);
+  wirePlannerImageViewer(container);
   wireHomeCover(container, homeCover);
   container.querySelector('#goto-today')?.addEventListener('click', () => nav('today'));
   container.querySelector('#goto-review')?.addEventListener('click', () => nav('review'));

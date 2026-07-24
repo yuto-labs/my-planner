@@ -19,7 +19,12 @@ import {
   suggestUnstudiedTopics, formatKnowledgeMemo,
 } from '../ai.js';
 import { esc, generateId, today, formatDate, fmtDays, daysSince } from '../utils.js';
-import { deletePlannerImage, hydratePlannerImages, uploadPlannerImage } from '../media.js';
+import {
+  deletePlannerImage,
+  hydratePlannerImages,
+  uploadPlannerImage,
+  wirePlannerImageViewer,
+} from '../media.js';
 import { flushPendingSync } from '../sync.js';
 
 const nav       = (view, options = {}) => window.AppNav?.navigate(view, options);
@@ -1183,6 +1188,7 @@ function renderViewMode(container) {
   requestAnimationFrame(() => {
     renderAllKaTeX(container);
     hydratePlannerImages(container);
+    wirePlannerImageViewer(container);
   });
 }
 
@@ -1219,7 +1225,9 @@ function renderBlockView(block, numCounter = 0, indent = 0) {
   if (block.type === 'image') {
     return `
       <figure class="kn-view-image media-frame media-frame--loading" ${id}>
-        <img data-media-path="${esc(block.path || '')}" alt="${esc(block.alt || block.caption || '')}">
+        <img data-media-path="${esc(block.path || '')}" data-media-view="1"
+          data-media-caption="${esc(block.caption || '')}" tabindex="0" role="button"
+          aria-label="メモの写真を拡大表示" alt="${esc(block.alt || block.caption || 'メモの写真')}">
         ${block.caption ? `<figcaption>${esc(block.caption)}</figcaption>` : ''}
       </figure>
     `;
@@ -1595,7 +1603,9 @@ function renderBlockEdit(block, idx, listNumber = 0) {
         data-block-id="${esc(block.id)}" tabindex="0">
         ${dragHandle}
         <div class="kn-edit-image media-frame media-frame--loading">
-          <img data-media-path="${esc(block.path || '')}" alt="${esc(block.alt || block.caption || '')}">
+          <img data-media-path="${esc(block.path || '')}" data-media-view="1"
+            data-media-caption="${esc(block.caption || '')}" tabindex="0" role="button"
+            aria-label="メモの写真を拡大表示" alt="${esc(block.alt || block.caption || 'メモの写真')}">
           <input class="kn-image-caption" data-image-caption-id="${esc(block.id)}"
             value="${esc(block.caption || '')}" placeholder="写真の説明（任意）">
         </div>
@@ -1675,6 +1685,7 @@ function wireBlocksEdit(container) {
   wrap.dataset.wired = '1';
   wireBlockDrag(container, wrap);
   hydratePlannerImages(wrap);
+  wirePlannerImageViewer(wrap);
 
   // Sync text on input
   wrap.addEventListener('input', e => {

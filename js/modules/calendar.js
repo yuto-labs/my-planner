@@ -17,7 +17,12 @@ import {
 import { openDatePicker, openTimePicker, formatPickerDate } from '../datepicker.js';
 import { getHolidayInfo } from '../holidays.js';
 import { acceptSharedInvite, collectSharedCalendarEvents, getShareGroupsForEventForm, loadSharedGroups } from '../shared-calendar.js';
-import { deletePlannerImage, hydratePlannerImages, uploadPlannerImage } from '../media.js';
+import {
+  deletePlannerImage,
+  hydratePlannerImages,
+  uploadPlannerImage,
+  wirePlannerImageViewer,
+} from '../media.js';
 import { flushPendingSync } from '../sync.js';
 
 const toast     = (msg, type) => window.AppNav?.showToast(msg, type);
@@ -1453,7 +1458,9 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
     if (!list) return;
     list.innerHTML = attachments.map(item => `
       <div class="event-photo-item media-frame media-frame--loading">
-        <img data-media-path="${esc(item.path || '')}" alt="${esc(item.alt || '')}">
+        <img data-media-path="${esc(item.path || '')}" data-media-view="1"
+          tabindex="0" role="button" aria-label="予定の写真を拡大表示"
+          alt="${esc(item.alt || '予定の写真')}">
         <button type="button" data-remove-event-photo="${esc(item.path || '')}" aria-label="写真を削除">×</button>
       </div>
     `).join('');
@@ -1467,6 +1474,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
       });
     });
     hydratePlannerImages(list);
+    wirePlannerImageViewer(list);
   };
   renderAttachments();
 

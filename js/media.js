@@ -11,6 +11,7 @@ const MAX_EDGE = 1600;
 const JPEG_QUALITY = 0.84;
 const SIGNED_URL_TTL = 60 * 60;
 const urlCache = new Map();
+let activeViewerClose = null;
 
 export async function uploadPlannerImage(file, kind = 'misc') {
   if (!(file instanceof File) || !file.type.startsWith('image/')) {
@@ -89,6 +90,105 @@ export async function hydratePlannerImages(root) {
   }));
 }
 
+export function wirePlannerImageViewer(root) {
+  if (!root?.addEventListener || root.dataset.mediaViewerWired === '1') return;
+  root.dataset.mediaViewerWired = '1';
+
+  const openFromTarget = target => {
+    const image = target?.closest?.('img[data-media-view]');
+    if (!image || !root.contains(image)) return false;
+    openPlannerImageViewer({
+      path: image.dataset.mediaPath,
+      src: image.currentSrc || image.src,
+      alt: image.alt,
+      caption: image.dataset.mediaCaption,
+      trigger: image,
+    });
+    return true;
+  };
+
+  root.addEventListener('click', event => {
+    openFromTarget(event.target);
+  });
+  root.addEventListener('keydown', event => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    if (!openFromTarget(event.target)) return;
+    event.preventDefault();
+  });
+}
+
+export async function openPlannerImageViewer({
+  path = '',
+  src = '',
+  alt = '',
+  caption = '',
+  trigger = null,
+} = {}) {
+  activeViewerClose?.();
+
+  const previousOverflow = document.body.style.overflow;
+  const viewer = document.createElement('div');
+  viewer.className = 'media-lightbox media-lightbox--loading';
+  viewer.setAttribute('role', 'dialog');
+  viewer.setAttribute('aria-modal', 'true');
+  viewer.setAttribute('aria-label', '写真の拡大表示');
+  viewer.innerHTML = `
+    <button type="button" class="media-lightbox-close" aria-label="拡大表示を閉じる">×</button>
+    <div class="media-lightbox-stage">
+      <img alt="${escapeAttribute(alt)}">
+      ${caption ? `<div class="media-lightbox-caption">${escapeHtml(caption)}</div>` : ''}
+    </div>
+  `;
+
+  const closeButton = viewer.querySelector('.media-lightbox-close');
+  const image = viewer.querySelector('img');
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    document.removeEventListener('keydown', onKeyDown);
+    document.body.style.overflow = previousOverflow;
+    viewer.remove();
+    if (activeViewerClose === close) activeViewerClose = null;
+    trigger?.focus?.({ preventScroll: true });
+  };
+  const onKeyDown = event => {
+    if (event.key === 'Escape') close();
+  };
+
+  activeViewerClose = close;
+  closeButton.addEventListener('click', close);
+  viewer.addEventListener('click', event => {
+    if (event.target === viewer || event.target.classList.contains('media-lightbox-stage')) close();
+  });
+  document.addEventListener('keydown', onKeyDown);
+  document.body.appendChild(viewer);
+  document.body.style.overflow = 'hidden';
+  closeButton.focus({ preventScroll: true });
+
+  const resolvedSrc = path ? await resolvePlannerImageUrl(path) : src;
+  if (closed) return;
+  if (!resolvedSrc) {
+    viewer.classList.remove('media-lightbox--loading');
+    viewer.classList.add('media-lightbox--error');
+    return;
+  }
+
+  image.addEventListener('load', () => {
+    viewer.classList.remove('media-lightbox--loading');
+    requestAnimationFrame(() => viewer.classList.add('media-lightbox--open'));
+  }, { once: true });
+  image.addEventListener('error', () => {
+    viewer.classList.remove('media-lightbox--loading');
+    viewer.classList.add('media-lightbox--error');
+  }, { once: true });
+  image.src = resolvedSrc;
+  if (image.complete && image.naturalWidth > 0) {
+    viewer.classList.remove('media-lightbox--loading');
+    requestAnimationFrame(() => viewer.classList.add('media-lightbox--open'));
+  }
+}
+
 export async function deletePlannerImage(path) {
   const cleanPath = String(path || '').trim();
   if (!cleanPath) return true;
@@ -98,6 +198,19 @@ export async function deletePlannerImage(path) {
   const { error } = await client.storage.from(BUCKET).remove([cleanPath]);
   if (!error) urlCache.delete(cleanPath);
   return !error;
+}
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+function escapeAttribute(value) {
+  return escapeHtml(value).replaceAll('\n', ' ');
 }
 
 async function compressImage(file) {
