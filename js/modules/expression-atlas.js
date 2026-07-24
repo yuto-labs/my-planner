@@ -4,12 +4,15 @@
 
 import {
   addExpressionEntries,
+  addTranslationSet,
   deleteExpressionEntry,
   getExpressionEntries,
+  getTranslationSets,
   isAiAvailable,
   updateExpressionEntry,
+  updateTranslationSet,
 } from '../storage.js';
-import { generateNuanceEntries } from '../ai.js';
+import { generateNuanceEntries, generateTranslationVariants } from '../ai.js';
 import { esc } from '../utils.js';
 
 const nav = view => window.AppNav?.navigate(view);
@@ -21,8 +24,11 @@ let state = {
   category: '',
   topic: '',
   entryId: '',
+  translationId: '',
+  libraryMode: 'expressions',
   screen: 'library',
   drafts: [],
+  translationDraft: null,
   selectedDrafts: new Set(),
   generating: false,
   controller: null,
@@ -32,6 +38,10 @@ let state = {
     category: '',
     topic: '',
     seedTerms: '',
+  },
+  translationInput: {
+    sourceTextJa: '',
+    contextJa: '',
   },
 };
 
@@ -45,6 +55,7 @@ export function initExpressionAtlas(container) {
   render();
   return () => {
     persistOpenPersonalNote();
+    persistOpenTranslationNote();
     clearTimeout(state.noteTimer);
     state.controller?.abort();
     state.controller = null;
@@ -62,7 +73,7 @@ export function backFromExpressionAtlas() {
     nav('knowledge');
     return;
   }
-  if (state.screen === 'generate') {
+  if (state.screen === 'generate' || state.screen === 'translate') {
     state.controller?.abort();
     state.screen = 'library';
     state.generating = false;
@@ -73,6 +84,13 @@ export function backFromExpressionAtlas() {
   if (state.entryId) {
     persistOpenPersonalNote();
     state.entryId = '';
+    render();
+    scrollMainToTop();
+    return;
+  }
+  if (state.translationId) {
+    persistOpenTranslationNote();
+    state.translationId = '';
     render();
     scrollMainToTop();
     return;
@@ -103,14 +121,26 @@ function render() {
     renderGenerator();
     return;
   }
+  if (state.screen === 'translate') {
+    renderTranslationGenerator();
+    return;
+  }
   if (state.entryId) {
     renderDetail();
+    return;
+  }
+  if (state.translationId) {
+    renderTranslationDetail();
     return;
   }
   renderLibrary();
 }
 
 function renderLibrary() {
+  if (state.libraryMode === 'translations') {
+    renderTranslationLibrary();
+    return;
+  }
   const view = getLibraryView();
   const { entries, visibleEntries, categories, topics, level } = view;
 
@@ -126,6 +156,8 @@ function renderLibrary() {
           <span aria-hidden="true">✦</span> AIで表現を追加
         </button>
       </header>
+
+      ${renderModeSwitch()}
 
       <nav class="atlas-breadcrumbs" aria-label="辞典の階層">
         <button type="button" data-atlas-level="root">English</button>
@@ -150,6 +182,7 @@ function renderLibrary() {
 
   wireLibraryShell();
   wireLibraryContent();
+  wireModeSwitch();
 }
 
 function getLibraryView() {
@@ -201,6 +234,384 @@ function wireLibraryShell() {
       state.search = '';
       render();
     });
+  });
+}
+
+function renderModeSwitch() {
+  return `
+    <div class="atlas-mode-switch" role="tablist" aria-label="NUANCE ATLASの表示">
+      <button type="button" role="tab" data-atlas-mode="expressions" aria-selected="${state.libraryMode === 'expressions'}" class="${state.libraryMode === 'expressions' ? 'active' : ''}">
+        表現を探す
+      </button>
+      <button type="button" role="tab" data-atlas-mode="translations" aria-selected="${state.libraryMode === 'translations'}" class="${state.libraryMode === 'translations' ? 'active' : ''}">
+        和文を英訳
+      </button>
+    </div>
+  `;
+}
+
+function wireModeSwitch() {
+  state.container?.querySelectorAll('[data-atlas-mode]').forEach(button => {
+    button.addEventListener('click', () => {
+      state.libraryMode = button.dataset.atlasMode === 'translations' ? 'translations' : 'expressions';
+      state.search = '';
+      state.category = '';
+      state.topic = '';
+      state.entryId = '';
+      state.translationId = '';
+      render();
+      scrollMainToTop();
+    });
+  });
+}
+
+function renderTranslationLibrary() {
+  const sets = getTranslationSets();
+  const query = normalize(state.search);
+  const visible = query
+    ? sets.filter(set => searchableTranslationText(set).includes(query))
+    : sets;
+  state.container.innerHTML = `
+    <section class="atlas-page">
+      <header class="atlas-hero">
+        <div>
+          <div class="atlas-kicker">PERSONAL LANGUAGE LIBRARY</div>
+          <h1>NUANCE ATLAS</h1>
+          <p>日本語をタイトルにして、複数の自然な英訳とニュアンスを比較できます。</p>
+        </div>
+        <button class="btn btn-primary atlas-generate-open" id="atlas-translate-open">
+          <span aria-hidden="true">✦</span> 日本語を英訳
+        </button>
+      </header>
+
+      ${renderModeSwitch()}
+
+      <div class="atlas-toolbar atlas-translation-toolbar">
+        <label class="atlas-search">
+          <span class="sr-only">和文または英訳を検索</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"/></svg>
+          <input id="atlas-translation-search" type="search" value="${esc(state.search)}" placeholder="日本語・英訳・ニュアンスを検索">
+        </label>
+        <span class="atlas-count">${visible.length} translations</span>
+      </div>
+
+      <div class="atlas-library">
+        ${visible.length ? `
+          <div class="atlas-entry-grid">
+            ${visible.map(renderTranslationCard).join('')}
+          </div>
+        ` : `
+          <div class="atlas-empty">
+            <div class="atlas-empty-icon" aria-hidden="true">日→A</div>
+            <h2>${sets.length ? '一致する英訳がありません' : '最初の和文を英訳しましょう'}</h2>
+            <p>${sets.length ? '検索語を短くして、もう一度探してください。' : '日本語を入力すると、場面や温度感の異なる英訳をまとめて保存できます。'}</p>
+            ${sets.length ? '' : '<button class="btn btn-primary" id="atlas-empty-translate">日本語を英訳</button>'}
+          </div>
+        `}
+      </div>
+    </section>
+  `;
+  wireModeSwitch();
+  state.container.querySelector('#atlas-translate-open')?.addEventListener('click', openTranslationGenerator);
+  state.container.querySelector('#atlas-empty-translate')?.addEventListener('click', openTranslationGenerator);
+  const searchInput = state.container.querySelector('#atlas-translation-search');
+  let searchTimer = null;
+  let composing = false;
+  const applySearch = () => {
+    state.search = searchInput?.value || '';
+    renderTranslationLibrary();
+    requestAnimationFrame(() => {
+      const input = state.container?.querySelector('#atlas-translation-search');
+      if (!input) return;
+      input.focus();
+      try { input.setSelectionRange(input.value.length, input.value.length); } catch {}
+    });
+  };
+  searchInput?.addEventListener('compositionstart', () => { composing = true; });
+  searchInput?.addEventListener('compositionend', () => {
+    composing = false;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(applySearch, 0);
+  });
+  searchInput?.addEventListener('input', () => {
+    if (composing) return;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(applySearch, 120);
+  });
+  state.container.querySelectorAll('[data-translation-id]').forEach(card => {
+    card.addEventListener('click', () => {
+      state.translationId = card.dataset.translationId;
+      render();
+      scrollMainToTop();
+    });
+  });
+}
+
+function renderTranslationCard(set) {
+  return `
+    <button class="atlas-entry-card atlas-translation-card" type="button" data-translation-id="${esc(set.id)}">
+      <span class="atlas-entry-topline">
+        <strong lang="ja">${esc(set.sourceTextJa)}</strong>
+        <span>JA → EN</span>
+      </span>
+      <span class="atlas-translation-preview">
+        ${(set.variants || []).slice(0, 2).map(variant => `<span lang="en">${esc(variant.translation)}</span>`).join('')}
+      </span>
+      <span class="atlas-entry-path">${esc(set.category)} › ${esc(set.topic)}</span>
+    </button>
+  `;
+}
+
+function openTranslationGenerator() {
+  state.screen = 'translate';
+  state.translationDraft = null;
+  state.translationInput = { sourceTextJa: '', contextJa: '' };
+  render();
+  scrollMainToTop();
+}
+
+function renderTranslationGenerator() {
+  const draft = state.translationDraft;
+  const input = state.translationInput;
+  state.container.innerHTML = `
+    <section class="atlas-page atlas-generator-page">
+      <header class="atlas-generator-header">
+        <button class="atlas-back-inline" id="atlas-translation-back" type="button">
+          <span aria-hidden="true">←</span> 英訳ライブラリへ戻る
+        </button>
+        <div>
+          <div class="atlas-kicker">JAPANESE TO ENGLISH</div>
+          <h1>和文から英訳を作る</h1>
+          <p>日本語の意味を保ちながら、場面や温度感の異なる自然な英訳を比較します。</p>
+        </div>
+      </header>
+
+      <form class="atlas-translation-form" id="atlas-translation-form">
+        <label>
+          <span>英訳したい日本語</span>
+          <textarea id="atlas-source-ja" rows="4" required placeholder="例: 今日は来てくれて本当にありがとう。">${esc(input.sourceTextJa)}</textarea>
+        </label>
+        <label>
+          <span>使いたい場面 <small>任意</small></span>
+          <textarea id="atlas-context-ja" rows="3" placeholder="例: 親しい友人へのメッセージ。丁寧すぎない表現が知りたい。">${esc(input.contextJa)}</textarea>
+        </label>
+        <div class="atlas-generator-actions">
+          <button class="btn btn-primary" type="submit" ${state.generating ? 'disabled' : ''}>
+            ${state.generating ? '<span class="atlas-spinner" aria-hidden="true"></span> 英訳を作成中…' : '複数の英訳を作る'}
+          </button>
+          ${state.generating ? '<button class="btn btn-secondary" id="atlas-cancel-translation" type="button">キャンセル</button>' : ''}
+          <p>入力にない人物・状況は補いません。曖昧な部分は、候補ごとの差として説明します。</p>
+        </div>
+      </form>
+
+      ${draft ? `
+        <section class="atlas-translation-draft">
+          <div class="atlas-draft-heading">
+            <div>
+              <h2>${esc(draft.sourceTextJa)}</h2>
+              <p>${esc(draft.summaryJa)}</p>
+            </div>
+            <button class="btn btn-primary" id="atlas-save-translation" type="button">この英訳セットを保存</button>
+          </div>
+          <div class="atlas-translation-classification">
+            <label>
+              <span>カテゴリ</span>
+              <input id="atlas-translation-category" value="${esc(draft.category)}">
+            </label>
+            <label>
+              <span>テーマ</span>
+              <input id="atlas-translation-topic" value="${esc(draft.topic)}">
+            </label>
+          </div>
+          <div class="atlas-translation-variant-list">
+            ${(draft.variants || []).map((variant, index) => renderTranslationVariant(variant, index)).join('')}
+          </div>
+        </section>
+      ` : ''}
+    </section>
+  `;
+
+  state.container.querySelector('#atlas-translation-back')?.addEventListener('click', backFromExpressionAtlas);
+  ['atlas-source-ja', 'atlas-context-ja'].forEach(id => {
+    state.container.querySelector(`#${id}`)?.addEventListener('input', syncTranslationInput);
+  });
+  state.container.querySelector('#atlas-translation-form')?.addEventListener('submit', handleTranslationGenerate);
+  state.container.querySelector('#atlas-cancel-translation')?.addEventListener('click', () => state.controller?.abort());
+  state.container.querySelector('#atlas-translation-category')?.addEventListener('input', event => {
+    if (state.translationDraft && event.target.value.trim()) {
+      state.translationDraft.category = event.target.value.trim();
+    }
+  });
+  state.container.querySelector('#atlas-translation-topic')?.addEventListener('input', event => {
+    if (state.translationDraft && event.target.value.trim()) {
+      state.translationDraft.topic = event.target.value.trim();
+    }
+  });
+  state.container.querySelector('#atlas-save-translation')?.addEventListener('click', () => {
+    if (!state.translationDraft) return;
+    syncTranslationClassification();
+    const saved = addTranslationSet(state.translationDraft);
+    if (!saved) {
+      toast('英訳セットを保存できませんでした', 'error');
+      return;
+    }
+    state.translationId = saved.id;
+    state.translationDraft = null;
+    state.screen = 'library';
+    toast('英訳セットを保存しました', 'success');
+    render();
+    scrollMainToTop();
+  });
+}
+
+function renderTranslationVariant(variant, index) {
+  return `
+    <article class="atlas-translation-variant">
+      <div class="atlas-translation-variant-top">
+        <span class="atlas-translation-number">${String(index + 1).padStart(2, '0')}</span>
+        <div>
+          <strong lang="en">${esc(variant.translation)}</strong>
+          <div class="atlas-detail-badges">
+            ${variant.labelJa ? `<span>${esc(variant.labelJa)}</span>` : ''}
+            ${variant.register ? `<span>${esc(variant.register)}</span>` : ''}
+          </div>
+        </div>
+      </div>
+      ${variant.nuanceJa ? `<p>${esc(variant.nuanceJa)}</p>` : ''}
+      ${variant.backTranslationJa ? `<div class="atlas-back-translation"><span>意味を戻すと</span>${esc(variant.backTranslationJa)}</div>` : ''}
+      ${listSection('自然に使う場面', variant.useCasesJa)}
+      ${listSection('注意点', variant.cautionsJa, 'atlas-note-list--warning')}
+    </article>
+  `;
+}
+
+async function handleTranslationGenerate(event) {
+  event.preventDefault();
+  if (state.generating) return;
+  if (!isAiAvailable()) {
+    toast('AIを利用するにはログインとAI設定が必要です', 'error');
+    return;
+  }
+  syncTranslationInput();
+  if (!state.translationInput.sourceTextJa.trim()) {
+    toast('英訳したい日本語を入力してください', 'error');
+    return;
+  }
+  const taxonomy = collectAtlasTaxonomy();
+  state.generating = true;
+  state.controller = new AbortController();
+  renderTranslationGenerator();
+  try {
+    state.translationDraft = await generateTranslationVariants({
+      ...state.translationInput,
+      existingTaxonomy: taxonomy,
+    }, { signal: state.controller.signal });
+  } catch (error) {
+    if (error?.name !== 'AbortError') toast(error?.message || '英訳を作成できませんでした', 'error');
+  } finally {
+    state.generating = false;
+    state.controller = null;
+    render();
+  }
+}
+
+function syncTranslationInput() {
+  if (!state.container) return;
+  state.translationInput = {
+    sourceTextJa: state.container.querySelector('#atlas-source-ja')?.value || state.translationInput.sourceTextJa || '',
+    contextJa: state.container.querySelector('#atlas-context-ja')?.value || '',
+  };
+}
+
+function syncTranslationClassification() {
+  if (!state.translationDraft || !state.container) return;
+  const category = state.container.querySelector('#atlas-translation-category')?.value.trim();
+  const topic = state.container.querySelector('#atlas-translation-topic')?.value.trim();
+  if (category) state.translationDraft.category = category;
+  if (topic) state.translationDraft.topic = topic;
+}
+
+function collectAtlasTaxonomy() {
+  const items = [...getExpressionEntries(), ...getTranslationSets()];
+  return items.reduce((result, item) => {
+    const found = result.find(entry => entry.category === item.category);
+    if (found) {
+      if (item.topic && !found.topics.includes(item.topic)) found.topics.push(item.topic);
+    } else if (item.category) {
+      result.push({ category: item.category, topics: item.topic ? [item.topic] : [] });
+    }
+    return result;
+  }, []);
+}
+
+function renderTranslationDetail() {
+  const set = getTranslationSets().find(item => item.id === state.translationId);
+  if (!set) {
+    state.translationId = '';
+    render();
+    return;
+  }
+  state.container.innerHTML = `
+    <article class="atlas-page atlas-detail-page">
+      <nav class="atlas-breadcrumbs" aria-label="英訳ライブラリの階層">
+        <button type="button" id="atlas-translation-root">和文英訳</button>
+        <span aria-hidden="true">›</span>
+        <span>${esc(set.category)}</span>
+        <span aria-hidden="true">›</span>
+        <span>${esc(set.topic)}</span>
+      </nav>
+      <header class="atlas-detail-header atlas-translation-detail-header">
+        <div>
+          <div class="atlas-kicker">JAPANESE SOURCE</div>
+          <h1 lang="ja">${esc(set.sourceTextJa)}</h1>
+          <div class="atlas-detail-badges">
+            <span>${esc(set.category)}</span>
+            <span>${esc(set.topic)}</span>
+            <span>${(set.variants || []).length} translations</span>
+          </div>
+        </div>
+        <button class="atlas-icon-btn atlas-delete-btn" id="atlas-delete-translation" type="button" aria-label="この英訳セットを削除" title="削除">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"/></svg>
+        </button>
+      </header>
+      ${detailSection('英訳の考え方', set.summaryJa)}
+      ${set.contextJa ? detailSection('指定した場面', set.contextJa) : ''}
+      <section class="atlas-detail-section atlas-translation-detail-list">
+        <h2>英訳候補</h2>
+        <div class="atlas-translation-variant-list">
+          ${(set.variants || []).map((variant, index) => renderTranslationVariant(variant, index)).join('')}
+        </div>
+      </section>
+      <section class="atlas-detail-section">
+        <h2>自分のメモ</h2>
+        <textarea id="atlas-translation-note" class="atlas-personal-note" rows="4" placeholder="実際に使った場面や、自分なりの使い分けを記録">${esc(set.personalNote || '')}</textarea>
+        <div class="atlas-note-actions">
+          <button class="btn btn-primary btn-sm" id="atlas-save-translation-note">メモを保存</button>
+        </div>
+      </section>
+    </article>
+  `;
+  state.container.querySelector('#atlas-translation-root')?.addEventListener('click', () => {
+    persistOpenTranslationNote();
+    state.translationId = '';
+    render();
+    scrollMainToTop();
+  });
+  state.container.querySelector('#atlas-save-translation-note')?.addEventListener('click', () => {
+    persistOpenTranslationNote();
+    toast('自分のメモを保存しました', 'success');
+  });
+  state.container.querySelector('#atlas-translation-note')?.addEventListener('input', () => {
+    clearTimeout(state.noteTimer);
+    state.noteTimer = setTimeout(persistOpenTranslationNote, 500);
+  });
+  state.container.querySelector('#atlas-delete-translation')?.addEventListener('click', () => {
+    if (!window.confirm(`「${set.sourceTextJa}」の英訳セットを削除しますか？`)) return;
+    if (deleteExpressionEntry(set.id)) {
+      state.translationId = '';
+      toast('英訳セットを削除しました');
+      render();
+    }
   });
 }
 
@@ -619,6 +1030,14 @@ function persistOpenPersonalNote() {
   updateExpressionEntry(state.entryId, { personalNote: textarea.value || '' });
 }
 
+function persistOpenTranslationNote() {
+  clearTimeout(state.noteTimer);
+  state.noteTimer = null;
+  const textarea = state.container?.querySelector('#atlas-translation-note');
+  if (!textarea || !state.translationId) return;
+  updateTranslationSet(state.translationId, { personalNote: textarea.value || '' });
+}
+
 function detailSection(title, text) {
   if (!String(text || '').trim()) return '';
   return `<section class="atlas-detail-section"><h2>${esc(title)}</h2><p>${esc(text)}</p></section>`;
@@ -689,6 +1108,26 @@ function searchableText(entry) {
     ...(entry.examples || []).flatMap(example => [example.source, example.translation, example.noteJa]),
     ...(entry.comparisons || []).flatMap(comparison => [comparison.term, comparison.differenceJa]),
     entry.personalNote,
+  ].filter(Boolean).join(' '));
+}
+
+function searchableTranslationText(set) {
+  return normalize([
+    set.sourceTextJa,
+    set.contextJa,
+    set.category,
+    set.topic,
+    set.summaryJa,
+    ...(set.variants || []).flatMap(variant => [
+      variant.translation,
+      variant.labelJa,
+      variant.nuanceJa,
+      variant.register,
+      variant.backTranslationJa,
+      ...(variant.useCasesJa || []),
+      ...(variant.cautionsJa || []),
+    ]),
+    set.personalNote,
   ].filter(Boolean).join(' '));
 }
 

@@ -580,6 +580,85 @@ export async function generateNuanceEntries(
   return entries;
 }
 
+export async function generateTranslationVariants(
+  {
+    sourceTextJa = '',
+    contextJa = '',
+    existingTaxonomy = [],
+  } = {},
+  options = {}
+) {
+  const source = String(sourceTextJa || '').trim();
+  const context = String(contextJa || '').trim();
+  if (!source) throw new Error('英訳したい日本語を入力してください。');
+
+  const system = [
+    'You are a careful bilingual editor for Japanese learners of English.',
+    'Return JSON only and follow the response schema.',
+    'Create 3 to 5 natural English translations of the supplied Japanese text.',
+    'Each variant must preserve the source meaning while making a genuinely useful difference in tone, register, directness, or situation. Do not create superficial synonym swaps.',
+    'Do not invent a person, relationship, event, time, place, emotion, or intention that the user did not supply.',
+    'When the Japanese is ambiguous, keep alternatives conditional and explain the ambiguity in Japanese instead of silently choosing one interpretation.',
+    'For every variant, explain in clear Japanese what nuance changes, who it suits, when it sounds natural, and when it should be avoided.',
+    'backTranslationJa must reveal any shift in implication rather than merely repeat the original source.',
+    'Classify the entire set with one concise Japanese category and one concise Japanese topic.',
+    'Prefer an existing category/topic from existingTaxonomy when semantically equivalent; otherwise create a clear reusable label. Never use vague labels such as その他 or 一般.',
+  ].join(' ');
+  const user = JSON.stringify({
+    sourceTextJa: source,
+    contextJa: context,
+    targetLanguage: 'English',
+    existingTaxonomy: (Array.isArray(existingTaxonomy) ? existingTaxonomy : []).slice(0, 40),
+    requestedVariantCount: 4,
+  });
+
+  const raw = await callAPI(
+    QUALITY_MODEL,
+    system,
+    user,
+    4200,
+    'json',
+    'translation_variants',
+    options
+  );
+  const parsed = tryParseJSON(raw);
+  const unique = new Set();
+  const variants = (Array.isArray(parsed?.variants) ? parsed.variants : [])
+    .map(item => {
+      const translation = String(item?.translation || '').trim();
+      const key = translation.toLocaleLowerCase();
+      if (!translation || unique.has(key)) return null;
+      unique.add(key);
+      return {
+        translation,
+        labelJa: String(item?.labelJa || '').trim(),
+        nuanceJa: String(item?.nuanceJa || '').trim(),
+        register: String(item?.register || '').trim(),
+        backTranslationJa: String(item?.backTranslationJa || '').trim(),
+        useCasesJa: normalizeStringList(item?.useCasesJa, 5),
+        cautionsJa: normalizeStringList(item?.cautionsJa, 5),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 6);
+  const category = String(parsed?.category || '').trim();
+  const topic = String(parsed?.topic || '').trim();
+  if (!category || !topic || variants.length < 2) {
+    throw new Error('複数の英訳候補を作成できませんでした。日本語を少し具体的にして、もう一度試してください。');
+  }
+  return {
+    promptVersion: 1,
+    language: 'English',
+    sourceTextJa: source,
+    contextJa: context,
+    category,
+    topic,
+    summaryJa: String(parsed?.summaryJa || '').trim(),
+    variants,
+    personalNote: '',
+  };
+}
+
 function normalizeStringList(value, maxItems) {
   return (Array.isArray(value) ? value : [])
     .map(item => String(item || '').trim())

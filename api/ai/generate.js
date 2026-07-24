@@ -20,6 +20,8 @@ function pickThinkingConfig(model, actionType) {
     'monthly_report',
     'planner_action',
     'task_schedule',
+    'nuance_generate',
+    'translation_variants',
   ]);
   const isComplex = complexActions.has(String(actionType || ''));
   if (String(model).startsWith('gemini-2.5-')) {
@@ -198,6 +200,55 @@ function pickResponseSchema(actionType, body) {
         },
       },
       required: ['category', 'topic', 'entries'],
+    };
+  }
+
+  if (action === 'translation_variants') {
+    return {
+      type: 'OBJECT',
+      properties: {
+        category: {
+          type: 'STRING',
+          description: 'A concise Japanese category for the source sentence.',
+        },
+        topic: {
+          type: 'STRING',
+          description: 'A concise Japanese semantic theme for the source sentence.',
+        },
+        summaryJa: {
+          type: 'STRING',
+          description: 'A concise Japanese overview of the main translation choices.',
+        },
+        variants: {
+          type: 'ARRAY',
+          description: 'Three to five meaningfully different, natural English translations.',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              translation: { type: 'STRING' },
+              labelJa: { type: 'STRING', description: 'A short label such as 自然, 丁寧, カジュアル, or 直訳寄り.' },
+              nuanceJa: { type: 'STRING' },
+              register: { type: 'STRING' },
+              backTranslationJa: {
+                type: 'STRING',
+                description: 'A natural Japanese back-translation that makes any semantic shift visible.',
+              },
+              useCasesJa: stringArray('Concrete situations and relationships where this translation is natural.'),
+              cautionsJa: stringArray('Concrete cautions about tone, implication, grammar, or unsuitable contexts.'),
+            },
+            required: [
+              'translation',
+              'labelJa',
+              'nuanceJa',
+              'register',
+              'backTranslationJa',
+              'useCasesJa',
+              'cautionsJa',
+            ],
+          },
+        },
+      },
+      required: ['category', 'topic', 'summaryJa', 'variants'],
     };
   }
 

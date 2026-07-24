@@ -728,6 +728,7 @@ const KNOWLEDGE_KEY = 'mp_knowledge';
 const TERM_KEY      = 'mp_terms';
 const EXPRESSION_ATLAS_TAG = '__expression_atlas__';
 const EXPRESSION_ATLAS_BLOCK_TYPE = 'nuance-data';
+const TRANSLATION_SET_BLOCK_TYPE = 'translation-set-data';
 
 function getAllKnowledgeRecords() {
   const records = load(KNOWLEDGE_KEY, []);
@@ -738,7 +739,20 @@ function isExpressionAtlasRecord(record) {
   return Array.isArray(record?.tags)
     && record.tags.includes(EXPRESSION_ATLAS_TAG)
     && Array.isArray(record.blocks)
+    && record.blocks.some(block => (
+      block?.type === EXPRESSION_ATLAS_BLOCK_TYPE
+      || block?.type === TRANSLATION_SET_BLOCK_TYPE
+    ));
+}
+
+function isNuanceRecord(record) {
+  return isExpressionAtlasRecord(record)
     && record.blocks.some(block => block?.type === EXPRESSION_ATLAS_BLOCK_TYPE);
+}
+
+function isTranslationSetRecord(record) {
+  return isExpressionAtlasRecord(record)
+    && record.blocks.some(block => block?.type === TRANSLATION_SET_BLOCK_TYPE);
 }
 
 function expressionRecordToEntry(record) {
@@ -800,6 +814,55 @@ function expressionEntryToRecord(entry, existing = null) {
   };
 }
 
+function translationRecordToSet(record) {
+  const data = record?.blocks?.find(block => block?.type === TRANSLATION_SET_BLOCK_TYPE)?.data;
+  if (!data || typeof data !== 'object') return null;
+  return {
+    ...data,
+    id: record.id,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
+function translationSetKey(set) {
+  return [
+    String(set?.language || 'English').trim().toLocaleLowerCase(),
+    String(set?.sourceTextJa || '').trim().toLocaleLowerCase(),
+  ].join('|');
+}
+
+function translationSetToRecord(set, existing = null) {
+  const now = new Date().toISOString();
+  const id = set.id || existing?.id || generateId();
+  const data = {
+    promptVersion: 1,
+    language: 'English',
+    sourceTextJa: '',
+    contextJa: '',
+    category: '',
+    topic: '',
+    summaryJa: '',
+    variants: [],
+    personalNote: '',
+    ...set,
+  };
+  delete data.id;
+  delete data.createdAt;
+  delete data.updatedAt;
+  return {
+    id,
+    title: data.sourceTextJa,
+    summary: data.summaryJa || data.variants?.[0]?.translation || '',
+    blocks: [{ id: `${id}-translation`, type: TRANSLATION_SET_BLOCK_TYPE, data }],
+    tags: [EXPRESSION_ATLAS_TAG],
+    starred: false,
+    url: '',
+    createdAt: existing?.createdAt || set.createdAt || now,
+    updatedAt: now,
+  };
+}
+
 export function getKnowledgeMemos() {
   return getAllKnowledgeRecords().filter(record => !isExpressionAtlasRecord(record));
 }
@@ -821,23 +884,23 @@ export function saveKnowledgeMemos(memos) {
 
 export function getExpressionEntries() {
   return getAllKnowledgeRecords()
-    .filter(isExpressionAtlasRecord)
+    .filter(isNuanceRecord)
     .map(expressionRecordToEntry)
     .filter(Boolean)
     .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
 }
 
 export function saveExpressionEntries(entries) {
-  const regularMemos = getKnowledgeMemos();
+  const preservedRecords = getAllKnowledgeRecords().filter(record => !isNuanceRecord(record));
   const existingById = new Map(
     getAllKnowledgeRecords()
-      .filter(isExpressionAtlasRecord)
+      .filter(isNuanceRecord)
       .map(record => [record.id, record])
   );
   const records = (Array.isArray(entries) ? entries : [])
     .filter(entry => entry && String(entry.term || '').trim())
     .map(entry => expressionEntryToRecord(entry, existingById.get(entry.id)));
-  if (!save(KNOWLEDGE_KEY, [...regularMemos, ...records])) return false;
+  if (!save(KNOWLEDGE_KEY, [...preservedRecords, ...records])) return false;
   _notifySync('knowledge_memos');
   return true;
 }
@@ -935,6 +998,51 @@ export function saveTrashItems(items) {
   if (!save(TRASH_KEY, items)) return false;
   _notifySync('trash_items');
   return true;
+}
+
+export function getTranslationSets() {
+  return getAllKnowledgeRecords()
+    .filter(isTranslationSetRecord)
+    .map(translationRecordToSet)
+    .filter(Boolean)
+    .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+}
+
+export function saveTranslationSets(sets) {
+  const preservedRecords = getAllKnowledgeRecords().filter(record => !isTranslationSetRecord(record));
+  const existingById = new Map(
+    getAllKnowledgeRecords()
+      .filter(isTranslationSetRecord)
+      .map(record => [record.id, record])
+  );
+  const records = (Array.isArray(sets) ? sets : [])
+    .filter(set => set && String(set.sourceTextJa || '').trim())
+    .map(set => translationSetToRecord(set, existingById.get(set.id)));
+  if (!save(KNOWLEDGE_KEY, [...preservedRecords, ...records])) return false;
+  _notifySync('knowledge_memos');
+  return true;
+}
+
+export function addTranslationSet(set) {
+  if (!String(set?.sourceTextJa || '').trim()) return null;
+  const current = getTranslationSets();
+  const key = translationSetKey(set);
+  const existing = current.find(item => translationSetKey(item) === key);
+  const merged = existing
+    ? { ...existing, ...set, id: existing.id, personalNote: existing.personalNote || set.personalNote || '' }
+    : { ...set, id: set.id || generateId() };
+  const next = existing
+    ? current.map(item => item.id === existing.id ? merged : item)
+    : [merged, ...current];
+  return saveTranslationSets(next) ? merged : null;
+}
+
+export function updateTranslationSet(id, updates) {
+  const sets = getTranslationSets();
+  const index = sets.findIndex(set => set.id === id);
+  if (index < 0) return null;
+  sets[index] = { ...sets[index], ...updates, id };
+  return saveTranslationSets(sets) ? sets[index] : null;
 }
 
 export function addTrashItem({ entityType, payload, title }) {
