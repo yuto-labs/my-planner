@@ -66,13 +66,14 @@ export function initHome(container) {
     .sort((a, b) => weightOrder(a.weight) - weightOrder(b.weight));
 
   container.innerHTML = `
-    <div class="page home-page">
+    <div class="page home-page${homeCover?.path ? ' home-page--cover' : ''}">
       <!-- Greeting / optional compact cover -->
       <div class="home-intro${homeCover?.path ? ' home-intro--cover' : ''}">
         ${homeCover?.path ? `
           <div class="home-cover media-frame media-frame--loading">
             <img data-media-path="${esc(homeCover.path)}" data-media-view="1"
               tabindex="0" role="button" aria-label="カバー写真を拡大表示"
+              style="object-position:${clampCoverPosition(homeCover.positionX)}% ${clampCoverPosition(homeCover.positionY)}%"
               alt="${esc(homeCover.alt || 'ホームカバー')}">
           </div>
         ` : ''}
@@ -84,12 +85,15 @@ export function initHome(container) {
           </div>
         </div>
         <div class="home-cover-controls">
-          <button type="button" class="home-cover-btn" id="home-cover-photo"
-            aria-label="${homeCover?.path ? 'カバー写真を変更' : 'カバー写真を追加'}" title="カバー写真">
-            ${homeCover?.path ? '変更' : '写真'}
-          </button>
-          <button type="button" class="home-cover-btn" id="home-cover-camera" aria-label="カメラで撮影" title="撮影">撮影</button>
-          ${homeCover?.path ? '<button type="button" class="home-cover-btn home-cover-btn--remove" id="home-cover-remove" aria-label="カバー写真を削除">削除</button>' : ''}
+          ${homeCover?.path ? `
+            <button type="button" class="home-cover-btn home-cover-menu-btn" id="home-cover-menu"
+              aria-label="カバー写真の設定" title="カバー写真の設定">•••</button>
+          ` : `
+            <button type="button" class="home-cover-btn" id="home-cover-photo"
+              aria-label="カバー写真を追加" title="カバー写真">写真</button>
+            <button type="button" class="home-cover-btn" id="home-cover-camera"
+              aria-label="カメラで撮影" title="撮影">撮影</button>
+          `}
         </div>
         <input class="hidden" id="home-cover-photo-input" type="file" accept="image/*">
         <input class="hidden" id="home-cover-camera-input" type="file" accept="image/*" capture="environment">
@@ -247,6 +251,53 @@ function wireHomeCover(container, currentCover) {
   const cameraInput = container.querySelector('#home-cover-camera-input');
   container.querySelector('#home-cover-photo')?.addEventListener('click', () => photoInput?.click());
   container.querySelector('#home-cover-camera')?.addEventListener('click', () => cameraInput?.click());
+  container.querySelector('#home-cover-menu')?.addEventListener('click', () => {
+    openHomeCoverEditor(container, currentCover);
+  });
+
+  const coverImage = container.querySelector('.home-cover img');
+  if (coverImage && currentCover?.path) {
+    let pressTimer = null;
+    let startX = 0;
+    let startY = 0;
+    let suppressNextClick = false;
+    let suppressResetTimer = null;
+    const cancelPress = () => {
+      clearTimeout(pressTimer);
+      pressTimer = null;
+    };
+    coverImage.addEventListener('pointerdown', event => {
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+      startX = event.clientX;
+      startY = event.clientY;
+      cancelPress();
+      pressTimer = setTimeout(() => {
+        suppressNextClick = true;
+        clearTimeout(suppressResetTimer);
+        suppressResetTimer = setTimeout(() => { suppressNextClick = false; }, 800);
+        navigator.vibrate?.(18);
+        openHomeCoverEditor(container, currentCover);
+      }, 520);
+    });
+    coverImage.addEventListener('pointermove', event => {
+      if (Math.hypot(event.clientX - startX, event.clientY - startY) > 10) cancelPress();
+    });
+    coverImage.addEventListener('pointerup', cancelPress);
+    coverImage.addEventListener('pointercancel', cancelPress);
+    coverImage.addEventListener('pointerleave', cancelPress);
+    coverImage.addEventListener('click', event => {
+      if (!suppressNextClick) return;
+      event.preventDefault();
+      event.stopPropagation();
+      suppressNextClick = false;
+      clearTimeout(suppressResetTimer);
+    }, true);
+    coverImage.addEventListener('contextmenu', event => {
+      event.preventDefault();
+      cancelPress();
+      openHomeCoverEditor(container, currentCover);
+    });
+  }
 
   const handleFile = async event => {
     const file = event.target.files?.[0];
@@ -256,7 +307,11 @@ function wireHomeCover(container, currentCover) {
     const controls = [...container.querySelectorAll('.home-cover-btn')];
     controls.forEach(button => { button.disabled = true; });
     try {
-      uploadedMedia = await uploadPlannerImage(file, 'home');
+      uploadedMedia = {
+        ...await uploadPlannerImage(file, 'home'),
+        positionX: 50,
+        positionY: 50,
+      };
       const saved = saveAppMediaPreferences({ homeCover: uploadedMedia });
       if (!saved) throw new Error('カバー設定を保存できませんでした');
       if (currentCover?.path && currentCover.path !== uploadedMedia.path) {
@@ -273,15 +328,109 @@ function wireHomeCover(container, currentCover) {
   };
   photoInput?.addEventListener('change', handleFile);
   cameraInput?.addEventListener('change', handleFile);
+}
 
-  container.querySelector('#home-cover-remove')?.addEventListener('click', async () => {
-    if (!currentCover?.path || !window.confirm('ホームカバーを削除しますか？')) return;
-    saveAppMediaPreferences({ homeCover: null });
+function openHomeCoverEditor(container, currentCover) {
+  if (!currentCover?.path || document.querySelector('.home-cover-editor')) return;
+  let positionX = clampCoverPosition(currentCover.positionX);
+  let positionY = clampCoverPosition(currentCover.positionY);
+  let deleteArmed = false;
+
+  const body = document.createElement('div');
+  body.className = 'home-cover-editor';
+  body.innerHTML = `
+    <p class="home-cover-editor-help">写真の見せたい位置を調整できます。</p>
+    <div class="home-cover-editor-preview media-frame media-frame--loading">
+      <img data-media-path="${esc(currentCover.path)}"
+        style="object-position:${positionX}% ${positionY}%"
+        alt="${esc(currentCover.alt || 'ホームカバーのプレビュー')}">
+    </div>
+    <label class="home-cover-position-control">
+      <span><b>横位置</b><output data-cover-x-output>${Math.round(positionX)}%</output></span>
+      <input type="range" min="0" max="100" value="${positionX}" data-cover-x>
+    </label>
+    <label class="home-cover-position-control">
+      <span><b>縦位置</b><output data-cover-y-output>${Math.round(positionY)}%</output></span>
+      <input type="range" min="0" max="100" value="${positionY}" data-cover-y>
+    </label>
+    <p class="home-cover-editor-tip">写真をタップすると拡大、長押しするとこの設定を開けます。</p>
+    <div class="home-cover-editor-actions">
+      <button type="button" class="btn btn-ghost btn-sm" data-cover-change>写真を変更</button>
+      <button type="button" class="home-cover-delete-link" data-cover-delete>写真を削除</button>
+    </div>
+  `;
+
+  const footer = document.createElement('div');
+  footer.className = 'home-cover-editor-footer';
+  footer.innerHTML = `
+    <button type="button" class="btn btn-ghost btn-sm" data-cover-cancel>キャンセル</button>
+    <button type="button" class="btn btn-primary btn-sm" data-cover-save>表示位置を保存</button>
+  `;
+
+  const close = window.AppNav?.openModal({
+    title: 'カバー写真',
+    body,
+    footer,
+  });
+  const preview = body.querySelector('.home-cover-editor-preview img');
+  const xInput = body.querySelector('[data-cover-x]');
+  const yInput = body.querySelector('[data-cover-y]');
+  const updatePreview = () => {
+    positionX = Number(xInput.value);
+    positionY = Number(yInput.value);
+    preview.style.objectPosition = `${positionX}% ${positionY}%`;
+    body.querySelector('[data-cover-x-output]').textContent = `${Math.round(positionX)}%`;
+    body.querySelector('[data-cover-y-output]').textContent = `${Math.round(positionY)}%`;
+  };
+  xInput.addEventListener('input', updatePreview);
+  yInput.addEventListener('input', updatePreview);
+  hydratePlannerImages(body);
+
+  footer.querySelector('[data-cover-cancel]').addEventListener('click', () => close?.());
+  footer.querySelector('[data-cover-save]').addEventListener('click', async event => {
+    event.currentTarget.disabled = true;
+    const saved = saveAppMediaPreferences({
+      homeCover: { ...currentCover, positionX, positionY },
+    });
+    if (!saved) {
+      event.currentTarget.disabled = false;
+      toast('表示位置を保存できませんでした', 'error');
+      return;
+    }
+    await flushPendingSync();
+    close?.();
+    toast('カバーの表示位置を保存しました', 'success');
+    reinit(container);
+  });
+  body.querySelector('[data-cover-change]').addEventListener('click', () => {
+    close?.();
+    container.querySelector('#home-cover-photo-input')?.click();
+  });
+  body.querySelector('[data-cover-delete]').addEventListener('click', async event => {
+    if (!deleteArmed) {
+      deleteArmed = true;
+      event.currentTarget.textContent = 'もう一度押して削除';
+      event.currentTarget.classList.add('is-armed');
+      return;
+    }
+    event.currentTarget.disabled = true;
+    const saved = saveAppMediaPreferences({ homeCover: null });
+    if (!saved) {
+      event.currentTarget.disabled = false;
+      toast('カバー写真を削除できませんでした', 'error');
+      return;
+    }
     const sync = await flushPendingSync();
     if (sync.attempted === sync.succeeded) await deletePlannerImage(currentCover.path);
+    close?.();
     toast('ホームカバーを削除しました', 'success');
     reinit(container);
   });
+}
+
+function clampCoverPosition(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.min(100, Math.max(0, number)) : 50;
 }
 
 function renderGreetingIcon(period) {

@@ -567,7 +567,12 @@ button { cursor: pointer; font-family: inherit; }
    ============================================================ */
 
 /* Glow wrapper — CSS does the glow via #main-content[data-view] */
-.home-page { position: relative; }
+.home-page {
+  position: relative;
+}
+.home-page--cover {
+  padding-top: 0;
+}
 
 /* Greeting */
 .home-intro {
@@ -577,10 +582,10 @@ button { cursor: pointer; font-family: inherit; }
 }
 .home-greeting { margin-bottom: 8px; }
 .home-cover {
-  width: 100%;
-  height: 124px;
-  margin-bottom: 12px;
-  border-radius: var(--radius);
+  width: calc(100% + 36px);
+  height: 136px;
+  margin: 0 -18px 12px;
+  border-radius: 0;
   overflow: hidden;
   background: var(--bg-card);
 }
@@ -591,12 +596,13 @@ button { cursor: pointer; font-family: inherit; }
 }
 .home-cover-controls {
   position: absolute;
+  z-index: 4;
   top: 0;
   right: 0;
   display: flex;
   gap: 5px;
 }
-.home-intro--cover .home-cover-controls { top: 8px; right: 8px; }
+.home-intro--cover .home-cover-controls { top: 8px; right: -8px; }
 .home-cover-btn {
   min-height: 32px;
   padding: 0 9px;
@@ -611,9 +617,97 @@ button { cursor: pointer; font-family: inherit; }
   cursor: pointer;
 }
 .home-cover-btn--remove { color: var(--danger); }
+.home-cover-menu-btn {
+  width: 34px;
+  min-width: 34px;
+  padding: 0;
+  border-radius: 50%;
+  background: rgba(12, 16, 22, 0.58);
+  color: #fff;
+  letter-spacing: 1px;
+  opacity: 0.76;
+}
+.home-cover-menu-btn:hover,
+.home-cover-menu-btn:focus-visible {
+  opacity: 1;
+}
 .home-cover-btn:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
+}
+.home-cover-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+.home-cover-editor-help,
+.home-cover-editor-tip {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.home-cover-editor-preview {
+  width: 100%;
+  height: 156px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.home-cover-editor-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.home-cover-position-control {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.home-cover-position-control > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text);
+  font-size: 13px;
+}
+.home-cover-position-control output {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.home-cover-position-control input[type="range"] {
+  width: 100%;
+  min-height: 32px;
+  accent-color: var(--primary);
+}
+.home-cover-editor-actions,
+.home-cover-editor-footer {
+  display: flex;
+  align-items: center;
+}
+.home-cover-editor-actions {
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 3px;
+}
+.home-cover-editor-footer {
+  justify-content: flex-end;
+  gap: 9px;
+  width: 100%;
+}
+.home-cover-delete-link {
+  min-height: 34px;
+  padding: 4px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.home-cover-delete-link:hover,
+.home-cover-delete-link.is-armed {
+  color: var(--danger);
 }
 .home-greeting-row {
   display: flex;
@@ -7654,9 +7748,11 @@ kbd {
 }
 
 @media (max-width: 640px) {
-  .home-cover { height: 104px; }
+  .home-cover { height: 118px; }
   .home-cover-controls { gap: 4px; }
   .home-cover-btn { min-height: 30px; padding-inline: 7px; font-size: 10px; }
+  .home-cover-menu-btn { width: 32px; min-width: 32px; padding: 0; }
+  .home-cover-editor-preview { height: 138px; }
   .event-photo-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .kn-view-image img { max-height: 52vh; }
   .kn-edit-image img { max-height: 40vh; }
