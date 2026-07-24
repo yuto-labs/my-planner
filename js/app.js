@@ -43,7 +43,7 @@ const MODULES = {
   knowledge:         { title: 'Knowledge Notes', init: initKnowledge },
   'knowledge-detail':{ title: 'Note',       init: initKnowledgeDetail, back: 'knowledge', backAction: backFromKnowledgeDetail },
   'knowledge-graph': { title: 'Knowledge Graph', init: initKnowledgeGraph, back: 'knowledge' },
-  'expression-atlas':{ title: '表現ニュアンス辞典', init: initExpressionAtlas, back: 'knowledge', backAction: backFromExpressionAtlas },
+  'expression-atlas':{ title: 'NUANCE ATLAS', init: initExpressionAtlas, back: 'knowledge', backAction: backFromExpressionAtlas },
   analytics:         { title: 'Analytics',  init: initAnalytics },
   review:            { title: '復習セッション', init: initReview, back: 'home' },
   archive:           { title: 'Trash',      init: initArchive,         back: 'tasks' },
@@ -890,8 +890,8 @@ function setupFAB() {
       fab.title = 'Open AI planner';
       fab.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M7 2v2H5c-1.1 0-2 .9-2 2v13c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-2V2h-2v2H9V2H7zm12 8H5V8h14v2zm-8 3h2v2h-2v-2zm4 0h2v2h-2v-2zm-8 0h2v2H7v-2z"/></svg>';
     } else if (currentView === 'knowledge') {
-      fab.setAttribute('aria-label', '表現ニュアンス辞典を開く');
-      fab.title = '表現ニュアンス辞典';
+      fab.setAttribute('aria-label', 'NUANCE ATLASを開く');
+      fab.title = '表現帳';
       fab.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="25" height="25" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v16H6.5A2.5 2.5 0 0 0 4 21.5v-16Z"/><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H13v16h4.5a2.5 2.5 0 0 1 2.5 2.5v-16Z"/><path d="M7 7h1.5M15.5 7H17M7 10h1.5M15.5 10H17"/></svg>';
     } else {
       fab.setAttribute('aria-label', '追加');

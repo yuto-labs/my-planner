@@ -473,7 +473,13 @@ export async function formatKnowledgeMemo(rawText, existingMemosCtx = '', option
 }
 
 export async function generateNuanceEntries(
-  { language = 'English', category = '', topic = '', seedTerms = [] } = {},
+  {
+    language = 'English',
+    category = '',
+    topic = '',
+    seedTerms = [],
+    existingTaxonomy = [],
+  } = {},
   options = {}
 ) {
   const cleanCategory = String(category || '').trim();
@@ -482,13 +488,16 @@ export async function generateNuanceEntries(
     .map(term => String(term || '').trim())
     .filter(Boolean)
     .slice(0, 12);
-  if (!cleanCategory || !cleanTopic) {
-    throw new Error('カテゴリとテーマを入力してください。');
+  if (!cleanCategory && !cleanTopic && !terms.length) {
+    throw new Error('カテゴリ、テーマ、含めたい表現のどれかを入力してください。');
   }
 
   const system = [
     'You are a careful bilingual lexicographer for Japanese learners.',
     'Return JSON only and follow the response schema.',
+    'Classify the entire expression set with one concise Japanese category and one concise Japanese semantic topic.',
+    'When the user supplies a category or topic, preserve that exact value. When either is blank, infer it from the supplied expressions or semantic request.',
+    'Prefer an existing category/topic from existingTaxonomy when it is semantically equivalent; otherwise create a clear, reusable label. Never use vague labels such as その他 or 一般.',
     'Create 5 to 8 genuinely useful expressions for the requested semantic topic, unless seed terms are supplied; always include every supplied seed term.',
     'Explain all meanings, nuance, register, emotional tone, grammar cautions, and differences in clear Japanese.',
     'Examples must be natural sentences in the target language with faithful Japanese translations.',
@@ -502,6 +511,7 @@ export async function generateNuanceEntries(
     category: cleanCategory,
     topic: cleanTopic,
     seedTerms: terms,
+    existingTaxonomy: (Array.isArray(existingTaxonomy) ? existingTaxonomy : []).slice(0, 40),
     requestedEntryCount: terms.length ? Math.max(terms.length, 5) : 6,
   });
 
@@ -515,6 +525,11 @@ export async function generateNuanceEntries(
     options
   );
   const parsed = tryParseJSON(raw);
+  const resolvedCategory = cleanCategory || String(parsed?.category || '').trim();
+  const resolvedTopic = cleanTopic || String(parsed?.topic || '').trim();
+  if (!resolvedCategory || !resolvedTopic) {
+    throw new Error('AIがカテゴリまたはテーマを判定できませんでした。入力を少し具体的にしてください。');
+  }
   const sourceEntries = Array.isArray(parsed?.entries) ? parsed.entries : [];
   const unique = new Set();
   const entries = sourceEntries
@@ -524,10 +539,10 @@ export async function generateNuanceEntries(
       if (!term || unique.has(key)) return null;
       unique.add(key);
       return {
-        promptVersion: 1,
+        promptVersion: 2,
         language: String(language || 'English').trim() || 'English',
-        category: cleanCategory,
-        topic: cleanTopic,
+        category: resolvedCategory,
+        topic: resolvedTopic,
         term,
         partOfSpeech: String(entry.partOfSpeech || '').trim(),
         coreMeaningJa: String(entry.coreMeaningJa || '').trim(),

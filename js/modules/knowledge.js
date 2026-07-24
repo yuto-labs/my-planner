@@ -296,6 +296,13 @@ function renderList() {
           </svg>
           <input class="kn-search-input" id="kn-search" placeholder="検索…" value="${esc(search)}" type="search">
         </div>
+        <button class="btn btn-ghost btn-sm kn-atlas-entry-btn" id="kn-atlas-btn" type="button" title="NUANCE ATLASを開く">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+            <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v16H6.5A2.5 2.5 0 0 0 4 21.5v-16Z"/>
+            <path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H13v16h4.5a2.5 2.5 0 0 1 2.5 2.5v-16Z"/>
+          </svg>
+          表現帳
+        </button>
         <button class="btn btn-ghost btn-sm" id="kn-graph-btn" title="知識グラフ" style="flex-shrink:0;padding:6px 10px">
           🕸️
         </button>
@@ -378,6 +385,9 @@ function renderList() {
 
   // Wire graph navigation
   container.querySelector('#kn-graph-btn')?.addEventListener('click', () => nav('knowledge-graph'));
+
+  // Wire expression atlas navigation
+  container.querySelector('#kn-atlas-btn')?.addEventListener('click', () => nav('expression-atlas'));
 
   // Wire new
   container.querySelector('#kn-new-btn')?.addEventListener('click', () => startNewMemo(null));

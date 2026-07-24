@@ -7092,12 +7092,49 @@ kbd {
   margin-bottom: 14px;
 }
 .atlas-draft-heading h2 { margin: 0 0 4px; font-size: 18px; }
+.atlas-ai-classification {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 7px !important;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.atlas-ai-classification strong {
+  color: var(--primary);
+  font-weight: 800;
+}
 .atlas-draft-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.kn-atlas-entry-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.kn-atlas-entry-btn svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@media (max-width: 520px) {
+  .kn-search-wrap { flex-basis: 100%; }
+  .kn-atlas-entry-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+    min-height: 38px;
+  }
 }
 .atlas-draft-card {
   position: relative;

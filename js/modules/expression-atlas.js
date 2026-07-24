@@ -118,8 +118,8 @@ function renderLibrary() {
     <section class="atlas-page">
       <header class="atlas-hero">
         <div>
-          <div class="atlas-kicker">EXPRESSION ATLAS</div>
-          <h1>表現ニュアンス辞典</h1>
+          <div class="atlas-kicker">PERSONAL LANGUAGE LIBRARY</div>
+          <h1>NUANCE ATLAS</h1>
           <p>似た表現の意味・温度感・使う場面を、自分の言葉で育てる辞典です。</p>
         </div>
         <button class="btn btn-primary atlas-generate-open" id="atlas-generate-open">
@@ -400,12 +400,12 @@ function renderGenerator() {
     <section class="atlas-page atlas-generator-page">
       <header class="atlas-generator-header">
         <button class="atlas-back-inline" id="atlas-generator-back" type="button">
-          <span aria-hidden="true">←</span> 辞典へ戻る
+          <span aria-hidden="true">←</span> NUANCE ATLASへ戻る
         </button>
         <div>
           <div class="atlas-kicker">AI DRAFT</div>
           <h1>表現セットを作る</h1>
-          <p>カテゴリとテーマを指定し、保存前に必要な表現だけ選べます。</p>
+          <p>表現を入力すれば、AIがカテゴリとテーマも整理します。分類は保存前に修正できます。</p>
         </div>
       </header>
 
@@ -417,13 +417,13 @@ function renderGenerator() {
           </select>
         </label>
         <label>
-          <span>カテゴリ</span>
-          <input id="atlas-category" list="atlas-category-list" required placeholder="例: 感情" value="${esc(input.category)}">
+          <span>カテゴリ <small>任意・AI判定</small></span>
+          <input id="atlas-category" list="atlas-category-list" placeholder="空欄ならAIにおまかせ" value="${esc(input.category)}">
           <datalist id="atlas-category-list">${categories.map(value => `<option value="${esc(value)}">`).join('')}</datalist>
         </label>
         <label>
-          <span>テーマ</span>
-          <input id="atlas-topic" list="atlas-topic-list" required placeholder="例: 喜び" value="${esc(input.topic)}">
+          <span>テーマ <small>任意・AI判定</small></span>
+          <input id="atlas-topic" list="atlas-topic-list" placeholder="例: 喜び（空欄ならAI判定）" value="${esc(input.topic)}">
           <datalist id="atlas-topic-list">${topics.map(value => `<option value="${esc(value)}">`).join('')}</datalist>
         </label>
         <label class="atlas-generator-wide">
@@ -445,6 +445,11 @@ function renderGenerator() {
             <div>
               <h2>保存する表現を選択</h2>
               <p id="atlas-draft-selected-count">${state.selectedDrafts.size} / ${state.drafts.length} 件を選択中</p>
+              <p class="atlas-ai-classification">
+                AI分類: <strong>${esc(state.drafts[0]?.category || input.category)}</strong>
+                <span aria-hidden="true">›</span>
+                <strong>${esc(state.drafts[0]?.topic || input.topic)}</strong>
+              </p>
             </div>
             <div class="atlas-draft-actions">
               <button class="btn btn-secondary btn-sm" id="atlas-toggle-drafts" type="button">${state.selectedDrafts.size === state.drafts.length ? 'すべて解除' : 'すべて選択'}</button>
@@ -523,7 +528,19 @@ async function handleGenerate(event) {
   }
   syncGeneratorInput();
   const { language, category, topic, seedTerms } = state.generatorInput;
-  if (!category || !topic) return;
+  if (!category && !topic && !String(seedTerms || '').trim()) {
+    toast('カテゴリ、テーマ、含めたい表現のどれかを入力してください', 'error');
+    return;
+  }
+  const taxonomy = getExpressionEntries().reduce((items, entry) => {
+    const found = items.find(item => item.category === entry.category);
+    if (found) {
+      if (entry.topic && !found.topics.includes(entry.topic)) found.topics.push(entry.topic);
+    } else if (entry.category) {
+      items.push({ category: entry.category, topics: entry.topic ? [entry.topic] : [] });
+    }
+    return items;
+  }, []);
 
   state.generating = true;
   state.controller = new AbortController();
@@ -534,9 +551,12 @@ async function handleGenerate(event) {
       category,
       topic,
       seedTerms,
+      existingTaxonomy: taxonomy,
     }, { signal: state.controller.signal });
-    state.category = category;
-    state.topic = topic;
+    state.generatorInput.category = drafts[0]?.category || category;
+    state.generatorInput.topic = drafts[0]?.topic || topic;
+    state.category = state.generatorInput.category;
+    state.topic = state.generatorInput.topic;
     state.drafts = drafts;
     state.selectedDrafts = new Set(drafts.map((_, index) => index));
   } catch (error) {
@@ -550,12 +570,24 @@ async function handleGenerate(event) {
 
 function syncGeneratorInput() {
   if (!state.container) return;
-  state.generatorInput = {
+  const next = {
     language: state.container.querySelector('#atlas-language')?.value || state.generatorInput.language || 'English',
     category: state.container.querySelector('#atlas-category')?.value.trim() || '',
     topic: state.container.querySelector('#atlas-topic')?.value.trim() || '',
     seedTerms: state.container.querySelector('#atlas-seed-terms')?.value || '',
   };
+  state.generatorInput = next;
+  if (state.drafts.length && (next.category || next.topic)) {
+    state.drafts = state.drafts.map(entry => ({
+      ...entry,
+      category: next.category || entry.category,
+      topic: next.topic || entry.topic,
+    }));
+    const classification = state.container.querySelector('.atlas-ai-classification');
+    if (classification) {
+      classification.innerHTML = `AI分類: <strong>${esc(state.drafts[0].category)}</strong> <span aria-hidden="true">›</span> <strong>${esc(state.drafts[0].topic)}</strong>`;
+    }
+  }
 }
 
 function updateDraftSelectionUi() {

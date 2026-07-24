@@ -132,6 +132,14 @@ function pickResponseSchema(actionType, body) {
     return {
       type: 'OBJECT',
       properties: {
+        category: {
+          type: 'STRING',
+          description: 'A concise Japanese category for the whole expression set.',
+        },
+        topic: {
+          type: 'STRING',
+          description: 'A concise Japanese semantic theme for the whole expression set.',
+        },
         entries: {
           type: 'ARRAY',
           description: 'Five to eight distinct expressions for the requested topic.',
@@ -189,7 +197,7 @@ function pickResponseSchema(actionType, body) {
           },
         },
       },
-      required: ['entries'],
+      required: ['category', 'topic', 'entries'],
     };
   }
 
