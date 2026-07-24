@@ -775,6 +775,24 @@ function expressionEntryKey(entry) {
   ].join('|');
 }
 
+function stableAtlasJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableAtlasJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map(key => (
+      `${JSON.stringify(key)}:${stableAtlasJson(value[key])}`
+    )).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function atlasRecordIsUnchanged(existing, blockType, title, summary, data) {
+  if (!existing) return false;
+  const previousData = existing.blocks?.find(block => block?.type === blockType)?.data;
+  return existing.title === title
+    && existing.summary === summary
+    && stableAtlasJson(previousData) === stableAtlasJson(data);
+}
+
 function expressionEntryToRecord(entry, existing = null) {
   const now = new Date().toISOString();
   const id = entry.id || existing?.id || generateId();
@@ -801,16 +819,25 @@ function expressionEntryToRecord(entry, existing = null) {
   delete data.id;
   delete data.createdAt;
   delete data.updatedAt;
+  const title = data.term;
+  const summary = data.coreMeaningJa || data.nuanceJa || '';
+  const unchanged = atlasRecordIsUnchanged(
+    existing,
+    EXPRESSION_ATLAS_BLOCK_TYPE,
+    title,
+    summary,
+    data
+  );
   return {
     id,
-    title: data.term,
-    summary: data.coreMeaningJa || data.nuanceJa || '',
+    title,
+    summary,
     blocks: [{ id: `${id}-nuance`, type: EXPRESSION_ATLAS_BLOCK_TYPE, data }],
-    tags: [EXPRESSION_ATLAS_TAG],
-    starred: false,
-    url: '',
+    tags: existing?.tags || [EXPRESSION_ATLAS_TAG],
+    starred: existing?.starred || false,
+    url: existing?.url || '',
     createdAt: existing?.createdAt || entry.createdAt || now,
-    updatedAt: now,
+    updatedAt: unchanged ? (existing.updatedAt || entry.updatedAt || now) : now,
   };
 }
 
@@ -850,16 +877,25 @@ function translationSetToRecord(set, existing = null) {
   delete data.id;
   delete data.createdAt;
   delete data.updatedAt;
+  const title = data.sourceTextJa;
+  const summary = data.summaryJa || data.variants?.[0]?.translation || '';
+  const unchanged = atlasRecordIsUnchanged(
+    existing,
+    TRANSLATION_SET_BLOCK_TYPE,
+    title,
+    summary,
+    data
+  );
   return {
     id,
-    title: data.sourceTextJa,
-    summary: data.summaryJa || data.variants?.[0]?.translation || '',
+    title,
+    summary,
     blocks: [{ id: `${id}-translation`, type: TRANSLATION_SET_BLOCK_TYPE, data }],
-    tags: [EXPRESSION_ATLAS_TAG],
-    starred: false,
-    url: '',
+    tags: existing?.tags || [EXPRESSION_ATLAS_TAG],
+    starred: existing?.starred || false,
+    url: existing?.url || '',
     createdAt: existing?.createdAt || set.createdAt || now,
-    updatedAt: now,
+    updatedAt: unchanged ? (existing.updatedAt || set.updatedAt || now) : now,
   };
 }
 
