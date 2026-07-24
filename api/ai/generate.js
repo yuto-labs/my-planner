@@ -128,6 +128,71 @@ function pickResponseSchema(actionType, body) {
     return { type: 'OBJECT', properties: { tags: stringArray('Up to five short Japanese topic tags.') }, required: ['tags'] };
   }
 
+  if (action === 'nuance_generate') {
+    return {
+      type: 'OBJECT',
+      properties: {
+        entries: {
+          type: 'ARRAY',
+          description: 'Five to eight distinct expressions for the requested topic.',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              term: { type: 'STRING' },
+              partOfSpeech: { type: 'STRING' },
+              coreMeaningJa: { type: 'STRING' },
+              nuanceJa: { type: 'STRING' },
+              register: { type: 'STRING' },
+              intensity: { type: 'STRING' },
+              emotionalToneJa: { type: 'STRING' },
+              useCasesJa: stringArray('Concrete situations where this expression is natural.'),
+              collocations: stringArray('Common short collocations in the target language.'),
+              examples: {
+                type: 'ARRAY',
+                items: {
+                  type: 'OBJECT',
+                  properties: {
+                    source: { type: 'STRING' },
+                    translation: { type: 'STRING' },
+                    noteJa: { type: 'STRING' },
+                  },
+                  required: ['source', 'translation', 'noteJa'],
+                },
+              },
+              comparisons: {
+                type: 'ARRAY',
+                items: {
+                  type: 'OBJECT',
+                  properties: {
+                    term: { type: 'STRING' },
+                    differenceJa: { type: 'STRING' },
+                  },
+                  required: ['term', 'differenceJa'],
+                },
+              },
+              cautionsJa: stringArray('Usage cautions, including grammar or register differences.'),
+            },
+            required: [
+              'term',
+              'partOfSpeech',
+              'coreMeaningJa',
+              'nuanceJa',
+              'register',
+              'intensity',
+              'emotionalToneJa',
+              'useCasesJa',
+              'collocations',
+              'examples',
+              'comparisons',
+              'cautionsJa',
+            ],
+          },
+        },
+      },
+      required: ['entries'],
+    };
+  }
+
   return null;
 }
 
@@ -162,23 +227,6 @@ const USER_DAILY_LIMIT = Number(process.env.AI_USER_DAILY_LIMIT || 50);
 const APP_DAILY_LIMIT = Number(process.env.AI_APP_DAILY_LIMIT || 500);
 const APP_MINUTE_LIMIT = Number(process.env.AI_APP_MINUTE_LIMIT || 30);
 
-const ACTION_COSTS = {
-  event_parse: 1,
-  planner_action: 1,
-  task_split: 1,
-  tag_suggest: 1,
-  term_explain: 1,
-  daily_message: 1,
-  memo_summary: 3,
-  memo_format: 3,
-  analytics_summary: 3,
-  energy_patterns: 3,
-  monthly_report: 5,
-  goal_split: 5,
-  task_schedule: 5,
-  batch_tags: 5,
-};
-
 function todayJstStr() {
   const parts = new Intl.DateTimeFormat('en', {
     timeZone: 'Asia/Tokyo',
@@ -207,15 +255,6 @@ function getSupabaseConfig() {
   };
 }
 
-function pickCost(body) {
-  const action = String(body.actionType || '').trim();
-  if (ACTION_COSTS[action]) return ACTION_COSTS[action];
-  const maxTokens = Number(body.maxTokens || 300);
-  if (maxTokens > 1000) return 5;
-  if (maxTokens > 350) return 3;
-  return 1;
-}
-
 async function requireAuthenticatedUser(token) {
   const cfg = getSupabaseConfig();
   if (!token) throw Object.assign(new Error('AIを使うにはログインしてください。'), { status: 401 });
@@ -236,7 +275,6 @@ async function requireAuthenticatedUser(token) {
 
 async function claimUsage(token, body) {
   const cfg = getSupabaseConfig();
-  const cost = pickCost(body);
   const actionType = String(body.actionType || 'ai_request').slice(0, 60);
 
   const response = await fetch(`${cfg.url}/rest/v1/rpc/claim_ai_usage`, {
@@ -247,7 +285,7 @@ async function claimUsage(token, body) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      p_cost: cost,
+      p_cost: 1,
       p_action_type: actionType,
       p_user_daily_limit: USER_DAILY_LIMIT,
       p_app_daily_limit: APP_DAILY_LIMIT,

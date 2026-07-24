@@ -472,6 +472,106 @@ export async function formatKnowledgeMemo(rawText, existingMemosCtx = '', option
   };
 }
 
+export async function generateNuanceEntries(
+  { language = 'English', category = '', topic = '', seedTerms = [] } = {},
+  options = {}
+) {
+  const cleanCategory = String(category || '').trim();
+  const cleanTopic = String(topic || '').trim();
+  const terms = (Array.isArray(seedTerms) ? seedTerms : String(seedTerms || '').split(/[\n,、]/))
+    .map(term => String(term || '').trim())
+    .filter(Boolean)
+    .slice(0, 12);
+  if (!cleanCategory || !cleanTopic) {
+    throw new Error('カテゴリとテーマを入力してください。');
+  }
+
+  const system = [
+    'You are a careful bilingual lexicographer for Japanese learners.',
+    'Return JSON only and follow the response schema.',
+    'Create 5 to 8 genuinely useful expressions for the requested semantic topic, unless seed terms are supplied; always include every supplied seed term.',
+    'Explain all meanings, nuance, register, emotional tone, grammar cautions, and differences in clear Japanese.',
+    'Examples must be natural sentences in the target language with faithful Japanese translations.',
+    'Do not treat different parts of speech as interchangeable. Explicitly explain grammatical differences such as adjective versus noun.',
+    'Avoid generic statements such as "context matters". State what situation, relationship, intensity, or attitude makes each expression natural.',
+    'Keep comparisons concrete and compare only expressions in the returned set when possible.',
+    'Do not invent etymology, quotations, statistics, or citations. This is a usage guide, not a factual research report.',
+  ].join(' ');
+  const user = JSON.stringify({
+    language: String(language || 'English').trim() || 'English',
+    category: cleanCategory,
+    topic: cleanTopic,
+    seedTerms: terms,
+    requestedEntryCount: terms.length ? Math.max(terms.length, 5) : 6,
+  });
+
+  const raw = await callAPI(
+    QUALITY_MODEL,
+    system,
+    user,
+    5200,
+    'json',
+    'nuance_generate',
+    options
+  );
+  const parsed = tryParseJSON(raw);
+  const sourceEntries = Array.isArray(parsed?.entries) ? parsed.entries : [];
+  const unique = new Set();
+  const entries = sourceEntries
+    .map(entry => {
+      const term = String(entry?.term || '').trim();
+      const key = term.toLocaleLowerCase();
+      if (!term || unique.has(key)) return null;
+      unique.add(key);
+      return {
+        promptVersion: 1,
+        language: String(language || 'English').trim() || 'English',
+        category: cleanCategory,
+        topic: cleanTopic,
+        term,
+        partOfSpeech: String(entry.partOfSpeech || '').trim(),
+        coreMeaningJa: String(entry.coreMeaningJa || '').trim(),
+        nuanceJa: String(entry.nuanceJa || '').trim(),
+        register: String(entry.register || '').trim(),
+        intensity: String(entry.intensity || '').trim(),
+        emotionalToneJa: String(entry.emotionalToneJa || '').trim(),
+        useCasesJa: normalizeStringList(entry.useCasesJa, 6),
+        collocations: normalizeStringList(entry.collocations, 8),
+        examples: (Array.isArray(entry.examples) ? entry.examples : [])
+          .map(example => ({
+            source: String(example?.source || '').trim(),
+            translation: String(example?.translation || '').trim(),
+            noteJa: String(example?.noteJa || '').trim(),
+          }))
+          .filter(example => example.source && example.translation)
+          .slice(0, 4),
+        comparisons: (Array.isArray(entry.comparisons) ? entry.comparisons : [])
+          .map(comparison => ({
+            term: String(comparison?.term || '').trim(),
+            differenceJa: String(comparison?.differenceJa || '').trim(),
+          }))
+          .filter(comparison => comparison.term && comparison.differenceJa)
+          .slice(0, 6),
+        cautionsJa: normalizeStringList(entry.cautionsJa, 6),
+        personalNote: '',
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 12);
+
+  if (!entries.length) {
+    throw new Error('表現データを作成できませんでした。入力を少し具体的にして、もう一度試してください。');
+  }
+  return entries;
+}
+
+function normalizeStringList(value, maxItems) {
+  return (Array.isArray(value) ? value : [])
+    .map(item => String(item || '').trim())
+    .filter(Boolean)
+    .slice(0, maxItems);
+}
+
 export async function summarizeAndTagText(text) {
   const result = await callAPI(
     FAST_MODEL,

@@ -726,11 +726,152 @@ function toDateStr_simple(d) {
 
 const KNOWLEDGE_KEY = 'mp_knowledge';
 const TERM_KEY      = 'mp_terms';
+const EXPRESSION_ATLAS_TAG = '__expression_atlas__';
+const EXPRESSION_ATLAS_BLOCK_TYPE = 'nuance-data';
 
-export function getKnowledgeMemos()          { return load(KNOWLEDGE_KEY, []); }
+function getAllKnowledgeRecords() {
+  const records = load(KNOWLEDGE_KEY, []);
+  return Array.isArray(records) ? records : [];
+}
+
+function isExpressionAtlasRecord(record) {
+  return Array.isArray(record?.tags)
+    && record.tags.includes(EXPRESSION_ATLAS_TAG)
+    && Array.isArray(record.blocks)
+    && record.blocks.some(block => block?.type === EXPRESSION_ATLAS_BLOCK_TYPE);
+}
+
+function expressionRecordToEntry(record) {
+  const data = record?.blocks?.find(block => block?.type === EXPRESSION_ATLAS_BLOCK_TYPE)?.data;
+  if (!data || typeof data !== 'object') return null;
+  return {
+    ...data,
+    id: record.id,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
+function expressionEntryKey(entry) {
+  return [
+    String(entry?.language || '').trim().toLocaleLowerCase(),
+    String(entry?.category || '').trim().toLocaleLowerCase(),
+    String(entry?.topic || '').trim().toLocaleLowerCase(),
+    String(entry?.term || '').trim().toLocaleLowerCase(),
+  ].join('|');
+}
+
+function expressionEntryToRecord(entry, existing = null) {
+  const now = new Date().toISOString();
+  const id = entry.id || existing?.id || generateId();
+  const data = {
+    promptVersion: 1,
+    language: 'English',
+    category: '',
+    topic: '',
+    term: '',
+    partOfSpeech: '',
+    coreMeaningJa: '',
+    nuanceJa: '',
+    register: '',
+    intensity: '',
+    emotionalToneJa: '',
+    useCasesJa: [],
+    collocations: [],
+    examples: [],
+    comparisons: [],
+    cautionsJa: [],
+    personalNote: '',
+    ...entry,
+  };
+  delete data.id;
+  delete data.createdAt;
+  delete data.updatedAt;
+  return {
+    id,
+    title: data.term,
+    summary: data.coreMeaningJa || data.nuanceJa || '',
+    blocks: [{ id: `${id}-nuance`, type: EXPRESSION_ATLAS_BLOCK_TYPE, data }],
+    tags: [EXPRESSION_ATLAS_TAG],
+    starred: false,
+    url: '',
+    createdAt: existing?.createdAt || entry.createdAt || now,
+    updatedAt: now,
+  };
+}
+
+export function getKnowledgeMemos() {
+  return getAllKnowledgeRecords().filter(record => !isExpressionAtlasRecord(record));
+}
+
 export function saveKnowledgeMemos(memos) {
-  if (!save(KNOWLEDGE_KEY, memos)) return false;
+  const currentAtlas = getAllKnowledgeRecords().filter(isExpressionAtlasRecord);
+  const incoming = Array.isArray(memos) ? memos : [];
+  const incomingAtlas = incoming.filter(isExpressionAtlasRecord);
+  const atlasById = new Map(currentAtlas.map(record => [record.id, record]));
+  incomingAtlas.forEach(record => atlasById.set(record.id, record));
+  const next = [
+    ...incoming.filter(record => !isExpressionAtlasRecord(record)),
+    ...atlasById.values(),
+  ];
+  if (!save(KNOWLEDGE_KEY, next)) return false;
   _notifySync('knowledge_memos');
+  return true;
+}
+
+export function getExpressionEntries() {
+  return getAllKnowledgeRecords()
+    .filter(isExpressionAtlasRecord)
+    .map(expressionRecordToEntry)
+    .filter(Boolean)
+    .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+}
+
+export function saveExpressionEntries(entries) {
+  const regularMemos = getKnowledgeMemos();
+  const existingById = new Map(
+    getAllKnowledgeRecords()
+      .filter(isExpressionAtlasRecord)
+      .map(record => [record.id, record])
+  );
+  const records = (Array.isArray(entries) ? entries : [])
+    .filter(entry => entry && String(entry.term || '').trim())
+    .map(entry => expressionEntryToRecord(entry, existingById.get(entry.id)));
+  if (!save(KNOWLEDGE_KEY, [...regularMemos, ...records])) return false;
+  _notifySync('knowledge_memos');
+  return true;
+}
+
+export function addExpressionEntries(entries) {
+  const current = getExpressionEntries();
+  const byKey = new Map(current.map(entry => [expressionEntryKey(entry), entry]));
+  const saved = [];
+  (Array.isArray(entries) ? entries : []).forEach(entry => {
+    if (!String(entry?.term || '').trim()) return;
+    const existing = byKey.get(expressionEntryKey(entry));
+    const merged = existing
+      ? { ...existing, ...entry, id: existing.id, personalNote: existing.personalNote || entry.personalNote || '' }
+      : { ...entry, id: entry.id || generateId() };
+    byKey.set(expressionEntryKey(merged), merged);
+    saved.push(merged);
+  });
+  return saveExpressionEntries([...byKey.values()]) ? saved : [];
+}
+
+export function updateExpressionEntry(id, updates) {
+  const entries = getExpressionEntries();
+  const index = entries.findIndex(entry => entry.id === id);
+  if (index < 0) return null;
+  entries[index] = { ...entries[index], ...updates, id };
+  return saveExpressionEntries(entries) ? entries[index] : null;
+}
+
+export function deleteExpressionEntry(id) {
+  const allRecords = getAllKnowledgeRecords();
+  const target = allRecords.find(record => record.id === id && isExpressionAtlasRecord(record));
+  if (!target) return false;
+  if (!save(KNOWLEDGE_KEY, allRecords.filter(record => record.id !== id))) return false;
+  _notifyDelete({ table: 'knowledge_memos', id });
   return true;
 }
 
@@ -1082,7 +1223,7 @@ export function getReviewEntry(memoId) {
 export function exportBackup() {
   const { apiKey: _, ...safeSettings } = getSettings();
   return JSON.stringify({
-    version: 3,
+    version: 4,
     exportedAt: new Date().toISOString(),
     events: getEvents(),
     tasks: getTasks(),
@@ -1090,6 +1231,7 @@ export function exportBackup() {
     categories: getCategories(),
     settings: safeSettings,
     memos: getKnowledgeMemos(),
+    expressionEntries: getExpressionEntries(),
     trash: getTrashItems(),
     habits: getHabits(),
     habitDone: load(HABIT_DONE_KEY, {}),
@@ -1104,6 +1246,7 @@ export function importBackup(jsonStr) {
   if (data.goals)     saveGoals(data.goals);
   if (data.categories) saveCategories(data.categories);
   if (data.memos)     saveKnowledgeMemos(data.memos);
+  if (data.expressionEntries) addExpressionEntries(data.expressionEntries);
   if (data.trash)     saveTrashItems(data.trash);
   if (data.habits)    saveHabits(data.habits);
   if (data.habitDone) save(HABIT_DONE_KEY, data.habitDone);
@@ -1262,7 +1405,7 @@ export function applyUndo() {
     const memos = getKnowledgeMemos();
     if (!memos.find(m => m.id === action.memo.id)) {
       memos.push(action.memo);
-      save(KNOWLEDGE_KEY, memos);
+      saveKnowledgeMemos(memos);
     }
     removeTrashItemByEntity('memo', action.memo.id);
   }
