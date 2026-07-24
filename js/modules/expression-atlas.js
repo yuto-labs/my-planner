@@ -27,17 +27,18 @@ let state = {
   generating: false,
   controller: null,
   noteTimer: null,
+  generatorInput: {
+    language: 'English',
+    category: '',
+    topic: '',
+    seedTerms: '',
+  },
 };
 
 export function initExpressionAtlas(container) {
   state = {
     ...state,
     container,
-    screen: 'library',
-    entryId: '',
-    drafts: [],
-    selectedDrafts: new Set(),
-    generating: false,
     controller: null,
     noteTimer: null,
   };
@@ -47,8 +48,53 @@ export function initExpressionAtlas(container) {
     clearTimeout(state.noteTimer);
     state.controller?.abort();
     state.controller = null;
+    state.generating = false;
     state.container = null;
   };
+}
+
+export function hasActiveExpressionAtlasWork() {
+  return state.generating;
+}
+
+export function backFromExpressionAtlas() {
+  if (!state.container) {
+    nav('knowledge');
+    return;
+  }
+  if (state.screen === 'generate') {
+    state.controller?.abort();
+    state.screen = 'library';
+    state.generating = false;
+    render();
+    scrollMainToTop();
+    return;
+  }
+  if (state.entryId) {
+    persistOpenPersonalNote();
+    state.entryId = '';
+    render();
+    scrollMainToTop();
+    return;
+  }
+  if (state.search) {
+    state.search = '';
+    render();
+    return;
+  }
+  if (state.topic) {
+    state.topic = '';
+    render();
+    scrollMainToTop();
+    return;
+  }
+  if (state.category) {
+    state.category = '';
+    render();
+    scrollMainToTop();
+    return;
+  }
+  nav('knowledge');
 }
 
 function render() {
@@ -65,21 +111,8 @@ function render() {
 }
 
 function renderLibrary() {
-  const entries = getExpressionEntries();
-  const query = normalize(state.search);
-  const matchingEntries = query
-    ? entries.filter(entry => searchableText(entry).includes(query))
-    : entries;
-  const visibleEntries = matchingEntries.filter(entry => (
-    (!state.category || entry.category === state.category)
-    && (!state.topic || entry.topic === state.topic)
-  ));
-  const categories = unique(entries.map(entry => entry.category).filter(Boolean));
-  const topics = unique(entries
-    .filter(entry => !state.category || entry.category === state.category)
-    .map(entry => entry.topic)
-    .filter(Boolean));
-  const level = query || state.topic ? 'entries' : state.category ? 'topics' : 'categories';
+  const view = getLibraryView();
+  const { entries, visibleEntries, categories, topics, level } = view;
 
   state.container.innerHTML = `
     <section class="atlas-page">
@@ -106,7 +139,7 @@ function renderLibrary() {
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"/></svg>
           <input id="atlas-search" type="search" value="${esc(state.search)}" placeholder="単語・意味・ニュアンスを検索">
         </label>
-        <span class="atlas-count">${matchingEntries.length} expressions</span>
+        <span class="atlas-count" id="atlas-count">${visibleEntries.length || (!state.search && !state.category ? entries.length : 0)} expressions</span>
       </div>
 
       <div class="atlas-library" id="atlas-library">
@@ -115,24 +148,47 @@ function renderLibrary() {
     </section>
   `;
 
+  wireLibraryShell();
+  wireLibraryContent();
+}
+
+function getLibraryView() {
+  const entries = getExpressionEntries();
+  const query = normalize(state.search);
+  const matchingEntries = query
+    ? entries.filter(entry => searchableText(entry).includes(query))
+    : entries;
+  const visibleEntries = matchingEntries.filter(entry => (
+    query || (
+      (!state.category || entry.category === state.category)
+      && (!state.topic || entry.topic === state.topic)
+    )
+  ));
+  const categories = unique(entries.map(entry => entry.category).filter(Boolean));
+  const topics = unique(entries
+    .filter(entry => !state.category || entry.category === state.category)
+    .map(entry => entry.topic)
+    .filter(Boolean));
+  const level = query || state.topic ? 'entries' : state.category ? 'topics' : 'categories';
+  return { entries, visibleEntries, categories, topics, level };
+}
+
+function wireLibraryShell() {
   state.container.querySelector('#atlas-generate-open')?.addEventListener('click', () => {
     state.screen = 'generate';
     state.drafts = [];
     state.selectedDrafts = new Set();
-    render();
-  });
-  state.container.querySelector('[data-atlas-empty-generate]')?.addEventListener('click', () => {
-    state.screen = 'generate';
+    state.generatorInput = {
+      language: 'English',
+      category: state.category || '',
+      topic: state.topic || '',
+      seedTerms: '',
+    };
     render();
   });
   state.container.querySelector('#atlas-search')?.addEventListener('input', event => {
     state.search = event.target.value;
-    renderLibrary();
-    requestAnimationFrame(() => {
-      const input = state.container?.querySelector('#atlas-search');
-      input?.focus();
-      input?.setSelectionRange(input.value.length, input.value.length);
-    });
+    updateLibraryContent();
   });
   state.container.querySelectorAll('[data-atlas-level]').forEach(button => {
     button.addEventListener('click', () => {
@@ -145,6 +201,35 @@ function renderLibrary() {
       state.search = '';
       render();
     });
+  });
+}
+
+function updateLibraryContent() {
+  const library = state.container?.querySelector('#atlas-library');
+  const count = state.container?.querySelector('#atlas-count');
+  if (!library || !count) return;
+  const { entries, visibleEntries, categories, topics, level } = getLibraryView();
+  count.textContent = `${visibleEntries.length || (!state.search && !state.category ? entries.length : 0)} expressions`;
+  library.innerHTML = renderLibraryContent({
+    level,
+    entries: visibleEntries,
+    categories,
+    topics,
+    allEntries: entries,
+  });
+  wireLibraryContent();
+}
+
+function wireLibraryContent() {
+  state.container?.querySelector('[data-atlas-empty-generate]')?.addEventListener('click', () => {
+    state.screen = 'generate';
+    state.generatorInput = {
+      language: 'English',
+      category: state.category || '',
+      topic: state.topic || '',
+      seedTerms: '',
+    };
+    render();
   });
   state.container.querySelectorAll('[data-atlas-category]').forEach(card => {
     card.addEventListener('click', () => {
@@ -310,6 +395,7 @@ function renderGenerator() {
   const entries = getExpressionEntries();
   const categories = unique(entries.map(entry => entry.category).filter(Boolean));
   const topics = unique(entries.map(entry => entry.topic).filter(Boolean));
+  const input = state.generatorInput;
   state.container.innerHTML = `
     <section class="atlas-page atlas-generator-page">
       <header class="atlas-generator-header">
@@ -327,22 +413,22 @@ function renderGenerator() {
         <label>
           <span>言語</span>
           <select id="atlas-language">
-            <option value="English">English</option>
+            <option value="English" ${input.language === 'English' ? 'selected' : ''}>English</option>
           </select>
         </label>
         <label>
           <span>カテゴリ</span>
-          <input id="atlas-category" list="atlas-category-list" required placeholder="例: 感情" value="${esc(state.category)}">
+          <input id="atlas-category" list="atlas-category-list" required placeholder="例: 感情" value="${esc(input.category)}">
           <datalist id="atlas-category-list">${categories.map(value => `<option value="${esc(value)}">`).join('')}</datalist>
         </label>
         <label>
           <span>テーマ</span>
-          <input id="atlas-topic" list="atlas-topic-list" required placeholder="例: 喜び" value="${esc(state.topic)}">
+          <input id="atlas-topic" list="atlas-topic-list" required placeholder="例: 喜び" value="${esc(input.topic)}">
           <datalist id="atlas-topic-list">${topics.map(value => `<option value="${esc(value)}">`).join('')}</datalist>
         </label>
         <label class="atlas-generator-wide">
           <span>含めたい表現 <small>任意</small></span>
-          <textarea id="atlas-seed-terms" rows="3" placeholder="happy, pleasure, delighted&#10;空欄ならAIが代表的な表現を選びます"></textarea>
+          <textarea id="atlas-seed-terms" rows="3" placeholder="happy, pleasure, delighted&#10;空欄ならAIが代表的な表現を選びます">${esc(input.seedTerms)}</textarea>
         </label>
         <div class="atlas-generator-wide atlas-generator-actions">
           <button class="btn btn-primary" id="atlas-generate-btn" type="submit" ${state.generating ? 'disabled' : ''}>
@@ -358,9 +444,12 @@ function renderGenerator() {
           <div class="atlas-draft-heading">
             <div>
               <h2>保存する表現を選択</h2>
-              <p>${state.selectedDrafts.size} / ${state.drafts.length} 件を選択中</p>
+              <p id="atlas-draft-selected-count">${state.selectedDrafts.size} / ${state.drafts.length} 件を選択中</p>
             </div>
-            <button class="btn btn-primary" id="atlas-save-drafts" ${state.selectedDrafts.size ? '' : 'disabled'}>選択した表現を保存</button>
+            <div class="atlas-draft-actions">
+              <button class="btn btn-secondary btn-sm" id="atlas-toggle-drafts" type="button">${state.selectedDrafts.size === state.drafts.length ? 'すべて解除' : 'すべて選択'}</button>
+              <button class="btn btn-primary" id="atlas-save-drafts" ${state.selectedDrafts.size ? '' : 'disabled'}>選択した表現を保存</button>
+            </div>
           </div>
           <div class="atlas-draft-grid">
             ${state.drafts.map((entry, index) => `
@@ -382,9 +471,11 @@ function renderGenerator() {
   `;
 
   state.container.querySelector('#atlas-generator-back')?.addEventListener('click', () => {
-    if (state.generating) state.controller?.abort();
-    state.screen = 'library';
-    render();
+    backFromExpressionAtlas();
+  });
+  ['atlas-language', 'atlas-category', 'atlas-topic', 'atlas-seed-terms'].forEach(id => {
+    state.container.querySelector(`#${id}`)?.addEventListener('input', syncGeneratorInput);
+    state.container.querySelector(`#${id}`)?.addEventListener('change', syncGeneratorInput);
   });
   state.container.querySelector('#atlas-generator-form')?.addEventListener('submit', handleGenerate);
   state.container.querySelector('#atlas-cancel-generate')?.addEventListener('click', () => state.controller?.abort());
@@ -393,8 +484,20 @@ function renderGenerator() {
       const index = Number(input.dataset.draftIndex);
       if (input.checked) state.selectedDrafts.add(index);
       else state.selectedDrafts.delete(index);
-      renderGenerator();
+      input.closest('.atlas-draft-card')?.classList.toggle('is-selected', input.checked);
+      updateDraftSelectionUi();
     });
+  });
+  state.container.querySelector('#atlas-toggle-drafts')?.addEventListener('click', () => {
+    const shouldSelectAll = state.selectedDrafts.size !== state.drafts.length;
+    state.selectedDrafts = shouldSelectAll
+      ? new Set(state.drafts.map((_, index) => index))
+      : new Set();
+    state.container.querySelectorAll('[data-draft-index]').forEach(checkbox => {
+      checkbox.checked = shouldSelectAll;
+      checkbox.closest('.atlas-draft-card')?.classList.toggle('is-selected', shouldSelectAll);
+    });
+    updateDraftSelectionUi();
   });
   state.container.querySelector('#atlas-save-drafts')?.addEventListener('click', () => {
     const selected = state.drafts.filter((_, index) => state.selectedDrafts.has(index));
@@ -418,10 +521,8 @@ async function handleGenerate(event) {
     toast('AIを利用するにはログインとAI設定が必要です', 'error');
     return;
   }
-  const form = event.currentTarget;
-  const category = form.querySelector('#atlas-category')?.value.trim() || '';
-  const topic = form.querySelector('#atlas-topic')?.value.trim() || '';
-  const seedTerms = form.querySelector('#atlas-seed-terms')?.value || '';
+  syncGeneratorInput();
+  const { language, category, topic, seedTerms } = state.generatorInput;
   if (!category || !topic) return;
 
   state.generating = true;
@@ -429,7 +530,7 @@ async function handleGenerate(event) {
   renderGenerator();
   try {
     const drafts = await generateNuanceEntries({
-      language: form.querySelector('#atlas-language')?.value || 'English',
+      language,
       category,
       topic,
       seedTerms,
@@ -443,7 +544,28 @@ async function handleGenerate(event) {
   } finally {
     state.generating = false;
     state.controller = null;
-    renderGenerator();
+    render();
+  }
+}
+
+function syncGeneratorInput() {
+  if (!state.container) return;
+  state.generatorInput = {
+    language: state.container.querySelector('#atlas-language')?.value || state.generatorInput.language || 'English',
+    category: state.container.querySelector('#atlas-category')?.value.trim() || '',
+    topic: state.container.querySelector('#atlas-topic')?.value.trim() || '',
+    seedTerms: state.container.querySelector('#atlas-seed-terms')?.value || '',
+  };
+}
+
+function updateDraftSelectionUi() {
+  const count = state.container?.querySelector('#atlas-draft-selected-count');
+  const saveButton = state.container?.querySelector('#atlas-save-drafts');
+  const toggleButton = state.container?.querySelector('#atlas-toggle-drafts');
+  if (count) count.textContent = `${state.selectedDrafts.size} / ${state.drafts.length} 件を選択中`;
+  if (saveButton) saveButton.disabled = state.selectedDrafts.size === 0;
+  if (toggleButton) {
+    toggleButton.textContent = state.selectedDrafts.size === state.drafts.length ? 'すべて解除' : 'すべて選択';
   }
 }
 

@@ -20,7 +20,11 @@ import {
 } from './modules/knowledge.js';
 import { initReview } from './modules/review.js';
 import { initKnowledgeGraph } from './modules/knowledge-graph.js';
-import { initExpressionAtlas } from './modules/expression-atlas.js';
+import {
+  initExpressionAtlas,
+  backFromExpressionAtlas,
+  hasActiveExpressionAtlasWork,
+} from './modules/expression-atlas.js';
 import { initAnalytics } from './modules/analytics.js';
 import { openSearch, closeSearch } from './modules/search.js';
 import { initArchive } from './modules/archive.js';
@@ -39,7 +43,7 @@ const MODULES = {
   knowledge:         { title: 'Knowledge Notes', init: initKnowledge },
   'knowledge-detail':{ title: 'Note',       init: initKnowledgeDetail, back: 'knowledge', backAction: backFromKnowledgeDetail },
   'knowledge-graph': { title: 'Knowledge Graph', init: initKnowledgeGraph, back: 'knowledge' },
-  'expression-atlas':{ title: '表現ニュアンス辞典', init: initExpressionAtlas, back: 'knowledge' },
+  'expression-atlas':{ title: '表現ニュアンス辞典', init: initExpressionAtlas, back: 'knowledge', backAction: backFromExpressionAtlas },
   analytics:         { title: 'Analytics',  init: initAnalytics },
   review:            { title: '復習セッション', init: initReview, back: 'home' },
   archive:           { title: 'Trash',      init: initArchive,         back: 'tasks' },
@@ -98,6 +102,7 @@ function hasUnsavedDraft() {
   }
 
   if (currentView === 'knowledge-detail' && hasUnsavedKnowledgeChanges()) return true;
+  if (currentView === 'expression-atlas' && hasActiveExpressionAtlasWork()) return true;
 
   if (currentView === 'calendar' && (hasOpenModal() || hasOpenDatePicker() || hasOpenCalendarSheet())) {
     return true;
