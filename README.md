@@ -24,20 +24,27 @@ https://my-planner-five-alpha.vercel.app
 各画面をES Modulesで分割し、`app.js` がルーティングと共通UIを管理します。
 
 ```text
-index.html
-css/style.css
-js/
-  app.js
-  storage.js
-  sync.js
-  supabase.js
-  modules/
-    home.js
-    calendar.js
-    tasks.js
-    knowledge.js
-    analytics.js
+my-planner/
+├─ api/                 Vercel Functions（Gemini API中継）
+├─ assets/source/       アイコン制作時の元データ
+├─ css/                 共通スタイル
+├─ js/
+│  ├─ modules/          各画面
+│  ├─ app.js            ルーティングと共通UI
+│  ├─ storage.js        ローカルデータモデル
+│  ├─ sync.js           Supabase同期
+│  └─ supabase.js       Supabase接続
+├─ supabase/
+│  ├─ schema.sql        新規環境用の基本スキーマ
+│  └─ migrations/       既存環境へ順番に適用するSQL
+├─ index.html
+├─ manifest.json
+├─ sw.js
+└─ vercel.json
 ```
+
+ルート直下の `icon-192.png` と `icon-512.png` はPWAが直接参照する完成画像です。
+編集用の元画像は `assets/source/` に分けています。
 
 ## Tech Stack
 
@@ -54,8 +61,14 @@ js/
 - ユーザーの予定・タスク・メモはSupabaseの `user_id` ごとに分離されます。
 - Supabaseのanon keyはブラウザアプリで利用する公開キーです。
 - データ保護はSupabase Row Level Securityを前提にしています。
-- Anthropic APIキーはアプリ利用者のブラウザ内に保存され、エクスポートデータには含めません。
-- APIキー未設定またはAI OFFの場合、AI関連UIは通常操作から隠れるようにしています。
+- Gemini APIキーはVercelの環境変数で管理し、ブラウザへ直接配布しません。
+- AI処理は同一オリジンのVercel Functionを通して実行します。
+
+## Supabase Setup
+
+新規環境では `supabase/schema.sql` をSupabase SQL Editorで実行します。
+既存環境への追加変更は `supabase/migrations/` をファイル名の日付順に実行してください。
+詳しい順序と役割は [`supabase/README.md`](supabase/README.md) にまとめています。
 
 ## Local Development
 
@@ -64,6 +77,7 @@ npx serve .
 ```
 
 その後、ブラウザで表示されたローカルURLを開きます。
+Windowsではルートの `start.bat` も利用できます。
 
 ## Project Goal
 

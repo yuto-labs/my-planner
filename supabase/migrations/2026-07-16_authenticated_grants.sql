@@ -1,4 +1,4 @@
--- Apply after supabase_schema.sql.
+-- Apply after ../schema.sql.
 -- RLS policies remain the row-level security boundary.
 
 grant usage on schema public to authenticated;
