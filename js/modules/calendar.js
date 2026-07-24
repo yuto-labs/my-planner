@@ -17,6 +17,8 @@ import {
 import { openDatePicker, openTimePicker, formatPickerDate } from '../datepicker.js';
 import { getHolidayInfo } from '../holidays.js';
 import { acceptSharedInvite, collectSharedCalendarEvents, getShareGroupsForEventForm, loadSharedGroups } from '../shared-calendar.js';
+import { deletePlannerImage, hydratePlannerImages, uploadPlannerImage } from '../media.js';
+import { flushPendingSync } from '../sync.js';
 
 const toast     = (msg, type) => window.AppNav?.showToast(msg, type);
 const undoToast = (msg, cb)   => window.AppNav?.showUndoToast(msg, cb);
@@ -1193,6 +1195,12 @@ function getEventConflicts(candidate, excludeId = '') {
 
 function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = {}) {
   const isEdit = !!event;
+  let attachments = Array.isArray(event?.attachments)
+    ? event.attachments.map(item => ({ ...item }))
+    : [];
+  const pendingImageUploads = new Set();
+  const removedImagePaths = new Set();
+  let modalCommitted = false;
   const cats = getCategories();
   const shareGroups = getShareGroupsForEventForm();
   const savedShareDefaults = loadShareDefaults();
@@ -1289,6 +1297,20 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
     <div class="form-group">
       <label class="form-label">メモ</label>
       <textarea class="input event-memo-textarea" id="ev-memo" placeholder="補足メモ（任意）…" rows="4">${esc(event?.memo || '')}</textarea>
+    </div>
+
+    <div class="form-group event-photo-field">
+      <div class="event-photo-heading">
+        <label class="form-label">写真</label>
+        <div class="event-photo-actions">
+          <button type="button" class="btn btn-ghost btn-sm" id="ev-photo-btn">写真を選ぶ</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="ev-camera-btn">撮影する</button>
+        </div>
+      </div>
+      <input class="hidden" id="ev-photo-input" type="file" accept="image/*">
+      <input class="hidden" id="ev-camera-input" type="file" accept="image/*" capture="environment">
+      <div class="event-photo-list" id="ev-photo-list"></div>
+      <p class="form-help">写真は非公開で保存され、ログイン中の端末間で同期されます。</p>
     </div>
 
     <div class="form-group event-display-box">
@@ -1425,6 +1447,61 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
   const suggWrap = document.createElement('div');
   suggWrap.className = 'ev-title-sugg-wrap';
   body.querySelector('#ev-title')?.insertAdjacentElement('afterend', suggWrap);
+
+  const renderAttachments = () => {
+    const list = body.querySelector('#ev-photo-list');
+    if (!list) return;
+    list.innerHTML = attachments.map(item => `
+      <div class="event-photo-item media-frame media-frame--loading">
+        <img data-media-path="${esc(item.path || '')}" alt="${esc(item.alt || '')}">
+        <button type="button" data-remove-event-photo="${esc(item.path || '')}" aria-label="写真を削除">×</button>
+      </div>
+    `).join('');
+    list.classList.toggle('hidden', attachments.length === 0);
+    list.querySelectorAll('[data-remove-event-photo]').forEach(button => {
+      button.addEventListener('click', () => {
+        const path = button.dataset.removeEventPhoto;
+        attachments = attachments.filter(item => item.path !== path);
+        removedImagePaths.add(path);
+        renderAttachments();
+      });
+    });
+    hydratePlannerImages(list);
+  };
+  renderAttachments();
+
+  const photoInput = body.querySelector('#ev-photo-input');
+  const cameraInput = body.querySelector('#ev-camera-input');
+  body.querySelector('#ev-photo-btn')?.addEventListener('click', () => photoInput?.click());
+  body.querySelector('#ev-camera-btn')?.addEventListener('click', () => cameraInput?.click());
+  const handlePhoto = async eventInput => {
+    const file = eventInput.target.files?.[0];
+    eventInput.target.value = '';
+    if (!file) return;
+    const button = eventInput.target === cameraInput
+      ? body.querySelector('#ev-camera-btn')
+      : body.querySelector('#ev-photo-btn');
+    const previous = button?.textContent;
+    if (button) {
+      button.disabled = true;
+      button.textContent = '追加中...';
+    }
+    try {
+      const media = await uploadPlannerImage(file, 'events');
+      attachments.push(media);
+      pendingImageUploads.add(media.path);
+      renderAttachments();
+    } catch (error) {
+      toast(error?.message || '写真を追加できませんでした', 'error');
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = previous;
+      }
+    }
+  };
+  photoInput?.addEventListener('change', handlePhoto);
+  cameraInput?.addEventListener('change', handlePhoto);
 
   const _syncHidden = () => {
     const sh = body.querySelector('#ev-start');
@@ -1636,6 +1713,11 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
     title: isEdit ? '予定を編集' : '予定を追加',
     body,
     footer,
+    onClose: () => {
+      if (!modalCommitted && pendingImageUploads.size) {
+        Promise.allSettled([...pendingImageUploads].map(deletePlannerImage));
+      }
+    },
   });
 
   cancelBtn.onclick = close;
@@ -1663,7 +1745,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
     return true;
   };
 
-  const saveEvent = (allowOverlap = false) => {
+  const saveEvent = async (allowOverlap = false) => {
     const title = body.querySelector('#ev-title').value.trim();
     if (!title) {
       body.querySelector('#ev-title').focus();
@@ -1703,6 +1785,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
       isTentative,
       isRoutine,
       memo: body.querySelector('#ev-memo')?.value?.trim() || '',
+      attachments,
       shareVisibility: effectiveShareVisibility,
       sharedGroupIds: effectiveShareGroups,
       hideFromMonth: body.querySelector('#ev-hide-month')?.checked || false,
@@ -1781,6 +1864,19 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
       }
     }
 
+    modalCommitted = true;
+    pendingImageUploads.clear();
+    const activePaths = new Set(getEvents().flatMap(item => (
+      Array.isArray(item.attachments) ? item.attachments.map(media => media.path) : []
+    )));
+    const removablePaths = [...removedImagePaths]
+      .filter(path => path && !activePaths.has(path));
+    if (removablePaths.length) {
+      const sync = await flushPendingSync();
+      if (sync.attempted === sync.succeeded) {
+        await Promise.allSettled(removablePaths.map(deletePlannerImage));
+      }
+    }
     close();
     redrawAfterEventChange();
   };
@@ -2035,15 +2131,20 @@ function openModalGlobal(opts) {
 
   overlay.appendChild(modal);
 
+  let closed = false;
   const close = () => {
+    if (closed) return;
+    closed = true;
     overlay.classList.add('hidden');
     overlay.innerHTML = '';
+    document.removeEventListener('keydown', keyH);
+    opts.onClose?.();
   };
 
   modal.querySelector('.modal-close').onclick = close;
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
 
-  const keyH = e => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', keyH); } };
+  const keyH = e => { if (e.key === 'Escape') close(); };
   document.addEventListener('keydown', keyH);
 
   return close;

@@ -241,7 +241,7 @@ export async function backfillLocalEvents() {
     'id'
   );
   if (error) {
-    const rpcResult = await client.rpc('get_personal_calendar_events');
+    const rpcResult = await _getPersonalCalendarRows(client);
     if (rpcResult.error) {
       _recordSyncError('events', error, 'pull');
       return false;
@@ -477,7 +477,7 @@ async function _pullTasks(client, userId, forceReplace = false) {
 async function _pullEvents(client, userId, forceReplace = false) {
   let { data, error } = await _selectAllForUser(client, 'events', '*', userId, 'id');
   if (error) {
-    const rpcResult = await client.rpc('get_personal_calendar_events');
+    const rpcResult = await _getPersonalCalendarRows(client);
     if (rpcResult.error) throw error;
     data = rpcResult.data;
     console.warn('[Sync] events: direct read failed; used personal calendar RPC fallback.');
@@ -497,6 +497,12 @@ async function _pullEvents(client, userId, forceReplace = false) {
     retryKeys: ['events'],
   });
   return _writeCollectionAfterSync('mp_events', local, next, userId, 'events');
+}
+
+async function _getPersonalCalendarRows(client) {
+  const v2 = await client.rpc('get_personal_calendar_events_v2');
+  if (!v2.error) return v2;
+  return client.rpc('get_personal_calendar_events');
 }
 
 export function reconcileEventCollections(

@@ -12,7 +12,11 @@ import {
   updateExpressionEntry,
   updateTranslationSet,
 } from '../storage.js';
-import { generateNuanceEntries, generateTranslationVariants } from '../ai.js';
+import {
+  generateNuanceEntries,
+  generateTranslationVariants,
+  NUANCE_ATLAS_CATEGORIES,
+} from '../ai.js';
 import { esc } from '../utils.js';
 
 const nav = view => window.AppNav?.navigate(view);
@@ -804,7 +808,6 @@ function renderDetail() {
 
 function renderGenerator() {
   const entries = getExpressionEntries();
-  const categories = unique(entries.map(entry => entry.category).filter(Boolean));
   const topics = unique(entries.map(entry => entry.topic).filter(Boolean));
   const input = state.generatorInput;
   state.container.innerHTML = `
@@ -829,8 +832,13 @@ function renderGenerator() {
         </label>
         <label>
           <span>カテゴリ <small>任意・AI判定</small></span>
-          <input id="atlas-category" list="atlas-category-list" placeholder="空欄ならAIにおまかせ" value="${esc(input.category)}">
-          <datalist id="atlas-category-list">${categories.map(value => `<option value="${esc(value)}">`).join('')}</datalist>
+          <select id="atlas-category">
+            <option value="">AIにおまかせ</option>
+            ${NUANCE_ATLAS_CATEGORIES.map(value => `
+              <option value="${esc(value)}" ${input.category === value ? 'selected' : ''}>${esc(value)}</option>
+            `).join('')}
+          </select>
+          <small class="atlas-field-help">カテゴリは大分類、テーマは「喜び」「やわらかい断り」など具体的な意味です。</small>
         </label>
         <label>
           <span>テーマ <small>任意・AI判定</small></span>

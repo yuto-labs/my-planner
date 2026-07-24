@@ -472,6 +472,34 @@ export async function formatKnowledgeMemo(rawText, existingMemosCtx = '', option
   };
 }
 
+export const NUANCE_ATLAS_CATEGORIES = [
+  '感情',
+  '対人関係',
+  '意思・判断',
+  '行動・状態',
+  '程度・評価',
+  '時間・頻度',
+  '仕事・学習',
+  '日常生活',
+];
+
+function normalizeNuanceAtlasCategory(value, context = '') {
+  const category = String(value || '').trim();
+  if (NUANCE_ATLAS_CATEGORIES.includes(category)) return category;
+
+  const text = `${category} ${context}`.toLocaleLowerCase();
+  const rules = [
+    ['感情', /感情|喜|悲|怒|不安|驚|安心|emotion|happy|sad|angry|feel/],
+    ['対人関係', /対人|関係|会話|依頼|断り|謝|感謝|挨拶|polite|request|apolog|thank|friend/],
+    ['意思・判断', /意思|判断|意見|選択|決定|希望|賛成|反対|decision|opinion|prefer|intend/],
+    ['時間・頻度', /時間|頻度|期間|順序|時期|time|frequency|often|always|soon|late/],
+    ['仕事・学習', /仕事|職場|会議|学習|勉強|学校|研究|work|business|study|learn/],
+    ['程度・評価', /程度|評価|品質|比較|強さ|弱さ|良い|悪い|degree|quality|evaluate|better|worse/],
+    ['行動・状態', /行動|状態|変化|移動|開始|終了|action|state|change|move|start|finish/],
+  ];
+  return rules.find(([, pattern]) => pattern.test(text))?.[0] || '日常生活';
+}
+
 export async function generateNuanceEntries(
   {
     language = 'English',
@@ -495,7 +523,9 @@ export async function generateNuanceEntries(
   const system = [
     'You are a careful bilingual lexicographer for Japanese learners.',
     'Return JSON only and follow the response schema.',
-    'Classify the entire expression set with one concise Japanese category and one concise Japanese semantic topic.',
+    'Classify the entire expression set with one Japanese category and one concise semantic topic.',
+    `When category is blank, choose exactly one category from this fixed list: ${NUANCE_ATLAS_CATEGORIES.join(', ')}.`,
+    'Category is the broad reusable domain. Topic is the narrower communicative intent or meaning shared by the expressions.',
     'When the user supplies a category or topic, preserve that exact value. When either is blank, infer it from the supplied expressions or semantic request.',
     'Prefer an existing category/topic from existingTaxonomy when it is semantically equivalent; otherwise create a clear, reusable label. Never use vague labels such as その他 or 一般.',
     'Create 5 to 8 genuinely useful expressions for the requested semantic topic, unless seed terms are supplied; always include every supplied seed term.',
@@ -512,6 +542,7 @@ export async function generateNuanceEntries(
     topic: cleanTopic,
     seedTerms: terms,
     existingTaxonomy: (Array.isArray(existingTaxonomy) ? existingTaxonomy : []).slice(0, 40),
+    allowedCategories: NUANCE_ATLAS_CATEGORIES,
     requestedEntryCount: terms.length ? Math.max(terms.length, 5) : 6,
   });
 
@@ -525,7 +556,10 @@ export async function generateNuanceEntries(
     options
   );
   const parsed = tryParseJSON(raw);
-  const resolvedCategory = cleanCategory || String(parsed?.category || '').trim();
+  const resolvedCategory = normalizeNuanceAtlasCategory(
+    cleanCategory || parsed?.category,
+    `${cleanTopic} ${terms.join(' ')}`
+  );
   const resolvedTopic = cleanTopic || String(parsed?.topic || '').trim();
   if (!resolvedCategory || !resolvedTopic) {
     throw new Error('AIがカテゴリまたはテーマを判定できませんでした。入力を少し具体的にしてください。');
@@ -601,7 +635,9 @@ export async function generateTranslationVariants(
     'When the Japanese is ambiguous, keep alternatives conditional and explain the ambiguity in Japanese instead of silently choosing one interpretation.',
     'For every variant, explain in clear Japanese what nuance changes, who it suits, when it sounds natural, and when it should be avoided.',
     'backTranslationJa must reveal any shift in implication rather than merely repeat the original source.',
-    'Classify the entire set with one concise Japanese category and one concise Japanese topic.',
+    'Classify the entire set with one Japanese category and one concise Japanese topic.',
+    `Choose the category exactly from this fixed list: ${NUANCE_ATLAS_CATEGORIES.join(', ')}.`,
+    'Category is the broad reusable domain. Topic is the narrower communicative intent expressed by the source sentence.',
     'Prefer an existing category/topic from existingTaxonomy when semantically equivalent; otherwise create a clear reusable label. Never use vague labels such as その他 or 一般.',
   ].join(' ');
   const user = JSON.stringify({
@@ -609,6 +645,7 @@ export async function generateTranslationVariants(
     contextJa: context,
     targetLanguage: 'English',
     existingTaxonomy: (Array.isArray(existingTaxonomy) ? existingTaxonomy : []).slice(0, 40),
+    allowedCategories: NUANCE_ATLAS_CATEGORIES,
     requestedVariantCount: 4,
   });
 
@@ -641,7 +678,10 @@ export async function generateTranslationVariants(
     })
     .filter(Boolean)
     .slice(0, 6);
-  const category = String(parsed?.category || '').trim();
+  const category = normalizeNuanceAtlasCategory(
+    parsed?.category,
+    `${source} ${parsed?.topic || ''}`
+  );
   const topic = String(parsed?.topic || '').trim();
   if (!category || !topic || variants.length < 2) {
     throw new Error('複数の英訳候補を作成できませんでした。日本語を少し具体的にして、もう一度試してください。');

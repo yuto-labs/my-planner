@@ -19,6 +19,8 @@ import {
   suggestUnstudiedTopics, formatKnowledgeMemo,
 } from '../ai.js';
 import { esc, generateId, today, formatDate, fmtDays, daysSince } from '../utils.js';
+import { deletePlannerImage, hydratePlannerImages, uploadPlannerImage } from '../media.js';
+import { flushPendingSync } from '../sync.js';
 
 const nav       = (view, options = {}) => window.AppNav?.navigate(view, options);
 const toast     = (msg, type) => window.AppNav?.showToast(msg, type);
@@ -32,6 +34,8 @@ let currentMemoId  = null;  // null = new memo
 let pendingNewOpts = null;  // { tags:[], content:'' }
 let activeEditorBlockId = null;
 let editorBaseline = '';
+let pendingImageUploads = new Set();
+let pendingImageDeletes = new Set();
 
 // ---- Navigation history for swipe-back ----
 let _knHistory           = [];  // [{memoId: string|null, scrollTop: number}]
@@ -810,6 +814,8 @@ export function initKnowledgeDetail(container) {
     activeEditorBlockId = edState.blocks[0]?.id || null;
     pendingNewOpts = null;
   }
+  pendingImageUploads = new Set();
+  pendingImageDeletes = new Set();
 
   markEditorBaseline();
 
@@ -826,6 +832,7 @@ export function initKnowledgeDetail(container) {
     cleanupSwipe?.();
     if (_detailGestureCleanup === cleanupSwipe) _detailGestureCleanup = null;
     document.body.classList.remove('knowledge-editor-open');
+    cleanupPendingImageUploads();
   };
 }
 
@@ -1173,7 +1180,10 @@ function renderViewMode(container) {
   setupTermSelection(container.querySelector('#kn-view-content'), container);
 
   // Render KaTeX after DOM is ready
-  requestAnimationFrame(() => renderAllKaTeX(container));
+  requestAnimationFrame(() => {
+    renderAllKaTeX(container);
+    hydratePlannerImages(container);
+  });
 }
 
 export function renderBlocksView(blocks, indent = 0) {
@@ -1204,6 +1214,15 @@ function renderBlockView(block, numCounter = 0, indent = 0) {
 
   if (block.type === 'math') {
     return `<div class="kn-view-math" ${id} data-katex="${esc(block.text || '')}">${esc(block.text || '')}</div>`;
+  }
+
+  if (block.type === 'image') {
+    return `
+      <figure class="kn-view-image media-frame media-frame--loading" ${id}>
+        <img data-media-path="${esc(block.path || '')}" alt="${esc(block.alt || block.caption || '')}">
+        ${block.caption ? `<figcaption>${esc(block.caption)}</figcaption>` : ''}
+      </figure>
+    `;
   }
 
   const inlineText = getBlockRichHtml(block);
@@ -1410,6 +1429,12 @@ function renderEditMode(container) {
             title="マーカー色" aria-expanded="false">MARK</button>
         </div>
         <button class="kn-toolbar-btn kn-toolbar-color-btn" id="kn-color-btn" title="文字色">🎨</button>
+        <button type="button" class="kn-toolbar-btn kn-toolbar-media-btn" id="kn-photo-btn"
+          title="写真を追加" aria-label="写真を追加">PHOTO</button>
+        <button type="button" class="kn-toolbar-btn kn-toolbar-media-btn" id="kn-camera-btn"
+          title="カメラで撮影" aria-label="カメラで撮影">CAM</button>
+        <input class="hidden" id="kn-photo-input" type="file" accept="image/*">
+        <input class="hidden" id="kn-camera-input" type="file" accept="image/*" capture="environment">
         <button type="button" class="kn-toolbar-block-menu-btn" id="kn-block-actions-toggle"
           aria-label="ブロック操作" aria-expanded="false" title="ブロック操作">•••</button>
         <div class="kn-toolbar-block-actions" aria-label="ブロック操作">
@@ -1458,6 +1483,7 @@ function renderEditMode(container) {
   // Wire top actions
   container.querySelector('#kn-cancel-btn')?.addEventListener('click', () => {
     if (!confirmDiscardKnowledgeChanges()) return;
+    cleanupPendingImageUploads();
     if (id) {
       edState.isEdit = false;
       // Reload from storage to discard changes
@@ -1499,6 +1525,7 @@ function renderEditMode(container) {
 
   // Wire toolbar
   wireToolbar(container);
+  wireKnowledgeImageInputs(container);
 
   // Wire blocks
   wireBlocksEdit(container);
@@ -1557,6 +1584,21 @@ function renderBlockEdit(block, idx, listNumber = 0) {
         <hr class="kn-view-divider">
         <button type="button" class="kn-divider-delete" data-del-id="${esc(block.id)}"
           title="区切り線を削除" aria-label="区切り線を削除">×</button>
+        ${controls}
+      </div>
+      ${insertRow}`;
+  }
+
+  if (block.type === 'image') {
+    return `
+      <div class="kn-block kn-block--image${block.id === activeEditorBlockId ? ' kn-block--active' : ''}"
+        data-block-id="${esc(block.id)}" tabindex="0">
+        ${dragHandle}
+        <div class="kn-edit-image media-frame media-frame--loading">
+          <img data-media-path="${esc(block.path || '')}" alt="${esc(block.alt || block.caption || '')}">
+          <input class="kn-image-caption" data-image-caption-id="${esc(block.id)}"
+            value="${esc(block.caption || '')}" placeholder="写真の説明（任意）">
+        </div>
         ${controls}
       </div>
       ${insertRow}`;
@@ -1632,10 +1674,17 @@ function wireBlocksEdit(container) {
   }
   wrap.dataset.wired = '1';
   wireBlockDrag(container, wrap);
+  hydratePlannerImages(wrap);
 
   // Sync text on input
   wrap.addEventListener('input', e => {
     const el = e.target;
+    const imageCaptionId = el.dataset.imageCaptionId;
+    if (imageCaptionId) {
+      const block = findBlockInAllBlocks(edState.blocks, imageCaptionId);
+      if (block) block.caption = el.value;
+      return;
+    }
     const blockId = el.dataset.blockId;
     if (!blockId) return;
 
@@ -2232,6 +2281,9 @@ function deleteEditorBlock(blockId, container) {
   if (!blockId) return;
   const loc = findBlockLocation(blockId);
   if (!loc) return;
+  collectImagePaths([loc.blocks[loc.idx]]).forEach(path => {
+    pendingImageDeletes.add(path);
+  });
   if (!loc.parent && edState.blocks.length <= 1) {
     const block = loc.blocks[loc.idx];
     if (block) {
@@ -2313,6 +2365,65 @@ function insertBlockAfter(blockId, type = 'paragraph') {
   if (type === 'toggle') newBlock.children = [];
   loc.blocks.splice(loc.idx + 1, 0, newBlock);
   return newBlock;
+}
+
+function insertMediaBlock(blockId, media) {
+  const block = {
+    id: generateId(),
+    type: 'image',
+    path: media.path,
+    width: media.width,
+    height: media.height,
+    size: media.size,
+    alt: '',
+    caption: '',
+  };
+  const loc = blockId ? findBlockLocation(blockId) : null;
+  if (loc) loc.blocks.splice(loc.idx + 1, 0, block);
+  else edState.blocks.push(block);
+  return block;
+}
+
+function wireKnowledgeImageInputs(container) {
+  const photoInput = container.querySelector('#kn-photo-input');
+  const cameraInput = container.querySelector('#kn-camera-input');
+  container.querySelector('#kn-photo-btn')?.addEventListener('click', () => photoInput?.click());
+  container.querySelector('#kn-camera-btn')?.addEventListener('click', () => cameraInput?.click());
+
+  const handleFile = async event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    const button = event.target === cameraInput
+      ? container.querySelector('#kn-camera-btn')
+      : container.querySelector('#kn-photo-btn');
+    const previous = button?.textContent;
+    if (button) {
+      button.disabled = true;
+      button.textContent = '...';
+    }
+    try {
+      const media = await uploadPlannerImage(file, 'memos');
+      pendingImageUploads.add(media.path);
+      const block = insertMediaBlock(resolveActiveEditorBlockId(container), media);
+      activeEditorBlockId = block.id;
+      rerenderBlocks(container);
+      requestAnimationFrame(() => {
+        hydratePlannerImages(container);
+        container.querySelector(`[data-image-caption-id="${block.id}"]`)?.focus({ preventScroll: true });
+      });
+      toast('写真を追加しました。保存すると確定します', 'success');
+    } catch (error) {
+      toast(error?.message || '写真を追加できませんでした', 'error');
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = previous;
+      }
+    }
+  };
+  photoInput?.addEventListener('change', handleFile);
+  cameraInput?.addEventListener('change', handleFile);
 }
 
 function syncFocusedEditableBlock(container, blockId) {
@@ -2747,7 +2858,7 @@ function renderTagDisplay(container) {
 
 // ---- Save / Delete ----
 
-function saveMemo(container) {
+async function saveMemo(container) {
   // Sync title
   const titleInput = container.querySelector('#kn-edit-title');
   if (titleInput) edState.title = titleInput.value.trim();
@@ -2812,6 +2923,16 @@ function saveMemo(container) {
     edState.isEdit = false;
     renderDetail(container, { preserveScroll: true });
   }
+  pendingImageUploads.clear();
+  const livePaths = collectImagePaths(edState.blocks);
+  const deletions = [...pendingImageDeletes].filter(path => !livePaths.has(path));
+  pendingImageDeletes.clear();
+  if (deletions.length) {
+    const sync = await flushPendingSync();
+    if (sync.attempted === sync.succeeded) {
+      await Promise.allSettled(deletions.map(deletePlannerImage));
+    }
+  }
 }
 
 function confirmDelete(memoId, container) {
@@ -2863,6 +2984,20 @@ function confirmDelete(memoId, container) {
 
 function defaultBlock() {
   return { id: generateId(), type: 'paragraph', text: '', color: null };
+}
+
+function collectImagePaths(blocks, paths = new Set()) {
+  (blocks || []).forEach(block => {
+    if (block?.type === 'image' && block.path) paths.add(block.path);
+    if (block?.children?.length) collectImagePaths(block.children, paths);
+  });
+  return paths;
+}
+
+function cleanupPendingImageUploads() {
+  const paths = [...pendingImageUploads];
+  pendingImageUploads.clear();
+  if (paths.length) Promise.allSettled(paths.map(deletePlannerImage));
 }
 
 function getBlockEditorHtml(block) {

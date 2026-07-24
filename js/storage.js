@@ -128,6 +128,7 @@ export function addEvent(ev) {
   const newEv = {
     memo: '',
     tags: [],
+    attachments: [],
     ...ev,
     id: ev.id || generateId(),
     createdAt: ev.createdAt || now,
@@ -729,6 +730,8 @@ const TERM_KEY      = 'mp_terms';
 const EXPRESSION_ATLAS_TAG = '__expression_atlas__';
 const EXPRESSION_ATLAS_BLOCK_TYPE = 'nuance-data';
 const TRANSLATION_SET_BLOCK_TYPE = 'translation-set-data';
+const APP_MEDIA_PREFS_TAG = '__app_media_preferences__';
+const APP_MEDIA_PREFS_BLOCK_TYPE = 'app-media-preferences';
 
 function getAllKnowledgeRecords() {
   const records = load(KNOWLEDGE_KEY, []);
@@ -743,6 +746,17 @@ function isExpressionAtlasRecord(record) {
       block?.type === EXPRESSION_ATLAS_BLOCK_TYPE
       || block?.type === TRANSLATION_SET_BLOCK_TYPE
     ));
+}
+
+function isAppMediaPreferencesRecord(record) {
+  return Array.isArray(record?.tags)
+    && record.tags.includes(APP_MEDIA_PREFS_TAG)
+    && Array.isArray(record.blocks)
+    && record.blocks.some(block => block?.type === APP_MEDIA_PREFS_BLOCK_TYPE);
+}
+
+function isInternalKnowledgeRecord(record) {
+  return isExpressionAtlasRecord(record) || isAppMediaPreferencesRecord(record);
 }
 
 function isNuanceRecord(record) {
@@ -900,22 +914,55 @@ function translationSetToRecord(set, existing = null) {
 }
 
 export function getKnowledgeMemos() {
-  return getAllKnowledgeRecords().filter(record => !isExpressionAtlasRecord(record));
+  return getAllKnowledgeRecords().filter(record => !isInternalKnowledgeRecord(record));
 }
 
 export function saveKnowledgeMemos(memos) {
-  const currentAtlas = getAllKnowledgeRecords().filter(isExpressionAtlasRecord);
+  const currentInternal = getAllKnowledgeRecords().filter(isInternalKnowledgeRecord);
   const incoming = Array.isArray(memos) ? memos : [];
-  const incomingAtlas = incoming.filter(isExpressionAtlasRecord);
-  const atlasById = new Map(currentAtlas.map(record => [record.id, record]));
-  incomingAtlas.forEach(record => atlasById.set(record.id, record));
+  const incomingInternal = incoming.filter(isInternalKnowledgeRecord);
+  const internalById = new Map(currentInternal.map(record => [record.id, record]));
+  incomingInternal.forEach(record => internalById.set(record.id, record));
   const next = [
-    ...incoming.filter(record => !isExpressionAtlasRecord(record)),
-    ...atlasById.values(),
+    ...incoming.filter(record => !isInternalKnowledgeRecord(record)),
+    ...internalById.values(),
   ];
   if (!save(KNOWLEDGE_KEY, next)) return false;
   _notifySync('knowledge_memos');
   return true;
+}
+
+export function getAppMediaPreferences() {
+  const record = getAllKnowledgeRecords().find(isAppMediaPreferencesRecord);
+  const data = record?.blocks?.find(block => block?.type === APP_MEDIA_PREFS_BLOCK_TYPE)?.data;
+  return data && typeof data === 'object' ? { ...data } : { homeCover: null };
+}
+
+export function saveAppMediaPreferences(updates = {}) {
+  const records = getAllKnowledgeRecords();
+  const existing = records.find(isAppMediaPreferencesRecord);
+  const now = new Date().toISOString();
+  const userKey = localStorage.getItem('mp_active_user_id') || 'guest';
+  const id = existing?.id || `app-media-${userKey}`;
+  const previous = existing?.blocks?.find(block => block?.type === APP_MEDIA_PREFS_BLOCK_TYPE)?.data || {};
+  const data = { ...previous, ...updates };
+  const record = {
+    id,
+    title: 'App media preferences',
+    summary: '',
+    blocks: [{ id: `${id}-data`, type: APP_MEDIA_PREFS_BLOCK_TYPE, data }],
+    tags: [APP_MEDIA_PREFS_TAG],
+    starred: false,
+    url: '',
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+  };
+  const next = existing
+    ? records.map(item => item.id === existing.id ? record : item)
+    : [...records, record];
+  if (!save(KNOWLEDGE_KEY, next)) return false;
+  _notifySync('knowledge_memos');
+  return data;
 }
 
 export function getExpressionEntries() {
@@ -1376,6 +1423,7 @@ export function exportBackup() {
     settings: safeSettings,
     memos: getKnowledgeMemos(),
     expressionEntries: getExpressionEntries(),
+    appMediaPreferences: getAppMediaPreferences(),
     trash: getTrashItems(),
     habits: getHabits(),
     habitDone: load(HABIT_DONE_KEY, {}),
@@ -1391,6 +1439,7 @@ export function importBackup(jsonStr) {
   if (data.categories) saveCategories(data.categories);
   if (data.memos)     saveKnowledgeMemos(data.memos);
   if (data.expressionEntries) addExpressionEntries(data.expressionEntries);
+  if (data.appMediaPreferences) saveAppMediaPreferences(data.appMediaPreferences);
   if (data.trash)     saveTrashItems(data.trash);
   if (data.habits)    saveHabits(data.habits);
   if (data.habitDone) save(HABIT_DONE_KEY, data.habitDone);

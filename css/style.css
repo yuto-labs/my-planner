@@ -570,7 +570,51 @@ button { cursor: pointer; font-family: inherit; }
 .home-page { position: relative; }
 
 /* Greeting */
+.home-intro {
+  position: relative;
+  min-width: 0;
+  margin-bottom: 8px;
+}
 .home-greeting { margin-bottom: 8px; }
+.home-cover {
+  width: 100%;
+  height: 124px;
+  margin-bottom: 12px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--bg-card);
+}
+.home-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.home-cover-controls {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  gap: 5px;
+}
+.home-intro--cover .home-cover-controls { top: 8px; right: 8px; }
+.home-cover-btn {
+  min-height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-card) 88%, transparent);
+  color: var(--text);
+  backdrop-filter: blur(8px);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.home-cover-btn--remove { color: var(--danger); }
+.home-cover-btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
 .home-greeting-row {
   display: flex;
   align-items: center;
@@ -6671,9 +6715,9 @@ kbd {
    88. EXPRESSION ATLAS
    ============================================================ */
 .atlas-page {
-  width: min(100%, 980px);
+  width: min(100%, 820px);
   margin: 0 auto;
-  padding: 18px 18px calc(var(--nav-h) + 42px);
+  padding: 12px 16px calc(var(--nav-h) + 34px);
 }
 .atlas-hero,
 .atlas-detail-header,
@@ -6684,14 +6728,14 @@ kbd {
   gap: 18px;
 }
 .atlas-hero {
-  padding: 18px 0 20px;
+  padding: 10px 0 14px;
   border-bottom: 1px solid var(--border);
 }
 .atlas-hero h1,
 .atlas-detail-header h1,
 .atlas-generator-header h1 {
   margin: 4px 0 7px;
-  font-size: clamp(24px, 4vw, 36px);
+  font-size: 30px;
   letter-spacing: 0;
 }
 .atlas-hero p,
@@ -6699,6 +6743,8 @@ kbd {
 .atlas-draft-heading p {
   margin: 0;
   color: var(--text-dim);
+  max-width: 590px;
+  font-size: 13px;
   line-height: 1.6;
 }
 .atlas-kicker {
@@ -6707,12 +6753,17 @@ kbd {
   font-weight: 900;
   letter-spacing: 0.16em;
 }
-.atlas-generate-open { flex-shrink: 0; }
+.atlas-generate-open {
+  flex-shrink: 0;
+  min-height: 38px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
 .atlas-mode-switch {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  width: min(100%, 420px);
-  margin: 18px 0 12px;
+  width: min(100%, 360px);
+  margin: 12px 0 8px;
   padding: 3px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -6761,10 +6812,11 @@ kbd {
 }
 .atlas-breadcrumbs span { white-space: nowrap; font-size: 13px; }
 .atlas-toolbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
-  margin: 4px 0 18px;
+  gap: 10px;
+  margin: 2px 0 12px;
 }
 .atlas-search {
   min-width: 0;
@@ -6772,8 +6824,8 @@ kbd {
   display: flex;
   align-items: center;
   gap: 9px;
-  height: 44px;
-  padding: 0 13px;
+  min-height: 50px;
+  padding: 0 15px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-card);
@@ -6844,8 +6896,8 @@ kbd {
   position: relative;
   display: flex;
   flex-direction: column;
-  min-height: 132px;
-  padding: 22px 18px 16px;
+  min-height: 104px;
+  padding: 17px 16px 13px;
   overflow: hidden;
 }
 .atlas-folder-mark {
@@ -6858,8 +6910,8 @@ kbd {
   background: var(--primary);
 }
 .atlas-folder-title {
-  margin-top: 10px;
-  font-size: 19px;
+  margin-top: 6px;
+  font-size: 17px;
   font-weight: 850;
 }
 .atlas-folder-meta,
@@ -6871,7 +6923,7 @@ kbd {
 .atlas-folder-meta { margin-top: 6px; }
 .atlas-folder-preview {
   margin-top: auto;
-  padding-top: 14px;
+  padding-top: 9px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -6880,8 +6932,8 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  min-height: 126px;
-  padding: 16px;
+  min-height: 108px;
+  padding: 13px 14px;
 }
 .atlas-entry-topline {
   display: flex;
@@ -6893,7 +6945,7 @@ kbd {
   min-width: 0;
   overflow-wrap: anywhere;
   color: var(--primary);
-  font-size: 20px;
+  font-size: 18px;
 }
 .atlas-entry-topline span {
   flex-shrink: 0;
@@ -7082,6 +7134,12 @@ kbd {
   font-weight: 800;
 }
 .atlas-generator-form label small { color: var(--text-dim); font-weight: 500; }
+.atlas-field-help {
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.5;
+}
 .atlas-generator-form input,
 .atlas-generator-form select,
 .atlas-generator-form textarea {
@@ -7346,17 +7404,19 @@ kbd {
 }
 
 @media (max-width: 640px) {
-  .atlas-page { padding: 10px 12px calc(var(--nav-h) + 34px); }
-  .atlas-hero { display: grid; padding-top: 12px; }
-  .atlas-generate-open { width: 100%; }
-  .atlas-toolbar { align-items: stretch; flex-direction: column; gap: 7px; }
-  .atlas-count { align-self: flex-end; }
+  .atlas-page { padding: 7px 10px calc(var(--nav-h) + 28px); }
+  .atlas-hero { padding-top: 7px; gap: 10px; }
+  .atlas-hero h1 { font-size: 24px; }
+  .atlas-hero p { font-size: 12px; line-height: 1.5; }
+  .atlas-generate-open { width: auto; align-self: flex-start; }
+  .atlas-toolbar { align-items: center; gap: 7px; }
+  .atlas-count { align-self: center; font-size: 10px; }
   .atlas-folder-grid,
   .atlas-entry-grid,
   .atlas-draft-grid,
   .atlas-generator-form { grid-template-columns: minmax(0, 1fr); }
   .atlas-generator-wide { grid-column: auto; }
-  .atlas-folder-card { min-height: 116px; }
+  .atlas-folder-card { min-height: 96px; }
   .atlas-detail-header { gap: 10px; }
   .atlas-draft-heading { align-items: stretch; flex-direction: column; }
   .atlas-draft-actions {
@@ -7377,6 +7437,138 @@ kbd {
   .atlas-folder-card,
   .atlas-entry-card { transition: none; }
   .atlas-spinner { animation: none; border-right-color: currentColor; }
+}
+
+/* ============================================================
+   89. PRIVATE MEDIA
+   ============================================================ */
+.media-frame {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--bg-hover);
+}
+.media-frame--loading::before {
+  content: '画像を読み込み中';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.media-frame--error::before {
+  content: '画像を表示できません';
+}
+.media-frame img {
+  position: relative;
+  z-index: 1;
+  display: block;
+}
+
+.kn-toolbar-media-btn {
+  min-width: 44px;
+  padding-inline: 7px;
+  font-size: 9px;
+  letter-spacing: 0;
+}
+.kn-view-image {
+  width: min(100%, 760px);
+  margin: 14px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.kn-view-image img {
+  width: 100%;
+  max-height: 68vh;
+  object-fit: contain;
+}
+.kn-view-image figcaption {
+  padding: 8px 11px;
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.kn-block--image {
+  align-items: flex-start;
+  padding-block: 6px;
+}
+.kn-edit-image {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.kn-edit-image img {
+  width: 100%;
+  max-height: 48vh;
+  object-fit: contain;
+}
+.kn-image-caption {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  min-height: 40px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  outline: none;
+  background: var(--bg-card);
+  color: var(--text);
+  padding: 9px 11px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.event-photo-heading,
+.event-photo-actions {
+  display: flex;
+  align-items: center;
+}
+.event-photo-heading {
+  justify-content: space-between;
+  gap: 10px;
+}
+.event-photo-actions { gap: 6px; }
+.event-photo-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+.event-photo-item {
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.event-photo-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.event-photo-item button {
+  position: absolute;
+  z-index: 3;
+  top: 5px;
+  right: 5px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(255,255,255,0.4);
+  border-radius: 50%;
+  background: rgba(12,15,18,0.78);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .home-cover { height: 104px; }
+  .home-cover-controls { gap: 4px; }
+  .home-cover-btn { min-height: 30px; padding-inline: 7px; font-size: 10px; }
+  .event-photo-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kn-view-image img { max-height: 52vh; }
+  .kn-edit-image img { max-height: 40vh; }
 }
 
 

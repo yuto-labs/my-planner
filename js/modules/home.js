@@ -8,6 +8,7 @@ import {
   addScheduleItem, addKnowledgeMemo, getKnowledgeMemos,
   deleteEvent, deleteTask, deleteKnowledgeMemo,
   getScheduleItemsForDate, getMyScheduleColor, getReviewsForDate,
+  getAppMediaPreferences, saveAppMediaPreferences,
 } from '../storage.js';
 import { interpretPlannerInput } from '../ai.js';
 import { openScheduleItemModal } from './today.js';
@@ -15,6 +16,8 @@ import {
   esc, today, tomorrow, toDateStr, formatDate, formatTime, getGreeting, getGreetingPeriod,
   getEventsForDate, generateId,
 } from '../utils.js';
+import { deletePlannerImage, hydratePlannerImages, uploadPlannerImage } from '../media.js';
+import { flushPendingSync } from '../sync.js';
 
 const nav   = (view) => window.AppNav?.navigate(view);
 const toast = (msg, type) => window.AppNav?.showToast(msg, type);
@@ -35,6 +38,7 @@ export function initHome(container) {
     ...todayMySchedule.map(s => ({ ...s, _homeType: 'mySchedule' })),
   ].sort(compareHomeScheduleItems);
   const aiAvailable = isAiAvailable();
+  const homeCover = getAppMediaPreferences().homeCover || null;
 
   const pending = allTasks
     .filter(t => !t.completed && !t.abandoned)
@@ -58,13 +62,30 @@ export function initHome(container) {
 
   container.innerHTML = `
     <div class="page home-page">
-      <!-- Greeting -->
-      <div class="home-greeting">
-        <div class="home-date">${formatDate(new Date(), 'medium')}</div>
-        <div class="home-greeting-row">
-          <span class="home-greeting-icon" aria-hidden="true">${renderGreetingIcon(greetingPeriod)}</span>
-          <div class="home-greeting-text">${esc(greeting)}</div>
+      <!-- Greeting / optional compact cover -->
+      <div class="home-intro${homeCover?.path ? ' home-intro--cover' : ''}">
+        ${homeCover?.path ? `
+          <div class="home-cover media-frame media-frame--loading">
+            <img data-media-path="${esc(homeCover.path)}" alt="${esc(homeCover.alt || 'ホームカバー')}">
+          </div>
+        ` : ''}
+        <div class="home-greeting">
+          <div class="home-date">${formatDate(new Date(), 'medium')}</div>
+          <div class="home-greeting-row">
+            <span class="home-greeting-icon" aria-hidden="true">${renderGreetingIcon(greetingPeriod)}</span>
+            <div class="home-greeting-text">${esc(greeting)}</div>
+          </div>
         </div>
+        <div class="home-cover-controls">
+          <button type="button" class="home-cover-btn" id="home-cover-photo"
+            aria-label="${homeCover?.path ? 'カバー写真を変更' : 'カバー写真を追加'}" title="カバー写真">
+            ${homeCover?.path ? '変更' : '写真'}
+          </button>
+          <button type="button" class="home-cover-btn" id="home-cover-camera" aria-label="カメラで撮影" title="撮影">撮影</button>
+          ${homeCover?.path ? '<button type="button" class="home-cover-btn home-cover-btn--remove" id="home-cover-remove" aria-label="カバー写真を削除">削除</button>' : ''}
+        </div>
+        <input class="hidden" id="home-cover-photo-input" type="file" accept="image/*">
+        <input class="hidden" id="home-cover-camera-input" type="file" accept="image/*" capture="environment">
       </div>
 
       ${aiAvailable ? `
@@ -155,6 +176,8 @@ export function initHome(container) {
   `;
 
   // Wire events
+  hydratePlannerImages(container);
+  wireHomeCover(container, homeCover);
   container.querySelector('#goto-today')?.addEventListener('click', () => nav('today'));
   container.querySelector('#goto-review')?.addEventListener('click', () => nav('review'));
 
@@ -208,6 +231,48 @@ export function initHome(container) {
     const isOpen = tasks.style.display !== 'none';
     tasks.style.display = isOpen ? 'none' : 'flex';
     header.classList.toggle('open', !isOpen);
+  });
+}
+
+function wireHomeCover(container, currentCover) {
+  const photoInput = container.querySelector('#home-cover-photo-input');
+  const cameraInput = container.querySelector('#home-cover-camera-input');
+  container.querySelector('#home-cover-photo')?.addEventListener('click', () => photoInput?.click());
+  container.querySelector('#home-cover-camera')?.addEventListener('click', () => cameraInput?.click());
+
+  const handleFile = async event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    let uploadedMedia = null;
+    const controls = [...container.querySelectorAll('.home-cover-btn')];
+    controls.forEach(button => { button.disabled = true; });
+    try {
+      uploadedMedia = await uploadPlannerImage(file, 'home');
+      const saved = saveAppMediaPreferences({ homeCover: uploadedMedia });
+      if (!saved) throw new Error('カバー設定を保存できませんでした');
+      if (currentCover?.path && currentCover.path !== uploadedMedia.path) {
+        const sync = await flushPendingSync();
+        if (sync.attempted === sync.succeeded) await deletePlannerImage(currentCover.path);
+      }
+      toast('ホームカバーを更新しました', 'success');
+      reinit(container);
+    } catch (error) {
+      if (uploadedMedia?.path) await deletePlannerImage(uploadedMedia.path);
+      toast(error?.message || 'カバー写真を更新できませんでした', 'error');
+      controls.forEach(button => { button.disabled = false; });
+    }
+  };
+  photoInput?.addEventListener('change', handleFile);
+  cameraInput?.addEventListener('change', handleFile);
+
+  container.querySelector('#home-cover-remove')?.addEventListener('click', async () => {
+    if (!currentCover?.path || !window.confirm('ホームカバーを削除しますか？')) return;
+    saveAppMediaPreferences({ homeCover: null });
+    const sync = await flushPendingSync();
+    if (sync.attempted === sync.succeeded) await deletePlannerImage(currentCover.path);
+    toast('ホームカバーを削除しました', 'success');
+    reinit(container);
   });
 }
 

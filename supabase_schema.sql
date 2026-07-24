@@ -54,6 +54,7 @@ create table if not exists events (
   recurring_id  text,
   tags          text[]      default '{}',
   memo          text        default '',
+  attachments   jsonb       not null default '[]'::jsonb,
   share_visibility text     not null default 'private',
   shared_group_ids text[]   not null default '{}',
   created_at    timestamptz default now(),
@@ -91,6 +92,48 @@ create policy "events: update own only" on events
   for update using (user_id = auth.uid()) with check (user_id = auth.uid());
 create policy "events: delete own only" on events
   for delete using (user_id = auth.uid());
+
+-- Private user images. The first path segment is always the owner UUID.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'planner-media',
+  'planner-media',
+  false,
+  15728640,
+  array['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+)
+on conflict (id) do update set
+  public = false,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "planner media: owner read" on storage.objects;
+drop policy if exists "planner media: owner insert" on storage.objects;
+drop policy if exists "planner media: owner update" on storage.objects;
+drop policy if exists "planner media: owner delete" on storage.objects;
+create policy "planner media: owner read" on storage.objects
+  for select using (
+    bucket_id = 'planner-media'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+create policy "planner media: owner insert" on storage.objects
+  for insert with check (
+    bucket_id = 'planner-media'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+create policy "planner media: owner update" on storage.objects
+  for update using (
+    bucket_id = 'planner-media'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  ) with check (
+    bucket_id = 'planner-media'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+create policy "planner media: owner delete" on storage.objects
+  for delete using (
+    bucket_id = 'planner-media'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
 
 -- ================================================================
 -- SHARED CALENDAR GROUPS
@@ -471,6 +514,54 @@ $$;
 revoke all on function get_personal_calendar_events() from public;
 grant execute on function get_personal_calendar_events() to authenticated;
 
+create or replace function get_personal_calendar_events_v2()
+returns table (
+  id text,
+  user_id uuid,
+  title text,
+  start_at timestamptz,
+  end_at timestamptz,
+  category_id text,
+  is_tentative boolean,
+  is_routine boolean,
+  recurring_id text,
+  tags text[],
+  memo text,
+  attachments jsonb,
+  share_visibility text,
+  shared_group_ids text[],
+  created_at timestamptz,
+  updated_at timestamptz
+)
+language sql
+security definer
+set search_path = public
+as $$
+  select
+    e.id,
+    e.user_id,
+    e.title,
+    e.start_at,
+    e.end_at,
+    e.category_id,
+    e.is_tentative,
+    e.is_routine,
+    e.recurring_id,
+    e.tags,
+    e.memo,
+    e.attachments,
+    e.share_visibility,
+    e.shared_group_ids,
+    e.created_at,
+    e.updated_at
+  from events e
+  where e.user_id = auth.uid()
+  order by e.start_at asc;
+$$;
+
+revoke all on function get_personal_calendar_events_v2() from public;
+grant execute on function get_personal_calendar_events_v2() to authenticated;
+
 -- ================================================================
 -- GOALS (目標)
 -- ================================================================
@@ -558,6 +649,7 @@ create policy "schedule_items: own data only" on schedule_items
 -- Keep this block after the base tables so the schema can be run on
 -- both a fresh Supabase project and an existing one.
 -- ================================================================
+alter table events add column if not exists attachments jsonb not null default '[]'::jsonb;
 alter table tasks          add column if not exists task_type         text    default 'normal';
 alter table tasks          add column if not exists estimated_minutes integer;
 alter table tasks          add column if not exists highlight_color   text;
