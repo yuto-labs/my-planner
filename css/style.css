@@ -14,6 +14,10 @@
   --radius-xs:  6px;
   --transition: 0.18s ease;
   --max-w:      680px;
+  --ui-font:    "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont,
+                "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", Meiryo, sans-serif;
+  --display-font: "Segoe UI Variable Display", "Segoe UI", -apple-system, BlinkMacSystemFont,
+                  "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", Meiryo, sans-serif;
 
   /* Fixed semantic (same in both modes) */
   --danger:     #F0607A;
@@ -128,7 +132,7 @@
 
 html, body {
   height: 100%;
-  font-family: 'Inter', 'Zen Kaku Gothic New', sans-serif;
+  font-family: var(--ui-font);
   font-weight: 400;
   background: var(--bg);
   color: var(--text);
@@ -137,10 +141,6 @@ html, body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overscroll-behavior: none;
-}
-
-:root {
-  --display-font: Georgia, 'Times New Roman', Times, serif;
 }
 
 ::-webkit-scrollbar { width: 3px; height: 3px; }
@@ -184,7 +184,7 @@ button { cursor: pointer; font-family: inherit; }
 #page-title {
   font-family: var(--display-font);
   font-size: 19px;
-  font-weight: 500;
+  font-weight: 650;
   letter-spacing: 0;
   flex: 1;
 }
@@ -300,7 +300,7 @@ button { cursor: pointer; font-family: inherit; }
 .card-title {
   font-family: var(--display-font);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 650;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--text-dim);
@@ -739,7 +739,7 @@ button { cursor: pointer; font-family: inherit; }
 .home-greeting-text {
   font-family: var(--display-font);
   font-size: 28px;
-  font-weight: 500;
+  font-weight: 700;
   letter-spacing: 0;
   line-height: 1.2;
   background: linear-gradient(135deg, var(--text) 25%, var(--primary) 100%);
@@ -890,7 +890,7 @@ button { cursor: pointer; font-family: inherit; }
 .home-tile-label {
   font-family: var(--display-font);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 650;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -1551,7 +1551,7 @@ button { cursor: pointer; font-family: inherit; }
 .settings-heading {
   font-family: var(--display-font);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 650;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.07em;
@@ -3514,7 +3514,7 @@ button { cursor: pointer; font-family: inherit; }
 .analytics-section-title {
   font-family: var(--display-font);
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 650;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: .06em;
@@ -3540,7 +3540,7 @@ button { cursor: pointer; font-family: inherit; }
 .analytics-stat-label {
   font-family: var(--display-font);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text);
   text-transform: uppercase;
   letter-spacing: .05em;
@@ -5668,6 +5668,7 @@ kbd {
 }
 .nav-btn span {
   font-family: var(--display-font);
+  font-weight: 600;
   transition: color var(--transition);
 }
 
