@@ -16,8 +16,8 @@
   --max-w:      680px;
   --ui-font:    "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont,
                 "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", Meiryo, sans-serif;
-  --display-font: "Segoe UI Variable Display", "Segoe UI", -apple-system, BlinkMacSystemFont,
-                  "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", Meiryo, sans-serif;
+  --display-font: "Avenir Next", Avenir, "Helvetica Neue", "Segoe UI Variable Display",
+                  "Segoe UI", "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", Meiryo, sans-serif;
 
   /* Fixed semantic (same in both modes) */
   --danger:     #F0607A;
@@ -150,6 +150,19 @@ html, body {
 a { color: var(--primary); text-decoration: none; }
 button { cursor: pointer; font-family: inherit; }
 
+/* Keep iOS from auto-zooming the whole page when a compact editor gains focus. */
+@media (max-width: 640px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  textarea,
+  select,
+  [contenteditable="true"] {
+    font-size: 16px !important;
+  }
+
+  .kn-block--h2 .kn-block-text { font-size: 17px !important; }
+  .kn-block--h3 .kn-block-text { font-size: 16px !important; }
+}
+
 /* ============================================================
    3. APP SHELL LAYOUT
    ============================================================ */
@@ -183,9 +196,9 @@ button { cursor: pointer; font-family: inherit; }
 }
 #page-title {
   font-family: var(--display-font);
-  font-size: 19px;
-  font-weight: 650;
-  letter-spacing: 0;
+  font-size: 17px;
+  font-weight: 400;
+  letter-spacing: 0.01em;
   flex: 1;
 }
 .header-actions { display: flex; gap: 8px; align-items: center; }
@@ -300,7 +313,7 @@ button { cursor: pointer; font-family: inherit; }
 .card-title {
   font-family: var(--display-font);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--text-dim);
@@ -730,22 +743,19 @@ button { cursor: pointer; font-family: inherit; }
 }
 .home-date {
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-dim);
-  letter-spacing: 0.07em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   margin-bottom: 8px;
 }
 .home-greeting-text {
   font-family: var(--display-font);
-  font-size: 28px;
-  font-weight: 700;
-  letter-spacing: 0;
-  line-height: 1.2;
-  background: linear-gradient(135deg, var(--text) 25%, var(--primary) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  font-size: 26px;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  line-height: 1.25;
+  color: var(--text);
 }
 
 /* Quick NL add */
@@ -890,7 +900,7 @@ button { cursor: pointer; font-family: inherit; }
 .home-tile-label {
   font-family: var(--display-font);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -1551,7 +1561,7 @@ button { cursor: pointer; font-family: inherit; }
 .settings-heading {
   font-family: var(--display-font);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.07em;
@@ -3514,7 +3524,7 @@ button { cursor: pointer; font-family: inherit; }
 .analytics-section-title {
   font-family: var(--display-font);
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: .06em;
@@ -5668,7 +5678,7 @@ kbd {
 }
 .nav-btn span {
   font-family: var(--display-font);
-  font-weight: 600;
+  font-weight: 500;
   transition: color var(--transition);
 }
 
