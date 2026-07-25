@@ -151,11 +151,7 @@ function renderLibrary() {
   state.container.innerHTML = `
     <section class="atlas-page">
       <header class="atlas-hero">
-        <div>
-          <div class="atlas-kicker">PERSONAL LANGUAGE LIBRARY</div>
-          <h1>NUANCE ATLAS</h1>
-          <p>似た表現の意味・温度感・使う場面を、自分の言葉で育てる辞典です。</p>
-        </div>
+        <p>似た英語表現の意味・温度感・使い分けを保存します。</p>
         <button class="btn btn-primary atlas-generate-open" id="atlas-generate-open">
           <span aria-hidden="true">✦</span> AIで表現を追加
         </button>
@@ -278,11 +274,7 @@ function renderTranslationLibrary() {
   state.container.innerHTML = `
     <section class="atlas-page">
       <header class="atlas-hero">
-        <div>
-          <div class="atlas-kicker">PERSONAL LANGUAGE LIBRARY</div>
-          <h1>NUANCE ATLAS</h1>
-          <p>日本語をタイトルにして、複数の自然な英訳とニュアンスを比較できます。</p>
-        </div>
+        <p>日本語ごとに、自然な英訳とニュアンスを保存します。</p>
         <button class="btn btn-primary atlas-generate-open" id="atlas-translate-open">
           <span aria-hidden="true">✦</span> 日本語を英訳
         </button>
@@ -386,7 +378,7 @@ function renderTranslationGenerator() {
         <div>
           <div class="atlas-kicker">JAPANESE TO ENGLISH</div>
           <h1>和文から英訳を作る</h1>
-          <p>日本語の意味を保ちながら、場面や温度感の異なる自然な英訳を比較します。</p>
+          <p>日本語の意味を保ちながら、語り・洗練・明瞭さの異なる3つの英訳を比較します。</p>
         </div>
       </header>
 
@@ -401,7 +393,7 @@ function renderTranslationGenerator() {
         </label>
         <div class="atlas-generator-actions">
           <button class="btn btn-primary" type="submit" ${state.generating ? 'disabled' : ''}>
-            ${state.generating ? '<span class="atlas-spinner" aria-hidden="true"></span> 英訳を作成中…' : '複数の英訳を作る'}
+            ${state.generating ? '<span class="atlas-spinner" aria-hidden="true"></span> 英訳を作成中…' : '3つの英訳を作る'}
           </button>
           ${state.generating ? '<button class="btn btn-secondary" id="atlas-cancel-translation" type="button">キャンセル</button>' : ''}
           <p>入力にない人物・状況は補いません。曖昧な部分は、候補ごとの差として説明します。</p>
@@ -413,7 +405,7 @@ function renderTranslationGenerator() {
           <div class="atlas-draft-heading">
             <div>
               <h2>${esc(draft.sourceTextJa)}</h2>
-              <p>${esc(draft.summaryJa)}</p>
+              ${Number(draft.promptVersion || 1) < 2 && draft.summaryJa ? `<p>${esc(draft.summaryJa)}</p>` : ''}
             </div>
             <button class="btn btn-primary" id="atlas-save-translation" type="button">この英訳セットを保存</button>
           </div>
@@ -427,6 +419,7 @@ function renderTranslationGenerator() {
               <input id="atlas-translation-topic" value="${esc(draft.topic)}">
             </label>
           </div>
+          <h2 class="atlas-translation-result-title">ニュアンス別英訳3パターン＆深掘り解説</h2>
           <div class="atlas-translation-variant-list">
             ${(draft.variants || []).map((variant, index) => renderTranslationVariant(variant, index)).join('')}
           </div>
@@ -469,20 +462,28 @@ function renderTranslationGenerator() {
 }
 
 function renderTranslationVariant(variant, index) {
+  const patternTitle = variant.labelJa || [
+    'エモーショナル・ナラティブ',
+    'リテラリー・洗練',
+    'ロジカル・シンプル',
+  ][index] || `パターン ${index + 1}`;
   return `
     <article class="atlas-translation-variant">
+      <h3 class="atlas-translation-pattern-title">Pattern ${index + 1}：${esc(patternTitle)}</h3>
       <div class="atlas-translation-variant-top">
         <span class="atlas-translation-number">${String(index + 1).padStart(2, '0')}</span>
         <div>
+          <span class="atlas-translation-field-label">英文</span>
           <strong lang="en">${esc(variant.translation)}</strong>
           <div class="atlas-detail-badges">
-            ${variant.labelJa ? `<span>${esc(variant.labelJa)}</span>` : ''}
             ${variant.register ? `<span>${esc(variant.register)}</span>` : ''}
           </div>
         </div>
       </div>
-      ${variant.nuanceJa ? `<p>${esc(variant.nuanceJa)}</p>` : ''}
-      ${variant.backTranslationJa ? `<div class="atlas-back-translation"><span>意味を戻すと</span>${esc(variant.backTranslationJa)}</div>` : ''}
+      ${variant.backTranslationJa ? `<div class="atlas-back-translation"><span>和訳（逆翻訳）</span>${esc(variant.backTranslationJa)}</div>` : ''}
+      ${detailSection('この文自体の全体ニュアンス', variant.overallNuanceJa || variant.nuanceJa)}
+      ${translationVocabularySection(variant.vocabularyNotes)}
+      ${translationComparisonSection(variant.comparisons)}
       ${listSection('自然に使う場面', variant.useCasesJa)}
       ${listSection('注意点', variant.cautionsJa, 'atlas-note-list--warning')}
     </article>
@@ -578,10 +579,10 @@ function renderTranslationDetail() {
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"/></svg>
         </button>
       </header>
-      ${detailSection('英訳の考え方', set.summaryJa)}
+      ${Number(set.promptVersion || 1) < 2 ? detailSection('英訳の考え方', set.summaryJa) : ''}
       ${set.contextJa ? detailSection('指定した場面', set.contextJa) : ''}
       <section class="atlas-detail-section atlas-translation-detail-list">
-        <h2>英訳候補</h2>
+        <h2>ニュアンス別英訳3パターン＆深掘り解説</h2>
         <div class="atlas-translation-variant-list">
           ${(set.variants || []).map((variant, index) => renderTranslationVariant(variant, index)).join('')}
         </div>
@@ -715,10 +716,15 @@ function renderLibraryContent({ level, entries, categories, topics, allEntries }
       </div>
     `;
   }
-  return `<div class="atlas-entry-grid">${entries.map(renderEntryCard).join('')}</div>`;
+  return `
+    ${state.topic && !state.search ? renderNuanceMap(entries) : ''}
+    <div class="atlas-entry-grid">${entries.map(renderEntryCard).join('')}</div>
+  `;
 }
 
 function renderEntryCard(entry) {
+  const intensityLevel = getIntensityLevel(entry);
+  const intensityLabel = intensityLevel ? intensityStars(intensityLevel) : String(entry.intensity || '').trim();
   return `
     <button class="atlas-entry-card" type="button" data-atlas-entry="${esc(entry.id)}">
       <span class="atlas-entry-topline">
@@ -726,6 +732,12 @@ function renderEntryCard(entry) {
         ${entry.partOfSpeech ? `<span>${esc(entry.partOfSpeech)}</span>` : ''}
       </span>
       <span class="atlas-entry-meaning">${esc(entry.coreMeaningJa || entry.nuanceJa || '説明を追加してください')}</span>
+      ${intensityLabel || entry.nuanceTypeJa ? `
+        <span class="atlas-entry-nuance">
+          ${intensityLabel ? `<span${intensityLevel ? ` aria-label="強さ5段階中${intensityLevel}"` : ''}>${esc(intensityLabel)}</span>` : ''}
+          ${entry.nuanceTypeJa ? `<small>${esc(entry.nuanceTypeJa)}</small>` : ''}
+        </span>
+      ` : ''}
       <span class="atlas-entry-path">${esc(entry.category)} › ${esc(entry.topic)}</span>
     </button>
   `;
@@ -738,6 +750,7 @@ function renderDetail() {
     render();
     return;
   }
+  const intensityLevel = getIntensityLevel(entry);
 
   state.container.innerHTML = `
     <article class="atlas-page atlas-detail-page">
@@ -758,7 +771,10 @@ function renderDetail() {
           <div class="atlas-detail-badges">
             ${entry.partOfSpeech ? `<span>${esc(entry.partOfSpeech)}</span>` : ''}
             ${entry.register ? `<span>${esc(entry.register)}</span>` : ''}
-            ${entry.intensity ? `<span>強さ: ${esc(entry.intensity)}</span>` : ''}
+            ${intensityLevel
+              ? `<span aria-label="強さ5段階中${intensityLevel}">強さ ${intensityStars(intensityLevel)}</span>`
+              : entry.intensity ? `<span>強さ ${esc(entry.intensity)}</span>` : ''}
+            ${entry.nuanceTypeJa ? `<span>${esc(entry.nuanceTypeJa)}</span>` : ''}
           </div>
         </div>
         <button class="atlas-icon-btn atlas-delete-btn" id="atlas-delete" type="button" aria-label="この表現を削除" title="削除">
@@ -766,13 +782,13 @@ function renderDetail() {
         </button>
       </header>
 
-      ${detailSection('中心的な意味', entry.coreMeaningJa)}
-      ${detailSection('ニュアンス', entry.nuanceJa)}
-      ${detailSection('感情の温度', entry.emotionalToneJa)}
-      ${listSection('自然に使う場面', entry.useCasesJa)}
-      ${chipSection('よく一緒に使う語', entry.collocations)}
-      ${examplesSection(entry.examples)}
+      ${etymologyCoreSection(entry)}
+      ${detailSection('深いニュアンス', entry.nuanceJa)}
       ${comparisonsSection(entry.comparisons)}
+      ${listSection('どんな場面で使う？', entry.useCasesJa)}
+      ${examplesSection(entry.examples)}
+      ${detailSection('感情の温度', entry.emotionalToneJa)}
+      ${chipSection('よく一緒に使う語', entry.collocations)}
       ${listSection('注意点', entry.cautionsJa, 'atlas-note-list--warning')}
 
       <section class="atlas-detail-section">
@@ -875,6 +891,7 @@ function renderGenerator() {
               <button class="btn btn-primary" id="atlas-save-drafts" ${state.selectedDrafts.size ? '' : 'disabled'}>選択した表現を保存</button>
             </div>
           </div>
+          ${renderNuanceMap(state.drafts, { interactive: false })}
           <div class="atlas-draft-grid">
             ${state.drafts.map((entry, index) => `
               <label class="atlas-draft-card ${state.selectedDrafts.has(index) ? 'is-selected' : ''}">
@@ -882,7 +899,11 @@ function renderGenerator() {
                 <span class="atlas-draft-check" aria-hidden="true"></span>
                 <span>
                   <strong>${esc(entry.term)}</strong>
-                  <small>${esc(entry.partOfSpeech)}</small>
+                  <small>${esc([
+                    entry.partOfSpeech,
+                    getIntensityLevel(entry) ? intensityStars(getIntensityLevel(entry)) : entry.intensity,
+                    entry.nuanceTypeJa,
+                  ].filter(Boolean).join(' · '))}</small>
                   <span>${esc(entry.coreMeaningJa)}</span>
                   <em>${esc(entry.nuanceJa)}</em>
                 </span>
@@ -1051,6 +1072,79 @@ function detailSection(title, text) {
   return `<section class="atlas-detail-section"><h2>${esc(title)}</h2><p>${esc(text)}</p></section>`;
 }
 
+function etymologyCoreSection(entry) {
+  const etymology = String(entry?.etymologyJa || '').trim();
+  const coreImage = String(entry?.coreImageJa || '').trim();
+  const coreMeaning = String(entry?.coreMeaningJa || '').trim();
+  if (!etymology && !coreImage && !coreMeaning) return '';
+  return `
+    <section class="atlas-detail-section">
+      <h2>語源とコア（原義）</h2>
+      ${etymology ? `<p>${esc(etymology)}</p>` : ''}
+      <div class="atlas-core-points">
+        ${coreImage ? `
+          <div>
+            <strong>コアイメージ</strong>
+            <p>${esc(coreImage)}</p>
+          </div>
+        ` : ''}
+        ${coreMeaning ? `
+          <div>
+            <strong>中心義</strong>
+            <p>${esc(coreMeaning)}</p>
+          </div>
+        ` : ''}
+      </div>
+    </section>
+  `;
+}
+
+function getIntensityLevel(entry) {
+  const numeric = Number(entry?.intensityLevel);
+  if (Number.isFinite(numeric) && numeric >= 1 && numeric <= 5) return Math.round(numeric);
+  const match = String(entry?.intensity || '').match(/[1-5]/);
+  return match ? Number(match[0]) : null;
+}
+
+function intensityStars(level) {
+  const safeLevel = Math.min(5, Math.max(1, Number(level) || 1));
+  return `${'★'.repeat(safeLevel)}${'☆'.repeat(5 - safeLevel)}`;
+}
+
+function renderNuanceMap(entries, { interactive = true } = {}) {
+  if (!Array.isArray(entries) || !entries.length) return '';
+  const sorted = [...entries].sort((a, b) => (
+    (getIntensityLevel(a) ?? 6) - (getIntensityLevel(b) ?? 6)
+    || String(a.term || '').localeCompare(String(b.term || ''), 'en')
+  ));
+  return `
+    <section class="atlas-nuance-map" aria-labelledby="atlas-nuance-map-title">
+      <div class="atlas-nuance-map-heading">
+        <h2 id="atlas-nuance-map-title">度合い・ニュアンス全体マップ</h2>
+        <p>★はこのテーマ内での強さです。分類と合わせて使い分けを確認できます。</p>
+      </div>
+      <div class="atlas-nuance-map-list">
+        ${sorted.map(entry => {
+          const level = getIntensityLevel(entry);
+          const intensityLabel = level ? intensityStars(level) : String(entry.intensity || '未設定').trim();
+          const tagName = interactive && entry.id ? 'button' : 'div';
+          const attributes = interactive && entry.id
+            ? `type="button" data-atlas-entry="${esc(entry.id)}"`
+            : '';
+          const description = entry.nuanceTypeJa || entry.emotionalToneJa || entry.coreMeaningJa || '';
+          return `
+            <${tagName} class="atlas-nuance-map-row" ${attributes}>
+              <span class="atlas-nuance-stars"${level ? ` aria-label="強さ5段階中${level}"` : ''}>${esc(intensityLabel)}</span>
+              <strong>${esc(entry.term)}</strong>
+              <span>${esc(description)}</span>
+            </${tagName}>
+          `;
+        }).join('')}
+      </div>
+    </section>
+  `;
+}
+
 function listSection(title, items, className = '') {
   if (!Array.isArray(items) || !items.length) return '';
   return `
@@ -1087,6 +1181,42 @@ function examplesSection(examples) {
   `;
 }
 
+function translationVocabularySection(notes) {
+  if (!Array.isArray(notes) || !notes.length) return '';
+  return `
+    <section class="atlas-detail-section">
+      <h2>内部解説：主要語彙・構文の語源と深掘り</h2>
+      <div class="atlas-language-note-list">
+        ${notes.map(note => `
+          <div class="atlas-language-note">
+            <strong lang="en">${esc(note.expression)}</strong>
+            ${note.etymologyJa ? `<p><span>語源</span>${esc(note.etymologyJa)}</p>` : ''}
+            ${note.coreImageJa ? `<p><span>コアイメージ</span>${esc(note.coreImageJa)}</p>` : ''}
+            ${note.nuanceJa ? `<p><span>深いニュアンス</span>${esc(note.nuanceJa)}</p>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function translationComparisonSection(comparisons) {
+  if (!Array.isArray(comparisons) || !comparisons.length) return '';
+  return `
+    <section class="atlas-detail-section">
+      <h2>似た表現との使い分け・比較</h2>
+      <div class="atlas-comparison-list">
+        ${comparisons.map(comparison => `
+          <div>
+            <strong lang="en">${esc(comparison.expression)} / ${esc(comparison.alternative)}</strong>
+            <p>${esc(comparison.differenceJa)}</p>
+          </div>
+        `).join('')}
+      </div>
+    </section>
+  `;
+}
+
 function comparisonsSection(comparisons) {
   if (!Array.isArray(comparisons) || !comparisons.length) return '';
   return `
@@ -1103,9 +1233,13 @@ function searchableText(entry) {
   return normalize([
     entry.term,
     entry.partOfSpeech,
+    entry.etymologyJa,
+    entry.coreImageJa,
     entry.coreMeaningJa,
     entry.nuanceJa,
+    entry.nuanceTypeJa,
     entry.register,
+    entry.intensityLevel,
     entry.intensity,
     entry.emotionalToneJa,
     entry.category,
@@ -1129,9 +1263,22 @@ function searchableTranslationText(set) {
     ...(set.variants || []).flatMap(variant => [
       variant.translation,
       variant.labelJa,
+      variant.style,
       variant.nuanceJa,
+      variant.overallNuanceJa,
       variant.register,
       variant.backTranslationJa,
+      ...(variant.vocabularyNotes || []).flatMap(note => [
+        note.expression,
+        note.etymologyJa,
+        note.coreImageJa,
+        note.nuanceJa,
+      ]),
+      ...(variant.comparisons || []).flatMap(comparison => [
+        comparison.expression,
+        comparison.alternative,
+        comparison.differenceJa,
+      ]),
       ...(variant.useCasesJa || []),
       ...(variant.cautionsJa || []),
     ]),

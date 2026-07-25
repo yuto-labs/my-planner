@@ -833,15 +833,19 @@ function expressionEntryToRecord(entry, existing = null) {
   const now = new Date().toISOString();
   const id = entry.id || existing?.id || generateId();
   const data = {
-    promptVersion: 1,
+    promptVersion: 3,
     language: 'English',
     category: '',
     topic: '',
     term: '',
     partOfSpeech: '',
+    etymologyJa: '',
+    coreImageJa: '',
     coreMeaningJa: '',
     nuanceJa: '',
+    nuanceTypeJa: '',
     register: '',
+    intensityLevel: null,
     intensity: '',
     emotionalToneJa: '',
     useCasesJa: [],
@@ -899,7 +903,7 @@ function translationSetToRecord(set, existing = null) {
   const now = new Date().toISOString();
   const id = set.id || existing?.id || generateId();
   const data = {
-    promptVersion: 1,
+    promptVersion: 2,
     language: 'English',
     sourceTextJa: '',
     contextJa: '',

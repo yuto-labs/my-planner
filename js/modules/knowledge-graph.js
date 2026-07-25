@@ -43,16 +43,16 @@ export function initKnowledgeGraph(container) {
 // ============================================================
 
 function buildGraph(memos) {
-  // Count memos per tag
-  const tagMemoIds = {}; // tag → Set<memoId>
+  const tagMemoIds = new Map();
   memos.forEach(m => {
-    (m.tags || []).forEach(t => {
-      if (!tagMemoIds[t]) tagMemoIds[t] = new Set();
-      tagMemoIds[t].add(m.id);
+    const tags = [...new Set((m.tags || []).map(tag => tag.trim()).filter(Boolean))];
+    tags.forEach(tag => {
+      if (!tagMemoIds.has(tag)) tagMemoIds.set(tag, new Set());
+      tagMemoIds.get(tag).add(m.id);
     });
   });
 
-  const nodes = Object.entries(tagMemoIds).map(([tag, ids]) => ({
+  const nodes = [...tagMemoIds.entries()].map(([tag, ids]) => ({
     id:    tag,
     label: tag,
     count: ids.size,
@@ -60,21 +60,32 @@ function buildGraph(memos) {
     x: 0, y: 0, vx: 0, vy: 0,
   }));
 
-  // Co-occurrence edges
-  const edgeMap = {};
+  const edgeMap = new Map();
   memos.forEach(m => {
-    const tags = (m.tags || []);
+    const tags = [...new Set((m.tags || []).map(tag => tag.trim()).filter(Boolean))];
     for (let i = 0; i < tags.length; i++) {
       for (let j = i + 1; j < tags.length; j++) {
         const key = [tags[i], tags[j]].sort().join('\0');
-        edgeMap[key] = (edgeMap[key] || 0) + 1;
+        edgeMap.set(key, (edgeMap.get(key) || 0) + 1);
       }
     }
   });
-  const edges = Object.entries(edgeMap).map(([key, w]) => {
+  const edges = [...edgeMap.entries()].map(([key, w]) => {
     const [a, b] = key.split('\0');
     return { a, b, weight: w };
   });
+
+  const relatedByTag = new Map(nodes.map(node => [node.id, new Set()]));
+  edges.forEach(edge => {
+    relatedByTag.get(edge.a)?.add(edge.b);
+    relatedByTag.get(edge.b)?.add(edge.a);
+  });
+  nodes.forEach(node => {
+    node.connectionCount = relatedByTag.get(node.id)?.size || 0;
+    node.width = Math.min(164, Math.max(92, [...node.label].length * 11 + 50));
+    node.height = 48;
+  });
+  nodes.sort((a, b) => b.count - a.count || b.connectionCount - a.connectionCount || a.label.localeCompare(b.label, 'ja'));
 
   return { nodes, edges };
 }
@@ -84,7 +95,6 @@ function buildGraph(memos) {
 // ============================================================
 
 function computeLayout(nodes, edges, W, H) {
-  const PADDING = 50;
   const ITERS   = 200;
   const nodeMap = {};
 
@@ -137,8 +147,37 @@ function computeLayout(nodes, edges, W, H) {
       const clamp = Math.min(mag, temp);
       n.x += (n.dx / mag) * clamp;
       n.y += (n.dy / mag) * clamp;
-      n.x = Math.max(PADDING, Math.min(W - PADDING, n.x));
-      n.y = Math.max(PADDING, Math.min(H - PADDING, n.y));
+      const padX = n.width / 2 + 12;
+      const padY = n.height / 2 + 18;
+      n.x = Math.max(padX, Math.min(W - padX, n.x));
+      n.y = Math.max(padY, Math.min(H - padY, n.y));
+    });
+
+    // Keep the label cards readable instead of allowing them to stack.
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const a = nodes[i], b = nodes[j];
+        const dx = b.x - a.x || 0.1;
+        const dy = b.y - a.y || 0.1;
+        const overlapX = (a.width + b.width) / 2 + 10 - Math.abs(dx);
+        const overlapY = (a.height + b.height) / 2 + 10 - Math.abs(dy);
+        if (overlapX <= 0 || overlapY <= 0) continue;
+        if (overlapX < overlapY) {
+          const push = overlapX / 2;
+          a.x -= Math.sign(dx) * push;
+          b.x += Math.sign(dx) * push;
+        } else {
+          const push = overlapY / 2;
+          a.y -= Math.sign(dy) * push;
+          b.y += Math.sign(dy) * push;
+        }
+      }
+    }
+    nodes.forEach(node => {
+      const padX = node.width / 2 + 12;
+      const padY = node.height / 2 + 18;
+      node.x = Math.max(padX, Math.min(W - padX, node.x));
+      node.y = Math.max(padY, Math.min(H - padY, node.y));
     });
   }
 }
@@ -149,22 +188,14 @@ function computeLayout(nodes, edges, W, H) {
 
 function renderGraph(container, nodes, edges, allMemos) {
   const W = Math.min(container.clientWidth || 360, 680);
-  const H = Math.min(window.innerHeight - 160, 520);
+  const H = Math.max(330, Math.min(window.innerHeight - 260, 500));
 
   computeLayout(nodes, edges, W, H);
 
-  // Scale node radius by count (sqrt for visual balance)
   const maxCount = Math.max(...nodes.map(n => n.count), 1);
-  const nodeR = n => 14 + Math.sqrt(n.count / maxCount) * 18;
-
-  // Scale edge width by weight
   const maxW = Math.max(...edges.map(e => e.weight), 1);
-  const edgeW = e => 1 + (e.weight / maxW) * 4;
-
-  // Color palette for nodes (cycle)
-  const COLORS = ['#8B83E8', '#32D49A', '#F5C542', '#F07090', '#60A5FA', '#F0905A', '#A78BFA'];
-  const tagColorMap = {};
-  nodes.forEach((n, i) => { tagColorMap[n.id] = COLORS[i % COLORS.length]; });
+  const edgeW = e => 1 + (e.weight / maxW) * 3;
+  const nodeStrength = n => 0.24 + (n.count / maxCount) * 0.5;
 
   const nodeMap = {};
   nodes.forEach(n => { nodeMap[n.id] = n; });
@@ -175,35 +206,52 @@ function renderGraph(container, nodes, edges, allMemos) {
     if (!a || !b) return '';
     return `<line class="kg-edge" data-a="${esc(e.a)}" data-b="${esc(e.b)}"
       x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"
-      stroke="rgba(255,255,255,0.10)" stroke-width="${edgeW(e).toFixed(1)}"/>`;
+      stroke-width="${edgeW(e).toFixed(1)}"/>`;
   }).join('');
 
   const nodeSVG = nodes.map(n => {
-    const r   = nodeR(n);
-    const col = tagColorMap[n.id];
-    const labelLines = splitLabel(n.label, 8);
-    const dy  = labelLines.length === 1 ? '0.35em' : '-0.3em';
+    const fillOpacity = nodeStrength(n).toFixed(2);
     return `
-      <g class="kg-node" data-tag="${esc(n.id)}" transform="translate(${n.x},${n.y})" style="cursor:pointer">
-        <circle r="${r}" fill="${col}" fill-opacity="0.20" stroke="${col}" stroke-width="1.5"/>
-        <text text-anchor="middle" font-size="${Math.max(9, 11 - n.label.length * 0.3)}" fill="${col}" font-weight="700" dy="${dy}">
-          ${labelLines.map((ln, i) => `<tspan x="0" dy="${i===0?dy:'1.2em'}">${esc(ln)}</tspan>`).join('')}
-        </text>
-        <text text-anchor="middle" dy="${r + 14}" font-size="10" fill="rgba(255,255,255,0.4)">
-          ${n.count}件
-        </text>
+      <g class="kg-node" data-tag="${esc(n.id)}" transform="translate(${n.x},${n.y})"
+        role="button" tabindex="0" aria-label="${esc(n.label)}、${n.count}件のメモ、${n.connectionCount}個の関連タグ">
+        <rect x="${-n.width / 2}" y="${-n.height / 2}" width="${n.width}" height="${n.height}" rx="8"
+          style="--kg-node-strength:${fillOpacity}"/>
+        <text class="kg-node-label" text-anchor="middle" y="-4">${esc(n.label)}</text>
+        <text class="kg-node-meta" text-anchor="middle" y="14">${n.count}メモ · ${n.connectionCount}関連</text>
       </g>`;
   }).join('');
 
+  const untaggedCount = allMemos.filter(memo => !(memo.tags || []).some(tag => tag.trim())).length;
+  const topTags = nodes.slice(0, 6);
   container.innerHTML = `
     <div class="kg-page">
       <div class="kg-header">
-        <div class="kg-info">
-          <span class="kg-info-count">${nodes.length} タグ</span>
-          <span class="kg-info-sep">·</span>
-          <span class="kg-info-count">${allMemos.length} メモ</span>
+        <div class="kg-header-main">
+          <div>
+            <strong>タグから知識のまとまりを見つける</strong>
+            <p>同じメモに付いたタグ同士を線で結んでいます。</p>
+          </div>
+          <div class="kg-stats" aria-label="グラフの概要">
+            <span><b>${allMemos.length}</b> メモ</span>
+            <span><b>${nodes.length}</b> タグ</span>
+            <span><b>${edges.length}</b> 接続</span>
+            ${untaggedCount ? `<span class="kg-stat-muted"><b>${untaggedCount}</b> 未整理</span>` : ''}
+          </div>
         </div>
-        <div class="kg-hint">タグをタップしてメモを絞り込み</div>
+        <div class="kg-quick-row">
+          <span class="kg-quick-label">よく使うタグ</span>
+          <div class="kg-quick-tags">
+            ${topTags.map(node => `
+              <button type="button" data-kg-quick-tag="${esc(node.id)}">
+                ${esc(node.label)} <span>${node.count}</span>
+              </button>
+            `).join('')}
+          </div>
+        </div>
+        <div class="kg-legend" aria-label="グラフの見方">
+          <span><i class="kg-legend-card"></i>カードの濃さ＝メモ数</span>
+          <span><i class="kg-legend-line"></i>線の太さ＝共通メモ数</span>
+        </div>
       </div>
       <div class="kg-svg-wrap">
         <svg class="kg-svg" viewBox="0 0 ${W} ${H}" width="100%" height="${H}">
@@ -213,9 +261,14 @@ function renderGraph(container, nodes, edges, allMemos) {
       </div>
       <div class="kg-panel hidden" id="kg-panel">
         <div class="kg-panel-header">
-          <span class="kg-panel-tag" id="kg-panel-tag"></span>
-          <button class="kg-panel-close" id="kg-panel-close">✕</button>
+          <div>
+            <span class="kg-panel-tag" id="kg-panel-tag"></span>
+            <span class="kg-panel-summary" id="kg-panel-summary"></span>
+          </div>
+          <button class="kg-panel-close" id="kg-panel-close" aria-label="閉じる">×</button>
         </div>
+        <div class="kg-panel-related" id="kg-panel-related"></div>
+        <div class="kg-panel-section-label">このタグのメモ</div>
         <div class="kg-panel-memos" id="kg-panel-memos"></div>
       </div>
     </div>
@@ -226,6 +279,16 @@ function renderGraph(container, nodes, edges, allMemos) {
     el.addEventListener('click', () => {
       const tag = el.dataset.tag;
       showTagPanel(tag, nodes, edges, allMemos, container);
+    });
+    el.addEventListener('keydown', event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      showTagPanel(el.dataset.tag, nodes, edges, allMemos, container);
+    });
+  });
+  container.querySelectorAll('[data-kg-quick-tag]').forEach(button => {
+    button.addEventListener('click', () => {
+      showTagPanel(button.dataset.kgQuickTag, nodes, edges, allMemos, container);
     });
   });
 
@@ -239,15 +302,24 @@ function showTagPanel(tag, nodes, edges, allMemos, container) {
   const memos   = allMemos.filter(m => (m.tags || []).includes(tag));
   const panel   = container.querySelector('#kg-panel');
   const tagEl   = container.querySelector('#kg-panel-tag');
+  const summaryEl = container.querySelector('#kg-panel-summary');
+  const relatedEl = container.querySelector('#kg-panel-related');
   const memosEl = container.querySelector('#kg-panel-memos');
-  if (!panel || !tagEl || !memosEl) return;
+  if (!panel || !tagEl || !summaryEl || !relatedEl || !memosEl) return;
 
-  // Highlight connected nodes, dim the rest
   const connectedTags = new Set([tag]);
+  const related = [];
   edges.forEach(e => {
-    if (e.a === tag) connectedTags.add(e.b);
-    if (e.b === tag) connectedTags.add(e.a);
+    if (e.a === tag) {
+      connectedTags.add(e.b);
+      related.push({ tag: e.b, weight: e.weight });
+    }
+    if (e.b === tag) {
+      connectedTags.add(e.a);
+      related.push({ tag: e.a, weight: e.weight });
+    }
   });
+  related.sort((a, b) => b.weight - a.weight || a.tag.localeCompare(b.tag, 'ja'));
 
   container.querySelectorAll('.kg-node').forEach(el => {
     const isConnected = connectedTags.has(el.dataset.tag);
@@ -261,17 +333,33 @@ function showTagPanel(tag, nodes, edges, allMemos, container) {
     el.classList.toggle('kg-edge--dim', !isConnected);
   });
 
-  tagEl.textContent = `# ${tag}`;
+  tagEl.textContent = tag;
+  summaryEl.textContent = `${memos.length}件のメモ · ${related.length}個の関連タグ`;
+  relatedEl.innerHTML = related.length ? `
+    <div class="kg-panel-section-label">関連タグ</div>
+    <div class="kg-related-list">
+      ${related.map(item => `
+        <button type="button" data-kg-related-tag="${esc(item.tag)}">
+          ${esc(item.tag)} <span>共通${item.weight}</span>
+        </button>
+      `).join('')}
+    </div>
+  ` : '<p class="kg-no-related">ほかのタグとの接続はまだありません。</p>';
   memosEl.innerHTML = memos.map(m => `
-    <div class="kg-panel-memo" data-memo-id="${esc(m.id)}">
+    <button type="button" class="kg-panel-memo" data-memo-id="${esc(m.id)}">
       <div class="kg-panel-memo-title">${esc(m.title || '無題')}</div>
       <div class="kn-tag-list">
         ${(m.tags || []).filter(t => t !== tag).slice(0, 3).map(t => `<span class="kn-tag-chip kn-tag-chip--sm">${esc(t)}</span>`).join('')}
       </div>
-    </div>`).join('');
+    </button>`).join('');
 
   panel.classList.remove('hidden');
 
+  relatedEl.querySelectorAll('[data-kg-related-tag]').forEach(button => {
+    button.addEventListener('click', () => {
+      showTagPanel(button.dataset.kgRelatedTag, nodes, edges, allMemos, container);
+    });
+  });
   memosEl.querySelectorAll('[data-memo-id]').forEach(card => {
     card.addEventListener('click', () => {
       graphFilterTag = tag;
@@ -287,10 +375,4 @@ function clearHighlight(container) {
   container.querySelectorAll('.kg-edge').forEach(el => {
     el.classList.remove('kg-edge--highlight', 'kg-edge--dim');
   });
-}
-
-function splitLabel(text, maxLen) {
-  if (text.length <= maxLen) return [text];
-  const mid = Math.ceil(text.length / 2);
-  return [text.slice(0, mid), text.slice(mid)];
 }
