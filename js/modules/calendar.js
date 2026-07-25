@@ -3,7 +3,7 @@
 // ============================================================
 
 import {
-  getEvents, addEvent, updateEvent, deleteEvent, deleteFutureRecurring,
+  getEvents, saveEvents, addEvent, updateEvent, deleteEvent, deleteFutureRecurring,
   getCategories, getCategoryById, getCategoryColor, getApiKey,
   pushUndo, applyUndo, getScheduleItemsForDate,
   getMyScheduleColor,
@@ -600,7 +600,8 @@ function renderMonth() {
       if (isSat)   classes += ' saturday';
       if (holidayInfo) classes += ' holiday';
 
-      html += `<div class="${classes}" data-date="${dateStr}">
+      html += `<div class="${classes}" data-date="${dateStr}" role="button" tabindex="0"
+        aria-label="${esc(`${formatPickerDate(dateStr)}、予定${dayEvents.length}件。選択後、もう一度押すと予定一覧を表示`)}">
         <div class="cal-cell-num">${d.getDate()}</div>
         ${holidayInfo ? `<div class="cal-cell-holiday-name" title="${esc(holidayInfo.name)}">${esc(holidayInfo.name)}</div>` : ''}
         ${chips}${moreHtml}
@@ -631,6 +632,11 @@ function renderMonth() {
         view.querySelectorAll('.cal-cell').forEach(c => c.classList.remove('cal-cell--selected'));
         cell.classList.add('cal-cell--selected');
       }
+    });
+    cell.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      cell.click();
     });
   });
 
@@ -1609,7 +1615,27 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
     openDatePicker({
       value: evStart.date || null,
       onConfirm: d => {
+        const previousStart = evStart.date && evStart.time
+          ? new Date(`${evStart.date}T${evStart.time}:00`)
+          : null;
+        const previousEnd = evEnd.date && evEnd.time
+          ? new Date(`${evEnd.date}T${evEnd.time}:00`)
+          : null;
+        const durationMs = previousStart && previousEnd && previousEnd > previousStart
+          ? previousEnd.getTime() - previousStart.getTime()
+          : null;
         evStart.date = d;
+        if (durationMs != null && evStart.time) {
+          const shiftedEnd = new Date(new Date(`${d}T${evStart.time}:00`).getTime() + durationMs);
+          evEnd.date = toDateStr(shiftedEnd);
+          evEnd.time = `${String(shiftedEnd.getHours()).padStart(2, '0')}:${String(shiftedEnd.getMinutes()).padStart(2, '0')}`;
+          const endDateButton = body.querySelector('#ev-end-date-btn');
+          const endTimeButton = body.querySelector('#ev-end-time-btn');
+          if (endDateButton) endDateButton.textContent = formatPickerDate(evEnd.date);
+          if (endTimeButton) endTimeButton.textContent = '🕐 ' + evEnd.time;
+        } else if (!evEnd.date) {
+          evEnd.date = d;
+        }
         const b = body.querySelector('#ev-start-date-btn');
         if (b) b.textContent = formatPickerDate(d);
         const recurStart = body.querySelector('#ev-recurring-start-label');
@@ -1822,29 +1848,49 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
           return;
         }
         const recurringId = generateId();
-        updateEvent(event.id, { ...newData, recurringId });
+        if (!updateEvent(event.id, { ...newData, recurringId })) {
+          toast('予定を保存できませんでした。入力内容は残しています', 'error');
+          return;
+        }
         const createdCount = createRecurringEvents(newData, recurType, recurEndStr, excludeWeekdays, { recurringId, skipFirst: true });
+        if (createdCount < 0) {
+          toast('繰り返し予定を保存できませんでした', 'error');
+          return;
+        }
         toast((createdCount + 1) + '件の繰り返し予定にしました', 'success');
       } else {
-        updateEvent(event.id, newData);
         if (scope === 'future' && event.recurringId) {
           const allEvents = getEvents();
           const startShiftMs = new Date(newData.start).getTime() - new Date(event.start).getTime();
           const nextDurationMs = newData.end
             ? Math.max(0, new Date(newData.end).getTime() - new Date(newData.start).getTime())
             : null;
-          allEvents
-            .filter(e => e.recurringId === event.recurringId && e.start >= event.start && e.id !== event.id)
-            .forEach(e => {
+          const now = new Date().toISOString();
+          allEvents.forEach((e, index) => {
+            if (e.id === event.id) {
+              allEvents[index] = { ...e, ...newData, updatedAt: now };
+              return;
+            }
+            if (e.recurringId === event.recurringId && e.start >= event.start) {
               const shiftedStart = new Date(new Date(e.start).getTime() + startShiftMs);
-              updateEvent(e.id, {
+              allEvents[index] = {
+                ...e,
                 ...newData,
                 start: shiftedStart.toISOString(),
                 end: nextDurationMs == null
                   ? null
                   : new Date(shiftedStart.getTime() + nextDurationMs).toISOString(),
-              });
-            });
+                updatedAt: now,
+              };
+            }
+          });
+          if (!saveEvents(allEvents)) {
+            toast('予定を保存できませんでした。入力内容は残しています', 'error');
+            return;
+          }
+        } else if (!updateEvent(event.id, newData)) {
+          toast('予定を保存できませんでした。入力内容は残しています', 'error');
+          return;
         }
         toast('予定を更新しました', 'success');
       }
@@ -1860,13 +1906,21 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
           return;
         }
         const createdCount = createRecurringEvents(newData, recurType, recurEndStr, excludeWeekdays);
-        if (!createdCount) {
+        if (createdCount < 0) {
+          toast('繰り返し予定を保存できませんでした。入力内容は残しています', 'error');
+          return;
+        }
+        if (createdCount === 0) {
           toast('条件に合う繰り返し予定がありません。期間か除外曜日を見直してください', 'error');
           return;
         }
         toast(createdCount + '件の繰り返し予定を追加しました', 'success');
       } else {
         const created = addEvent(newData);
+        if (!created) {
+          toast('予定を保存できませんでした。入力内容は残しています', 'error');
+          return;
+        }
         appendSharedPreviewEvent(created);
         toast(`「${title}」を追加しました`, 'success');
       }
@@ -1931,7 +1985,7 @@ function createRecurringEvents(eventData, recurType, endDateStr, excludeWeekdays
 
   let cursor = new Date(startDate);
   let iterations = 0;
-  let created = 0;
+  const pendingEvents = [];
   const maxIterations = Math.min(Math.max(estimateIterations(), 1), 5000);
 
   while (cursor <= endDate && iterations < maxIterations) {
@@ -1939,13 +1993,14 @@ function createRecurringEvents(eventData, recurType, endDateStr, excludeWeekdays
     if (!(options.skipFirst && isFirst) && !excluded.has(cursor.getDay())) {
       const recurringEvent = {
         ...eventData,
+        id: generateId(),
         start: cursor.toISOString(),
         end: new Date(cursor.getTime() + duration).toISOString(),
         recurringId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
-      addEvent(recurringEvent);
-      rememberEventTitle(recurringEvent);
-      created++;
+      pendingEvents.push(recurringEvent);
     }
 
     if (recurType === 'daily') cursor = addDays(cursor, 1);
@@ -1957,7 +2012,10 @@ function createRecurringEvents(eventData, recurType, endDateStr, excludeWeekdays
     iterations++;
   }
 
-  return created;
+  if (!pendingEvents.length) return 0;
+  if (!saveEvents([...getEvents(), ...pendingEvents])) return -1;
+  pendingEvents.forEach(rememberEventTitle);
+  return pendingEvents.length;
 }
 
 function getEventTitleSuggestions(query, excludeId = null) {
@@ -2088,7 +2146,7 @@ async function handleNLInput(input, btn) {
     if (!parsed || !parsed.start) throw new Error('解釈できませんでした');
 
     const cat = cats.find(c => c.name === parsed.categoryName) || cats[cats.length - 1];
-    addEvent({
+    const saved = addEvent({
       title: parsed.title || text,
       start: parsed.start,
       end:   parsed.end,
@@ -2096,6 +2154,7 @@ async function handleNLInput(input, btn) {
       isTentative: parsed.isTentative || false,
       isRoutine:   false,
     });
+    if (!saved) throw new Error('予定を端末に保存できませんでした');
 
     input.value = '';
     toast(`「${parsed.title || text}」を追加しました`, 'success');

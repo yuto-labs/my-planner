@@ -2,7 +2,11 @@
 // app.js 窶・Main SPA router & app shell
 // ============================================================
 
-import { getSettings, getPendingAIQueue, autoArchiveTasks, isAiAvailable, clearUserContentLocal, DEFAULT_ACCENT_RGB, DEFAULT_THEME_TUNING } from './storage.js';
+import {
+  getSettings, getPendingAIQueue, autoArchiveTasks, isAiAvailable,
+  clearUserContentLocal, preserveUserContentSnapshot, restoreUserContentSnapshot,
+  DEFAULT_ACCENT_RGB, DEFAULT_THEME_TUNING,
+} from './storage.js';
 import { processBatchQueue, refreshAiRuntimeStatus } from './ai.js';
 import { backfillLocalEvents, initSync, pullAll, pullIfStale, startRealtimeSync, hasPendingSyncWork, flushPendingSync, resetSyncForUserSwitch } from './sync.js';
 import { getSession, handleAuthRedirect, getActiveUserId, setActiveUserId, isMigratedForCurrentUser } from './supabase.js';
@@ -221,7 +225,10 @@ export function navigate(view, options = {}) {
 
   // Update nav active state
   document.querySelectorAll('#bottom-nav .nav-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.view === view);
+    const active = btn.dataset.view === view;
+    btn.classList.toggle('active', active);
+    if (active) btn.setAttribute('aria-current', 'page');
+    else btn.removeAttribute('aria-current');
   });
 
   // Update title
@@ -311,18 +318,26 @@ export function showUndoToast(message, onUndo) {
 // ---- Modal system ----
 
 let modalCleanup = null;
+let modalClose = null;
 
 export function openModal({ title, body, footer, onClose, wide = false }) {
   const overlay = document.getElementById('modal-overlay');
+  if (modalClose) modalClose();
+  const previouslyFocused = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
   overlay.innerHTML = '';
   overlay.classList.remove('hidden');
 
   const modal = document.createElement('div');
   modal.className = 'modal' + (wide ? ' modal-wide' : '');
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'app-modal-title');
 
   modal.innerHTML = `
     <div class="modal-header">
-      <span class="modal-title">${title}</span>
+      <span class="modal-title" id="app-modal-title">${title}</span>
       <button class="modal-close" aria-label="Close">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
       </button>
@@ -337,27 +352,61 @@ export function openModal({ title, body, footer, onClose, wide = false }) {
   overlay.appendChild(modal);
 
   const close = () => {
+    if (overlay.classList.contains('hidden')) return;
     overlay.classList.add('hidden');
     overlay.innerHTML = '';
     if (modalCleanup) { modalCleanup(); modalCleanup = null; }
+    modalClose = null;
     if (onClose) onClose();
+    previouslyFocused?.focus?.({ preventScroll: true });
   };
+  modalClose = close;
 
   modal.querySelector('.modal-close').addEventListener('click', close);
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  const overlayHandler = e => { if (e.target === overlay) close(); };
+  overlay.addEventListener('click', overlayHandler);
 
-  // Close on Escape
-  const keyHandler = (e) => { if (e.key === 'Escape') close(); };
+  const keyHandler = e => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      close();
+      return;
+    }
+    if (e.key !== 'Tab') return;
+    const focusable = [...modal.querySelectorAll(
+      'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+    )].filter(el => !el.hidden && el.getClientRects().length);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
   document.addEventListener('keydown', keyHandler);
-  modalCleanup = () => document.removeEventListener('keydown', keyHandler);
+  modalCleanup = () => {
+    document.removeEventListener('keydown', keyHandler);
+    overlay.removeEventListener('click', overlayHandler);
+  };
+  requestAnimationFrame(() => {
+    modal.querySelector('input, textarea, select, button, [tabindex]:not([tabindex="-1"])')?.focus?.();
+  });
 
   return close; // caller can call close() to dismiss programmatically
 }
 
 export function closeModal() {
+  if (modalClose) {
+    modalClose();
+    return;
+  }
   const overlay = document.getElementById('modal-overlay');
-  overlay.classList.add('hidden');
-  overlay.innerHTML = '';
+  overlay?.classList.add('hidden');
+  if (overlay) overlay.innerHTML = '';
   if (modalCleanup) { modalCleanup(); modalCleanup = null; }
 }
 
@@ -629,10 +678,22 @@ async function init() {
       const nextUserId = session.user?.id || null;
       const prevUserId = getActiveUserId();
       if (prevUserId && nextUserId && prevUserId !== nextUserId) {
+        if (!await preserveUserContentSnapshot(prevUserId)) {
+          throw new Error('Account switch stopped because local data could not be backed up');
+        }
         await resetSyncForUserSwitch();
         clearUserContentLocal();
+        const restored = await restoreUserContentSnapshot(nextUserId);
+        if (restored === false) {
+          clearUserContentLocal();
+          await restoreUserContentSnapshot(prevUserId);
+          setActiveUserId(prevUserId);
+          throw new Error('Account switch stopped because saved local data could not be restored');
+        }
+        setActiveUserId(nextUserId);
+      } else {
+        setActiveUserId(nextUserId);
       }
-      setActiveUserId(nextUserId);
       if (hasPendingSyncWork()) {
         deferSyncWhileEditing({ needsPull: true });
       } else {
@@ -785,7 +846,14 @@ async function setupServiceWorkerAutoUpdate() {
     if (swReloading) return;
     swReloading = true;
     showToast('Updated to the latest version.', 'success');
-    setTimeout(() => window.location.reload(), 120);
+    const reloadWhenSafe = () => {
+      if (isUserEditing() || hasPendingSyncWork()) {
+        setTimeout(reloadWhenSafe, 1000);
+        return;
+      }
+      window.location.reload();
+    };
+    setTimeout(reloadWhenSafe, 300);
   });
 
   try { await registration.update(); } catch {}
@@ -942,6 +1010,7 @@ function setupKeyboardShortcuts() {
     if (!document.getElementById('modal-overlay')?.classList.contains('hidden')) return;
     // Ignore when search is open
     if (!document.getElementById('search-overlay')?.classList.contains('hidden')) return;
+    if (hasOpenDatePicker()) return;
 
     switch (e.key) {
       case '/':

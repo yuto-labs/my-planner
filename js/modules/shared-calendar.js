@@ -65,6 +65,7 @@ async function refresh() {
   state.error = result.error?.message || null;
   state.loading = false;
   render();
+  return !state.error;
 }
 
 function moveMonth(delta) {
@@ -119,8 +120,11 @@ function render() {
     await refresh();
   });
   container.querySelector('#shared-refresh')?.addEventListener('click', async () => {
-    await refresh();
-    toast('共有カレンダーを更新しました', 'success');
+    const ok = await refresh();
+    toast(
+      ok ? '共有カレンダーを更新しました' : '共有カレンダーを更新できませんでした',
+      ok ? 'success' : 'error'
+    );
   });
   container.querySelector('#shared-personal-btn')?.addEventListener('click', () => nav('calendar'));
 }

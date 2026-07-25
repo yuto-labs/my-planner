@@ -603,11 +603,15 @@ async function handleNLInput(input, btn, container) {
       const start = parsed.start || (parsed.date && parsed.startTime ? parsed.date + 'T' + parsed.startTime + ':00' : null);
       const end = parsed.end || (parsed.date && parsed.endTime ? parsed.date + 'T' + parsed.endTime + ':00' : null);
       if (!start) throw new Error('予定を追加するには日付と開始時刻が必要です');
-      addEvent({ title, start, end, categoryId: cat.id, isTentative: !!parsed.isTentative, isRoutine: false, memo: parsed.memo || '', tags });
+      if (!addEvent({ title, start, end, categoryId: cat.id, isTentative: !!parsed.isTentative, isRoutine: false, memo: parsed.memo || '', tags })) {
+        throw new Error('予定を端末に保存できませんでした');
+      }
       message = message || '\u4e88\u5b9a\u3092\u8ffd\u52a0\u3057\u307e\u3057\u305f';
     } else if (parsed.action === 'schedule') {
       if (!parsed.date || !parsed.startTime || !parsed.endTime) throw new Error('作業時間を確保するには日付・開始時刻・終了時刻が必要です');
-      addScheduleItem({ title, date: parsed.date, startTime: parsed.startTime, endTime: parsed.endTime, note: parsed.memo || '', source: 'ai-input' });
+      if (!addScheduleItem({ title, date: parsed.date, startTime: parsed.startTime, endTime: parsed.endTime, note: parsed.memo || '', source: 'ai-input' })) {
+        throw new Error('マイスケジュールを端末に保存できませんでした');
+      }
       message = message || '\u6d3b\u52d5\u6642\u9593\u306b\u8ffd\u52a0\u3057\u307e\u3057\u305f';
     } else if (parsed.action === 'memo' || parsed.action === 'database') {
       const isDb = parsed.action === 'database';
@@ -616,10 +620,12 @@ async function handleNLInput(input, btn, container) {
       const blocks = Array.isArray(parsed.blocks) && parsed.blocks.length
         ? parsed.blocks.map(b => ({ id: generateId(), type: b.type || 'paragraph', text: b.text || '' }))
         : buildMemoBlocksFromInput(text, parsed.memo || '', isDb, fields, rows);
-      addKnowledgeMemo({ title, blocks, tags: [...new Set([...(isDb ? ['Database'] : []), ...tags])], summary: (parsed.memo || text).slice(0, 200) });
+      if (!addKnowledgeMemo({ title, blocks, tags: [...new Set([...(isDb ? ['Database'] : []), ...tags])], summary: (parsed.memo || text).slice(0, 200) })) {
+        throw new Error('メモを端末に保存できませんでした');
+      }
       message = message || (isDb ? '\u30c7\u30fc\u30bf\u30d9\u30fc\u30b9\u3092\u4f5c\u6210\u3057\u307e\u3057\u305f' : '\u30e1\u30e2\u3092\u4f5c\u6210\u3057\u307e\u3057\u305f');
     } else {
-      addTask({
+      if (!addTask({
         title,
         weight: parsed.weight || 'medium',
         dueDate: parsed.dueDate || parsed.date || null,
@@ -627,7 +633,9 @@ async function handleNLInput(input, btn, container) {
         estimatedMinutes: parsed.estimatedMinutes || null,
         tags,
         memo: parsed.memo || '',
-      });
+      })) {
+        throw new Error('タスクを端末に保存できませんでした');
+      }
       message = message || '\u30bf\u30b9\u30af\u3092\u8ffd\u52a0\u3057\u307e\u3057\u305f';
     }
 

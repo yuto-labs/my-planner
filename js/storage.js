@@ -40,6 +40,9 @@ const USER_CONTENT_KEYS = [
   'mp_calendar_share_defaults',
   'mp_calendar_event_title_history',
   'mp_task_tag_defaults',
+  'mp_sync_pending_deletes',
+  'mp_sync_recent_upserts',
+  'mp_sync_status',
 ];
 
 function SCHED_KEY_SAFE() { return 'mp_schedule'; }
@@ -135,8 +138,7 @@ export function addEvent(ev) {
     updatedAt: now,
   };
   events.push(newEv);
-  saveEvents(events);
-  return newEv;
+  return saveEvents(events) ? newEv : null;
 }
 
 export function updateEvent(id, updates) {
@@ -144,8 +146,7 @@ export function updateEvent(id, updates) {
   const idx = events.findIndex(e => e.id === id);
   if (idx < 0) return null;
   events[idx] = { ...events[idx], ...updates, updatedAt: new Date().toISOString() };
-  saveEvents(events);
-  return events[idx];
+  return saveEvents(events) ? events[idx] : null;
 }
 
 export function deleteEvent(id) {
@@ -218,8 +219,7 @@ export function addTask(task) {
     updatedAt: new Date().toISOString(),
   };
   tasks.push(newTask);
-  saveTasks(tasks);
-  return newTask;
+  return saveTasks(tasks) ? newTask : null;
 }
 
 export function updateTask(id, updates) {
@@ -235,7 +235,7 @@ export function updateTask(id, updates) {
   if (updates.abandoned === true  && !prev.abandoned)  extra.abandonedAt  = now;
   if (updates.abandoned === false && prev.abandoned)   extra.abandonedAt  = null;
   tasks[idx] = { ...prev, ...updates, ...extra, updatedAt: now };
-  saveTasks(tasks);
+  if (!saveTasks(tasks)) return null;
 
   // 繰り返しタスク: 完了時に次のインスタンスを自動生成
   if (updates.completed === true && !prev.completed && prev.recurrence) {
@@ -522,8 +522,7 @@ export function addScheduleItem(item) {
     updatedAt: now,
   };
   items.push(newItem);
-  saveScheduleItems(items);
-  return newItem;
+  return saveScheduleItems(items) ? newItem : null;
 }
 
 export function updateScheduleItem(id, updates) {
@@ -531,8 +530,7 @@ export function updateScheduleItem(id, updates) {
   const idx = items.findIndex(i => i.id === id);
   if (idx < 0) return null;
   items[idx] = { ...items[idx], ...updates, updatedAt: new Date().toISOString() };
-  saveScheduleItems(items);
-  return items[idx];
+  return saveScheduleItems(items) ? items[idx] : null;
 }
 
 export function deleteScheduleItem(id) {
@@ -543,6 +541,30 @@ export function deleteScheduleItem(id) {
   if (!saveScheduleItems(items.filter(item => item.id !== id))) return null;
   _notifyDelete({ table: 'schedule_items', id });
   return target;
+}
+
+export function replaceScheduleItems(predicate, replacements) {
+  const items = getScheduleItems();
+  const removed = items.filter(predicate);
+  const backedUp = removed.every(item => (
+    !!addTrashItem({ entityType: 'schedule', payload: item, title: item.title })
+  ));
+  if (!backedUp) return null;
+
+  const now = new Date().toISOString();
+  const created = replacements.map(item => ({
+    title: '',
+    startTime: '09:00',
+    endTime: '10:00',
+    date: null,
+    ...item,
+    id: item.id || generateId(),
+    createdAt: item.createdAt || now,
+    updatedAt: now,
+  }));
+  if (!saveScheduleItems([...items.filter(item => !predicate(item)), ...created])) return null;
+  removed.forEach(item => _notifyDelete({ table: 'schedule_items', id: item.id }));
+  return created;
 }
 
 export function getScheduleItemsForDate(dateStr) {
@@ -1036,8 +1058,7 @@ export function addKnowledgeMemo(memo) {
     updatedAt: now,
   };
   memos.unshift(newMemo); // newest first
-  saveKnowledgeMemos(memos);
-  return newMemo;
+  return saveKnowledgeMemos(memos) ? newMemo : null;
 }
 
 export function updateKnowledgeMemo(id, updates) {
@@ -1045,8 +1066,7 @@ export function updateKnowledgeMemo(id, updates) {
   const idx   = memos.findIndex(m => m.id === id);
   if (idx < 0) return null;
   memos[idx] = { ...memos[idx], ...updates, updatedAt: new Date().toISOString() };
-  saveKnowledgeMemos(memos);
-  return memos[idx];
+  return saveKnowledgeMemos(memos) ? memos[idx] : null;
 }
 
 export function deleteKnowledgeMemo(id) {
@@ -1451,6 +1471,116 @@ export function clearUserContentLocal() {
   USER_CONTENT_KEYS.forEach(key => {
     try { localStorage.removeItem(key); } catch {}
   });
+}
+
+const USER_SNAPSHOT_PREFIX = 'mp_user_snapshot:';
+const USER_SNAPSHOT_DB = 'my-planner-user-snapshots';
+const USER_SNAPSHOT_STORE = 'snapshots';
+
+function openUserSnapshotDb() {
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(USER_SNAPSHOT_DB, 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(USER_SNAPSHOT_STORE)) {
+        request.result.createObjectStore(USER_SNAPSHOT_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function writeUserSnapshot(userId, snapshot) {
+  const db = await openUserSnapshotDb();
+  if (!db) return false;
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(USER_SNAPSHOT_STORE, 'readwrite');
+    tx.objectStore(USER_SNAPSHOT_STORE).put(snapshot, userId);
+    tx.oncomplete = () => { db.close(); resolve(true); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
+    tx.onabort = () => { db.close(); reject(tx.error); };
+  });
+}
+
+async function readUserSnapshot(userId) {
+  const db = await openUserSnapshotDb();
+  if (!db) return null;
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(USER_SNAPSHOT_STORE, 'readonly');
+    const request = tx.objectStore(USER_SNAPSHOT_STORE).get(userId);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error);
+    tx.oncomplete = () => db.close();
+  });
+}
+
+async function deleteUserSnapshot(userId) {
+  const db = await openUserSnapshotDb();
+  if (!db) return;
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(USER_SNAPSHOT_STORE, 'readwrite');
+    tx.objectStore(USER_SNAPSHOT_STORE).delete(userId);
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
+    tx.onabort = () => { db.close(); reject(tx.error); };
+  });
+}
+
+export async function preserveUserContentSnapshot(userId) {
+  if (!userId) return false;
+  const data = {};
+  USER_CONTENT_KEYS.forEach(key => {
+    const value = localStorage.getItem(key);
+    if (value !== null) data[key] = value;
+  });
+  const snapshot = {
+    savedAt: new Date().toISOString(),
+    data,
+  };
+  try {
+    if (await writeUserSnapshot(userId, snapshot)) return true;
+  } catch (error) {
+    console.warn('IndexedDB user snapshot write failed, using fallback:', error);
+  }
+  try {
+    localStorage.setItem(`${USER_SNAPSHOT_PREFIX}${userId}`, JSON.stringify(snapshot));
+    return true;
+  } catch (error) {
+    console.error('User snapshot write failed:', error);
+    return false;
+  }
+}
+
+export async function restoreUserContentSnapshot(userId) {
+  if (!userId) return false;
+  let snapshot = null;
+  try {
+    snapshot = await readUserSnapshot(userId);
+  } catch (error) {
+    console.warn('IndexedDB user snapshot read failed, using fallback:', error);
+  }
+  if (!snapshot) {
+    try {
+      snapshot = JSON.parse(localStorage.getItem(`${USER_SNAPSHOT_PREFIX}${userId}`) || 'null');
+    } catch {
+      return false;
+    }
+  }
+  if (!snapshot) return null;
+  if (!snapshot.data || typeof snapshot.data !== 'object') return false;
+  try {
+    USER_CONTENT_KEYS.forEach(key => {
+      const value = snapshot.data[key];
+      if (typeof value === 'string') localStorage.setItem(key, value);
+    });
+    localStorage.removeItem(`${USER_SNAPSHOT_PREFIX}${userId}`);
+    try { await deleteUserSnapshot(userId); } catch {}
+    return true;
+  } catch (error) {
+    console.error('User snapshot restore failed:', error);
+    return false;
+  }
 }
 
 // ---- Habits (streak-based habit tracker) ----

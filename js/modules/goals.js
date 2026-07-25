@@ -274,8 +274,12 @@ function showAITaskModal(goal, result) {
     let added = 0;
     checked.forEach(cb => {
       const t = result.tasks[parseInt(cb.dataset.idx)];
-      if (t) { addTask({ ...t, goalId: goal.id }); added++; }
+      if (t && addTask({ ...t, goalId: goal.id })) added++;
     });
+    if (!added) {
+      toast('タスクを保存できませんでした', 'error');
+      return;
+    }
     toast(`${added}件のタスクを追加しました ✨`, 'success');
     close();
     render();

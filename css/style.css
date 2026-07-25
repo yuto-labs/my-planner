@@ -99,8 +99,8 @@
   --bg-hover:     rgba(142,201,187,0.06);
   --bg-active:    rgba(142,201,187,0.11);
   --text:         #1A1830;
-  --text-muted:   rgba(26,24,48,0.68);
-  --text-dim:     rgba(26,24,48,0.48);
+  --text-muted:   rgba(26,24,48,0.76);
+  --text-dim:     rgba(26,24,48,0.62);
   --border:       rgba(0,0,0,0.07);
   --border-light: rgba(0,0,0,0.04);
   --shadow:       0 8px 32px rgba(142,201,187,0.09);
@@ -550,7 +550,7 @@ button { cursor: pointer; font-family: inherit; }
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px; height: 34px;
+  width: 40px; height: 40px;
   border-radius: 50%;
   background: none;
   border: none;
@@ -911,8 +911,8 @@ button { cursor: pointer; font-family: inherit; }
   z-index: 5;
 }
 .cal-nav-arrow {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   border: none;
   background: none;
   color: var(--text-muted);
@@ -941,8 +941,10 @@ button { cursor: pointer; font-family: inherit; }
   cursor: pointer;
   background: none;
   border: none;
-  padding: 0;
-  display: inline-block;
+  min-height: 40px;
+  padding: 6px 4px;
+  display: inline-flex;
+  align-items: center;
 }
 .cal-title:active { opacity: 0.7; }
 
@@ -959,7 +961,7 @@ button { cursor: pointer; font-family: inherit; }
 
 .cal-scope-btn {
   min-width: 30px;
-  height: 28px;
+  height: 36px;
   border: 0;
   border-radius: 999px;
   background: transparent;
@@ -1038,7 +1040,8 @@ button { cursor: pointer; font-family: inherit; }
   gap: 2px;
 }
 .cal-mode-btn {
-  padding: 5px 12px;
+  min-height: 36px;
+  padding: 7px 12px;
   border-radius: calc(var(--radius-sm) - 3px);
   border: none;
   background: none;
@@ -1315,7 +1318,8 @@ button { cursor: pointer; font-family: inherit; }
 }
 .tasks-filters::-webkit-scrollbar { display: none; }
 .filter-btn {
-  padding: 5px 14px;
+  min-height: 36px;
+  padding: 7px 14px;
   border-radius: 100px;
   border: 1px solid var(--border);
   background: none;
@@ -1383,7 +1387,7 @@ button { cursor: pointer; font-family: inherit; }
 .task-item.abandoned .task-check { opacity: 0.3; cursor: not-allowed; }
 
 .task-check {
-  width: 22px; height: 22px;
+  width: 30px; height: 30px;
   border-radius: 50%;
   border: 2px solid var(--border);
   background: none;
@@ -2578,7 +2582,8 @@ button { cursor: pointer; font-family: inherit; }
 .kn-memo-title { flex: 1; font-size: 14px; font-weight: 700; line-height: 1.35; }
 .kn-star-btn {
   background: none; border: none; color: var(--text-dim);
-  padding: 2px; cursor: pointer; flex-shrink: 0;
+  width: 40px; height: 40px; padding: 0; cursor: pointer; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
   transition: color var(--transition), transform var(--transition);
 }
 .kn-star-btn.starred { color: #F5C542; }
@@ -2986,12 +2991,15 @@ button { cursor: pointer; font-family: inherit; }
 
 /* Toolbar */
 .kn-toolbar {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: flex-start;
   padding: 6px 16px;
   background: var(--bg-card);
   border-bottom: 1px solid var(--border);
   position: sticky; top: 56px; z-index: 9;
-  gap: 4px; overflow-x: auto;
+  gap: 4px; overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  scroll-padding-inline: 12px;
 }
 .kn-toolbar::-webkit-scrollbar { display: none; }
 .kn-toolbar-types,
@@ -3038,7 +3046,8 @@ button { cursor: pointer; font-family: inherit; }
   color: #8d5c00;
 }
 .kn-toolbar-block-menu-btn {
-  display: none;
+  display: inline-grid;
+  place-items: center;
   width: 32px;
   height: 32px;
   flex: 0 0 32px;
@@ -3054,7 +3063,22 @@ button { cursor: pointer; font-family: inherit; }
   border-color: var(--primary-border);
   background: var(--primary-bg);
 }
-.kn-toolbar-block-actions { display: none; }
+.kn-toolbar-block-actions {
+  display: none;
+  position: fixed;
+  top: 100px;
+  right: 10px;
+  z-index: 20;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-md);
+}
+.kn-toolbar-block-actions.is-open { display: flex; }
 .kn-toolbar-block-btn {
   width: 32px;
   height: 32px;
@@ -3304,8 +3328,8 @@ button { cursor: pointer; font-family: inherit; }
 .kn-block--toggle { flex-wrap: wrap; align-items: flex-start; }
 .kn-block--toggle > .kn-block-text { flex: 1 1 calc(100% - 24px); width: auto; }
 .kn-block--toggle > .kn-block-toggle-children-edit {
-  flex: 0 0 calc(100% - 20px); width: calc(100% - 20px); min-width: 0;
-  margin: 1px 0 1px 20px; padding-left: 6px;
+  flex: 0 0 calc(100% - 12px); width: calc(100% - 12px); min-width: 0;
+  margin: 1px 0 1px 12px; padding-left: 4px;
   border-left: 1px solid var(--border);
 }
 .kn-block-controls {
@@ -3327,12 +3351,7 @@ button { cursor: pointer; font-family: inherit; }
   transition: opacity var(--transition), transform var(--transition);
   transform: translateY(-2px);
 }
-.kn-block:hover > .kn-block-controls,
-.kn-block:focus-within > .kn-block-controls {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(0);
-}
+.kn-block-controls { display: none; }
 .kn-block-move,
 .kn-block-del {
   background: var(--bg-hover); border: 1px solid var(--border);
@@ -3383,19 +3402,22 @@ button { cursor: pointer; font-family: inherit; }
     padding-inline: 4px;
   }
   .kn-blocks-wrap {
-    padding-inline: 8px;
+    padding-inline: 6px;
   }
   .kn-block {
     gap: 4px;
-    padding: 2px 0 2px 26px;
+    padding: 1px 0 1px 24px;
   }
   .kn-block-drag-handle {
-    width: 23px;
-    height: 28px;
+    width: 21px;
+    height: 26px;
     opacity: 0.42;
   }
-  .kn-block-controls {
-    display: none;
+  .kn-block--toggle > .kn-block-toggle-children-edit {
+    flex-basis: calc(100% - 8px);
+    width: calc(100% - 8px);
+    margin-left: 8px;
+    padding-left: 3px;
   }
   .kn-block--divider {
     min-height: 34px;
@@ -3404,27 +3426,8 @@ button { cursor: pointer; font-family: inherit; }
     display: inline-grid;
     place-items: center;
   }
-  .kn-toolbar-block-menu-btn {
-    display: inline-grid;
-    place-items: center;
-  }
   .kn-toolbar-block-actions {
-    display: none;
-    position: fixed;
     top: 100px;
-    right: 10px;
-    z-index: 20;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 7px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--bg-card);
-    box-shadow: var(--shadow-md);
-  }
-  .kn-toolbar-block-actions.is-open {
-    display: flex;
   }
   .kn-toolbar-block-btn {
     width: 40px;
@@ -3571,7 +3574,8 @@ button { cursor: pointer; font-family: inherit; }
   gap: 8px;
 }
 .analytics-toggle-btn {
-  padding: 6px 16px;
+  min-height: 36px;
+  padding: 8px 16px;
   border-radius: 20px;
   border: 1.5px solid var(--border);
   background: transparent;
@@ -4883,8 +4887,8 @@ mark.search-highlight {
 
 /* Header search button */
 .header-search-btn {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border-radius: var(--radius-xs);
   background: none;
   border: none;
@@ -4902,7 +4906,7 @@ mark.search-highlight {
 ============================================================ */
 .fab {
   position: fixed;
-  right: 20px;
+  right: max(20px, calc((100vw - var(--max-w)) / 2 + 20px));
   bottom: calc(var(--nav-h) + 16px);
   width: 52px;
   height: 52px;
@@ -4921,6 +4925,12 @@ mark.search-highlight {
 .fab:hover  { transform: scale(1.08); box-shadow: 0 6px 28px rgba(190,230,200,0.42); }
 .fab:active { transform: scale(0.95); }
 .fab.hidden { opacity: 0; pointer-events: none; transform: scale(0.8); }
+
+@media (max-width: 720px) {
+  .fab {
+    right: max(16px, env(safe-area-inset-right));
+  }
+}
 
 /* ============================================================
    40. DRAG & DROP — Task reordering
@@ -5219,7 +5229,7 @@ kbd {
 .dp-x {
   background: none; border: none;
   color: var(--text-muted); font-size: 16px;
-  padding: 2px 6px; cursor: pointer; border-radius: 4px;
+  width: 40px; height: 40px; padding: 0; cursor: pointer; border-radius: 50%;
   transition: color var(--transition);
 }
 .dp-x:hover { color: var(--text); }
@@ -7801,3 +7811,14 @@ kbd {
 .codex-plan-actions { flex-wrap: wrap; }
 #codex-ai-btn { box-shadow: 0 8px 22px color-mix(in srgb, var(--primary) 22%, transparent); }
 .cal-ymp-item { color: var(--text); font-weight: 700; }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

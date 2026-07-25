@@ -440,17 +440,23 @@ as $$
   select
     e.id,
     e.user_id,
-    e.title,
+    case
+      when e.user_id <> auth.uid() and e.share_visibility = 'shared_busy' then '予定あり'
+      else e.title
+    end as title,
     e.start_at,
     e.end_at,
-    e.category_id,
-    e.is_tentative,
-    e.is_routine,
-    e.recurring_id,
-    e.tags,
-    e.memo,
+    case when e.user_id <> auth.uid() and e.share_visibility = 'shared_busy' then null else e.category_id end,
+    case when e.user_id <> auth.uid() and e.share_visibility = 'shared_busy' then false else e.is_tentative end,
+    case when e.user_id <> auth.uid() and e.share_visibility = 'shared_busy' then false else e.is_routine end,
+    case when e.user_id <> auth.uid() and e.share_visibility = 'shared_busy' then null else e.recurring_id end,
+    case when e.user_id <> auth.uid() and e.share_visibility = 'shared_busy' then array[]::text[] else e.tags end,
+    case
+      when e.user_id <> auth.uid() and e.share_visibility = 'shared_busy' then ''
+      else e.memo
+    end as memo,
     e.share_visibility,
-    e.shared_group_ids,
+    case when e.user_id <> auth.uid() and e.share_visibility = 'shared_busy' then array[]::text[] else e.shared_group_ids end,
     e.created_at,
     e.updated_at
   from events e

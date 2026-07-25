@@ -78,6 +78,13 @@ export function openSearch() {
     closeSearch();
     nav(item.dataset.resultNav);
   });
+  body.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const item = e.target.closest('[data-result-nav]');
+    if (!item) return;
+    e.preventDefault();
+    item.click();
+  });
 }
 
 export function closeSearch() {
@@ -133,7 +140,7 @@ function renderResults(q, container) {
       <div class="search-group">
         <div class="search-group-label">Tasks (${tasks.length})</div>
         ${tasks.slice(0, 6).map(t => `
-          <div class="search-result-item${t.completed ? ' completed' : ''}" data-result-nav="tasks">
+          <div class="search-result-item${t.completed ? ' completed' : ''}" data-result-nav="tasks" role="button" tabindex="0">
             <span class="weight-dot weight-${esc(t.weight || 'medium')}"></span>
             <span class="search-result-title">${highlight(t.title, q)}</span>
             ${t.dueDate ? `<span class="search-result-meta">${esc(formatDate(t.dueDate, 'short'))}</span>` : ''}
@@ -150,7 +157,7 @@ function renderResults(q, container) {
       <div class="search-group">
         <div class="search-group-label">Events (${events.length})</div>
         ${events.slice(0, 5).map(e => `
-          <div class="search-result-item" data-result-nav="calendar">
+          <div class="search-result-item" data-result-nav="calendar" role="button" tabindex="0">
             <span class="search-result-title">${highlight(e.title, q)}</span>
             <span class="search-result-meta">${e.start ? `${esc(formatDate(e.start, 'short'))} ${esc(formatTime(e.start))}` : ''}</span>
           </div>
@@ -165,7 +172,7 @@ function renderResults(q, container) {
       <div class="search-group">
         <div class="search-group-label">Notes (${memos.length})</div>
         ${memos.slice(0, 5).map(m => `
-          <div class="search-result-item" data-result-nav="knowledge">
+          <div class="search-result-item" data-result-nav="knowledge" role="button" tabindex="0">
             <span class="search-result-title">${highlight(m.title || 'Untitled', q)}</span>
             ${(m.tags || []).length
               ? `<span class="search-result-meta">${m.tags.slice(0, 3).map(t => `#${esc(t)}`).join(' ')}</span>`
@@ -182,7 +189,7 @@ function renderResults(q, container) {
       <div class="search-group">
         <div class="search-group-label">Goals (${goals.length})</div>
         ${goals.slice(0, 5).map(g => `
-          <div class="search-result-item" data-result-nav="goals">
+          <div class="search-result-item" data-result-nav="goals" role="button" tabindex="0">
             <span class="search-result-title">${highlight(g.title, q)}</span>
             <span class="search-result-meta">${g.progress ?? 0}%</span>
           </div>

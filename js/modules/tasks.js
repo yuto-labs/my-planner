@@ -7,7 +7,7 @@ import {
   pushUndo, applyUndo, deleteCompletedTasks, reorderTask,
   addKnowledgeMemo, updateKnowledgeMemo, isAiAvailable,
   getTags, addTag,
-  getEvents, getScheduleItems, addScheduleItem, deleteScheduleItem,
+  getEvents, getScheduleItems, replaceScheduleItems,
 } from '../storage.js';
 import { esc, today, tomorrow, formatDate, generateId, addDays, toDateStr, getEventsForDate } from '../utils.js';
 import { splitGoalToTasks, generateTaskSchedule } from '../ai.js';
@@ -720,13 +720,9 @@ function applyCodexPlan(container, options = {}) {
 
   if (!options.skipConfirm && !confirm(`${blocks.length}件の作業ブロックをマイスケジュールに反映します。対象期間内の既存AI計画は置き換わります。`)) return;
 
-  getScheduleItems()
-    .filter(i => i.source === 'codex-plan' && dateInPlanningPeriod(i.date))
-    .forEach(i => deleteScheduleItem(i.id));
-
-  blocks.forEach(b => {
+  const replacements = blocks.map(b => {
     const task = b.taskId ? normalTasksById.get(b.taskId) : null;
-    addScheduleItem({
+    return {
       title: b.title || task?.title || 'AI作業',
       date: b.date,
       startTime: b.startTime,
@@ -734,8 +730,16 @@ function applyCodexPlan(container, options = {}) {
       taskId: b.taskId || null,
       source: 'codex-plan',
       note: b.note || '',
-    });
+    };
   });
+  const saved = replaceScheduleItems(
+    item => item.source === 'codex-plan' && dateInPlanningPeriod(item.date),
+    replacements,
+  );
+  if (!saved) {
+    toast('マイスケジュールを保存できませんでした。既存の予定は残しています', 'error');
+    return;
+  }
 
   input.value = '';
   rerenderList();
@@ -1052,6 +1056,9 @@ function getSortedFilteredTasks() {
     return new Date(`${task.dueDate}T${task.dueTime || '23:59'}:00`).getTime();
   };
   tasks.sort((a, b) => {
+    const ao = Number(a.sortOrder);
+    const bo = Number(b.sortOrder);
+    if (Number.isFinite(ao) && Number.isFinite(bo) && ao !== bo) return ao - bo;
     const ad = dueSortValue(a);
     const bd = dueSortValue(b);
     if (ad !== bd) return ad - bd;
@@ -1199,6 +1206,12 @@ function handleAdd() {
   const tags       = [...state.addTags];
   const taskType   = state.addTaskType;
   saveLastTaskTags(tags);
+  const newTask = addTask({ title, weight, dueDate, dueTime, estimatedMinutes, recurrence, tags, taskType });
+  if (!newTask) {
+    toast('タスクを保存できませんでした。入力内容は残しています', 'error');
+    input.focus();
+    return;
+  }
 
   // Clear form immediately for instant feel
   input.value = '';
@@ -1242,9 +1255,6 @@ function handleAdd() {
   const _eb = c.querySelector('#task-estimate-btn');
   if (_eb) { _eb.textContent = '⏱ 工数'; _eb.classList.remove('dp-trigger--set'); }
   input.focus();
-
-  // Persist synchronously - addTask returns the new task object
-  const newTask = addTask({ title, weight, dueDate, dueTime, estimatedMinutes, recurrence, tags, taskType });
 
   // 笏笏 Optimistic: insert new item into DOM without full rerender 笏笏
   const listEl = state.container?.querySelector('#task-list');
@@ -1302,14 +1312,18 @@ async function handleDecompose(taskId, btn) {
     const subtasks = result?.tasks || [];
     if (!subtasks.length) { toast('サブタスクが空なので分解できません', 'error'); return; }
 
-    subtasks.forEach(st => {
-      addTask({ title: st.title, weight: st.weight || 'medium', dueDate: st.dueDate || task.dueDate, tags: task.tags || [] });
-    });
+    const addedTasks = subtasks.filter(st => addTask({
+      title: st.title,
+      weight: st.weight || 'medium',
+      dueDate: st.dueDate || task.dueDate,
+      tags: task.tags || [],
+    }));
+    if (!addedTasks.length) throw new Error('分解したタスクを端末に保存できませんでした');
 
     rerenderList();
     renderProgressBar();
     const advice = result?.advice ? ` ${result.advice}` : '';
-    toast(`${subtasks.length}件のサブタスクを追加しました ${advice}`, 'success');
+    toast(`${addedTasks.length}件のサブタスクを追加しました ${advice}`, 'success');
   } catch (e) {
     toast('AI分解エラー: ' + e.message, 'error');
   } finally {
@@ -1743,13 +1757,17 @@ function showKnowledgeSavePrompt(task) {
 
   banner.querySelector('.kn-save-yes')?.addEventListener('click', () => {
     clearTimeout(timer);
-    dismiss();
     const newMemo = addKnowledgeMemo({
       title:  task.title,
       blocks: [{ id: generateId(), type: 'paragraph', text: task.memo }],
       tags:   task.tags || [],
       summary: task.memo.slice(0, 120),
     });
+    if (!newMemo) {
+      toast('メモを保存できませんでした', 'error');
+      return;
+    }
+    dismiss();
     // If API key set, kick off AI tag suggestion
     if (isAiAvailable() && task.memo.length > 10) {
       import('../ai.js').then(({ suggestKnowledgeTags }) => {

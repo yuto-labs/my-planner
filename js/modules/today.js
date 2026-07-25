@@ -692,8 +692,13 @@ export function openScheduleItemModal({ dateStr = today(), item = null, onSaved 
     }
 
     const updates = { title, startTime, endTime, date: todayOnly ? dateStr : null };
-    if (isEdit) updateScheduleItem(item.id, updates);
-    else addScheduleItem(updates);
+    const saved = isEdit
+      ? updateScheduleItem(item.id, updates)
+      : addScheduleItem(updates);
+    if (!saved) {
+      toast('保存できませんでした。入力内容は残しています', 'error');
+      return;
+    }
     toast(`「${title}」を${isEdit ? '更新' : '追加'}しました`, 'success');
     close();
     onSaved?.();

@@ -78,7 +78,6 @@ const _pushPromises = new Map();
 const DELETE_GRACE_MS = 250;
 const DELETE_RETRY_MS = 5000;
 const DELETE_TOMBSTONE_KEY = 'mp_sync_pending_deletes';
-const DELETE_TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const RECENT_UPSERT_KEY = 'mp_sync_recent_upserts';
 const SYNC_STATUS_KEY = 'mp_sync_status';
 const EVENT_BACKFILL_VERSION = 1;
@@ -315,6 +314,11 @@ async function _pushTableNow(tableKey, epoch = _syncEpoch) {
   const client = await getClient();
   const userId = await getUserId();
   if (!client || !userId || epoch !== _syncEpoch) return false;
+  const activeUserId = getActiveUserId();
+  if (activeUserId && activeUserId !== userId) {
+    _recordSyncError(tableKey, new Error('Active local user does not match the signed-in user'));
+    return false;
+  }
 
   const lsKey     = LS_KEYS[tableKey];
   const dbTable   = DB_TABLE[tableKey];
@@ -373,6 +377,17 @@ async function _upsertRowsCompat(client, dbTable, rows, conflict) {
     const missingColumn = _missingColumnFromError(result.error);
     if (!missingColumn || !attemptRows.some(row => Object.hasOwn(row, missingColumn))) {
       return result;
+    }
+    const dataBearingColumns = new Set([
+      'attachments', 'blocks', 'memo', 'shared_group_ids', 'share_visibility',
+      'hide_from_month', 'recurrence', 'subtasks', 'tags',
+    ]);
+    if (dataBearingColumns.has(missingColumn)) {
+      return {
+        error: new Error(
+          `${dbTable}.${missingColumn} is missing in Supabase. Apply the current schema before syncing so data is not discarded.`
+        ),
+      };
     }
 
     strippedColumns.push(missingColumn);
@@ -903,13 +918,11 @@ function _hasId(key, id) {
 }
 
 function _getPendingDeletes() {
-  const now = Date.now();
   const activeUserId = getActiveUserId();
   const all = _ls(DELETE_TOMBSTONE_KEY, []);
   const filtered = all.filter(entry => {
     if (!entry?.table) return false;
     if (entry.userId && activeUserId && entry.userId !== activeUserId) return false;
-    if ((entry.expiresAt || 0) < now) return false;
     if (!_isStillDeleted(entry)) return false;
     return true;
   });
@@ -931,7 +944,7 @@ function _markPendingDelete(payload) {
     id: payload.id || null,
     name: payload.name || null,
     userId: payload.userId || getActiveUserId() || null,
-    expiresAt: Date.now() + DELETE_TOMBSTONE_TTL_MS,
+    createdAt: Date.now(),
   };
   const idx = entries.findIndex(entry => _deleteKey(entry) === key);
   if (idx >= 0) entries[idx] = next;

@@ -3,6 +3,8 @@
 // ============================================================
 
 const DOW = ['日', '月', '火', '水', '木', '金', '土'];
+let previouslyFocused = null;
+let escapeHandler = null;
 
 function _pad(n) { return String(n).padStart(2, '0'); }
 
@@ -33,14 +35,60 @@ function _getOverlay() {
     el.className = 'dp-picker-overlay';
     document.body.appendChild(el);
   }
+  previouslyFocused = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
   el.innerHTML = '';
   el.classList.remove('hidden');
+  el.setAttribute('role', 'presentation');
+  if (escapeHandler) document.removeEventListener('keydown', escapeHandler);
+  escapeHandler = event => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      _close();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const popup = el.querySelector('[role="dialog"]');
+    const focusable = [...(popup?.querySelectorAll(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    ) || [])].filter(node => !node.hidden && node.getClientRects().length);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if (!popup.contains(document.activeElement)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    } else if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+  document.addEventListener('keydown', escapeHandler);
   return el;
 }
 
 function _close() {
   const el = document.getElementById('dp-picker-overlay');
   if (el) { el.classList.add('hidden'); el.innerHTML = ''; }
+  if (escapeHandler) document.removeEventListener('keydown', escapeHandler);
+  escapeHandler = null;
+  previouslyFocused?.focus?.({ preventScroll: true });
+  previouslyFocused = null;
+}
+
+export function closePicker() {
+  _close();
+}
+
+function _preparePopup(popup, label) {
+  popup.setAttribute('role', 'dialog');
+  popup.setAttribute('aria-modal', 'true');
+  popup.setAttribute('aria-label', label);
+  requestAnimationFrame(() => popup.querySelector('button:not([disabled])')?.focus?.());
 }
 
 // ---- Date Picker ----
@@ -126,6 +174,7 @@ export function openDatePicker({ value, onConfirm, onClear }) {
 
   overlay.onclick = e => { if (e.target === overlay) _close(); };
   overlay.appendChild(popup);
+  _preparePopup(popup, '日付を選択');
   render();
 }
 
@@ -198,6 +247,7 @@ export function openTimePicker({ value, onConfirm, onClear }) {
 
   overlay.onclick = e => { if (e.target === overlay) _close(); };
   overlay.appendChild(popup);
+  _preparePopup(popup, '時刻を選択');
   render();
 }
 
@@ -293,5 +343,6 @@ export function openDurationPicker({ value, onConfirm, onClear }) {
 
   overlay.onclick = e => { if (e.target === overlay) _close(); };
   overlay.appendChild(popup);
+  _preparePopup(popup, '工数を選択');
   render();
 }

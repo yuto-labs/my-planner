@@ -7,6 +7,8 @@ import {
   exportBackup, importBackup, clearAiCache, DEFAULT_CATEGORIES, DEFAULT_ACCENT_RGB, DEFAULT_THEME_TUNING,
   getPendingAIQueue, clearPendingAIQueue, getAiRuntime,
   clearUserContentLocal,
+  preserveUserContentSnapshot,
+  restoreUserContentSnapshot,
 } from '../storage.js';
 import { processBatchQueue, refreshAiRuntimeStatus } from '../ai.js';
 import { esc, generateId } from '../utils.js';
@@ -714,10 +716,22 @@ function wireAccount(container, options = {}) {
       const nextUserId = session.user?.id || null;
       const previousUserId = getActiveUserId();
       if (previousUserId && nextUserId && previousUserId !== nextUserId) {
+        if (!await preserveUserContentSnapshot(previousUserId)) {
+          throw new Error('端末内データを退避できなかったため、アカウント切替を中止しました');
+        }
         await resetSyncForUserSwitch();
         clearUserContentLocal();
+        const restored = await restoreUserContentSnapshot(nextUserId);
+        if (restored === false) {
+          clearUserContentLocal();
+          await restoreUserContentSnapshot(previousUserId);
+          setActiveUserId(previousUserId);
+          throw new Error('保存済みの端末データを復元できなかったため、アカウント切替を中止しました');
+        }
+        setActiveUserId(nextUserId);
+      } else {
+        setActiveUserId(nextUserId);
       }
-      setActiveUserId(nextUserId);
       toast('ログインしました', 'success');
       const alreadyMigrated = await isMigratedForCurrentUser();
       await pullAll(alreadyMigrated);

@@ -41,6 +41,7 @@ let activeEditorBlockId = null;
 let editorBaseline = '';
 let pendingImageUploads = new Set();
 let pendingImageDeletes = new Set();
+let editorSessionToken = 0;
 
 // ---- Navigation history for swipe-back ----
 let _knHistory           = [];  // [{memoId: string|null, scrollTop: number}]
@@ -415,6 +416,12 @@ function renderList() {
       if (e.target.closest('[data-star-id]')) return;
       openKnowledgeMemo(card.dataset.memoId);
     });
+    card.addEventListener('keydown', e => {
+      if (e.target !== card) return;
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      openKnowledgeMemo(card.dataset.memoId);
+    });
   });
 
   // Wire star buttons
@@ -455,7 +462,8 @@ function renderMemoCard(m) {
   }
 
   return `
-    <div class="kn-memo-card" data-memo-id="${esc(m.id)}">
+    <div class="kn-memo-card" data-memo-id="${esc(m.id)}" role="group" tabindex="0"
+      aria-label="${esc(m.title || '無題のメモ')}を開く">
       <div class="kn-memo-card-top">
         <span class="kn-memo-title">${esc(m.title || '無題のメモ')}</span>
         ${m.pendingAI ? '<span class="kn-pending-badge">🤖 AI処理待ち</span>' : ''}
@@ -683,6 +691,10 @@ function openAIInputSheet() {
       starred: false,
       summary: blocksToText(result.blocks, 200),
     });
+    if (!saved) {
+      toast('メモを保存できませんでした', 'error');
+      return;
+    }
     scheduleFirstReview(saved.id);
 
     close();
@@ -782,6 +794,7 @@ let edState = {
 };
 
 export function initKnowledgeDetail(container) {
+  editorSessionToken += 1;
   if (_detailGestureCleanup) { _detailGestureCleanup(); _detailGestureCleanup = null; }
   const main = document.getElementById('main-content');
   const currentScrollTop = main?.scrollTop || 0;
@@ -1437,12 +1450,6 @@ function renderEditMode(container) {
             title="マーカー色" aria-expanded="false">MARK</button>
         </div>
         <button class="kn-toolbar-btn kn-toolbar-color-btn" id="kn-color-btn" title="文字色">🎨</button>
-        <button type="button" class="kn-toolbar-btn kn-toolbar-media-btn" id="kn-photo-btn"
-          title="写真を追加" aria-label="写真を追加">PHOTO</button>
-        <button type="button" class="kn-toolbar-btn kn-toolbar-media-btn" id="kn-camera-btn"
-          title="カメラで撮影" aria-label="カメラで撮影">CAM</button>
-        <input class="hidden" id="kn-photo-input" type="file" accept="image/*">
-        <input class="hidden" id="kn-camera-input" type="file" accept="image/*" capture="environment">
         <button type="button" class="kn-toolbar-block-menu-btn" id="kn-block-actions-toggle"
           aria-label="ブロック操作" aria-expanded="false" title="ブロック操作">•••</button>
         <div class="kn-toolbar-block-actions" aria-label="ブロック操作">
@@ -1452,6 +1459,12 @@ function renderEditMode(container) {
           <button type="button" class="kn-toolbar-block-btn" data-toolbar-block-action="outdent" title="外へ" aria-label="外側へ移動">←</button>
           <button type="button" class="kn-toolbar-block-btn kn-toolbar-block-btn--danger" data-toolbar-block-action="delete" title="削除" aria-label="ブロックを削除">×</button>
         </div>
+        <button type="button" class="kn-toolbar-btn kn-toolbar-media-btn" id="kn-photo-btn"
+          title="写真を追加" aria-label="写真を追加">PHOTO</button>
+        <button type="button" class="kn-toolbar-btn kn-toolbar-media-btn" id="kn-camera-btn"
+          title="カメラで撮影" aria-label="カメラで撮影">CAM</button>
+        <input class="hidden" id="kn-photo-input" type="file" accept="image/*">
+        <input class="hidden" id="kn-camera-input" type="file" accept="image/*" capture="environment">
       </div>
 
       <div class="kn-toggle-target-picker hidden" id="kn-toggle-target-picker" aria-label="移動先トグル"></div>
@@ -1483,7 +1496,7 @@ function renderEditMode(container) {
       <!-- Add one block below the active block -->
       <button class="kn-add-block-btn" id="kn-add-block-btn">
         <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-        下にブロックを追加
+        ブロックを追加
       </button>
     </div>
   `;
@@ -1492,6 +1505,7 @@ function renderEditMode(container) {
   container.querySelector('#kn-cancel-btn')?.addEventListener('click', () => {
     if (!confirmDiscardKnowledgeChanges()) return;
     cleanupPendingImageUploads();
+    pendingImageDeletes.clear();
     if (id) {
       edState.isEdit = false;
       // Reload from storage to discard changes
@@ -1701,7 +1715,7 @@ function wireBlocksEdit(container) {
 
     if (el.tagName === 'TEXTAREA') {
       // Math block
-      const block = findBlockById(edState.blocks, blockId);
+      const block = findBlockInAllBlocks(edState.blocks, blockId);
       if (block) {
         block.text = el.value;
         // Live KaTeX preview
@@ -2128,6 +2142,12 @@ function wireToolbar(container) {
   let savedHighlightSelection = null;
   const blockMenuToggle = container.querySelector('#kn-block-actions-toggle');
   const blockMenu = container.querySelector('.kn-toolbar-block-actions');
+  const placeBlockMenu = () => {
+    if (!blockMenuToggle || !blockMenu) return;
+    const rect = blockMenuToggle.getBoundingClientRect();
+    blockMenu.style.top = `${Math.round(rect.bottom + 6)}px`;
+    blockMenu.style.right = `${Math.max(10, Math.round(window.innerWidth - rect.right))}px`;
+  };
   const closeBlockMenu = () => {
     blockMenu?.classList.remove('is-open');
     blockMenuToggle?.setAttribute('aria-expanded', 'false');
@@ -2135,6 +2155,7 @@ function wireToolbar(container) {
   blockMenuToggle?.addEventListener('click', e => {
     e.stopPropagation();
     const isOpen = blockMenu?.classList.toggle('is-open');
+    if (isOpen) placeBlockMenu();
     blockMenuToggle.setAttribute('aria-expanded', String(!!isOpen));
   });
   container.querySelector('.kn-edit-page')?.addEventListener('click', e => {
@@ -2414,7 +2435,13 @@ function wireKnowledgeImageInputs(container) {
       button.textContent = '...';
     }
     try {
+      const uploadSession = editorSessionToken;
+      const uploadMemoId = edState.id;
       const media = await uploadPlannerImage(file, 'memos');
+      if (uploadSession !== editorSessionToken || uploadMemoId !== edState.id) {
+        await deletePlannerImage(media.path).catch(() => {});
+        return;
+      }
       pendingImageUploads.add(media.path);
       const block = insertMediaBlock(resolveActiveEditorBlockId(container), media);
       activeEditorBlockId = block.id;
@@ -2613,6 +2640,14 @@ function rerenderBlocks(container) {
   if (!wrap) return;
   wrap.innerHTML = renderBlocksEdit(edState.blocks);
   wireBlocksEdit(container);
+  const activeId = activeEditorBlockId && findBlockInAllBlocks(edState.blocks, activeEditorBlockId)
+    ? activeEditorBlockId
+    : edState.blocks[0]?.id;
+  if (!activeId) return;
+  activeEditorBlockId = activeId;
+  wrap.querySelector(`[data-block-id="${activeId}"]`)?.classList.add('kn-block--active');
+  const activeBlock = findBlockInAllBlocks(edState.blocks, activeId);
+  if (activeBlock) highlightToolbarType(container, activeBlock.type);
 }
 
 function removeBlockById(blockId, blocks = edState.blocks) {
@@ -2907,7 +2942,11 @@ async function saveMemo(container) {
     if (!memoData.pendingAI && memoData.tags?.length) {
       removeFromPendingAIQueue(edState.id, 'memo_tags');
     }
-    updateKnowledgeMemo(edState.id, memoData);
+    const saved = updateKnowledgeMemo(edState.id, memoData);
+    if (!saved) {
+      toast('保存できませんでした。入力内容は画面に残しています', 'error');
+      return;
+    }
     setMemoReviewEnabled(edState.id, edState.reviewEnabled);
     toast('メモを保存しました ✓', 'success');
     markEditorBaseline();
@@ -2915,6 +2954,10 @@ async function saveMemo(container) {
     renderDetail(container, { preserveScroll: true });
   } else {
     const saved = addKnowledgeMemo(memoData);
+    if (!saved) {
+      toast('保存できませんでした。入力内容は画面に残しています', 'error');
+      return;
+    }
     edState.id   = saved.id;
     currentMemoId = saved.id;
     if (edState.reviewEnabled) scheduleFirstReview(saved.id);
