@@ -534,6 +534,8 @@ export async function generateNuanceEntries(
     `When category is blank, choose exactly one category from this fixed list: ${NUANCE_ATLAS_CATEGORIES.join(', ')}.`,
     'Category is the broad reusable domain. Topic is the narrower communicative intent or meaning shared by the expressions.',
     'When the user supplies a category or topic, preserve that exact value. When either is blank, infer it from the supplied expressions or semantic request.',
+    'The user will not provide a desired usage situation. Infer several realistic situations for each expression and explain them in useCasesJa.',
+    'Always answer when at least a category, topic, or expression is supplied. For a broad or ambiguous request, choose the most useful interpretation and make that interpretation clear instead of asking for more detail.',
     'Prefer an existing category/topic from existingTaxonomy when it is semantically equivalent; otherwise create a clear, reusable label. Never use vague labels such as その他 or 一般.',
     'Create 5 to 8 genuinely useful expressions for the requested semantic topic, unless seed terms are supplied; always include every supplied seed term.',
     'For the whole set, rate each expression from intensityLevel 1 (weak/subtle) to 5 (strong/extreme), and assign a short Japanese nuanceTypeJa that explains its qualitative type rather than merely repeating the strength.',
@@ -571,10 +573,11 @@ export async function generateNuanceEntries(
     cleanCategory || parsed?.category,
     `${cleanTopic} ${terms.join(' ')}`
   );
-  const resolvedTopic = cleanTopic || String(parsed?.topic || '').trim();
-  if (!resolvedCategory || !resolvedTopic) {
-    throw new Error('AIがカテゴリまたはテーマを判定できませんでした。入力を少し具体的にしてください。');
-  }
+  const resolvedTopic = cleanTopic
+    || String(parsed?.topic || '').trim()
+    || terms.join('・')
+    || cleanCategory
+    || '英語表現';
   const sourceEntries = Array.isArray(parsed?.entries) ? parsed.entries : [];
   const unique = new Set();
   const entries = sourceEntries
@@ -625,7 +628,7 @@ export async function generateNuanceEntries(
     .slice(0, 12);
 
   if (!entries.length) {
-    throw new Error('表現データを作成できませんでした。入力を少し具体的にして、もう一度試してください。');
+    throw new Error('表現データを作成できませんでした。少し時間を置いて、もう一度お試しください。');
   }
   return entries;
 }

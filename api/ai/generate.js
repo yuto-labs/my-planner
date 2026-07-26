@@ -144,14 +144,24 @@ function pickResponseSchema(actionType, body) {
         entries: {
           type: 'ARRAY',
           description: 'Five to eight distinct expressions for the requested topic.',
+          minItems: 5,
+          maxItems: 8,
           items: {
             type: 'OBJECT',
             properties: {
               term: { type: 'STRING' },
               partOfSpeech: { type: 'STRING' },
+              etymologyJa: { type: 'STRING' },
+              coreImageJa: { type: 'STRING' },
               coreMeaningJa: { type: 'STRING' },
               nuanceJa: { type: 'STRING' },
+              nuanceTypeJa: { type: 'STRING' },
               register: { type: 'STRING' },
+              intensityLevel: {
+                type: 'INTEGER',
+                minimum: 1,
+                maximum: 5,
+              },
               intensity: { type: 'STRING' },
               emotionalToneJa: { type: 'STRING' },
               useCasesJa: stringArray('Concrete situations where this expression is natural.'),
@@ -184,9 +194,13 @@ function pickResponseSchema(actionType, body) {
             required: [
               'term',
               'partOfSpeech',
+              'etymologyJa',
+              'coreImageJa',
               'coreMeaningJa',
               'nuanceJa',
+              'nuanceTypeJa',
               'register',
+              'intensityLevel',
               'intensity',
               'emotionalToneJa',
               'useCasesJa',
@@ -296,6 +310,19 @@ function hasCompleteTranslationResponse(text) {
       .map(variant => String(variant?.translation || '').trim().toLocaleLowerCase())
       .filter(Boolean);
     return variants.length === 3 && new Set(translations).size === 3;
+  } catch {
+    return false;
+  }
+}
+
+function hasCompleteNuanceResponse(text) {
+  try {
+    const parsed = JSON.parse(String(text || ''));
+    const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
+    const terms = entries
+      .map(entry => String(entry?.term || '').trim().toLocaleLowerCase())
+      .filter(Boolean);
+    return entries.length >= 5 && new Set(terms).size >= 5;
   } catch {
     return false;
   }
@@ -501,7 +528,9 @@ export default async function handler(req, res) {
     let text = extractText(data);
     const incompleteTranslation = body.actionType === 'translation_variants'
       && !hasCompleteTranslationResponse(text);
-    if (!text || incompleteTranslation) {
+    const incompleteNuance = body.actionType === 'nuance_generate'
+      && !hasCompleteNuanceResponse(text);
+    if (!text || incompleteTranslation || incompleteNuance) {
       const retryPayload = {
         ...payload,
         generationConfig: {
@@ -516,6 +545,15 @@ export default async function handler(req, res) {
             text: `${String(body.systemText || '')}
 
 The previous response was incomplete. Return all three distinct translation variants even when the Japanese is short, fragmentary, colloquial, or ambiguous. Never ask the user to make the Japanese more specific. State reasonable interpretations and assumptions in overallNuanceJa.`,
+          }],
+        };
+      }
+      if (body.actionType === 'nuance_generate') {
+        retryPayload.systemInstruction = {
+          parts: [{
+            text: `${String(body.systemText || '')}
+
+The previous response was incomplete. Return five to eight distinct expressions with every required explanation field. The user does not need to provide a usage situation: infer several realistic situations for each expression and explain them in useCasesJa. Never ask the user to make the theme or words more specific when a reasonable interpretation is possible.`,
           }],
         };
       }

@@ -482,7 +482,6 @@ function renderTranslationVariant(variant, index) {
       ${detailSection('この文自体の全体ニュアンス', variant.overallNuanceJa || variant.nuanceJa)}
       ${translationVocabularySection(variant.vocabularyNotes)}
       ${translationComparisonSection(variant.comparisons)}
-      ${listSection('自然に使う場面', variant.useCasesJa)}
       ${listSection('注意点', variant.cautionsJa, 'atlas-note-list--warning')}
     </article>
   `;
@@ -586,7 +585,6 @@ function renderTranslationDetail() {
         </button>
       </header>
       ${Number(set.promptVersion || 1) < 2 ? detailSection('英訳の考え方', set.summaryJa) : ''}
-      ${set.contextJa ? detailSection('指定した場面', set.contextJa) : ''}
       <section class="atlas-detail-section atlas-translation-detail-list">
         <h2>ニュアンス別英訳3パターン＆深掘り解説</h2>
         <div class="atlas-translation-variant-list">
@@ -595,7 +593,7 @@ function renderTranslationDetail() {
       </section>
       <section class="atlas-detail-section">
         <h2>自分のメモ</h2>
-        <textarea id="atlas-translation-note" class="atlas-personal-note" rows="4" placeholder="実際に使った場面や、自分なりの使い分けを記録">${esc(set.personalNote || '')}</textarea>
+        <textarea id="atlas-translation-note" class="atlas-personal-note" rows="4" placeholder="気づいた違いや、覚えておきたい表現を記録">${esc(set.personalNote || '')}</textarea>
         <div class="atlas-note-actions">
           <button class="btn btn-primary btn-sm" id="atlas-save-translation-note">メモを保存</button>
         </div>
@@ -791,7 +789,7 @@ function renderDetail() {
       ${etymologyCoreSection(entry)}
       ${detailSection('深いニュアンス', entry.nuanceJa)}
       ${comparisonsSection(entry.comparisons)}
-      ${listSection('どんな場面で使う？', entry.useCasesJa)}
+      ${listSection('AIが想定した使用場面', entry.useCasesJa)}
       ${examplesSection(entry.examples)}
       ${detailSection('感情の温度', entry.emotionalToneJa)}
       ${chipSection('よく一緒に使う語', entry.collocations)}
@@ -799,7 +797,7 @@ function renderDetail() {
 
       <section class="atlas-detail-section">
         <h2>自分のメモ</h2>
-        <textarea id="atlas-personal-note" class="atlas-personal-note" rows="4" placeholder="覚え方、使ってみたい場面、自分なりの違いを記録">${esc(entry.personalNote || '')}</textarea>
+        <textarea id="atlas-personal-note" class="atlas-personal-note" rows="4" placeholder="覚え方や、自分なりの違いを記録">${esc(entry.personalNote || '')}</textarea>
         <div class="atlas-note-actions">
           <button class="btn btn-primary btn-sm" id="atlas-save-note">メモを保存</button>
         </div>
