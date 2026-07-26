@@ -1042,6 +1042,11 @@ export function deleteExpressionEntry(id) {
   const allRecords = getAllKnowledgeRecords();
   const target = allRecords.find(record => record.id === id && isExpressionAtlasRecord(record));
   if (!target) return false;
+  if (!addTrashItem({
+    entityType: 'atlas',
+    payload: target,
+    title: target.title || 'NUANCE ATLAS',
+  })) return false;
   if (!save(KNOWLEDGE_KEY, allRecords.filter(record => record.id !== id))) return false;
   _notifyDelete({ table: 'knowledge_memos', id });
   return true;
@@ -1242,6 +1247,15 @@ export function restoreTrashItem(id) {
           scheduleFirstReview(entityId);
         }
       }
+    } else restored = true;
+  } else if (item.entityType === 'atlas') {
+    const records = getAllKnowledgeRecords();
+    if (!records.find(record => record.id === entityId)) {
+      restored = save(KNOWLEDGE_KEY, [
+        { ...payload, id: entityId, updatedAt: new Date().toISOString() },
+        ...records,
+      ]);
+      if (restored) _notifySync('knowledge_memos');
     } else restored = true;
   } else if (item.entityType === 'goal') {
     const goals = getGoals();
@@ -1447,6 +1461,7 @@ export function exportBackup() {
     settings: safeSettings,
     memos: getKnowledgeMemos(),
     expressionEntries: getExpressionEntries(),
+    translationSets: getTranslationSets(),
     appMediaPreferences: getAppMediaPreferences(),
     trash: getTrashItems(),
     habits: getHabits(),
@@ -1463,6 +1478,7 @@ export function importBackup(jsonStr) {
   if (data.categories) saveCategories(data.categories);
   if (data.memos)     saveKnowledgeMemos(data.memos);
   if (data.expressionEntries) addExpressionEntries(data.expressionEntries);
+  if (data.translationSets) data.translationSets.forEach(addTranslationSet);
   if (data.appMediaPreferences) saveAppMediaPreferences(data.appMediaPreferences);
   if (data.trash)     saveTrashItems(data.trash);
   if (data.habits)    saveHabits(data.habits);

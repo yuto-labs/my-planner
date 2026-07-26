@@ -525,12 +525,16 @@ export function reconcileEventCollections(
   remote,
   knownRemote = {},
   pendingDeleteIds = new Set(),
-  protectedMissingIds = new Set()
+  protectedMissingIds = new Set(),
+  restoreMissingIds = new Set()
 ) {
   const deletedIds = pendingDeleteIds instanceof Set ? pendingDeleteIds : new Set(pendingDeleteIds);
   const protectedIds = protectedMissingIds instanceof Set
     ? protectedMissingIds
     : new Set(protectedMissingIds);
+  const restorableIds = restoreMissingIds instanceof Set
+    ? restoreMissingIds
+    : new Set(restoreMissingIds);
   const availableRemote = remote.filter(event => event?.id && !deletedIds.has(event.id));
   const remoteById = new Map(availableRemote.map(event => [event.id, event]));
   const localById = new Map(
@@ -551,6 +555,11 @@ export function reconcileEventCollections(
 
   for (const localEvent of localById.values()) {
     if (remoteById.has(localEvent.id)) continue;
+    if (restorableIds.has(localEvent.id)) {
+      next.push(localEvent);
+      pushCandidates.set(localEvent.id, localEvent);
+      continue;
+    }
     const knownVersion = Number(knownRemote[localEvent.id]);
     const localVersion = _syncVersion(localEvent);
     const neverSeenInCloud = !Number.isFinite(knownVersion) || knownVersion <= 0;
@@ -611,14 +620,18 @@ async function _reconcileRemoteCollection({
   conflict = 'id',
   pendingDeleteTable = dbTable,
   retryKeys = [collectionKey],
+  confirmedDeleteIds = new Set(),
+  restoreMissingToCloud = false,
 }) {
   const snapshotKey = _remoteSnapshotKey(collectionKey, userId);
   const knownRemote = _ls(snapshotKey, {});
-  const pendingDeleteIds = new Set(
-    _getPendingDeletes()
-      .filter(entry => entry.table === pendingDeleteTable && entry.id)
-      .map(entry => entry.id)
-  );
+  const localPendingDeleteIds = _getPendingDeletes()
+    .filter(entry => entry.table === pendingDeleteTable && entry.id)
+    .map(entry => entry.id);
+  const pendingDeleteIds = new Set([
+    ...(confirmedDeleteIds instanceof Set ? confirmedDeleteIds : new Set(confirmedDeleteIds)),
+    ...localPendingDeleteIds,
+  ]);
   const protectedMissingIds = _trackRemoteMissingItems({
     collectionKey,
     userId,
@@ -627,12 +640,21 @@ async function _reconcileRemoteCollection({
     knownRemote,
     pendingDeleteIds,
   });
+  const remoteIds = new Set(remote.filter(item => item?.id).map(item => item.id));
+  const restoreMissingIds = restoreMissingToCloud
+    ? new Set(
+      local
+        .filter(item => item?.id && !remoteIds.has(item.id) && !pendingDeleteIds.has(item.id))
+        .map(item => item.id)
+    )
+    : new Set();
   const reconciled = reconcileEventCollections(
     local,
     remote,
     knownRemote,
     pendingDeleteIds,
-    protectedMissingIds
+    protectedMissingIds,
+    restoreMissingIds
   );
   const pushCandidates = new Map(reconciled.pushCandidates.map(item => [item.id, item]));
   let pushedIds = new Set();
@@ -679,11 +701,30 @@ async function _pullMemos(client, userId, forceReplace = false) {
   const { data, error } = await _selectAllForUser(client, 'knowledge_memos', '*', userId, 'id');
   if (error) throw error;
   if (!data) return;
+  const trashResult = await _selectAllForUser(
+    client,
+    'trash_items',
+    'id,entity_id,entity_type,updated_at',
+    userId,
+    'id'
+  );
+  const confirmedDeleteIds = trashResult.error
+    ? new Set()
+    : new Set(
+      _filterPendingDeletes('trash_items', (trashResult.data || []).map(rowToTrash))
+        .filter(item => ['memo', 'atlas'].includes(item.entityType) && item.entityId)
+        .map(item => item.entityId)
+    );
+  if (trashResult.error) {
+    console.warn('[Sync] could not verify note deletion records; preserving local notes:', trashResult.error);
+  }
   const remote = _filterPendingDeletes('knowledge_memos', data.map(rowToMemo));
   const local = _ls('mp_knowledge', []);
   const next = await _reconcileRemoteCollection({
     client, userId, collectionKey: 'knowledge_memos', dbTable: 'knowledge_memos', local, remote,
     toRow: memoToRow, pendingDeleteTable: 'knowledge_memos', retryKeys: ['knowledge_memos'],
+    confirmedDeleteIds,
+    restoreMissingToCloud: true,
   });
   return _writeCollectionAfterSync('mp_knowledge', local, next, userId, 'knowledge_memos');
 }
@@ -856,6 +897,21 @@ async function _executeDelete(scopedPayload, epoch = _syncEpoch) {
 
   try {
     let result = null;
+    if (scopedPayload.table === 'knowledge_memos' && scopedPayload.id) {
+      const deletionRecord = _ls('mp_trash', []).find(item => (
+        item?.entityId === scopedPayload.id
+        && ['memo', 'atlas'].includes(item.entityType)
+      ));
+      if (deletionRecord) {
+        const tombstoneResult = await _upsertRowsCompat(
+          client,
+          'trash_items',
+          [trashToRow(deletionRecord, userId)],
+          'id'
+        );
+        if (tombstoneResult.error) throw tombstoneResult.error;
+      }
+    }
     if (scopedPayload.table === 'tags' && scopedPayload.name) {
       result = await client.from('tags')
         .delete()
