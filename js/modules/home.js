@@ -71,7 +71,7 @@ export function initHome(container) {
       <div class="home-intro${homeCover?.path ? ' home-intro--cover' : ''}">
         ${homeCover?.path ? `
           <div class="home-cover media-frame media-frame--loading">
-            <img data-media-path="${esc(homeCover.path)}" data-media-view="1"
+            <img data-media-path="${esc(homeCover.path)}" data-media-persist="1" data-media-view="1"
               tabindex="0" role="button" aria-label="カバー写真を拡大表示"
               style="object-position:${clampCoverPosition(homeCover.positionX)}% ${clampCoverPosition(homeCover.positionY)}%"
               alt="${esc(homeCover.alt || 'ホームカバー')}">
@@ -341,7 +341,7 @@ function openHomeCoverEditor(container, currentCover) {
   body.innerHTML = `
     <p class="home-cover-editor-help">写真の見せたい位置を調整できます。</p>
     <div class="home-cover-editor-preview media-frame media-frame--loading">
-      <img data-media-path="${esc(currentCover.path)}"
+      <img data-media-path="${esc(currentCover.path)}" data-media-persist="1"
         style="object-position:${positionX}% ${positionY}%"
         alt="${esc(currentCover.alt || 'ホームカバーのプレビュー')}">
     </div>

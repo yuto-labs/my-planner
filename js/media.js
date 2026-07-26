@@ -10,7 +10,9 @@ const MAX_INPUT_BYTES = 15 * 1024 * 1024;
 const MAX_EDGE = 1600;
 const JPEG_QUALITY = 0.84;
 const SIGNED_URL_TTL = 60 * 60;
+const PERSISTENT_IMAGE_CACHE = 'my-planner-images-v1';
 const urlCache = new Map();
+const blobUrlCache = new Map();
 let activeViewerClose = null;
 
 export async function uploadPlannerImage(file, kind = 'misc') {
@@ -41,6 +43,9 @@ export async function uploadPlannerImage(file, kind = 'misc') {
     }
     throw error;
   }
+  if (safeKind === 'home') {
+    await writePersistentImage(path, compressed.blob);
+  }
 
   return {
     id: generateId(),
@@ -53,24 +58,42 @@ export async function uploadPlannerImage(file, kind = 'misc') {
   };
 }
 
-export async function resolvePlannerImageUrl(path) {
+export async function resolvePlannerImageUrl(path, { persistent = false } = {}) {
   const cleanPath = String(path || '').trim();
   if (!cleanPath) return '';
+
+  if (persistent) {
+    const persistentUrl = await resolvePersistentImageUrl(cleanPath);
+    if (persistentUrl) return persistentUrl;
+  }
+
   const cached = urlCache.get(cleanPath);
-  if (cached && cached.expiresAt > Date.now()) return cached.url;
+  let signedUrl = cached?.expiresAt > Date.now() ? cached.url : '';
+  if (!signedUrl) {
+    const client = await getClient();
+    if (!client) return '';
+    const { data, error } = await client.storage
+      .from(BUCKET)
+      .createSignedUrl(cleanPath, SIGNED_URL_TTL);
+    if (error || !data?.signedUrl) return '';
+    signedUrl = data.signedUrl;
+    urlCache.set(cleanPath, {
+      url: signedUrl,
+      expiresAt: Date.now() + (SIGNED_URL_TTL - 120) * 1000,
+    });
+  }
 
-  const client = await getClient();
-  if (!client) return '';
-  const { data, error } = await client.storage
-    .from(BUCKET)
-    .createSignedUrl(cleanPath, SIGNED_URL_TTL);
-  if (error || !data?.signedUrl) return '';
-
-  urlCache.set(cleanPath, {
-    url: data.signedUrl,
-    expiresAt: Date.now() + (SIGNED_URL_TTL - 120) * 1000,
-  });
-  return data.signedUrl;
+  if (!persistent) return signedUrl;
+  try {
+    const response = await fetch(signedUrl);
+    if (!response.ok) return signedUrl;
+    const blob = await response.blob();
+    if (!blob.type.startsWith('image/')) return signedUrl;
+    await writePersistentImage(cleanPath, blob);
+    return createCachedBlobUrl(cleanPath, blob);
+  } catch {
+    return signedUrl;
+  }
 }
 
 export async function hydratePlannerImages(root) {
@@ -78,7 +101,9 @@ export async function hydratePlannerImages(root) {
   await Promise.all(images.map(async image => {
     const path = image.dataset.mediaPath;
     if (!path || image.dataset.mediaLoaded === '1') return;
-    const url = await resolvePlannerImageUrl(path);
+    const url = await resolvePlannerImageUrl(path, {
+      persistent: image.dataset.mediaPersist === '1',
+    });
     if (!image.isConnected) return;
     if (!url) {
       image.closest('.media-frame')?.classList.add('media-frame--error');
@@ -166,7 +191,14 @@ export async function openPlannerImageViewer({
   document.body.style.overflow = 'hidden';
   closeButton.focus({ preventScroll: true });
 
-  const resolvedSrc = path ? await resolvePlannerImageUrl(path) : src;
+  const useExistingBlob = String(src || '').startsWith('blob:');
+  const resolvedSrc = useExistingBlob
+    ? src
+    : path
+      ? await resolvePlannerImageUrl(path, {
+          persistent: trigger?.dataset?.mediaPersist === '1',
+        })
+      : src;
   if (closed) return;
   if (!resolvedSrc) {
     viewer.classList.remove('media-lightbox--loading');
@@ -196,8 +228,99 @@ export async function deletePlannerImage(path) {
   const userId = await getUserId();
   if (!client || !userId || !cleanPath.startsWith(`${userId}/`)) return false;
   const { error } = await client.storage.from(BUCKET).remove([cleanPath]);
-  if (!error) urlCache.delete(cleanPath);
+  urlCache.delete(cleanPath);
+  revokeCachedBlobUrl(cleanPath);
+  await deletePersistentImage(cleanPath);
   return !error;
+}
+
+async function resolvePersistentImageUrl(path) {
+  const existingUrl = blobUrlCache.get(path);
+  if (existingUrl) return existingUrl;
+  if (!('caches' in globalThis)) return '';
+  try {
+    const cache = await caches.open(PERSISTENT_IMAGE_CACHE);
+    const response = await cache.match(persistentCacheKey(path));
+    if (!response) return '';
+    const blob = await response.blob();
+    if (!blob.type.startsWith('image/')) return '';
+    return createCachedBlobUrl(path, blob);
+  } catch {
+    return '';
+  }
+}
+
+async function writePersistentImage(path, blob) {
+  if (!path || !(blob instanceof Blob) || !('caches' in globalThis)) return false;
+  try {
+    const cache = await caches.open(PERSISTENT_IMAGE_CACHE);
+    await cache.put(
+      persistentCacheKey(path),
+      new Response(blob, {
+        headers: {
+          'Content-Type': blob.type || 'image/jpeg',
+          'Cache-Control': 'private, max-age=31536000, immutable',
+        },
+      })
+    );
+    await prunePersistentHomeImages(cache, path);
+    revokeCachedBlobUrl(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function prunePersistentHomeImages(cache, currentPath) {
+  const parts = String(currentPath).split('/');
+  if (parts.length < 3 || parts[1] !== 'home') return;
+  const ownerPrefix = `${parts[0]}/home/`;
+  const requests = await cache.keys();
+  await Promise.all(requests.map(async request => {
+    const encodedPath = new URL(request.url).pathname.split('/').pop() || '';
+    let cachedPath = '';
+    try {
+      cachedPath = decodeURIComponent(encodedPath);
+    } catch {
+      return;
+    }
+    if (cachedPath !== currentPath && cachedPath.startsWith(ownerPrefix)) {
+      revokeCachedBlobUrl(cachedPath);
+      await cache.delete(request);
+    }
+  }));
+}
+
+async function deletePersistentImage(path) {
+  if (!('caches' in globalThis)) return false;
+  try {
+    const cache = await caches.open(PERSISTENT_IMAGE_CACHE);
+    return cache.delete(persistentCacheKey(path));
+  } catch {
+    return false;
+  }
+}
+
+function persistentCacheKey(path) {
+  return new Request(
+    `${location.origin}/__planner-image-cache__/${encodeURIComponent(path)}`,
+    { credentials: 'same-origin' }
+  );
+}
+
+function createCachedBlobUrl(path, blob) {
+  const existing = blobUrlCache.get(path);
+  if (existing) return existing;
+  const url = URL.createObjectURL(blob);
+  blobUrlCache.set(path, url);
+  return url;
+}
+
+function revokeCachedBlobUrl(path) {
+  const url = blobUrlCache.get(path);
+  if (!url) return;
+  URL.revokeObjectURL(url);
+  blobUrlCache.delete(path);
 }
 
 function escapeHtml(value) {

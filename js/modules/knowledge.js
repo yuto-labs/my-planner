@@ -6,7 +6,7 @@ import {
   getKnowledgeMemos, getKnowledgeMemoById,
   addKnowledgeMemo, updateKnowledgeMemo, deleteKnowledgeMemo,
   getTermExplanation, setTermExplanation, isAiAvailable,
-  scheduleFirstReview, getReviewEntry,
+  scheduleFirstReview, getReviewEntry, getReviewSchedule,
   rateReview, previewReviewIntervals, setReviewStage,
   setMemoReviewEnabled, isMemoReviewEnabled,
   MASTERY_STAGE, REVIEW_DISABLED_STAGE, STAGE_INTERVALS,
@@ -210,7 +210,14 @@ const TEMPLATES = {
 // LIST VIEW
 // ============================================================
 
-let listState = { search: '', filterTag: null, container: null };
+const MEMO_LIST_PAGE_SIZE = 40;
+const memoSearchIndex = new Map();
+let listState = {
+  search: '',
+  filterTag: null,
+  container: null,
+  visibleCount: MEMO_LIST_PAGE_SIZE,
+};
 
 export function initKnowledge(container) {
   const returningFromDetail = _backFromDetail;
@@ -281,20 +288,23 @@ function renderList() {
   const memos  = getKnowledgeMemos();
   const allTags = [...new Set(memos.flatMap(m => m.tags || []))].sort();
   const aiAvailable = isAiAvailable();
+  const reviewSchedule = getReviewSchedule();
+  if (search) pruneMemoSearchIndex(memos);
+  else memoSearchIndex.clear();
 
   const filtered = memos.filter(m => {
     const q = search.toLowerCase();
-    const matchSearch = !q
-      || m.title.toLowerCase().includes(q)
-      || (m.summary || '').toLowerCase().includes(q)
-      || blocksToText(m.blocks || []).toLowerCase().includes(q)
-      || (m.tags || []).some(t => t.toLowerCase().includes(q));
+    const matchSearch = !q || memoSearchText(m).includes(q);
     const matchTag = !filterTag || (m.tags || []).includes(filterTag);
     return matchSearch && matchTag;
   });
 
   const starred = filtered.filter(m => m.starred);
   const regular = filtered.filter(m => !m.starred);
+  const visibleStarred = starred.slice(0, listState.visibleCount);
+  const remainingSlots = Math.max(0, listState.visibleCount - visibleStarred.length);
+  const visibleRegular = regular.slice(0, remainingSlots);
+  const visibleTotal = visibleStarred.length + visibleRegular.length;
 
   container.innerHTML = `
     <div class="kn-list-page">
@@ -343,12 +353,18 @@ function renderList() {
 
       <!-- Memo list -->
       <div class="kn-memo-list">
-        ${starred.length ? `
+        ${visibleStarred.length ? `
           <div class="kn-list-section-label">⭐ ピン留め</div>
-          ${starred.map(renderMemoCard).join('')}
-          ${regular.length ? '<div class="kn-list-section-label kn-list-section-label--gap">すべてのメモ</div>' : ''}
+          ${visibleStarred.map(memo => renderMemoCard(memo, reviewSchedule)).join('')}
+          ${visibleRegular.length ? '<div class="kn-list-section-label kn-list-section-label--gap">すべてのメモ</div>' : ''}
         ` : filtered.length ? '<div class="kn-list-section-label">すべてのメモ</div>' : ''}
-        ${regular.map(renderMemoCard).join('')}
+        ${visibleRegular.map(memo => renderMemoCard(memo, reviewSchedule)).join('')}
+        ${visibleTotal < filtered.length ? `
+          <button class="kn-load-more-btn" id="kn-load-more" type="button">
+            さらに表示
+            <span>${visibleTotal} / ${filtered.length}</span>
+          </button>
+        ` : ''}
         ${!filtered.length ? `
           <div class="empty-state">
             <div class="empty-state-icon">📝</div>
@@ -367,6 +383,7 @@ function renderList() {
   const applySearch = () => {
     if (!searchEl) return;
     listState.search = searchEl.value;
+    listState.visibleCount = MEMO_LIST_PAGE_SIZE;
     renderList();
     requestAnimationFrame(() => {
       const next = container.querySelector('#kn-search');
@@ -406,8 +423,14 @@ function renderList() {
   container.querySelectorAll('[data-filter-tag]').forEach(btn => {
     btn.addEventListener('click', () => {
       listState.filterTag = btn.dataset.filterTag || null;
+      listState.visibleCount = MEMO_LIST_PAGE_SIZE;
       renderList();
     });
+  });
+
+  container.querySelector('#kn-load-more')?.addEventListener('click', () => {
+    listState.visibleCount += MEMO_LIST_PAGE_SIZE;
+    renderList();
   });
 
   // Wire memo cards
@@ -434,13 +457,13 @@ function renderList() {
   });
 }
 
-function renderMemoCard(m) {
+function renderMemoCard(m, reviewSchedule) {
   const preview = blocksToText(m.blocks || [], 90);
   const dateStr = formatDate(m.updatedAt || m.createdAt, 'short');
   const tags    = m.tags || [];
 
   // Spaced-repetition review badge (nextReview ベースで判定)
-  const entry = getReviewEntry(m.id);
+  const entry = reviewSchedule?.[m.id] || null;
   const todayForBadge = new Date().toISOString().slice(0, 10);
   let reviewBadge = '';
   if (entry?.stage === REVIEW_DISABLED_STAGE) {
@@ -484,6 +507,33 @@ function renderMemoCard(m) {
       </div>
     </div>
   `;
+}
+
+function memoSearchText(memo) {
+  const version = [
+    memo.updatedAt || memo.createdAt || '',
+    memo.title || '',
+    memo.summary || '',
+    (memo.tags || []).join('\u0001'),
+  ].join('\u0002');
+  const cached = memoSearchIndex.get(memo.id);
+  if (cached?.version === version) return cached.text;
+  const text = [
+    memo.title || '',
+    memo.summary || '',
+    (memo.tags || []).join(' '),
+    blocksToText(memo.blocks || []),
+  ].join(' ').toLowerCase();
+  memoSearchIndex.set(memo.id, { version, text });
+  return text;
+}
+
+function pruneMemoSearchIndex(memos) {
+  if (memoSearchIndex.size <= memos.length) return;
+  const activeIds = new Set(memos.map(memo => memo.id));
+  for (const id of memoSearchIndex.keys()) {
+    if (!activeIds.has(id)) memoSearchIndex.delete(id);
+  }
 }
 
 // ============================================================

@@ -550,6 +550,24 @@ function rgbToCss(rgb, alpha = 1) {
   return `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`;
 }
 
+function contrastTextForRgb(rgb) {
+  const channelLuminance = value => {
+    const normalized = value / 255;
+    return normalized <= 0.04045
+      ? normalized / 12.92
+      : ((normalized + 0.055) / 1.055) ** 2.4;
+  };
+  const color = normalizeAccentRgb(rgb);
+  const luminance =
+    0.2126 * channelLuminance(color.r) +
+    0.7152 * channelLuminance(color.g) +
+    0.0722 * channelLuminance(color.b);
+  const darkLuminance = channelLuminance(13);
+  const darkContrast = (luminance + 0.05) / (darkLuminance + 0.05);
+  const lightContrast = 1.05 / (luminance + 0.05);
+  return darkContrast >= lightContrast ? '#0D0D15' : '#FFFFFF';
+}
+
 function applySurfaceTheme(mode, tuningInput) {
   const root = document.documentElement;
   const tuning = normalizeThemeTuning(tuningInput);
@@ -652,6 +670,7 @@ function applyAccentTheme(rgb, tuningInput) {
   const success = mixRgb(adjustedBase, successTarget, 0.15 + vividness * 0.16 - neutralness * 0.08);
 
   root.style.setProperty('--primary', rgbToCss(adjustedBase));
+  root.style.setProperty('--on-primary', contrastTextForRgb(adjustedBase));
   root.style.setProperty('--primary-dark', rgbToCss(darker));
   root.style.setProperty('--primary-light', rgbToCss(lightest));
   root.style.setProperty('--success', rgbToCss(success));

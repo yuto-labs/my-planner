@@ -16,9 +16,12 @@
   --max-w:      680px;
   --ui-font: "Inter", "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic UI",
              "Yu Gothic", Meiryo, sans-serif;
+  --nav-font: "Avenir Next", "Segoe UI Variable Text", "Segoe UI",
+              "Helvetica Neue", Arial, sans-serif;
   --display-font: "Cormorant Garamond", Georgia, "Times New Roman", "Yu Mincho",
                   "Hiragino Mincho ProN", serif;
   --greeting-font: Georgia, "Times New Roman", "Yu Mincho", "Hiragino Mincho ProN", serif;
+  --on-primary: #0D0D15;
 
   /* Fixed semantic (same in both modes) */
   --danger:     #F0607A;
@@ -250,7 +253,7 @@ button { cursor: pointer; font-family: inherit; }
   color: var(--text-muted);
   font-size: 11px;
   font-weight: 500;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.015em;
   transition: color var(--transition);
   padding: 8px 0 10px;
 }
@@ -1115,9 +1118,9 @@ button { cursor: pointer; font-family: inherit; }
   margin: 0 auto 2px;
 }
 .cal-cell.other-month .cal-cell-num { color: var(--text-dim); opacity: 0.45; }
-.cal-cell.today .cal-cell-num { background: var(--primary); color: #0D0D15; }
-.cal-cell.sunday .cal-cell-num   { color: var(--danger); }
-.cal-cell.saturday .cal-cell-num { color: var(--primary); }
+.cal-cell.today .cal-cell-num { background: var(--primary); color: var(--on-primary); }
+.cal-cell.sunday:not(.today) .cal-cell-num   { color: var(--danger); }
+.cal-cell.saturday:not(.today) .cal-cell-num { color: var(--primary); }
 .cal-cell.other-month { background: rgba(255,255,255,0.02); }
 /* Selected cell (first tap) */
 .cal-cell--selected { background: rgba(190,230,200,0.09); }
@@ -1225,7 +1228,7 @@ button { cursor: pointer; font-family: inherit; }
 }
 .cal-week-col-head.today .day-num {
   background: var(--primary);
-  color: #0D0D15;
+  color: var(--on-primary);
   width: 30px; height: 30px;
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
@@ -2582,6 +2585,27 @@ button { cursor: pointer; font-family: inherit; }
   color: var(--text-dim); margin-bottom: 2px;
 }
 .kn-list-section-label--gap { margin-top: 8px; }
+.kn-load-more-btn {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.kn-load-more-btn span {
+  color: var(--text-dim);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.kn-load-more-btn:active { background: var(--bg-active); }
 
 .kn-memo-card {
   background: var(--bg-card);
@@ -5687,8 +5711,10 @@ kbd {
   filter: drop-shadow(0 0 6px rgba(190,230,200,0.42));
 }
 .nav-btn span {
-  font-family: var(--ui-font);
-  font-weight: 500;
+  font-family: var(--nav-font);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.15;
   transition: color var(--transition);
 }
 
@@ -6932,7 +6958,7 @@ kbd {
   color: var(--danger);
 }
 .cal-cell.today.holiday .cal-cell-num {
-  color: #0D0D15;
+  color: var(--on-primary);
 }
 .cal-cell-holiday-name {
   font-size: 8px;

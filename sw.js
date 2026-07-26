@@ -2,9 +2,10 @@
 // sw.js — Service Worker: Cache-first offline support v3
 // ============================================================
 
-const CACHE_VER  = 'v214';
+const CACHE_VER  = 'v217';
 const APP_CACHE  = `my-planner-app-${CACHE_VER}`;
 const CDN_CACHE  = `my-planner-cdn-${CACHE_VER}`;
+const PERSISTENT_IMAGE_CACHE = 'my-planner-images-v1';
 
 // App shell — all JS modules + static assets
 const APP_ASSETS = [
@@ -72,7 +73,7 @@ self.addEventListener('activate', event => {
     const keys = await caches.keys();
     await Promise.all(
       keys
-        .filter(k => k !== APP_CACHE && k !== CDN_CACHE)
+        .filter(k => k !== APP_CACHE && k !== CDN_CACHE && k !== PERSISTENT_IMAGE_CACHE)
         .map(k => caches.delete(k))
     );
     await self.clients.claim();
