@@ -433,6 +433,7 @@ function renderMorphologyDetail() {
         <p>${esc(entry.origin.noteJa)}</p>
       `)}
       ${morphologySection('コアイメージ', `<p>${esc(entry.coreImageJa)}</p><p>${esc(entry.semanticBridgeJa)}</p>`)}
+      ${entry.deepDive?.nuanceJa ? morphologySection('ニュアンスの広がり', `<p>${esc(entry.deepDive.nuanceJa)}</p><p>${esc(entry.deepDive.relationJa || '')}</p>`) : ''}
       ${morphologySection('意味の分岐', `
         <div class="atlas-morphology-senses">
           ${(entry.senses || []).map(sense => `<div><strong>${esc(sense.labelJa)}</strong><p>${esc(sense.explanationJa)}</p></div>`).join('')}
@@ -452,18 +453,13 @@ function renderMorphologyDetail() {
                   <span>${esc(link.breakdownJa)}</span>
                 </div>
                 <p>${esc(link.bridgeJa)}</p>
+                ${link.whatToNoticeJa ? `<small>${esc(link.whatToNoticeJa)}</small>` : ''}
               </div>
             `;
           }).join('')}
         </div>
       `)}
-      ${morphologySection('実際の英文', `
-        <div class="atlas-example-list">
-          ${entry.wordLinks.filter(link => link.example).map(link => `
-            <div class="atlas-example"><strong lang="en">${esc(link.example)}</strong><span>${esc(link.exampleJa)}</span></div>
-          `).join('') || '<p>関連語の用例は、各単語の表現ページから確認できます。</p>'}
-        </div>
-      `)}
+      ${entry.deepDive?.studyGuideJa?.length ? morphologySection('関連語の読み方', `<ul class="atlas-note-list">${entry.deepDive.studyGuideJa.map(item => `<li>${esc(item)}</li>`).join('')}</ul>`) : ''}
       ${entry.comparisons?.length ? morphologySection('似た語源との違い', `
         <div class="atlas-comparison-list">${entry.comparisons.map(item => `<div><strong>${esc(item.form)}</strong><p>${esc(item.differenceJa)}</p></div>`).join('')}</div>
       `) : ''}

@@ -8228,6 +8228,13 @@ button.atlas-nuance-map-row:focus-visible {
 .atlas-word-breakdown p { margin: 5px 0 0; font-size: 12px; line-height: 1.65; }
 .atlas-word-breakdown > div { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
 .atlas-word-breakdown > div > span { color: var(--text-dim); font-size: 11px; }
+.atlas-word-breakdown > small {
+  display: block;
+  margin-top: 7px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.65;
+}
 .atlas-inline-word-link {
   border: 0;
   border-bottom: 1px dotted currentColor;
