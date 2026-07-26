@@ -7062,8 +7062,8 @@ kbd {
 }
 .atlas-mode-switch {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  width: min(100%, 330px);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: min(100%, 470px);
   margin: 4px 0 3px;
   padding: 3px;
   border: 1px solid var(--border);
@@ -7882,6 +7882,392 @@ button.atlas-nuance-map-row:focus-visible {
   .atlas-folder-card,
   .atlas-entry-card { transition: none; }
   .atlas-spinner { animation: none; border-right-color: currentColor; }
+}
+
+.atlas-classification-editor {
+  margin: 12px 0 0;
+  border-bottom: 1px solid var(--border-light);
+}
+.atlas-classification-editor > summary {
+  width: fit-content;
+  padding: 8px 0;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.atlas-classification-editor > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  gap: 8px;
+  align-items: end;
+  padding: 4px 0 8px;
+}
+.atlas-classification-editor label {
+  display: grid;
+  gap: 4px;
+}
+.atlas-classification-editor label span {
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 750;
+}
+.atlas-classification-editor input {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  outline: none;
+  background: var(--bg-card);
+  color: var(--text);
+  padding: 7px 9px;
+  font: inherit;
+  font-size: 16px;
+}
+.atlas-classification-editor input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-bg);
+}
+.atlas-classification-editor > p {
+  margin: 0 0 10px;
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.atlas-grammar-grid,
+.atlas-origin-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.atlas-grammar-grid > div,
+.atlas-origin-grid > div {
+  padding: 9px 11px;
+  border-left: 2px solid var(--primary-border);
+  background: var(--bg-hover);
+}
+.atlas-grammar-grid dt,
+.atlas-origin-grid dt {
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 800;
+}
+.atlas-grammar-grid dd,
+.atlas-origin-grid dd {
+  margin: 3px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.atlas-related-etymology {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.atlas-related-etymology button {
+  display: grid;
+  gap: 2px;
+  min-width: 132px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.atlas-related-etymology button:hover { border-color: var(--primary-border); }
+.atlas-related-etymology strong { color: var(--primary); font-size: 13px; }
+.atlas-related-etymology span { color: var(--text-dim); font-size: 10px; }
+
+.atlas-vocabulary-toggle {
+  margin-top: 8px;
+  border: 0;
+  background: none;
+  color: var(--primary);
+  padding: 4px 0;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.atlas-linked-translation {
+  overflow-wrap: anywhere;
+  color: var(--primary);
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+.atlas-linked-token {
+  display: inline;
+  border: 0;
+  border-bottom: 1px dotted currentColor;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  font: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+}
+.atlas-linked-token:hover,
+.atlas-linked-token:focus-visible {
+  border-bottom-style: solid;
+  outline: none;
+  background: var(--primary-bg);
+}
+.atlas-word-picker {
+  position: fixed;
+  z-index: 12000;
+  inset: 0;
+  display: grid;
+  align-items: end;
+}
+.atlas-word-picker-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(12, 16, 22, 0.45);
+}
+.atlas-word-picker > section {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 560px);
+  max-height: min(72vh, 620px);
+  margin: 0 auto;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px 12px 0 0;
+  background: var(--bg-card);
+  padding: 8px 14px max(16px, env(safe-area-inset-bottom));
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.2);
+}
+.atlas-word-picker-handle {
+  width: 38px;
+  height: 4px;
+  margin: 0 auto 8px;
+  border-radius: 999px;
+  background: var(--border);
+}
+.atlas-word-picker header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.atlas-word-picker header small { color: var(--text-dim); font-size: 10px; }
+.atlas-word-picker header h2 { margin: 2px 0 0; font-size: 21px; }
+.atlas-word-picker-options { display: grid; gap: 7px; margin-top: 12px; }
+.atlas-word-picker-options button {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  padding: 11px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.atlas-word-picker-options button:hover { border-color: var(--primary-border); }
+.atlas-word-picker-options strong { font-size: 13px; }
+.atlas-word-picker-options span { color: var(--text-dim); font-size: 11px; }
+
+.atlas-morphology-hero small {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+.atlas-morphology-controls {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr);
+  gap: 10px;
+  align-items: center;
+  margin: 10px 0;
+}
+.atlas-segmented {
+  display: flex;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  scrollbar-width: none;
+}
+.atlas-segmented::-webkit-scrollbar { display: none; }
+.atlas-segmented button {
+  flex: 0 0 auto;
+  min-height: 36px;
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 3px);
+  background: transparent;
+  color: var(--text-dim);
+  padding: 0 10px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.atlas-segmented button.active {
+  background: var(--primary-bg);
+  color: var(--primary);
+}
+.atlas-morphology-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 2px 0 10px;
+  color: var(--text-dim);
+}
+.atlas-morphology-summary span { font-size: 11px; font-weight: 800; }
+.atlas-morphology-summary p { margin: 0; font-size: 10px; line-height: 1.5; text-align: right; }
+.atlas-morphology-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+.atlas-morphology-card {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  min-height: 124px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text);
+  padding: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+.atlas-morphology-card:hover {
+  border-color: var(--primary-border);
+  background: var(--bg-hover);
+}
+.atlas-morphology-card-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.atlas-morphology-card-top strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--primary);
+  font-size: 17px;
+}
+.atlas-morphology-card-top span,
+.atlas-morphology-origin {
+  color: var(--text-dim);
+  font-size: 9px;
+}
+.atlas-morphology-meaning { font-size: 12px; line-height: 1.5; }
+.atlas-morphology-words {
+  margin-top: auto;
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.atlas-morphology-detail-header p {
+  max-width: 630px;
+  margin: 6px 0 0;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.65;
+}
+.atlas-progressive-section {
+  padding: 0;
+}
+.atlas-progressive-section > summary,
+.atlas-source-details > summary {
+  position: relative;
+  padding: 17px 28px 17px 0;
+  font-size: 14px;
+  font-weight: 850;
+  cursor: pointer;
+  list-style: none;
+}
+.atlas-progressive-section > summary::-webkit-details-marker,
+.atlas-source-details > summary::-webkit-details-marker { display: none; }
+.atlas-progressive-section > summary::after,
+.atlas-source-details > summary::after {
+  content: '+';
+  position: absolute;
+  right: 4px;
+  color: var(--text-dim);
+  font-size: 18px;
+  font-weight: 500;
+}
+.atlas-progressive-section[open] > summary::after,
+.atlas-source-details[open] > summary::after { content: '−'; }
+.atlas-progressive-content {
+  padding: 0 0 19px;
+  font-size: 14px;
+  line-height: 1.8;
+}
+.atlas-progressive-content > p { margin: 0 0 10px; }
+.atlas-morphology-senses,
+.atlas-word-breakdowns { display: grid; gap: 9px; }
+.atlas-morphology-senses > div,
+.atlas-word-breakdown {
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+}
+.atlas-morphology-senses strong { color: var(--primary); font-size: 12px; }
+.atlas-morphology-senses p,
+.atlas-word-breakdown p { margin: 5px 0 0; font-size: 12px; line-height: 1.65; }
+.atlas-word-breakdown > div { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
+.atlas-word-breakdown > div > span { color: var(--text-dim); font-size: 11px; }
+.atlas-inline-word-link {
+  border: 0;
+  border-bottom: 1px dotted currentColor;
+  background: none;
+  color: var(--primary);
+  padding: 0;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 850;
+  cursor: pointer;
+}
+.atlas-source-list { display: grid; gap: 8px; padding-bottom: 18px; }
+.atlas-source-list a {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  text-decoration: none;
+}
+.atlas-source-list a:hover { border-color: var(--primary-border); }
+.atlas-source-list strong { font-size: 12px; }
+.atlas-source-list span { color: var(--text-dim); font-size: 10px; }
+
+@media (max-width: 720px) {
+  .atlas-morphology-controls { grid-template-columns: minmax(0, 1fr); }
+  .atlas-morphology-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .atlas-classification-editor > div { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 480px) {
+  .atlas-mode-switch button { font-size: 11px; }
+  .atlas-morphology-grid { grid-template-columns: minmax(0, 1fr); }
+  .atlas-morphology-card { min-height: 105px; }
+  .atlas-morphology-summary { align-items: flex-start; flex-direction: column; }
+  .atlas-morphology-summary p { text-align: left; }
+  .atlas-grammar-grid,
+  .atlas-origin-grid { grid-template-columns: minmax(0, 1fr); }
+  .atlas-word-picker > section { border-radius: 10px 10px 0 0; }
 }
 
 /* ============================================================

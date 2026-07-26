@@ -21,6 +21,7 @@ function pickThinkingConfig(model, actionType) {
     'planner_action',
     'task_schedule',
     'nuance_generate',
+    'translation_variants',
   ]);
   const isComplex = complexActions.has(String(actionType || ''));
   if (String(model).startsWith('gemini-2.5-')) {
@@ -145,11 +146,14 @@ function pickResponseSchema(actionType, body) {
           type: 'ARRAY',
           description: 'Five to eight distinct expressions for the requested topic.',
           minItems: 5,
-          maxItems: 8,
+          maxItems: 12,
           items: {
             type: 'OBJECT',
             properties: {
               term: { type: 'STRING' },
+              lemma: { type: 'STRING' },
+              aliases: stringArray('Inflected forms or useful spelling variants.'),
+              senseId: { type: 'STRING' },
               partOfSpeech: { type: 'STRING' },
               etymologyJa: { type: 'STRING' },
               coreImageJa: { type: 'STRING' },
@@ -190,9 +194,33 @@ function pickResponseSchema(actionType, body) {
                 },
               },
               cautionsJa: stringArray('Usage cautions, including grammar or register differences.'),
+              grammarNotes: {
+                type: 'OBJECT',
+                properties: {
+                  partOfSpeech: { type: 'STRING' },
+                  countability: { type: 'STRING' },
+                  plural: { type: 'STRING' },
+                  past: { type: 'STRING' },
+                  pastParticiple: { type: 'STRING' },
+                  usageNotes: stringArray('Only useful grammar or countability cautions.'),
+                  exampleForms: stringArray('Irregular or otherwise noteworthy forms.'),
+                },
+                required: [
+                  'partOfSpeech',
+                  'countability',
+                  'plural',
+                  'past',
+                  'pastParticiple',
+                  'usageNotes',
+                  'exampleForms',
+                ],
+              },
             },
             required: [
               'term',
+              'lemma',
+              'aliases',
+              'senseId',
               'partOfSpeech',
               'etymologyJa',
               'coreImageJa',
@@ -208,6 +236,7 @@ function pickResponseSchema(actionType, body) {
               'examples',
               'comparisons',
               'cautionsJa',
+              'grammarNotes',
             ],
           },
         },
@@ -238,7 +267,7 @@ function pickResponseSchema(actionType, body) {
             properties: {
               style: {
                 type: 'STRING',
-                enum: ['emotional_narrative', 'literary_polished', 'logical_simple'],
+                enum: ['standard_faithful', 'natural_conversational', 'expressive_polished'],
               },
               translation: { type: 'STRING' },
               backTranslationJa: {
@@ -257,11 +286,13 @@ function pickResponseSchema(actionType, body) {
                   type: 'OBJECT',
                   properties: {
                     expression: { type: 'STRING' },
+                    lemma: { type: 'STRING' },
+                    senseHintJa: { type: 'STRING' },
                     etymologyJa: { type: 'STRING' },
                     coreImageJa: { type: 'STRING' },
                     nuanceJa: { type: 'STRING' },
                   },
-                  required: ['expression', 'etymologyJa', 'coreImageJa', 'nuanceJa'],
+                  required: ['expression', 'lemma', 'senseHintJa', 'etymologyJa', 'coreImageJa', 'nuanceJa'],
                 },
               },
               comparisons: {

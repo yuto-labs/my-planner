@@ -3,6 +3,7 @@
 // ============================================================
 
 import { generateId } from './utils.js';
+import { withStableClassification } from './atlas-model.js';
 
 const KEY = {
   EVENTS:    'mp_events',
@@ -794,20 +795,22 @@ function isTranslationSetRecord(record) {
 function expressionRecordToEntry(record) {
   const data = record?.blocks?.find(block => block?.type === EXPRESSION_ATLAS_BLOCK_TYPE)?.data;
   if (!data || typeof data !== 'object') return null;
-  return {
+  return withStableClassification({
     ...data,
     id: record.id,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
-  };
+  });
 }
 
 function expressionEntryKey(entry) {
+  const stable = withStableClassification(entry);
   return [
-    String(entry?.language || '').trim().toLocaleLowerCase(),
-    String(entry?.category || '').trim().toLocaleLowerCase(),
-    String(entry?.topic || '').trim().toLocaleLowerCase(),
-    String(entry?.term || '').trim().toLocaleLowerCase(),
+    String(stable.language || '').trim().toLocaleLowerCase(),
+    String(stable.categoryId || stable.category || '').trim().toLocaleLowerCase(),
+    String(stable.topicId || stable.topic || '').trim().toLocaleLowerCase(),
+    String(stable.lemma || stable.term || '').trim().toLocaleLowerCase(),
+    String(stable.senseId || '').trim().toLocaleLowerCase(),
   ].join('|');
 }
 
@@ -833,11 +836,20 @@ function expressionEntryToRecord(entry, existing = null) {
   const now = new Date().toISOString();
   const id = entry.id || existing?.id || generateId();
   const data = {
-    promptVersion: 3,
+    promptVersion: 4,
     language: 'English',
     category: '',
     topic: '',
+    categoryId: '',
+    topicId: '',
+    categoryAliases: [],
+    topicAliases: [],
+    classificationSource: 'legacy',
+    manualClassification: false,
     term: '',
+    lemma: '',
+    aliases: [],
+    senseId: '',
     partOfSpeech: '',
     etymologyJa: '',
     coreImageJa: '',
@@ -853,8 +865,18 @@ function expressionEntryToRecord(entry, existing = null) {
     examples: [],
     comparisons: [],
     cautionsJa: [],
+    grammarNotes: {
+      partOfSpeech: '',
+      countability: '',
+      plural: '',
+      past: '',
+      pastParticiple: '',
+      usageNotes: [],
+      exampleForms: [],
+    },
+    etymologyLinks: [],
     personalNote: '',
-    ...entry,
+    ...withStableClassification(entry),
   };
   delete data.id;
   delete data.createdAt;
@@ -884,12 +906,12 @@ function expressionEntryToRecord(entry, existing = null) {
 function translationRecordToSet(record) {
   const data = record?.blocks?.find(block => block?.type === TRANSLATION_SET_BLOCK_TYPE)?.data;
   if (!data || typeof data !== 'object') return null;
-  return {
+  return withStableClassification({
     ...data,
     id: record.id,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
-  };
+  });
 }
 
 function translationSetKey(set) {
@@ -903,16 +925,23 @@ function translationSetToRecord(set, existing = null) {
   const now = new Date().toISOString();
   const id = set.id || existing?.id || generateId();
   const data = {
-    promptVersion: 2,
+    promptVersion: 3,
     language: 'English',
     sourceTextJa: '',
     contextJa: '',
     category: '',
     topic: '',
+    categoryId: '',
+    topicId: '',
+    categoryAliases: [],
+    topicAliases: [],
+    classificationSource: 'legacy',
+    manualClassification: false,
     summaryJa: '',
     variants: [],
+    vocabularyLinks: [],
     personalNote: '',
-    ...set,
+    ...withStableClassification(set),
   };
   delete data.id;
   delete data.createdAt;

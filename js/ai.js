@@ -510,6 +510,7 @@ function normalizeNuanceIntensity(value, fallback = '') {
 export async function generateNuanceEntries(
   {
     language = 'English',
+    learningTarget = '',
     category = '',
     topic = '',
     seedTerms = [],
@@ -519,12 +520,13 @@ export async function generateNuanceEntries(
 ) {
   const cleanCategory = String(category || '').trim();
   const cleanTopic = String(topic || '').trim();
+  const cleanTarget = String(learningTarget || '').trim();
   const terms = (Array.isArray(seedTerms) ? seedTerms : String(seedTerms || '').split(/[\n,、]/))
     .map(term => String(term || '').trim())
     .filter(Boolean)
     .slice(0, 12);
-  if (!cleanCategory && !cleanTopic && !terms.length) {
-    throw new Error('カテゴリ、テーマ、含めたい表現のどれかを入力してください。');
+  if (!cleanTarget && !cleanCategory && !cleanTopic && !terms.length) {
+    throw new Error('知りたい意味・表現を入力してください。');
   }
 
   const system = [
@@ -533,7 +535,8 @@ export async function generateNuanceEntries(
     'Classify the entire expression set with one Japanese category and one concise semantic topic.',
     `When category is blank, choose exactly one category from this fixed list: ${NUANCE_ATLAS_CATEGORIES.join(', ')}.`,
     'Category is the broad reusable domain. Topic is the narrower communicative intent or meaning shared by the expressions.',
-    'When the user supplies a category or topic, preserve that exact value. When either is blank, infer it from the supplied expressions or semantic request.',
+    'learningTarget is the primary Japanese request, such as 視点, 遠慮する, or 怒りを表す表現. Treat it as required semantic intent, not as a category label.',
+    'When the user supplies a category or topic, preserve that exact display label. When either is blank, infer it from learningTarget and supplied expressions.',
     'The user will not provide a desired usage situation. Infer several realistic situations for each expression and explain them in useCasesJa.',
     'Always answer when at least a category, topic, or expression is supplied. For a broad or ambiguous request, choose the most useful interpretation and make that interpretation clear instead of asking for more detail.',
     'Prefer an existing category/topic from existingTaxonomy when it is semantically equivalent; otherwise create a clear, reusable label. Never use vague labels such as その他 or 一般.',
@@ -543,14 +546,17 @@ export async function generateNuanceEntries(
     'Etymology must distinguish verified historical origin from a learning mnemonic. Never invent a root or confidently state a disputed origin. When uncertain, explicitly say that the origin is uncertain or leave etymologyJa empty.',
     'Return exactly two natural example sentences for every expression, each with a faithful Japanese translation and a short usage note.',
     'Do not treat different parts of speech as interchangeable. Explicitly explain grammatical differences such as adjective versus noun.',
+    'Add grammarNotes only when useful: part of speech; countability; irregular plural; irregular past/past participle; meaning-dependent countability such as work/works or experience/experiences; and example forms. Do not pad regular forms with obvious explanations.',
+    'When a form is irregular or countability is easy to confuse, use that form naturally in at least one example.',
     'Avoid generic statements such as "context matters". State what situation, relationship, intensity, or attitude makes each expression natural.',
     'Keep comparisons concrete and compare only expressions in the returned set when possible.',
     'Do not invent quotations, statistics, citations, or unsupported claims.',
     'Return no greeting, preface, conclusion, Markdown, or prose outside the JSON object.',
-    'Use this exact JSON shape: {"category":"日本語の大分類","topic":"日本語の具体的テーマ","entries":[{"term":"English expression","partOfSpeech":"品詞","etymologyJa":"語源の説明","coreImageJa":"原義から分かる根源的なイメージ","coreMeaningJa":"中心的な意味","nuanceJa":"深いニュアンス","nuanceTypeJa":"短いニュアンス分類","intensityLevel":1,"register":"使用域","emotionalToneJa":"感情の温度","useCasesJa":["具体的な場面"],"collocations":["自然な組み合わせ"],"examples":[{"source":"English sentence","translation":"日本語訳","noteJa":"使い方"}],"comparisons":[{"term":"similar expression","differenceJa":"決定的な違い"}],"cautionsJa":["注意点"]}]}',
+    'Use this exact JSON shape: {"category":"日本語の大分類","topic":"日本語の具体的テーマ","entries":[{"term":"English expression","lemma":"dictionary headword","aliases":["inflected or alternate form"],"senseId":"short semantic sense key","partOfSpeech":"品詞","etymologyJa":"語源の説明","coreImageJa":"原義から分かる根源的なイメージ","coreMeaningJa":"中心的な意味","nuanceJa":"深いニュアンス","nuanceTypeJa":"短いニュアンス分類","intensityLevel":1,"register":"使用域","emotionalToneJa":"感情の温度","useCasesJa":["具体的な場面"],"collocations":["自然な組み合わせ"],"examples":[{"source":"English sentence","translation":"日本語訳","noteJa":"使い方"}],"comparisons":[{"term":"similar expression","differenceJa":"決定的な違い"}],"cautionsJa":["注意点"],"grammarNotes":{"partOfSpeech":"品詞","countability":"可算性。不要なら空欄","plural":"複数形。特記事項がなければ空欄","past":"過去形。特記事項がなければ空欄","pastParticiple":"過去分詞。特記事項がなければ空欄","usageNotes":["意味で可算性が変わる等"],"exampleForms":["重要な活用形"]}}]}',
   ].join(' ');
   const user = JSON.stringify({
     language: String(language || 'English').trim() || 'English',
+    learningTarget: cleanTarget,
     category: cleanCategory,
     topic: cleanTopic,
     seedTerms: terms,
@@ -571,10 +577,11 @@ export async function generateNuanceEntries(
   const parsed = tryParseJSON(raw);
   const resolvedCategory = normalizeNuanceAtlasCategory(
     cleanCategory || parsed?.category,
-    `${cleanTopic} ${terms.join(' ')}`
+    `${cleanTarget} ${cleanTopic} ${terms.join(' ')}`
   );
   const resolvedTopic = cleanTopic
     || String(parsed?.topic || '').trim()
+    || cleanTarget
     || terms.join('・')
     || cleanCategory
     || '英語表現';
@@ -588,11 +595,14 @@ export async function generateNuanceEntries(
       unique.add(key);
       const intensityLevel = normalizeNuanceIntensity(entry.intensityLevel, entry.intensity);
       return {
-        promptVersion: 3,
+        promptVersion: 4,
         language: String(language || 'English').trim() || 'English',
         category: resolvedCategory,
         topic: resolvedTopic,
         term,
+        lemma: String(entry.lemma || term).trim(),
+        aliases: normalizeStringList(entry.aliases, 12),
+        senseId: String(entry.senseId || '').trim(),
         partOfSpeech: String(entry.partOfSpeech || '').trim(),
         etymologyJa: String(entry.etymologyJa || '').trim(),
         coreImageJa: String(entry.coreImageJa || '').trim(),
@@ -621,6 +631,17 @@ export async function generateNuanceEntries(
           .filter(comparison => comparison.term && comparison.differenceJa)
           .slice(0, 6),
         cautionsJa: normalizeStringList(entry.cautionsJa, 6),
+        grammarNotes: {
+          partOfSpeech: String(entry.grammarNotes?.partOfSpeech || entry.partOfSpeech || '').trim(),
+          countability: String(entry.grammarNotes?.countability || '').trim(),
+          plural: String(entry.grammarNotes?.plural || '').trim(),
+          past: String(entry.grammarNotes?.past || '').trim(),
+          pastParticiple: String(entry.grammarNotes?.pastParticiple || '').trim(),
+          usageNotes: normalizeStringList(entry.grammarNotes?.usageNotes, 6),
+          exampleForms: normalizeStringList(entry.grammarNotes?.exampleForms, 8),
+        },
+        classificationSource: cleanCategory || cleanTopic ? 'user' : 'ai',
+        manualClassification: Boolean(cleanCategory || cleanTopic),
         personalNote: '',
       };
     })
@@ -648,9 +669,12 @@ export async function generateTranslationVariants(
   const system = [
     'You are a careful bilingual editor for Japanese learners of English.',
     'Return JSON only and follow the response schema.',
-    'Create exactly three natural English translations in this exact order and style: emotional_narrative (語り・ストーリー調), literary_polished (自伝・格調高い書き言葉), logical_simple (会話・スピーチ向けの明瞭な構成).',
+    'Create exactly three natural English translations in this exact order: standard_faithful (標準・忠実), natural_conversational (自然・会話), expressive_polished (表現的・洗練).',
+    'standard_faithful must be the clearest default translation and preserve the source structure and meaning without sounding unnatural.',
+    'natural_conversational should sound idiomatic in ordinary modern English and may restructure the sentence while preserving meaning.',
+    'expressive_polished may use richer rhythm or vocabulary when the source supports it, but must not invent facts or emotions.',
     'Each variant must preserve the source meaning while making a meaningful difference in voice, sentence structure, rhythm, register, and intended situation. Do not create superficial synonym swaps.',
-    'The user will not provide a target situation. Make the three variants useful across distinct plausible situations without inventing source facts, and explain the best situation for each variant in overallNuanceJa.',
+    'The user will not provide a target situation. Do not force each translation into a fixed scenario. Explain the register, impression, and situations where each wording naturally fits in overallNuanceJa.',
     'Always answer, even when the Japanese is short, colloquial, fragmentary, or ambiguous. Never refuse or ask the user to provide a more specific sentence solely because context is missing.',
     'For ambiguous wording, choose reasonable interpretations for the three variants and clearly identify each assumption in overallNuanceJa. Keep uncertainty visible instead of returning an empty translation.',
     'Do not invent a person, relationship, event, time, place, emotion, or intention that the user did not supply.',
@@ -665,7 +689,7 @@ export async function generateTranslationVariants(
     'Category is the broad reusable domain. Topic is the narrower communicative intent expressed by the source sentence.',
     'Prefer an existing category/topic from existingTaxonomy when semantically equivalent; otherwise create a clear reusable label. Never use vague labels such as その他 or 一般.',
     'Return no greeting, preface, overall sentence dissection, conclusion, Markdown, or prose outside the JSON object.',
-    'Use this exact JSON shape: {"category":"日本語の大分類","topic":"日本語の具体的テーマ","variants":[{"style":"emotional_narrative","translation":"English translation","backTranslationJa":"和訳（逆翻訳）","overallNuanceJa":"文全体の印象と適した場面","register":"使用域","vocabularyNotes":[{"expression":"主要語彙または構文","etymologyJa":"信頼できる語源。該当しなければ空欄","coreImageJa":"原義または構文のコアイメージ","nuanceJa":"この文で生まれる深いニュアンス"}],"comparisons":[{"expression":"使用表現","alternative":"似た表現","differenceJa":"決定的な違い"}]},{"style":"literary_polished","translation":"English translation","backTranslationJa":"和訳（逆翻訳）","overallNuanceJa":"文全体の印象と適した場面","register":"使用域","vocabularyNotes":[],"comparisons":[]},{"style":"logical_simple","translation":"English translation","backTranslationJa":"和訳（逆翻訳）","overallNuanceJa":"文全体の印象と適した場面","register":"使用域","vocabularyNotes":[],"comparisons":[]}]}',
+    'Use this exact JSON shape: {"category":"日本語の大分類","topic":"日本語の具体的テーマ","variants":[{"style":"standard_faithful","translation":"English translation","backTranslationJa":"和訳（逆翻訳）","overallNuanceJa":"文全体の印象・使用域・自然に合う場面","register":"使用域","vocabularyNotes":[{"expression":"主要語彙または構文","lemma":"dictionary headword","senseHintJa":"この文での短い意味","etymologyJa":"信頼できる語源。該当しなければ空欄","coreImageJa":"原義または構文のコアイメージ","nuanceJa":"この文で生まれる深いニュアンス"}],"comparisons":[{"expression":"使用表現","alternative":"似た表現","differenceJa":"決定的な違い"}]},{"style":"natural_conversational","translation":"English translation","backTranslationJa":"和訳（逆翻訳）","overallNuanceJa":"文全体の印象・使用域・自然に合う場面","register":"使用域","vocabularyNotes":[],"comparisons":[]},{"style":"expressive_polished","translation":"English translation","backTranslationJa":"和訳（逆翻訳）","overallNuanceJa":"文全体の印象・使用域・自然に合う場面","register":"使用域","vocabularyNotes":[],"comparisons":[]}]}',
   ].join(' ');
   const user = JSON.stringify({
     sourceTextJa: source,
@@ -674,7 +698,7 @@ export async function generateTranslationVariants(
     existingTaxonomy: (Array.isArray(existingTaxonomy) ? existingTaxonomy : []).slice(0, 40),
     allowedCategories: NUANCE_ATLAS_CATEGORIES,
     requestedVariantCount: 3,
-    requiredStyles: ['emotional_narrative', 'literary_polished', 'logical_simple'],
+    requiredStyles: ['standard_faithful', 'natural_conversational', 'expressive_polished'],
   });
 
   const raw = await callAPI(
@@ -688,9 +712,9 @@ export async function generateTranslationVariants(
   );
   const parsed = tryParseJSON(raw);
   const styleDefinitions = [
-    { style: 'emotional_narrative', labelJa: 'エモーショナル・ナラティブ' },
-    { style: 'literary_polished', labelJa: 'リテラリー・洗練' },
-    { style: 'logical_simple', labelJa: 'ロジカル・シンプル' },
+    { style: 'standard_faithful', labelJa: '標準・忠実' },
+    { style: 'natural_conversational', labelJa: '自然・会話' },
+    { style: 'expressive_polished', labelJa: '表現的・洗練' },
   ];
   const sourceVariants = Array.isArray(parsed?.variants) ? parsed.variants : [];
   const unique = new Set();
@@ -713,6 +737,8 @@ export async function generateTranslationVariants(
         vocabularyNotes: (Array.isArray(item?.vocabularyNotes) ? item.vocabularyNotes : [])
           .map(note => ({
             expression: String(note?.expression || '').trim(),
+            lemma: String(note?.lemma || note?.expression || '').trim(),
+            senseHintJa: String(note?.senseHintJa || '').trim(),
             etymologyJa: String(note?.etymologyJa || '').trim(),
             coreImageJa: String(note?.coreImageJa || '').trim(),
             nuanceJa: String(note?.nuanceJa || '').trim(),
@@ -743,12 +769,14 @@ export async function generateTranslationVariants(
     throw new Error('3種類の英訳を揃えられませんでした。もう一度お試しください。');
   }
   return {
-    promptVersion: 2,
+    promptVersion: 3,
     language: 'English',
     sourceTextJa: source,
     contextJa: context,
     category,
     topic,
+    classificationSource: 'ai',
+    manualClassification: false,
     summaryJa: '',
     variants,
     personalNote: '',

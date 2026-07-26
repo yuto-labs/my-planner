@@ -17,6 +17,20 @@ import {
   generateTranslationVariants,
   NUANCE_ATLAS_CATEGORIES,
 } from '../ai.js';
+import {
+  buildExpressionIndex,
+  collectStableTaxonomy,
+  findExpressionMatches,
+  isUsefulLinkedToken,
+  stableAtlasId,
+  tokenizeEnglishForLinks,
+  withStableClassification,
+} from '../atlas-model.js';
+import {
+  ETYMOLOGY_CORE,
+  ETYMOLOGY_CORE_STATS,
+  getEtymologyCoreEntry,
+} from '../data/etymology-core.js';
 import { esc } from '../utils.js';
 
 const nav = view => window.AppNav?.navigate(view);
@@ -29,6 +43,8 @@ let state = {
   topic: '',
   entryId: '',
   translationId: '',
+  morphemeId: '',
+  morphologyType: 'all',
   libraryMode: 'expressions',
   screen: 'library',
   drafts: [],
@@ -39,6 +55,7 @@ let state = {
   noteTimer: null,
   generatorInput: {
     language: 'English',
+    learningTarget: '',
     category: '',
     topic: '',
     seedTerms: '',
@@ -92,6 +109,12 @@ export function backFromExpressionAtlas() {
     scrollMainToTop();
     return;
   }
+  if (state.morphemeId) {
+    state.morphemeId = '';
+    render();
+    scrollMainToTop();
+    return;
+  }
   if (state.translationId) {
     persistOpenTranslationNote();
     state.translationId = '';
@@ -135,6 +158,14 @@ function render() {
   }
   if (state.translationId) {
     renderTranslationDetail();
+    return;
+  }
+  if (state.morphemeId) {
+    renderMorphologyDetail();
+    return;
+  }
+  if (state.libraryMode === 'morphology') {
+    renderMorphologyLibrary();
     return;
   }
   renderLibrary();
@@ -213,6 +244,7 @@ function wireLibraryShell() {
     state.selectedDrafts = new Set();
     state.generatorInput = {
       language: 'English',
+      learningTarget: '',
       category: state.category || '',
       topic: state.topic || '',
       seedTerms: '',
@@ -246,6 +278,9 @@ function renderModeSwitch() {
       <button type="button" role="tab" data-atlas-mode="translations" aria-selected="${state.libraryMode === 'translations'}" class="${state.libraryMode === 'translations' ? 'active' : ''}">
         和文を英訳
       </button>
+      <button type="button" role="tab" data-atlas-mode="morphology" aria-selected="${state.libraryMode === 'morphology'}" class="${state.libraryMode === 'morphology' ? 'active' : ''}">
+        単語のしくみ
+      </button>
     </div>
   `;
 }
@@ -253,16 +288,272 @@ function renderModeSwitch() {
 function wireModeSwitch() {
   state.container?.querySelectorAll('[data-atlas-mode]').forEach(button => {
     button.addEventListener('click', () => {
-      state.libraryMode = button.dataset.atlasMode === 'translations' ? 'translations' : 'expressions';
+      state.libraryMode = ['translations', 'morphology'].includes(button.dataset.atlasMode)
+        ? button.dataset.atlasMode
+        : 'expressions';
       state.search = '';
       state.category = '';
       state.topic = '';
       state.entryId = '';
       state.translationId = '';
+      state.morphemeId = '';
       render();
       scrollMainToTop();
     });
   });
+}
+
+function renderMorphologyLibrary() {
+  const query = normalize(state.search);
+  const visible = ETYMOLOGY_CORE.filter(entry => {
+    if (state.morphologyType !== 'all' && entry.type !== state.morphologyType) return false;
+    if (!query) return true;
+    return morphologySearchText(entry).includes(query);
+  });
+  state.container.innerHTML = `
+    <section class="atlas-page atlas-morphology-page">
+      <header class="atlas-hero atlas-morphology-hero">
+        <div>
+          <p>接頭辞・接尾辞・語根から、単語の意味がどう組み立てられたかをたどります。</p>
+          <small>内蔵コア v${ETYMOLOGY_CORE_STATS.version} · ${ETYMOLOGY_CORE_STATS.total} entries</small>
+        </div>
+      </header>
+      ${renderModeSwitch()}
+      <div class="atlas-morphology-controls">
+        <div class="atlas-segmented" role="group" aria-label="語源の種類">
+          ${[
+            ['all', 'すべて'],
+            ['prefix', `接頭辞 ${ETYMOLOGY_CORE_STATS.prefixes}`],
+            ['suffix', `接尾辞 ${ETYMOLOGY_CORE_STATS.suffixes}`],
+            ['root', `語根 ${ETYMOLOGY_CORE_STATS.roots}`],
+          ].map(([value, label]) => `
+            <button type="button" data-morphology-type="${value}" class="${state.morphologyType === value ? 'active' : ''}">${label}</button>
+          `).join('')}
+        </div>
+        <label class="atlas-search">
+          <span class="sr-only">語源を検索</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"/></svg>
+          <input id="atlas-morphology-search" type="search" value="${esc(state.search)}" placeholder="形・意味・関連語を検索">
+        </label>
+      </div>
+      <div class="atlas-morphology-summary" aria-live="polite">
+        <span>${visible.length} 件</span>
+        <p>語源は意味を暗記する規則ではなく、意味が広がった道筋を理解する手がかりです。</p>
+      </div>
+      <div class="atlas-morphology-grid" id="atlas-morphology-grid">
+        ${visible.length ? visible.map(renderMorphologyCard).join('') : `
+          <div class="atlas-empty atlas-empty--compact">
+            <h2>一致する語源がありません</h2>
+            <p>形を短くするか、別の種類を選んでください。</p>
+          </div>
+        `}
+      </div>
+    </section>
+  `;
+  wireModeSwitch();
+  state.container.querySelectorAll('[data-morphology-type]').forEach(button => {
+    button.addEventListener('click', () => {
+      state.morphologyType = button.dataset.morphologyType || 'all';
+      renderMorphologyLibrary();
+    });
+  });
+  const searchInput = state.container.querySelector('#atlas-morphology-search');
+  let timer = null;
+  searchInput?.addEventListener('input', event => {
+    state.search = event.target.value;
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      renderMorphologyLibrary();
+      requestAnimationFrame(() => {
+        const input = state.container?.querySelector('#atlas-morphology-search');
+        if (!input) return;
+        input.focus();
+        try { input.setSelectionRange(input.value.length, input.value.length); } catch {}
+      });
+    }, 100);
+  });
+  state.container.querySelectorAll('[data-morpheme-id]').forEach(button => {
+    button.addEventListener('click', () => {
+      state.morphemeId = button.dataset.morphemeId;
+      render();
+      scrollMainToTop();
+    });
+  });
+}
+
+function renderMorphologyCard(entry) {
+  return `
+    <button class="atlas-morphology-card" type="button" data-morpheme-id="${esc(entry.id)}">
+      <span class="atlas-morphology-card-top">
+        <strong lang="en">${esc(entry.displayForm)}</strong>
+        <span>${esc(entry.typeLabel)}</span>
+      </span>
+      <span class="atlas-morphology-meaning">${esc(entry.senses?.[0]?.labelJa || entry.quickSummaryJa)}</span>
+      <span class="atlas-morphology-origin">${esc(entry.origin.language)} · ${esc(entry.origin.form)}</span>
+      <span class="atlas-morphology-words">${entry.wordLinks.slice(0, 3).map(link => esc(link.term)).join(' · ')}</span>
+    </button>
+  `;
+}
+
+function renderMorphologyDetail() {
+  const entry = getEtymologyCoreEntry(state.morphemeId);
+  if (!entry) {
+    state.morphemeId = '';
+    render();
+    return;
+  }
+  const expressionIndex = buildExpressionIndex(getExpressionEntries());
+  state.container.innerHTML = `
+    <article class="atlas-page atlas-detail-page atlas-morphology-detail">
+      <nav class="atlas-breadcrumbs" aria-label="語源辞典の階層">
+        <button type="button" id="atlas-morphology-root">単語のしくみ</button>
+        <span aria-hidden="true">›</span>
+        <span>${esc(entry.typeLabel)}</span>
+        <span aria-hidden="true">›</span>
+        <span aria-current="page">${esc(entry.displayForm)}</span>
+      </nav>
+      <header class="atlas-detail-header atlas-morphology-detail-header">
+        <div>
+          <div class="atlas-kicker">${esc(entry.typeLabel.toLocaleUpperCase())}</div>
+          <h1 lang="en">${esc(entry.displayForm)}</h1>
+          <p>${esc(entry.quickSummaryJa)}</p>
+          <div class="atlas-detail-badges">
+            <span>${esc(entry.origin.language)}</span>
+            <span>${entry.confidence === 'reviewed' ? 'REVIEWED CORE' : 'REFERENCE CORE'}</span>
+          </div>
+        </div>
+      </header>
+      ${morphologySection('まずこれだけ', `<p>${esc(entry.quickSummaryJa)}</p><p>${esc(entry.coreImageJa)}</p>`, true)}
+      ${morphologySection('語源と原形', `
+        <dl class="atlas-origin-grid">
+          <div><dt>言語</dt><dd>${esc(entry.origin.language)}</dd></div>
+          <div><dt>原形</dt><dd lang="en">${esc(entry.origin.form)}</dd></div>
+          <div><dt>原義</dt><dd>${esc(entry.origin.meaningJa)}</dd></div>
+        </dl>
+        <p>${esc(entry.origin.noteJa)}</p>
+      `)}
+      ${morphologySection('コアイメージ', `<p>${esc(entry.coreImageJa)}</p><p>${esc(entry.semanticBridgeJa)}</p>`)}
+      ${morphologySection('意味の分岐', `
+        <div class="atlas-morphology-senses">
+          ${(entry.senses || []).map(sense => `<div><strong>${esc(sense.labelJa)}</strong><p>${esc(sense.explanationJa)}</p></div>`).join('')}
+        </div>
+      `)}
+      ${morphologySection('形の変化', `<ul class="atlas-note-list">${entry.formChanges.map(item => `<li>${esc(item)}</li>`).join('')}</ul>`)}
+      ${morphologySection('単語分解と関連語', `
+        <div class="atlas-word-breakdowns">
+          ${entry.wordLinks.map(link => {
+            const matches = findExpressionMatches(link.term, expressionIndex);
+            return `
+              <div class="atlas-word-breakdown">
+                <div>
+                  ${matches.length === 1
+                    ? `<button type="button" class="atlas-inline-word-link" data-linked-entry="${esc(matches[0].id)}">${esc(link.term)}</button>`
+                    : `<strong lang="en">${esc(link.term)}</strong>`}
+                  <span>${esc(link.breakdownJa)}</span>
+                </div>
+                <p>${esc(link.bridgeJa)}</p>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `)}
+      ${morphologySection('実際の英文', `
+        <div class="atlas-example-list">
+          ${entry.wordLinks.filter(link => link.example).map(link => `
+            <div class="atlas-example"><strong lang="en">${esc(link.example)}</strong><span>${esc(link.exampleJa)}</span></div>
+          `).join('') || '<p>関連語の用例は、各単語の表現ページから確認できます。</p>'}
+        </div>
+      `)}
+      ${entry.comparisons?.length ? morphologySection('似た語源との違い', `
+        <div class="atlas-comparison-list">${entry.comparisons.map(item => `<div><strong>${esc(item.form)}</strong><p>${esc(item.differenceJa)}</p></div>`).join('')}</div>
+      `) : ''}
+      ${morphologySection('間違いやすいポイント', `<ul class="atlas-note-list atlas-note-list--warning">${entry.cautionsJa.map(item => `<li>${esc(item)}</li>`).join('')}</ul>`)}
+      ${morphologySection('文法・品詞への作用', `<p>${esc(entry.grammarImpactJa)}</p>`)}
+      ${renderRelatedMorphemes(entry.relatedIds)}
+      ${renderMorphologySources(entry.sourceRefs)}
+    </article>
+  `;
+  state.container.querySelector('#atlas-morphology-root')?.addEventListener('click', () => {
+    state.morphemeId = '';
+    render();
+    scrollMainToTop();
+  });
+  state.container.querySelectorAll('[data-linked-entry]').forEach(button => {
+    button.addEventListener('click', () => {
+      state.entryId = button.dataset.linkedEntry;
+      state.morphemeId = '';
+      state.libraryMode = 'expressions';
+      render();
+      scrollMainToTop();
+    });
+  });
+  state.container.querySelectorAll('[data-core-related]').forEach(button => {
+    button.addEventListener('click', () => {
+      state.morphemeId = button.dataset.coreRelated;
+      renderMorphologyDetail();
+      scrollMainToTop();
+    });
+  });
+}
+
+function morphologySection(title, content, open = false) {
+  if (!String(content || '').trim()) return '';
+  return `
+    <details class="atlas-detail-section atlas-progressive-section" ${open ? 'open' : ''}>
+      <summary>${esc(title)}</summary>
+      <div class="atlas-progressive-content">${content}</div>
+    </details>
+  `;
+}
+
+function renderMorphologySources(sourceRefs) {
+  if (!Array.isArray(sourceRefs) || !sourceRefs.length) return '';
+  return `
+    <details class="atlas-detail-section atlas-source-details">
+      <summary>出典を見る</summary>
+      <div class="atlas-source-list">
+        ${sourceRefs.map(source => `
+          <a href="${esc(source.url)}" target="_blank" rel="noopener noreferrer">
+            <strong>${esc(source.title)}</strong>
+            <span>${esc(source.organization)}</span>
+          </a>
+        `).join('')}
+      </div>
+    </details>
+  `;
+}
+
+function renderRelatedMorphemes(relatedIds) {
+  const related = (Array.isArray(relatedIds) ? relatedIds : [])
+    .map(getEtymologyCoreEntry)
+    .filter(Boolean);
+  if (!related.length) return '';
+  return morphologySection('関連する語源', `
+    <div class="atlas-related-etymology">
+      ${related.map(item => `
+        <button type="button" data-core-related="${esc(item.id)}">
+          <strong lang="en">${esc(item.displayForm)}</strong>
+          <span>${esc(item.senses?.[0]?.labelJa || item.quickSummaryJa)}</span>
+        </button>
+      `).join('')}
+    </div>
+  `);
+}
+
+function morphologySearchText(entry) {
+  return normalize([
+    entry.form,
+    entry.typeLabel,
+    entry.quickSummaryJa,
+    entry.origin?.language,
+    entry.origin?.form,
+    entry.origin?.meaningJa,
+    entry.coreImageJa,
+    entry.semanticBridgeJa,
+    ...(entry.aliases || []),
+    ...(entry.senses || []).flatMap(sense => [sense.labelJa, sense.explanationJa]),
+    ...(entry.wordLinks || []).flatMap(link => [link.term, link.breakdownJa, link.bridgeJa]),
+  ].filter(Boolean).join(' '));
 }
 
 function renderTranslationLibrary() {
@@ -378,7 +669,7 @@ function renderTranslationGenerator() {
         <div>
           <div class="atlas-kicker">JAPANESE TO ENGLISH</div>
           <h1>和文から英訳を作る</h1>
-          <p>日本語の意味を保ちながら、語り・洗練・明瞭さの異なる3つの英訳を比較します。</p>
+          <p>標準・忠実、自然・会話、表現的・洗練の3案を、元の意味を保って比較します。</p>
         </div>
       </header>
 
@@ -392,7 +683,7 @@ function renderTranslationGenerator() {
             ${state.generating ? '<span class="atlas-spinner" aria-hidden="true"></span> 英訳を作成中…' : '3つの英訳を作る'}
           </button>
           ${state.generating ? '<button class="btn btn-secondary" id="atlas-cancel-translation" type="button">キャンセル</button>' : ''}
-          <p>会話・文章・感情的な語りなど、異なる場面をAIが想定して比較します。</p>
+          <p>使いたい場面の入力は不要です。文に自然な使用域とニュアンスをAIが説明します。</p>
         </div>
       </form>
 
@@ -457,14 +748,18 @@ function renderTranslationGenerator() {
     render();
     scrollMainToTop();
   });
+  wireTranslationVocabularyLinks();
 }
 
 function renderTranslationVariant(variant, index) {
   const patternTitle = variant.labelJa || [
-    'エモーショナル・ナラティブ',
-    'リテラリー・洗練',
-    'ロジカル・シンプル',
+    '標準・忠実',
+    '自然・会話',
+    '表現的・洗練',
   ][index] || `パターン ${index + 1}`;
+  const expressionIndex = buildExpressionIndex(getExpressionEntries());
+  const hasLinkedWords = tokenizeEnglishForLinks(variant.translation)
+    .some(part => part.token && isUsefulLinkedToken(part.token, expressionIndex));
   return `
     <article class="atlas-translation-variant">
       <h3 class="atlas-translation-pattern-title">Pattern ${index + 1}：${esc(patternTitle)}</h3>
@@ -472,7 +767,11 @@ function renderTranslationVariant(variant, index) {
         <span class="atlas-translation-number">${String(index + 1).padStart(2, '0')}</span>
         <div>
           <span class="atlas-translation-field-label">英文</span>
-          <strong lang="en">${esc(variant.translation)}</strong>
+          <strong class="atlas-translation-plain" lang="en">${esc(variant.translation)}</strong>
+          ${hasLinkedWords ? `
+            <div class="atlas-linked-translation" lang="en" hidden>${renderLinkedEnglishText(variant.translation, expressionIndex)}</div>
+            <button class="atlas-vocabulary-toggle" type="button" aria-pressed="false">語彙を見る</button>
+          ` : ''}
           <div class="atlas-detail-badges">
             ${variant.register ? `<span>${esc(variant.register)}</span>` : ''}
           </div>
@@ -485,6 +784,82 @@ function renderTranslationVariant(variant, index) {
       ${listSection('注意点', variant.cautionsJa, 'atlas-note-list--warning')}
     </article>
   `;
+}
+
+function renderLinkedEnglishText(text, expressionIndex) {
+  return tokenizeEnglishForLinks(text).map(part => {
+    if (!part.token || !isUsefulLinkedToken(part.token, expressionIndex)) return esc(part.text);
+    const matches = findExpressionMatches(part.token, expressionIndex);
+    return `<button type="button" class="atlas-linked-token" data-linked-token="${esc(part.token)}" data-linked-entries="${esc(matches.map(entry => entry.id).join(','))}">${esc(part.text)}</button>`;
+  }).join('');
+}
+
+function wireTranslationVocabularyLinks() {
+  state.container?.querySelectorAll('.atlas-vocabulary-toggle').forEach(button => {
+    button.addEventListener('click', () => {
+      const variant = button.closest('.atlas-translation-variant');
+      const plain = variant?.querySelector('.atlas-translation-plain');
+      const linked = variant?.querySelector('.atlas-linked-translation');
+      if (!plain || !linked) return;
+      const active = button.getAttribute('aria-pressed') !== 'true';
+      button.setAttribute('aria-pressed', String(active));
+      button.textContent = active ? '通常表示に戻す' : '語彙を見る';
+      plain.hidden = active;
+      linked.hidden = !active;
+    });
+  });
+  state.container?.querySelectorAll('[data-linked-token]').forEach(button => {
+    button.addEventListener('click', () => {
+      const ids = String(button.dataset.linkedEntries || '').split(',').filter(Boolean);
+      const entries = getExpressionEntries().filter(entry => ids.includes(entry.id));
+      if (entries.length === 1) {
+        openLinkedExpression(entries[0].id);
+      } else if (entries.length > 1) {
+        showWordMatchPicker(button.dataset.linkedToken, entries);
+      }
+    });
+  });
+}
+
+function openLinkedExpression(entryId) {
+  state.screen = 'library';
+  state.libraryMode = 'expressions';
+  state.translationId = '';
+  state.morphemeId = '';
+  state.entryId = entryId;
+  render();
+  scrollMainToTop();
+}
+
+function showWordMatchPicker(token, entries) {
+  state.container?.querySelector('.atlas-word-picker')?.remove();
+  const sheet = document.createElement('div');
+  sheet.className = 'atlas-word-picker';
+  sheet.innerHTML = `
+    <button class="atlas-word-picker-backdrop" type="button" aria-label="閉じる"></button>
+    <section role="dialog" aria-modal="true" aria-labelledby="atlas-word-picker-title">
+      <div class="atlas-word-picker-handle" aria-hidden="true"></div>
+      <header>
+        <div><small>語義を選択</small><h2 id="atlas-word-picker-title">${esc(token)}</h2></div>
+        <button type="button" class="atlas-icon-btn" data-word-picker-close aria-label="閉じる">×</button>
+      </header>
+      <div class="atlas-word-picker-options">
+        ${entries.map(entry => `
+          <button type="button" data-word-picker-entry="${esc(entry.id)}">
+            <strong>${esc(entry.coreMeaningJa || entry.term)}</strong>
+            <span>${esc([entry.partOfSpeech, entry.topic].filter(Boolean).join(' · '))}</span>
+          </button>
+        `).join('')}
+      </div>
+    </section>
+  `;
+  state.container?.appendChild(sheet);
+  const close = () => sheet.remove();
+  sheet.querySelector('.atlas-word-picker-backdrop')?.addEventListener('click', close);
+  sheet.querySelector('[data-word-picker-close]')?.addEventListener('click', close);
+  sheet.querySelectorAll('[data-word-picker-entry]').forEach(button => {
+    button.addEventListener('click', () => openLinkedExpression(button.dataset.wordPickerEntry));
+  });
 }
 
 async function handleTranslationGenerate(event) {
@@ -537,21 +912,20 @@ function syncTranslationClassification() {
   if (!state.translationDraft || !state.container) return;
   const category = state.container.querySelector('#atlas-translation-category')?.value.trim();
   const topic = state.container.querySelector('#atlas-translation-topic')?.value.trim();
-  if (category) state.translationDraft.category = category;
-  if (topic) state.translationDraft.topic = topic;
+  if (category && topic) {
+    state.translationDraft = applyManualClassification(state.translationDraft, category, topic);
+  }
 }
 
 function collectAtlasTaxonomy() {
   const items = [...getExpressionEntries(), ...getTranslationSets()];
-  return items.reduce((result, item) => {
-    const found = result.find(entry => entry.category === item.category);
-    if (found) {
-      if (item.topic && !found.topics.includes(item.topic)) found.topics.push(item.topic);
-    } else if (item.category) {
-      result.push({ category: item.category, topics: item.topic ? [item.topic] : [] });
-    }
-    return result;
-  }, []);
+  return collectStableTaxonomy(items).map(category => ({
+    category: category.label,
+    categoryId: category.id,
+    aliases: category.aliases,
+    topics: category.topics.map(topic => topic.label),
+    topicRecords: category.topics,
+  }));
 }
 
 function renderTranslationDetail() {
@@ -584,6 +958,7 @@ function renderTranslationDetail() {
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"/></svg>
         </button>
       </header>
+      ${classificationEditor(set, 'translation')}
       ${Number(set.promptVersion || 1) < 2 ? detailSection('英訳の考え方', set.summaryJa) : ''}
       <section class="atlas-detail-section atlas-translation-detail-list">
         <h2>ニュアンス別英訳3パターン＆深掘り解説</h2>
@@ -622,6 +997,8 @@ function renderTranslationDetail() {
       render();
     }
   });
+  wireTranslationVocabularyLinks();
+  wireClassificationEditor(set, 'translation');
 }
 
 function updateLibraryContent() {
@@ -645,6 +1022,7 @@ function wireLibraryContent() {
     state.screen = 'generate';
     state.generatorInput = {
       language: 'English',
+      learningTarget: '',
       category: state.category || '',
       topic: state.topic || '',
       seedTerms: '',
@@ -786,11 +1164,14 @@ function renderDetail() {
         </button>
       </header>
 
+      ${classificationEditor(entry, 'expression')}
       ${etymologyCoreSection(entry)}
       ${detailSection('深いニュアンス', entry.nuanceJa)}
       ${comparisonsSection(entry.comparisons)}
-      ${listSection('AIが想定した使用場面', entry.useCasesJa)}
+      ${listSection('自然に使われる場面', entry.useCasesJa)}
       ${examplesSection(entry.examples)}
+      ${grammarNotesSection(entry.grammarNotes)}
+      ${relatedEtymologySection(entry)}
       ${detailSection('感情の温度', entry.emotionalToneJa)}
       ${chipSection('よく一緒に使う語', entry.collocations)}
       ${listSection('注意点', entry.cautionsJa, 'atlas-note-list--warning')}
@@ -824,6 +1205,8 @@ function renderDetail() {
       render();
     }
   });
+  wireClassificationEditor(entry, 'expression');
+  wireRelatedEtymologyLinks();
 }
 
 function renderGenerator() {
@@ -849,6 +1232,11 @@ function renderGenerator() {
           <select id="atlas-language">
             <option value="English" ${input.language === 'English' ? 'selected' : ''}>English</option>
           </select>
+        </label>
+        <label class="atlas-generator-wide">
+          <span>知りたい意味・表現 <small>必須</small></span>
+          <input id="atlas-learning-target" required placeholder="例: 視点 / 遠慮する / 怒りを表す表現" value="${esc(input.learningTarget)}">
+          <small class="atlas-field-help">分類名が分からなくても、知りたい日本語だけで始められます。</small>
         </label>
         <label>
           <span>カテゴリ <small>任意・AI判定</small></span>
@@ -922,7 +1310,7 @@ function renderGenerator() {
   state.container.querySelector('#atlas-generator-back')?.addEventListener('click', () => {
     backFromExpressionAtlas();
   });
-  ['atlas-language', 'atlas-category', 'atlas-topic', 'atlas-seed-terms'].forEach(id => {
+  ['atlas-language', 'atlas-learning-target', 'atlas-category', 'atlas-topic', 'atlas-seed-terms'].forEach(id => {
     state.container.querySelector(`#${id}`)?.addEventListener('input', syncGeneratorInput);
     state.container.querySelector(`#${id}`)?.addEventListener('change', syncGeneratorInput);
   });
@@ -971,20 +1359,12 @@ async function handleGenerate(event) {
     return;
   }
   syncGeneratorInput();
-  const { language, category, topic, seedTerms } = state.generatorInput;
-  if (!category && !topic && !String(seedTerms || '').trim()) {
-    toast('カテゴリ、テーマ、含めたい表現のどれかを入力してください', 'error');
+  const { language, learningTarget, category, topic, seedTerms } = state.generatorInput;
+  if (!String(learningTarget || '').trim()) {
+    toast('知りたい意味・表現を入力してください', 'error');
     return;
   }
-  const taxonomy = getExpressionEntries().reduce((items, entry) => {
-    const found = items.find(item => item.category === entry.category);
-    if (found) {
-      if (entry.topic && !found.topics.includes(entry.topic)) found.topics.push(entry.topic);
-    } else if (entry.category) {
-      items.push({ category: entry.category, topics: entry.topic ? [entry.topic] : [] });
-    }
-    return items;
-  }, []);
+  const taxonomy = collectAtlasTaxonomy();
 
   state.generating = true;
   state.controller = new AbortController();
@@ -992,6 +1372,7 @@ async function handleGenerate(event) {
   try {
     const drafts = await generateNuanceEntries({
       language,
+      learningTarget,
       category,
       topic,
       seedTerms,
@@ -1016,17 +1397,18 @@ function syncGeneratorInput() {
   if (!state.container) return;
   const next = {
     language: state.container.querySelector('#atlas-language')?.value || state.generatorInput.language || 'English',
+    learningTarget: state.container.querySelector('#atlas-learning-target')?.value.trim() || '',
     category: state.container.querySelector('#atlas-category')?.value.trim() || '',
     topic: state.container.querySelector('#atlas-topic')?.value.trim() || '',
     seedTerms: state.container.querySelector('#atlas-seed-terms')?.value || '',
   };
   state.generatorInput = next;
   if (state.drafts.length && (next.category || next.topic)) {
-    state.drafts = state.drafts.map(entry => ({
-      ...entry,
-      category: next.category || entry.category,
-      topic: next.topic || entry.topic,
-    }));
+    state.drafts = state.drafts.map(entry => applyManualClassification(
+      entry,
+      next.category || entry.category,
+      next.topic || entry.topic
+    ));
     const classification = state.container.querySelector('.atlas-ai-classification');
     if (classification) {
       classification.innerHTML = `AI分類: <strong>${esc(state.drafts[0].category)}</strong> <span aria-hidden="true">›</span> <strong>${esc(state.drafts[0].topic)}</strong>`;
@@ -1069,6 +1451,112 @@ function persistOpenTranslationNote() {
   const textarea = state.container?.querySelector('#atlas-translation-note');
   if (!textarea || !state.translationId) return;
   updateTranslationSet(state.translationId, { personalNote: textarea.value || '' });
+}
+
+function classificationEditor(record, kind) {
+  const prefix = kind === 'translation' ? 'atlas-translation-detail' : 'atlas-expression-detail';
+  return `
+    <details class="atlas-classification-editor">
+      <summary>分類を整理</summary>
+      <div>
+        <label><span>カテゴリ</span><input id="${prefix}-category" value="${esc(record.category)}"></label>
+        <label><span>テーマ</span><input id="${prefix}-topic" value="${esc(record.topic)}"></label>
+        <button class="btn btn-secondary btn-sm" id="${prefix}-save" type="button">分類名を保存</button>
+      </div>
+      <p>名前を変えても内部IDと以前の名前は保持され、同じ分類として扱われます。</p>
+    </details>
+  `;
+}
+
+function wireClassificationEditor(record, kind) {
+  const prefix = kind === 'translation' ? 'atlas-translation-detail' : 'atlas-expression-detail';
+  state.container?.querySelector(`#${prefix}-save`)?.addEventListener('click', () => {
+    const category = state.container.querySelector(`#${prefix}-category`)?.value.trim();
+    const topic = state.container.querySelector(`#${prefix}-topic`)?.value.trim();
+    if (!category || !topic) {
+      toast('カテゴリとテーマを入力してください', 'error');
+      return;
+    }
+    const updates = applyManualClassification(record, category, topic);
+    const saved = kind === 'translation'
+      ? updateTranslationSet(record.id, updates)
+      : updateExpressionEntry(record.id, updates);
+    if (!saved) {
+      toast('分類を保存できませんでした', 'error');
+      return;
+    }
+    state.category = category;
+    state.topic = topic;
+    toast('分類名を保存しました', 'success');
+    render();
+  });
+}
+
+function grammarNotesSection(notes) {
+  if (!notes || typeof notes !== 'object') return '';
+  const rows = [
+    ['品詞', notes.partOfSpeech],
+    ['可算性', notes.countability],
+    ['複数形', notes.plural],
+    ['過去形', notes.past],
+    ['過去分詞', notes.pastParticiple],
+  ].filter(([, value]) => String(value || '').trim());
+  const usageNotes = Array.isArray(notes.usageNotes) ? notes.usageNotes.filter(Boolean) : [];
+  const forms = Array.isArray(notes.exampleForms) ? notes.exampleForms.filter(Boolean) : [];
+  if (!rows.length && !usageNotes.length && !forms.length) return '';
+  return `
+    <section class="atlas-detail-section">
+      <h2>形・数え方の注意</h2>
+      ${rows.length ? `<dl class="atlas-grammar-grid">${rows.map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl>` : ''}
+      ${forms.length ? `<div class="atlas-chip-list">${forms.map(form => `<span lang="en">${esc(form)}</span>`).join('')}</div>` : ''}
+      ${usageNotes.length ? `<ul class="atlas-note-list">${usageNotes.map(note => `<li>${esc(note)}</li>`).join('')}</ul>` : ''}
+    </section>
+  `;
+}
+
+function relatedCoreEntries(entry) {
+  const explicitIds = new Set(Array.isArray(entry.etymologyLinks) ? entry.etymologyLinks : []);
+  const terms = new Set([
+    String(entry.term || '').trim().toLocaleLowerCase(),
+    String(entry.lemma || '').trim().toLocaleLowerCase(),
+    ...(Array.isArray(entry.aliases) ? entry.aliases : []).map(value => String(value).trim().toLocaleLowerCase()),
+  ].filter(Boolean));
+  return ETYMOLOGY_CORE.filter(core => (
+    explicitIds.has(core.id)
+    || core.wordLinks.some(link => terms.has(String(link.term || '').toLocaleLowerCase()))
+  )).slice(0, 8);
+}
+
+function relatedEtymologySection(entry) {
+  const related = relatedCoreEntries(entry);
+  if (!related.length) return '';
+  return `
+    <section class="atlas-detail-section">
+      <h2>つながる語源</h2>
+      <div class="atlas-related-etymology">
+        ${related.map(core => `
+          <button type="button" data-related-morpheme="${esc(core.id)}">
+            <strong lang="en">${esc(core.displayForm)}</strong>
+            <span>${esc(core.senses?.[0]?.labelJa || core.quickSummaryJa)}</span>
+          </button>
+        `).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function wireRelatedEtymologyLinks() {
+  state.container?.querySelectorAll('[data-related-morpheme]').forEach(button => {
+    button.addEventListener('click', () => {
+      persistOpenPersonalNote();
+      state.entryId = '';
+      state.translationId = '';
+      state.morphemeId = button.dataset.relatedMorpheme;
+      state.libraryMode = 'morphology';
+      render();
+      scrollMainToTop();
+    });
+  });
 }
 
 function detailSection(title, text) {
@@ -1236,6 +1724,8 @@ function comparisonsSection(comparisons) {
 function searchableText(entry) {
   return normalize([
     entry.term,
+    entry.lemma,
+    ...(entry.aliases || []),
     entry.partOfSpeech,
     entry.etymologyJa,
     entry.coreImageJa,
@@ -1247,12 +1737,20 @@ function searchableText(entry) {
     entry.intensity,
     entry.emotionalToneJa,
     entry.category,
+    ...(entry.categoryAliases || []),
     entry.topic,
+    ...(entry.topicAliases || []),
     ...(entry.useCasesJa || []),
     ...(entry.collocations || []),
     ...(entry.cautionsJa || []),
     ...(entry.examples || []).flatMap(example => [example.source, example.translation, example.noteJa]),
     ...(entry.comparisons || []).flatMap(comparison => [comparison.term, comparison.differenceJa]),
+    entry.grammarNotes?.countability,
+    entry.grammarNotes?.plural,
+    entry.grammarNotes?.past,
+    entry.grammarNotes?.pastParticiple,
+    ...(entry.grammarNotes?.usageNotes || []),
+    ...(entry.grammarNotes?.exampleForms || []),
     entry.personalNote,
   ].filter(Boolean).join(' '));
 }
@@ -1262,7 +1760,9 @@ function searchableTranslationText(set) {
     set.sourceTextJa,
     set.contextJa,
     set.category,
+    ...(set.categoryAliases || []),
     set.topic,
+    ...(set.topicAliases || []),
     set.summaryJa,
     ...(set.variants || []).flatMap(variant => [
       variant.translation,
@@ -1274,6 +1774,8 @@ function searchableTranslationText(set) {
       variant.backTranslationJa,
       ...(variant.vocabularyNotes || []).flatMap(note => [
         note.expression,
+        note.lemma,
+        note.senseHintJa,
         note.etymologyJa,
         note.coreImageJa,
         note.nuanceJa,
@@ -1288,6 +1790,31 @@ function searchableTranslationText(set) {
     ]),
     set.personalNote,
   ].filter(Boolean).join(' '));
+}
+
+function applyManualClassification(record, category, topic) {
+  const current = withStableClassification(record);
+  const nextCategory = String(category || '').trim();
+  const nextTopic = String(topic || '').trim();
+  const categoryAliases = unique([
+    ...(current.categoryAliases || []),
+    ...(current.category && current.category !== nextCategory ? [current.category] : []),
+  ]);
+  const topicAliases = unique([
+    ...(current.topicAliases || []),
+    ...(current.topic && current.topic !== nextTopic ? [current.topic] : []),
+  ]);
+  return {
+    ...current,
+    category: nextCategory,
+    topic: nextTopic,
+    categoryId: current.categoryId || stableAtlasId('cat', nextCategory),
+    topicId: current.topicId || stableAtlasId('topic', `${nextCategory}-${nextTopic}`),
+    categoryAliases,
+    topicAliases,
+    classificationSource: 'user',
+    manualClassification: true,
+  };
 }
 
 function normalize(value) {
