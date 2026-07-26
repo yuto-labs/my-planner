@@ -86,7 +86,6 @@ const EVENT_SYNC_BACKUP_LIMIT = 3;
 const SYNC_SNAPSHOT_VERSION = 1;
 const SYNC_BACKUP_LIMIT = 3;
 const REMOTE_MISSING_STATE_VERSION = 1;
-const REMOTE_DELETE_CONFIRM_MS = 30_000;
 const RECENT_UPSERT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const RECENT_WRITE_WINDOW_MS = 2 * 60 * 1000;
 const PUSH_RETRY_MS = 2500;
@@ -468,6 +467,7 @@ async function _pullTasks(client, userId, forceReplace = false) {
   if (!data) return;
 
   const remote = _filterPendingDeletes('tasks', data.map(rowToTask));
+  const confirmedDeleteIds = await _getConfirmedTrashEntityIds(client, userId, ['task']);
   const localActive = _ls('mp_tasks', []);
   const localArchive = _ls('mp_task_archive', []);
   const local = _dedupeById([...localActive, ...localArchive]);
@@ -481,6 +481,7 @@ async function _pullTasks(client, userId, forceReplace = false) {
     toRow: (task, uid) => taskToRow(task, uid, !!task.archivedAt),
     pendingDeleteTable: 'tasks',
     retryKeys: ['tasks', 'tasks_archive'],
+    confirmedDeleteIds,
   });
   const nextActive = next.filter(task => !task.archivedAt);
   const nextArchive = next.filter(task => !!task.archivedAt);
@@ -499,6 +500,7 @@ async function _pullEvents(client, userId, forceReplace = false) {
   }
   if (!data) return;
   const remote = _filterPendingDeletes('events', data.map(rowToEvent));
+  const confirmedDeleteIds = await _getConfirmedTrashEntityIds(client, userId, ['event']);
   const local = _ls('mp_events', []);
   const next = await _reconcileRemoteCollection({
     client,
@@ -510,6 +512,7 @@ async function _pullEvents(client, userId, forceReplace = false) {
     toRow: eventToRow,
     pendingDeleteTable: 'events',
     retryKeys: ['events'],
+    confirmedDeleteIds,
   });
   return _writeCollectionAfterSync('mp_events', local, next, userId, 'events');
 }
@@ -518,6 +521,30 @@ async function _getPersonalCalendarRows(client) {
   const v2 = await client.rpc('get_personal_calendar_events_v2');
   if (!v2.error) return v2;
   return client.rpc('get_personal_calendar_events');
+}
+
+// A remote row disappearing is not enough proof that it was intentionally
+// deleted. RLS/configuration/network issues can make a valid collection look
+// empty. Deletions made by this app always create a trash row first, so only
+// that durable record is allowed to remove another device's local copy.
+async function _getConfirmedTrashEntityIds(client, userId, entityTypes) {
+  const result = await _selectAllForUser(
+    client,
+    'trash_items',
+    'entity_id,entity_type',
+    userId,
+    'id'
+  );
+  if (result.error) {
+    console.warn('[Sync] could not verify deletion records; preserving local data:', result.error);
+    return new Set();
+  }
+  const accepted = new Set(entityTypes);
+  return new Set(
+    (result.data || [])
+      .filter(item => accepted.has(item.entity_type) && item.entity_id)
+      .map(item => item.entity_id)
+  );
 }
 
 export function reconcileEventCollections(
@@ -689,10 +716,11 @@ async function _pullGoals(client, userId, forceReplace = false) {
   if (error) throw error;
   if (!data) return;
   const remote = _filterPendingDeletes('goals', data.map(rowToGoal));
+  const confirmedDeleteIds = await _getConfirmedTrashEntityIds(client, userId, ['goal']);
   const local = _ls('mp_goals', []);
   const next = await _reconcileRemoteCollection({
     client, userId, collectionKey: 'goals', dbTable: 'goals', local, remote,
-    toRow: goalToRow, pendingDeleteTable: 'goals', retryKeys: ['goals'],
+    toRow: goalToRow, pendingDeleteTable: 'goals', retryKeys: ['goals'], confirmedDeleteIds,
   });
   return _writeCollectionAfterSync('mp_goals', local, next, userId, 'goals');
 }
@@ -747,10 +775,11 @@ async function _pullSchedule(client, userId, forceReplace = false) {
   if (error) throw error;
   if (!data) return;
   const remote = _filterPendingDeletes('schedule_items', data.map(rowToSchedItem));
+  const confirmedDeleteIds = await _getConfirmedTrashEntityIds(client, userId, ['schedule']);
   const local = _ls('mp_schedule', []);
   const next = await _reconcileRemoteCollection({
     client, userId, collectionKey: 'schedule_items', dbTable: 'schedule_items', local, remote,
-    toRow: schedItemToRow, pendingDeleteTable: 'schedule_items', retryKeys: ['schedule_items'],
+    toRow: schedItemToRow, pendingDeleteTable: 'schedule_items', retryKeys: ['schedule_items'], confirmedDeleteIds,
   });
   return _writeCollectionAfterSync('mp_schedule', local, next, userId, 'schedule_items');
 }
@@ -1197,7 +1226,6 @@ export function resolveRemoteMissingProtection({
   pendingDeleteIds = new Set(),
   previousState = {},
   now = Date.now(),
-  confirmMs = REMOTE_DELETE_CONFIRM_MS,
 } = {}) {
   const pending = pendingDeleteIds instanceof Set
     ? pendingDeleteIds
@@ -1214,13 +1242,16 @@ export function resolveRemoteMissingProtection({
     const localVersion = _syncVersion(item);
     if (!Number.isFinite(knownVersion) || knownVersion <= 0 || localVersion > knownVersion) return;
 
+    // Never treat an absent cloud row as a confirmed deletion. The matching
+    // trash row is passed through pendingDeleteIds by the caller when a user
+    // actually deleted an item. This keeps temporary empty responses, RLS
+    // misconfiguration, and delayed replication from erasing device data.
     const previous = previousState[id];
-    const firstSeenAt = Number(previous?.firstSeenAt) || now;
-    const count = (Number(previous?.count) || 0) + 1;
-    const confirmed = count >= 2 && now - firstSeenAt >= confirmMs;
-    if (confirmed) return;
-
-    nextState[id] = { firstSeenAt, lastSeenAt: now, count };
+    nextState[id] = {
+      firstSeenAt: Number(previous?.firstSeenAt) || now,
+      lastSeenAt: now,
+      count: (Number(previous?.count) || 0) + 1,
+    };
     protectedIds.add(id);
   });
 
