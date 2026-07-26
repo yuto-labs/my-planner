@@ -13,7 +13,7 @@ import { parseJapaneseTimes, today } from './utils.js';
 
 const SERVER_STATUS_URL = '/api/ai/status';
 const SERVER_GENERATE_URL = '/api/ai/generate';
-const AI_REQUEST_TIMEOUT_MS = 50_000;
+const AI_REQUEST_TIMEOUT_MS = 95_000;
 
 const FAST_MODEL = 'fast';
 const QUALITY_MODEL = 'quality';
@@ -647,6 +647,9 @@ export async function generateTranslationVariants(
     'Return JSON only and follow the response schema.',
     'Create exactly three natural English translations in this exact order and style: emotional_narrative (語り・ストーリー調), literary_polished (自伝・格調高い書き言葉), logical_simple (会話・スピーチ向けの明瞭な構成).',
     'Each variant must preserve the source meaning while making a meaningful difference in voice, sentence structure, rhythm, register, and intended situation. Do not create superficial synonym swaps.',
+    'The user will not provide a target situation. Make the three variants useful across distinct plausible situations without inventing source facts, and explain the best situation for each variant in overallNuanceJa.',
+    'Always answer, even when the Japanese is short, colloquial, fragmentary, or ambiguous. Never refuse or ask the user to provide a more specific sentence solely because context is missing.',
+    'For ambiguous wording, choose reasonable interpretations for the three variants and clearly identify each assumption in overallNuanceJa. Keep uncertainty visible instead of returning an empty translation.',
     'Do not invent a person, relationship, event, time, place, emotion, or intention that the user did not supply.',
     'When the Japanese is ambiguous, keep alternatives conditional and explain the ambiguity in Japanese instead of silently choosing one interpretation.',
     'For every variant, provide: the English translation, a Japanese back-translation that preserves the English implications, the overall impression and suitable situation, 2 to 4 notes on important vocabulary or constructions, and concrete comparisons with similar expressions.',
@@ -731,15 +734,10 @@ export async function generateTranslationVariants(
     parsed?.category,
     `${source} ${parsed?.topic || ''}`
   );
-  const topic = String(parsed?.topic || '').trim();
-  const variantsAreDetailed = variants.every(variant => (
-    variant.backTranslationJa
-    && variant.overallNuanceJa
-    && variant.vocabularyNotes.length
-    && variant.comparisons.length
-  ));
-  if (!category || !topic || variants.length !== 3 || !variantsAreDetailed) {
-    throw new Error('3種類の英訳と詳しい解説を揃えられませんでした。日本語を少し具体的にして、もう一度試してください。');
+  const topic = String(parsed?.topic || '').trim()
+    || String(context || source).replace(/\s+/g, ' ').slice(0, 32);
+  if (!category || variants.length !== 3) {
+    throw new Error('3種類の英訳を揃えられませんでした。もう一度お試しください。');
   }
   return {
     promptVersion: 2,

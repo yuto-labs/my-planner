@@ -21,7 +21,6 @@ function pickThinkingConfig(model, actionType) {
     'planner_action',
     'task_schedule',
     'nuance_generate',
-    'translation_variants',
   ]);
   const isComplex = complexActions.has(String(actionType || ''));
   if (String(model).startsWith('gemini-2.5-')) {
@@ -215,40 +214,69 @@ function pickResponseSchema(actionType, body) {
           type: 'STRING',
           description: 'A concise Japanese semantic theme for the source sentence.',
         },
-        summaryJa: {
-          type: 'STRING',
-          description: 'A concise Japanese overview of the main translation choices.',
-        },
         variants: {
           type: 'ARRAY',
-          description: 'Three to five meaningfully different, natural English translations.',
+          description: 'Exactly three meaningfully different, natural English translations in the requested style order.',
+          minItems: 3,
+          maxItems: 3,
           items: {
             type: 'OBJECT',
             properties: {
+              style: {
+                type: 'STRING',
+                enum: ['emotional_narrative', 'literary_polished', 'logical_simple'],
+              },
               translation: { type: 'STRING' },
-              labelJa: { type: 'STRING', description: 'A short label such as 自然, 丁寧, カジュアル, or 直訳寄り.' },
-              nuanceJa: { type: 'STRING' },
-              register: { type: 'STRING' },
               backTranslationJa: {
                 type: 'STRING',
                 description: 'A natural Japanese back-translation that makes any semantic shift visible.',
               },
-              useCasesJa: stringArray('Concrete situations and relationships where this translation is natural.'),
-              cautionsJa: stringArray('Concrete cautions about tone, implication, grammar, or unsuitable contexts.'),
+              overallNuanceJa: {
+                type: 'STRING',
+                description: 'A Japanese explanation of the overall impression and suitable situation.',
+              },
+              register: { type: 'STRING' },
+              vocabularyNotes: {
+                type: 'ARRAY',
+                description: 'Two to four important vocabulary or construction notes.',
+                items: {
+                  type: 'OBJECT',
+                  properties: {
+                    expression: { type: 'STRING' },
+                    etymologyJa: { type: 'STRING' },
+                    coreImageJa: { type: 'STRING' },
+                    nuanceJa: { type: 'STRING' },
+                  },
+                  required: ['expression', 'etymologyJa', 'coreImageJa', 'nuanceJa'],
+                },
+              },
+              comparisons: {
+                type: 'ARRAY',
+                description: 'Concrete comparisons with similar English expressions.',
+                items: {
+                  type: 'OBJECT',
+                  properties: {
+                    expression: { type: 'STRING' },
+                    alternative: { type: 'STRING' },
+                    differenceJa: { type: 'STRING' },
+                  },
+                  required: ['expression', 'alternative', 'differenceJa'],
+                },
+              },
             },
             required: [
+              'style',
               'translation',
-              'labelJa',
-              'nuanceJa',
-              'register',
               'backTranslationJa',
-              'useCasesJa',
-              'cautionsJa',
+              'overallNuanceJa',
+              'register',
+              'vocabularyNotes',
+              'comparisons',
             ],
           },
         },
       },
-      required: ['category', 'topic', 'summaryJa', 'variants'],
+      required: ['category', 'topic', 'variants'],
     };
   }
 
@@ -260,9 +288,22 @@ function extractText(data) {
   return parts.map(part => part?.text || '').join('').trim();
 }
 
+function hasCompleteTranslationResponse(text) {
+  try {
+    const parsed = JSON.parse(String(text || ''));
+    const variants = Array.isArray(parsed?.variants) ? parsed.variants : [];
+    const translations = variants
+      .map(variant => String(variant?.translation || '').trim().toLocaleLowerCase())
+      .filter(Boolean);
+    return variants.length === 3 && new Set(translations).size === 3;
+  } catch {
+    return false;
+  }
+}
+
 async function requestGemini(key, model, payload) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 24_000);
+  const timeoutId = setTimeout(() => controller.abort(), 44_000);
   try {
     const upstream = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,
@@ -458,7 +499,9 @@ export default async function handler(req, res) {
     }
 
     let text = extractText(data);
-    if (!text) {
+    const incompleteTranslation = body.actionType === 'translation_variants'
+      && !hasCompleteTranslationResponse(text);
+    if (!text || incompleteTranslation) {
       const retryPayload = {
         ...payload,
         generationConfig: {
@@ -467,6 +510,15 @@ export default async function handler(req, res) {
           thinkingConfig: pickThinkingConfig(model, body.actionType),
         },
       };
+      if (body.actionType === 'translation_variants') {
+        retryPayload.systemInstruction = {
+          parts: [{
+            text: `${String(body.systemText || '')}
+
+The previous response was incomplete. Return all three distinct translation variants even when the Japanese is short, fragmentary, colloquial, or ambiguous. Never ask the user to make the Japanese more specific. State reasonable interpretations and assumptions in overallNuanceJa.`,
+          }],
+        };
+      }
       ({ upstream, data } = await requestGemini(key, model, retryPayload));
       if (!upstream.ok) {
         await refundUsage(token, usage);

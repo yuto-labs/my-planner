@@ -387,16 +387,12 @@ function renderTranslationGenerator() {
           <span>英訳したい日本語</span>
           <textarea id="atlas-source-ja" rows="4" required placeholder="例: 今日は来てくれて本当にありがとう。">${esc(input.sourceTextJa)}</textarea>
         </label>
-        <label>
-          <span>使いたい場面 <small>任意</small></span>
-          <textarea id="atlas-context-ja" rows="3" placeholder="例: 親しい友人へのメッセージ。丁寧すぎない表現が知りたい。">${esc(input.contextJa)}</textarea>
-        </label>
         <div class="atlas-generator-actions">
           <button class="btn btn-primary" type="submit" ${state.generating ? 'disabled' : ''}>
             ${state.generating ? '<span class="atlas-spinner" aria-hidden="true"></span> 英訳を作成中…' : '3つの英訳を作る'}
           </button>
           ${state.generating ? '<button class="btn btn-secondary" id="atlas-cancel-translation" type="button">キャンセル</button>' : ''}
-          <p>入力にない人物・状況は補いません。曖昧な部分は、候補ごとの差として説明します。</p>
+          <p>会話・文章・感情的な語りなど、異なる場面をAIが想定して比較します。</p>
         </div>
       </form>
 
@@ -407,7 +403,9 @@ function renderTranslationGenerator() {
               <h2>${esc(draft.sourceTextJa)}</h2>
               ${Number(draft.promptVersion || 1) < 2 && draft.summaryJa ? `<p>${esc(draft.summaryJa)}</p>` : ''}
             </div>
-            <button class="btn btn-primary" id="atlas-save-translation" type="button">この英訳セットを保存</button>
+            <button class="btn btn-primary" id="atlas-save-translation" type="button">
+              ${draft.id ? '分類の変更を保存' : 'この英訳セットを保存'}
+            </button>
           </div>
           <div class="atlas-translation-classification">
             <label>
@@ -429,7 +427,7 @@ function renderTranslationGenerator() {
   `;
 
   state.container.querySelector('#atlas-translation-back')?.addEventListener('click', backFromExpressionAtlas);
-  ['atlas-source-ja', 'atlas-context-ja'].forEach(id => {
+  ['atlas-source-ja'].forEach(id => {
     state.container.querySelector(`#${id}`)?.addEventListener('input', syncTranslationInput);
   });
   state.container.querySelector('#atlas-translation-form')?.addEventListener('submit', handleTranslationGenerate);
@@ -507,10 +505,18 @@ async function handleTranslationGenerate(event) {
   state.controller = new AbortController();
   renderTranslationGenerator();
   try {
-    state.translationDraft = await generateTranslationVariants({
+    const generated = await generateTranslationVariants({
       ...state.translationInput,
       existingTaxonomy: taxonomy,
     }, { signal: state.controller.signal });
+    const saved = addTranslationSet(generated);
+    state.translationDraft = saved || generated;
+    toast(
+      saved
+        ? '英訳と元の日本語を自動保存しました'
+        : '英訳は作成できましたが、自動保存に失敗しました',
+      saved ? 'success' : 'error'
+    );
   } catch (error) {
     if (error?.name !== 'AbortError') toast(error?.message || '英訳を作成できませんでした', 'error');
   } finally {
@@ -524,7 +530,7 @@ function syncTranslationInput() {
   if (!state.container) return;
   state.translationInput = {
     sourceTextJa: state.container.querySelector('#atlas-source-ja')?.value || state.translationInput.sourceTextJa || '',
-    contextJa: state.container.querySelector('#atlas-context-ja')?.value || '',
+    contextJa: '',
   };
 }
 
