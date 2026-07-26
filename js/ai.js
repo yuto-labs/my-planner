@@ -591,6 +591,7 @@ export async function generateNuanceEntries(
     'Create 5 to 8 genuinely useful expressions for the requested semantic topic, unless seed terms are supplied; always include every supplied seed term.',
     'For the whole set, rate each expression from intensityLevel 1 (weak/subtle) to 5 (strong/extreme), and assign a short Japanese nuanceTypeJa that explains its qualitative type rather than merely repeating the strength.',
     'For every expression, explain in clear Japanese: historical etymology, the original physical/root image, the core meaning, the deep emotional or conceptual mechanism, decisive differences from similar expressions, natural situations, register, emotional tone, grammar cautions, and collocations.',
+    'For every expression, include pronunciationIpa in standard IPA. Give the most useful General American pronunciation; include a second form only when it materially helps learners.',
     'Etymology must distinguish verified historical origin from a learning mnemonic. Never invent a root or confidently state a disputed origin. When uncertain, explicitly say that the origin is uncertain or leave etymologyJa empty.',
     'Return exactly two natural example sentences for every expression, each with a faithful Japanese translation and a short usage note.',
     'Do not treat different parts of speech as interchangeable. Explicitly explain grammatical differences such as adjective versus noun.',
@@ -600,7 +601,7 @@ export async function generateNuanceEntries(
     'Keep comparisons concrete and compare only expressions in the returned set when possible.',
     'Do not invent quotations, statistics, citations, or unsupported claims.',
     'Return no greeting, preface, conclusion, Markdown, or prose outside the JSON object.',
-    'Use this exact JSON shape: {"category":"日本語の大分類","topic":"日本語の具体的テーマ","entries":[{"term":"English expression","lemma":"dictionary headword","aliases":["inflected or alternate form"],"senseId":"short semantic sense key","partOfSpeech":"品詞","etymologyJa":"語源の説明","coreImageJa":"原義から分かる根源的なイメージ","coreMeaningJa":"中心的な意味","nuanceJa":"深いニュアンス","nuanceTypeJa":"短いニュアンス分類","intensityLevel":1,"register":"使用域","emotionalToneJa":"感情の温度","useCasesJa":["具体的な場面"],"collocations":["自然な組み合わせ"],"examples":[{"source":"English sentence","translation":"日本語訳","noteJa":"使い方"}],"comparisons":[{"term":"similar expression","differenceJa":"決定的な違い"}],"cautionsJa":["注意点"],"grammarNotes":{"partOfSpeech":"品詞","countability":"可算性。不要なら空欄","plural":"複数形。特記事項がなければ空欄","past":"過去形。特記事項がなければ空欄","pastParticiple":"過去分詞。特記事項がなければ空欄","usageNotes":["意味で可算性が変わる等"],"exampleForms":["重要な活用形"]}}]}',
+    'Use this exact JSON shape: {"category":"日本語の大分類","topic":"日本語の具体的テーマ","entries":[{"term":"English expression","lemma":"dictionary headword","pronunciationIpa":"/General American IPA/","aliases":["inflected or alternate form"],"senseId":"short semantic sense key","partOfSpeech":"品詞","etymologyJa":"語源の説明","coreImageJa":"原義から分かる根源的なイメージ","coreMeaningJa":"中心的な意味","nuanceJa":"深いニュアンス","nuanceTypeJa":"短いニュアンス分類","intensityLevel":1,"register":"使用域","emotionalToneJa":"感情の温度","useCasesJa":["具体的な場面"],"collocations":["自然な組み合わせ"],"examples":[{"source":"English sentence","translation":"日本語訳","noteJa":"使い方"}],"comparisons":[{"term":"similar expression","differenceJa":"決定的な違い"}],"cautionsJa":["注意点"],"grammarNotes":{"partOfSpeech":"品詞","countability":"可算性。不要なら空欄","plural":"複数形。特記事項がなければ空欄","past":"過去形。特記事項がなければ空欄","pastParticiple":"過去分詞。特記事項がなければ空欄","usageNotes":["意味で可算性が変わる等"],"exampleForms":["重要な活用形"]}}]}',
   ].join(' ');
   const user = JSON.stringify({
     language: String(language || 'English').trim() || 'English',
@@ -649,6 +650,7 @@ export async function generateNuanceEntries(
         topic: resolvedTopic,
         term,
         lemma: String(entry.lemma || term).trim(),
+        pronunciation: String(entry.pronunciationIpa || '').trim(),
         aliases: normalizeStringList(entry.aliases, 12),
         senseId: String(entry.senseId || '').trim(),
         partOfSpeech: String(entry.partOfSpeech || '').trim(),

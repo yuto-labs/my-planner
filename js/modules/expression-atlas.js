@@ -36,6 +36,11 @@ import {
   ETYMOLOGY_CORE_STATS,
   getEtymologyCoreEntry,
 } from '../data/etymology-core.js';
+import {
+  ENGLISH_USAGE_CORE,
+  ENGLISH_USAGE_CORE_STATS,
+  getEnglishUsageCoreEntry,
+} from '../data/english-usage-core.js';
 import { esc } from '../utils.js';
 
 const nav = view => window.AppNav?.navigate(view);
@@ -50,7 +55,10 @@ let state = {
   translationId: '',
   questionId: '',
   morphemeId: '',
+  usageId: '',
+  usageTrail: [],
   morphologyType: 'all',
+  usageType: 'all',
   libraryMode: 'expressions',
   screen: 'library',
   drafts: [],
@@ -59,6 +67,8 @@ let state = {
   generating: false,
   controller: null,
   noteTimer: null,
+  speechText: '',
+  speechHandler: null,
   generatorInput: {
     language: 'English',
     learningTarget: '',
@@ -79,16 +89,66 @@ export function initExpressionAtlas(container) {
     controller: null,
     noteTimer: null,
   };
+  state.speechHandler = event => handleSpeakClick(event);
+  container.addEventListener('click', state.speechHandler);
   render();
   return () => {
     persistOpenPersonalNote();
     persistOpenTranslationNote();
     clearTimeout(state.noteTimer);
     state.controller?.abort();
+    window.speechSynthesis?.cancel?.();
+    state.speechText = '';
+    state.container?.removeEventListener('click', state.speechHandler);
+    state.speechHandler = null;
     state.controller = null;
     state.generating = false;
     state.container = null;
   };
+}
+
+function speakButton(text) {
+  const value = String(text || '').trim();
+  if (!value) return '';
+  return `<button type="button" class="atlas-speak-btn" data-atlas-speak="${esc(value)}" aria-label="${esc(value)} を再生" title="英語を再生"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4h4l5 4V6l-5 4H4Zm12.4-2.3a6 6 0 0 1 0 8.6m2.7-11.3a10 10 0 0 1 0 14"/></svg><span class="sr-only">英語を再生</span></button>`;
+}
+
+function handleSpeakClick(event) {
+  const button = event.target.closest?.('[data-atlas-speak]');
+  if (!button || !state.container?.contains(button)) return;
+  const text = String(button.dataset.atlasSpeak || '').trim();
+  if (!text || !window.speechSynthesis || !window.SpeechSynthesisUtterance) {
+    toast('この端末では英語の読み上げを利用できません', 'error');
+    return;
+  }
+  event.preventDefault();
+  if (state.speechText === text) {
+    window.speechSynthesis.cancel();
+    state.speechText = '';
+    button.classList.remove('is-speaking');
+    return;
+  }
+  window.speechSynthesis.cancel();
+  state.container.querySelectorAll('.atlas-speak-btn.is-speaking').forEach(item => item.classList.remove('is-speaking'));
+  const utterance = new SpeechSynthesisUtterance(text);
+  const voices = window.speechSynthesis.getVoices?.() || [];
+  const voice = voices.find(item => /samantha/i.test(item.name) && /^en/i.test(item.lang))
+    || voices.find(item => /^en-US/i.test(item.lang))
+    || voices.find(item => /^en/i.test(item.lang));
+  if (voice) utterance.voice = voice;
+  utterance.lang = voice?.lang || 'en-US';
+  utterance.rate = 0.88;
+  utterance.pitch = 1;
+  state.speechText = text;
+  button.classList.add('is-speaking');
+  const clear = () => {
+    if (state.speechText !== text) return;
+    state.speechText = '';
+    button.classList.remove('is-speaking');
+  };
+  utterance.onend = clear;
+  utterance.onerror = clear;
+  window.speechSynthesis.speak(utterance);
 }
 
 export function hasActiveExpressionAtlasWork() {
@@ -117,6 +177,18 @@ export function backFromExpressionAtlas() {
   }
   if (state.morphemeId) {
     state.morphemeId = '';
+    render();
+    scrollMainToTop();
+    return;
+  }
+  if (state.usageId) {
+    if (state.usageTrail.length) {
+      state.usageId = state.usageTrail.pop();
+      renderUsageDetail();
+      scrollMainToTop();
+      return;
+    }
+    state.usageId = '';
     render();
     scrollMainToTop();
     return;
@@ -180,8 +252,16 @@ function render() {
     renderMorphologyDetail();
     return;
   }
+  if (state.usageId) {
+    renderUsageDetail();
+    return;
+  }
   if (state.libraryMode === 'morphology') {
     renderMorphologyLibrary();
+    return;
+  }
+  if (state.libraryMode === 'usage') {
+    renderUsageLibrary();
     return;
   }
   if (state.libraryMode === 'questions') {
@@ -301,6 +381,9 @@ function renderModeSwitch() {
       <button type="button" role="tab" data-atlas-mode="morphology" aria-selected="${state.libraryMode === 'morphology'}" class="${state.libraryMode === 'morphology' ? 'active' : ''}">
         単語のしくみ
       </button>
+      <button type="button" role="tab" data-atlas-mode="usage" aria-selected="${state.libraryMode === 'usage'}" class="${state.libraryMode === 'usage' ? 'active' : ''}">
+        関係のしくみ
+      </button>
       <button type="button" role="tab" data-atlas-mode="questions" aria-selected="${state.libraryMode === 'questions'}" class="${state.libraryMode === 'questions' ? 'active' : ''}">
         英語の疑問
       </button>
@@ -311,7 +394,7 @@ function renderModeSwitch() {
 function wireModeSwitch() {
   state.container?.querySelectorAll('[data-atlas-mode]').forEach(button => {
     button.addEventListener('click', () => {
-      state.libraryMode = ['translations', 'morphology', 'questions'].includes(button.dataset.atlasMode)
+      state.libraryMode = ['translations', 'morphology', 'usage', 'questions'].includes(button.dataset.atlasMode)
         ? button.dataset.atlasMode
         : 'expressions';
       state.search = '';
@@ -321,10 +404,365 @@ function wireModeSwitch() {
       state.translationId = '';
       state.questionId = '';
       state.morphemeId = '';
+      state.usageId = '';
       render();
       scrollMainToTop();
     });
   });
+}
+
+function renderUsageLibrary() {
+  const query = normalize(state.search);
+  const visible = ENGLISH_USAGE_CORE.filter(entry => {
+    if (state.usageType !== 'all' && entry.type !== state.usageType) return false;
+    if (!query) return true;
+    return usageSearchText(entry).includes(query);
+  });
+  const labels = {
+    all: `すべて ${ENGLISH_USAGE_CORE_STATS.total}`,
+    preposition: `前置詞 ${ENGLISH_USAGE_CORE_STATS.prepositions}`,
+    conjunction: `接続詞 ${ENGLISH_USAGE_CORE_STATS.conjunctions}`,
+    particle: `パーティクル ${ENGLISH_USAGE_CORE_STATS.particles}`,
+  };
+  state.container.innerHTML = `
+    <section class="atlas-page atlas-morphology-page">
+      <header class="atlas-hero atlas-morphology-hero">
+        <div>
+          <p>文の中の位置・方向・時間・つながりを作る、小さくても意味を大きく動かす語の学習マップです。</p>
+          <small>PREPOSITIONS · CONJUNCTIONS · PARTICLES</small>
+        </div>
+      </header>
+      ${renderModeSwitch()}
+      <div class="atlas-morphology-controls">
+        <div class="atlas-segmented" role="group" aria-label="語の種類">
+          ${Object.entries(labels).map(([value, label]) => `
+            <button type="button" data-usage-type="${value}" class="${state.usageType === value ? 'active' : ''}">${esc(label)}</button>
+          `).join('')}
+        </div>
+        <label class="atlas-search">
+          <span class="sr-only">関係語を検索</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"/></svg>
+          <input id="atlas-usage-search" type="search" value="${esc(state.search)}" placeholder="例: out, in, because, 時間, 方向">
+        </label>
+      </div>
+      <div class="atlas-morphology-summary" aria-live="polite">
+        <span>${visible.length} 項目</span>
+        <p>日本語の一語訳ではなく、核となる関係イメージから使い分けを追います。</p>
+      </div>
+      <div class="atlas-morphology-grid" id="atlas-usage-grid">
+        ${visible.length ? visible.map(renderUsageCard).join('') : `
+          <div class="atlas-empty atlas-empty--compact">
+            <h2>一致する関係語がありません</h2>
+            <p>英語、意味、または種類を変えて検索してください。</p>
+          </div>
+        `}
+      </div>
+    </section>
+  `;
+  wireModeSwitch();
+  state.container.querySelectorAll('[data-usage-type]').forEach(button => {
+    button.addEventListener('click', () => {
+      state.usageType = button.dataset.usageType || 'all';
+      renderUsageLibrary();
+    });
+  });
+  const searchInput = state.container.querySelector('#atlas-usage-search');
+  let timer = null;
+  searchInput?.addEventListener('input', event => {
+    state.search = event.target.value;
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      renderUsageLibrary();
+      requestAnimationFrame(() => {
+        const input = state.container?.querySelector('#atlas-usage-search');
+        if (!input) return;
+        input.focus();
+        try { input.setSelectionRange(input.value.length, input.value.length); } catch {}
+      });
+    }, 100);
+  });
+  state.container.querySelectorAll('[data-usage-id]').forEach(button => {
+    button.addEventListener('click', () => {
+      state.usageTrail = [];
+      state.usageId = button.dataset.usageId;
+      render();
+      scrollMainToTop();
+    });
+  });
+}
+
+function renderUsageCard(entry) {
+  return `
+    <button class="atlas-morphology-card atlas-usage-card" type="button" data-usage-id="${esc(entry.id)}">
+      <span class="atlas-morphology-card-top">
+        <strong lang="en">${esc(entry.form)}</strong>
+        <span>${esc(entry.typeLabel)}</span>
+      </span>
+      <span class="atlas-morphology-meaning">${esc(entry.coreImageJa)}</span>
+      <span class="atlas-morphology-words">${esc(entry.patterns.slice(0, 2).join(' · '))}</span>
+    </button>
+  `;
+}
+
+function renderUsageDetail() {
+  const entry = getEnglishUsageCoreEntry(state.usageId);
+  if (!entry) {
+    state.usageId = '';
+    render();
+    return;
+  }
+  const related = entry.related
+    .flatMap(form => ENGLISH_USAGE_CORE.filter(candidate => candidate.form === form))
+    .filter((candidate, index, all) => candidate.id !== entry.id && all.findIndex(item => item.id === candidate.id) === index);
+  state.container.innerHTML = `
+    <article class="atlas-page atlas-detail-page atlas-morphology-detail atlas-usage-detail">
+      <nav class="atlas-breadcrumbs" aria-label="関係のしくみの階層">
+        <button type="button" id="atlas-usage-root">関係のしくみ</button>
+        ${state.usageTrail.length ? `<span aria-hidden="true">›</span><button type="button" id="atlas-usage-back">前の解説へ</button>` : ''}
+        <span aria-hidden="true">›</span>
+        <span>${esc(entry.typeLabel)}</span>
+        <span aria-hidden="true">›</span>
+        <span aria-current="page" lang="en">${esc(entry.form)}</span>
+      </nav>
+      <header class="atlas-detail-header atlas-morphology-detail-header">
+        <div>
+          <div class="atlas-kicker">${esc(entry.typeLabel.toUpperCase())}</div>
+          <div class="atlas-word-heading"><h1 lang="en">${esc(entry.form)}</h1>${speakButton(entry.form)}</div>
+          ${entry.pronunciation ? `<p class="atlas-pronunciation" lang="en">${esc(entry.pronunciation)}</p>` : ''}
+          <p>${esc(entry.coreImageJa)}</p>
+          <div class="atlas-detail-badges"><span>RELATIONSHIP WORD</span></div>
+        </div>
+      </header>
+      ${renderUsageMotion(entry)}
+      ${morphologySection(entry.type === 'particle' ? '句動詞での広がり' : 'コアイメージからの広がり', `<p>${esc(entry.detailJa)}</p>`)}
+      ${entry.usageGuideJa ? morphologySection('使うときの考え方', `<p>${esc(entry.usageGuideJa)}</p>`) : ''}
+      ${morphologySection('似た語との違い', `<p>${esc(entry.contrastJa)}</p>`)}
+      ${morphologySection('よく使う形', `<ul class="atlas-note-list">${entry.patterns.map(pattern => `<li lang="en">${esc(pattern)}</li>`).join('')}</ul>`)}
+      ${morphologySection('例文', `<div class="atlas-morphology-senses">${entry.examples.map(([english, japanese]) => `<div><div class="atlas-audio-line"><strong lang="en">${esc(english)}</strong>${speakButton(english)}</div><p>${esc(japanese)}</p></div>`).join('')}</div>`)}
+      ${related.length ? morphologySection('関連して見る', `<div class="atlas-related-etymology">${related.map(item => `<button type="button" data-usage-related="${esc(item.id)}"><strong lang="en">${esc(item.form)}</strong><span>${esc(item.coreImageJa)}</span></button>`).join('')}</div>`) : ''}
+      ${renderMorphologySources(entry.sourceRefs)}
+    </article>
+  `;
+  state.container.querySelector('#atlas-usage-root')?.addEventListener('click', () => {
+    state.usageTrail = [];
+    state.usageId = '';
+    render();
+    scrollMainToTop();
+  });
+  state.container.querySelector('#atlas-usage-back')?.addEventListener('click', () => {
+    state.usageId = state.usageTrail.pop() || '';
+    render();
+    scrollMainToTop();
+  });
+  state.container.querySelectorAll('[data-usage-related]').forEach(button => {
+    button.addEventListener('click', () => {
+      const nextId = button.dataset.usageRelated;
+      if (!nextId || nextId === state.usageId) return;
+      if (state.usageTrail.at(-1) !== state.usageId) {
+        state.usageTrail.push(state.usageId);
+        state.usageTrail = state.usageTrail.slice(-20);
+      }
+      state.usageId = nextId;
+      renderUsageDetail();
+      scrollMainToTop();
+    });
+  });
+}
+
+function renderUsageMotion(entry) {
+  if (entry.id === 'particle-out') {
+    return `
+      <figure class="atlas-usage-motion atlas-usage-motion--out" aria-label="out の核イメージ。内側から外側へ連続して出る動き">
+        <div class="atlas-usage-motion-stage" aria-hidden="true">
+          <span class="atlas-motion-scene-label atlas-motion-scene-label--inside">INSIDE</span>
+          <span class="atlas-motion-scene-label atlas-motion-scene-label--outside">VISIBLE</span>
+          <span class="atlas-out-box"><i></i><b></b></span>
+          <span class="atlas-out-boundary"><i></i></span>
+          <span class="atlas-motion-object-label atlas-motion-object-label--stored">STORED</span>
+          <span class="atlas-motion-object-label atlas-motion-object-label--boundary">BOUNDARY</span>
+          <span class="atlas-motion-object-label atlas-motion-object-label--revealed">REVEALED</span>
+          <span class="atlas-out-card atlas-out-card--one"><i></i><i></i><i></i></span>
+          <span class="atlas-out-card atlas-out-card--two"><i></i><i></i><i></i></span>
+          <span class="atlas-out-spark atlas-out-spark--one">✦</span>
+          <span class="atlas-out-spark atlas-out-spark--two">✦</span>
+          <span class="atlas-motion-word">OUT</span>
+        </div>
+        <figcaption>内側にあったものが、境界を越えて外に現れる。</figcaption>
+      </figure>
+    `;
+  }
+  if (entry.id === 'particle-up') {
+    return `
+      <figure class="atlas-usage-motion atlas-usage-motion--up" aria-label="up の核イメージ。下から上へ連続して上がる動き">
+        <div class="atlas-usage-motion-stage" aria-hidden="true">
+          <span class="atlas-motion-scene-label atlas-motion-scene-label--low">LOW</span>
+          <span class="atlas-motion-scene-label atlas-motion-scene-label--higher">HIGHER</span>
+          <span class="atlas-up-rail"><i></i><i></i><i></i></span>
+          <span class="atlas-up-platform"><i></i></span>
+          <span class="atlas-motion-object-label atlas-motion-object-label--lift">LIFT</span>
+          <span class="atlas-up-card"><i></i><i></i><i></i></span>
+          <span class="atlas-up-finish">✓</span>
+          <span class="atlas-motion-word">UP</span>
+        </div>
+        <figcaption>下から上へ動き、完了・増加・持ち上げる感覚へ広がる。</figcaption>
+      </figure>
+    `;
+  }
+  if (entry.motionKind === 'in') {
+    return `
+      <figure class="atlas-usage-motion atlas-usage-motion--in" aria-label="in の核イメージ。外側のカードが境界を通って収納トレイの中へ入る動き">
+        <div class="atlas-usage-motion-stage" aria-hidden="true">
+          <span class="atlas-motion-scene-label atlas-motion-scene-label--inside">INSIDE</span>
+          <span class="atlas-motion-scene-label atlas-motion-scene-label--outside">OUTSIDE</span>
+          <span class="atlas-in-boundary"><i></i></span>
+          <span class="atlas-in-tray"><i></i><b></b></span>
+          <span class="atlas-motion-object-label atlas-motion-object-label--boundary">BOUNDARY</span>
+          <span class="atlas-motion-object-label atlas-motion-object-label--stored">SETTLED</span>
+          <span class="atlas-in-card"><i></i><i></i><i></i></span>
+          <span class="atlas-motion-word">IN</span>
+        </div>
+        <figcaption>${esc(entry.motionSummaryJa || entry.coreImageJa)}</figcaption>
+      </figure>
+    `;
+  }
+  if (entry.motionKind === 'off') {
+    return `
+      <figure class="atlas-usage-motion atlas-usage-motion--off" aria-label="off の核イメージ。面に付いていた札が離れて接続が切れる動き">
+        <div class="atlas-usage-motion-stage" aria-hidden="true">
+          <span class="atlas-motion-scene-label atlas-motion-scene-label--inside">CONNECTED</span>
+          <span class="atlas-motion-scene-label atlas-motion-scene-label--outside">SEPARATED</span>
+          <span class="atlas-off-surface"><i></i><i></i></span>
+          <span class="atlas-off-pin atlas-off-pin--one"></span>
+          <span class="atlas-off-pin atlas-off-pin--two"></span>
+          <span class="atlas-off-note"><i></i><i></i><i></i></span>
+          <span class="atlas-motion-object-label atlas-motion-object-label--stored">CONTACT</span>
+          <span class="atlas-motion-object-label atlas-motion-object-label--revealed">RELEASED</span>
+          <span class="atlas-motion-word">OFF</span>
+        </div>
+        <figcaption>${esc(entry.motionSummaryJa || entry.coreImageJa)}</figcaption>
+      </figure>
+    `;
+  }
+  if (entry.motionKind === 'through') {
+    return `
+      <figure class="atlas-usage-motion atlas-usage-motion--through" aria-label="through の核イメージ。カードが通路の中を入口から出口まで通り抜ける動き">
+        <div class="atlas-usage-motion-stage" aria-hidden="true">
+          <span class="atlas-motion-scene-label atlas-motion-scene-label--inside">ENTER</span>
+          <span class="atlas-motion-scene-label atlas-motion-scene-label--outside">EXIT</span>
+          <span class="atlas-through-tunnel"><i></i><i></i><i></i><i></i></span>
+          <span class="atlas-through-card"><i></i><i></i><i></i></span>
+          <span class="atlas-motion-object-label atlas-motion-object-label--boundary">INSIDE THE PATH</span>
+          <span class="atlas-motion-word">THROUGH</span>
+        </div>
+        <figcaption>${esc(entry.motionSummaryJa || entry.coreImageJa)}</figcaption>
+      </figure>
+    `;
+  }
+  if (entry.motionKind === 'down') {
+    return `
+      <figure class="atlas-usage-motion atlas-usage-motion--down" aria-label="down の核イメージ。カードが上から下の面へ降りて固定される動き">
+        <div class="atlas-usage-motion-stage" aria-hidden="true">
+          <span class="atlas-motion-scene-label atlas-motion-scene-label--higher">ABOVE</span>
+          <span class="atlas-motion-scene-label atlas-motion-scene-label--low">SETTLED</span>
+          <span class="atlas-down-page"><i></i><i></i><i></i></span>
+          <span class="atlas-down-card"><i></i><i></i><i></i></span>
+          <span class="atlas-motion-object-label atlas-motion-object-label--boundary">WRITE / FIX</span>
+          <span class="atlas-motion-word">DOWN</span>
+        </div>
+        <figcaption>${esc(entry.motionSummaryJa || entry.coreImageJa)}</figcaption>
+      </figure>
+    `;
+  }
+  if (entry.motionKind === 'on') {
+    return `
+      <figure class="atlas-usage-motion atlas-usage-motion--on" aria-label="on の核イメージ。光の流れが接続を保ちながら前へ続く動き">
+        <div class="atlas-usage-motion-stage" aria-hidden="true">
+          <span class="atlas-motion-scene-label atlas-motion-scene-label--inside">START</span>
+          <span class="atlas-motion-scene-label atlas-motion-scene-label--outside">CONTINUE</span>
+          <span class="atlas-on-track"><i></i><i></i><i></i><i></i></span>
+          <span class="atlas-on-signal atlas-on-signal--one"></span><span class="atlas-on-signal atlas-on-signal--two"></span>
+          <span class="atlas-motion-object-label atlas-motion-object-label--boundary">CONNECTED FLOW</span>
+          <span class="atlas-motion-word">ON</span>
+        </div>
+        <figcaption>${esc(entry.motionSummaryJa || entry.coreImageJa)}</figcaption>
+      </figure>
+    `;
+  }
+  if (entry.motionKind === 'over') {
+    return `
+      <figure class="atlas-usage-motion atlas-usage-motion--over" aria-label="over の核イメージ。カードが障害の上を越えて反対側へ渡る動き">
+        <div class="atlas-usage-motion-stage" aria-hidden="true">
+          <span class="atlas-motion-scene-label atlas-motion-scene-label--inside">THIS SIDE</span>
+          <span class="atlas-motion-scene-label atlas-motion-scene-label--outside">OTHER SIDE</span>
+          <span class="atlas-over-bridge"><i></i></span><span class="atlas-over-block"></span>
+          <span class="atlas-over-card"><i></i><i></i><i></i></span>
+          <span class="atlas-motion-object-label atlas-motion-object-label--boundary">CROSS / REVIEW</span>
+          <span class="atlas-motion-word">OVER</span>
+        </div>
+        <figcaption>${esc(entry.motionSummaryJa || entry.coreImageJa)}</figcaption>
+      </figure>
+    `;
+  }
+  if (entry.motionKind === 'away') {
+    return `
+      <figure class="atlas-usage-motion atlas-usage-motion--away" aria-label="away の核イメージ。カードが中心から離れ、距離を広げていく動き">
+        <div class="atlas-usage-motion-stage" aria-hidden="true">
+          <span class="atlas-motion-scene-label atlas-motion-scene-label--inside">CENTER</span>
+          <span class="atlas-motion-scene-label atlas-motion-scene-label--outside">FARTHER</span>
+          <span class="atlas-away-center"></span><span class="atlas-away-ring atlas-away-ring--one"></span><span class="atlas-away-ring atlas-away-ring--two"></span>
+          <span class="atlas-away-card"><i></i><i></i><i></i></span>
+          <span class="atlas-motion-object-label atlas-motion-object-label--boundary">DISTANCE</span>
+          <span class="atlas-motion-word">AWAY</span>
+        </div>
+        <figcaption>${esc(entry.motionSummaryJa || entry.coreImageJa)}</figcaption>
+      </figure>
+    `;
+  }
+  if (entry.motionKind === 'back') {
+    return `
+      <figure class="atlas-usage-motion atlas-usage-motion--back" aria-label="back の核イメージ。離れたカードが元のホームへ戻る動き">
+        <div class="atlas-usage-motion-stage" aria-hidden="true">
+          <span class="atlas-motion-scene-label atlas-motion-scene-label--inside">HOME</span>
+          <span class="atlas-motion-scene-label atlas-motion-scene-label--outside">AWAY</span>
+          <span class="atlas-back-home"><i></i></span><span class="atlas-back-route"><i></i><i></i><i></i></span>
+          <span class="atlas-back-card"><i></i><i></i><i></i></span>
+          <span class="atlas-motion-object-label atlas-motion-object-label--boundary">RETURN</span>
+          <span class="atlas-motion-word">BACK</span>
+        </div>
+        <figcaption>${esc(entry.motionSummaryJa || entry.coreImageJa)}</figcaption>
+      </figure>
+    `;
+  }
+  if (entry.motionKind === 'around') {
+    return `
+      <figure class="atlas-usage-motion atlas-usage-motion--around" aria-label="around の核イメージ。カードが中心の周囲を回り込む動き">
+        <div class="atlas-usage-motion-stage" aria-hidden="true">
+          <span class="atlas-motion-scene-label atlas-motion-scene-label--inside">CENTER</span>
+          <span class="atlas-motion-scene-label atlas-motion-scene-label--outside">AROUND</span>
+          <span class="atlas-around-orbit"></span><span class="atlas-around-center"></span>
+          <span class="atlas-around-card"><i></i><i></i><i></i></span>
+          <span class="atlas-motion-object-label atlas-motion-object-label--boundary">AROUND THE EDGE</span>
+          <span class="atlas-motion-word">AROUND</span>
+        </div>
+        <figcaption>${esc(entry.motionSummaryJa || entry.coreImageJa)}</figcaption>
+      </figure>
+    `;
+  }
+  return '';
+}
+
+function usageSearchText(entry) {
+  return normalize([
+    entry.form,
+    entry.type,
+    entry.typeLabel,
+    entry.coreImageJa,
+    entry.detailJa,
+    entry.contrastJa,
+    ...(entry.patterns || []),
+    ...(entry.related || []),
+    ...(entry.examples || []).flat(),
+  ].join(' '));
 }
 
 function renderMorphologyLibrary() {
@@ -803,7 +1241,7 @@ function renderQuestionDetail() {
       ${answer.shortAnswerJa ? `<section class="atlas-detail-section"><h2>まず答え</h2><p>${esc(answer.shortAnswerJa)}</p></section>` : ''}
       ${answer.intuitionJa ? `<section class="atlas-detail-section"><h2>コアイメージ</h2><p>${esc(answer.intuitionJa)}</p></section>` : ''}
       ${answer.explanationJa ? `<section class="atlas-detail-section"><h2>詳しく見る</h2><p>${esc(answer.explanationJa)}</p></section>` : ''}
-      ${(answer.examples || []).length ? `<section class="atlas-detail-section"><h2>例文</h2><div class="atlas-example-list">${answer.examples.map(example => `<div><strong lang="en">${esc(example.english)}</strong><span>${esc(example.japanese)}</span>${example.noteJa ? `<small>${esc(example.noteJa)}</small>` : ''}</div>`).join('')}</div></section>` : ''}
+      ${(answer.examples || []).length ? `<section class="atlas-detail-section"><h2>例文</h2><div class="atlas-example-list">${answer.examples.map(example => `<div><div class="atlas-audio-line"><strong lang="en">${esc(example.english)}</strong>${speakButton(example.english)}</div><span>${esc(example.japanese)}</span>${example.noteJa ? `<small>${esc(example.noteJa)}</small>` : ''}</div>`).join('')}</div></section>` : ''}
       ${related ? `<section class="atlas-detail-section"><h2>関連して調べる</h2><div class="atlas-detail-badges">${related}</div></section>` : ''}
       ${(answer.cautionsJa || []).length ? listSection('注意点', answer.cautionsJa, 'atlas-note-list--warning') : ''}
       <div class="atlas-question-detail-actions">
@@ -837,9 +1275,6 @@ function renderTranslationCard(set) {
       <span class="atlas-entry-topline">
         <strong lang="ja">${esc(set.sourceTextJa)}</strong>
         <span>JA → EN</span>
-      </span>
-      <span class="atlas-translation-preview">
-        ${(set.variants || []).slice(0, 2).map(variant => `<span lang="en">${esc(variant.translation)}</span>`).join('')}
       </span>
       <span class="atlas-entry-path">${esc(set.category)} › ${esc(set.topic)}</span>
     </button>
@@ -880,7 +1315,6 @@ function renderTranslationGenerator() {
             ${state.generating ? '<span class="atlas-spinner" aria-hidden="true"></span> 英訳を作成中…' : '3つの英訳を作る'}
           </button>
           ${state.generating ? '<button class="btn btn-secondary" id="atlas-cancel-translation" type="button">キャンセル</button>' : ''}
-          <p>使いたい場面の入力は不要です。文に自然な使用域とニュアンスをAIが説明します。</p>
         </div>
       </form>
 
@@ -1347,7 +1781,8 @@ function renderDetail() {
       <header class="atlas-detail-header">
         <div>
           <div class="atlas-kicker">${esc(entry.language || 'English')}</div>
-          <h1>${esc(entry.term)}</h1>
+          <div class="atlas-word-heading"><h1>${esc(entry.term)}</h1>${speakButton(entry.term)}</div>
+          ${entry.pronunciation ? `<p class="atlas-pronunciation" lang="en">${esc(entry.pronunciation)}</p>` : ''}
           <div class="atlas-detail-badges">
             ${entry.partOfSpeech ? `<span>${esc(entry.partOfSpeech)}</span>` : ''}
             ${entry.register ? `<span>${esc(entry.register)}</span>` : ''}
@@ -1862,7 +2297,7 @@ function examplesSection(examples) {
       <h2>例文</h2>
       <div class="atlas-example-list">${examples.map(example => `
         <div class="atlas-example">
-          <strong>${esc(example.source)}</strong>
+          <div class="atlas-audio-line"><strong>${esc(example.source)}</strong>${speakButton(example.source)}</div>
           <span>${esc(example.translation)}</span>
           ${example.noteJa ? `<small>${esc(example.noteJa)}</small>` : ''}
         </div>
