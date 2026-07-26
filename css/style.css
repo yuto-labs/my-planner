@@ -16,8 +16,9 @@
   --max-w:      680px;
   --ui-font: "Inter", "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic UI",
              "Yu Gothic", Meiryo, sans-serif;
-  --display-font: "Inter", "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic UI",
-                  "Yu Gothic", Meiryo, sans-serif;
+  --display-font: "Cormorant Garamond", Georgia, "Times New Roman", "Yu Mincho",
+                  "Hiragino Mincho ProN", serif;
+  --greeting-font: Georgia, "Times New Roman", "Yu Mincho", "Hiragino Mincho ProN", serif;
 
   /* Fixed semantic (same in both modes) */
   --danger:     #F0607A;
@@ -196,7 +197,8 @@ button { cursor: pointer; font-family: inherit; }
 }
 #page-title {
   font-family: var(--display-font);
-  font-size: 18px;
+  font-size: 21px;
+  font-style: italic;
   font-weight: 500;
   letter-spacing: 0;
   flex: 1;
@@ -312,8 +314,9 @@ button { cursor: pointer; font-family: inherit; }
 
 .card-title {
   font-family: var(--display-font);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 14px;
+  font-style: italic;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--text-dim);
@@ -750,12 +753,15 @@ button { cursor: pointer; font-family: inherit; }
   margin-bottom: 8px;
 }
 .home-greeting-text {
-  font-family: var(--display-font);
+  font-family: var(--greeting-font);
   font-size: 28px;
   font-weight: 500;
   letter-spacing: 0;
-  line-height: 1.22;
-  color: var(--text);
+  line-height: 1.2;
+  background: linear-gradient(135deg, var(--text) 25%, var(--primary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 /* Quick NL add */
@@ -899,8 +905,9 @@ button { cursor: pointer; font-family: inherit; }
 
 .home-tile-label {
   font-family: var(--display-font);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 14px;
+  font-style: italic;
+  font-weight: 500;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -1560,8 +1567,9 @@ button { cursor: pointer; font-family: inherit; }
 .settings-section + .settings-section { border-top: 1px solid var(--border); }
 .settings-heading {
   font-family: var(--display-font);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 14px;
+  font-style: italic;
+  font-weight: 500;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.07em;
@@ -3523,8 +3531,9 @@ button { cursor: pointer; font-family: inherit; }
 .analytics-section:last-child { border-bottom: none; }
 .analytics-section-title {
   font-family: var(--display-font);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 16px;
+  font-style: italic;
+  font-weight: 500;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: .06em;
@@ -3549,8 +3558,9 @@ button { cursor: pointer; font-family: inherit; }
 }
 .analytics-stat-label {
   font-family: var(--display-font);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 14px;
+  font-style: italic;
+  font-weight: 500;
   color: var(--text);
   text-transform: uppercase;
   letter-spacing: .05em;
@@ -5677,7 +5687,7 @@ kbd {
   filter: drop-shadow(0 0 6px rgba(190,230,200,0.42));
 }
 .nav-btn span {
-  font-family: var(--display-font);
+  font-family: var(--ui-font);
   font-weight: 500;
   transition: color var(--transition);
 }
