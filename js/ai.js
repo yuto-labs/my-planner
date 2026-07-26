@@ -507,6 +507,54 @@ function normalizeNuanceIntensity(value, fallback = '') {
   return match ? Number(match[0]) : 3;
 }
 
+export async function answerEnglishLearningQuestion(questionJa, options = {}) {
+  const question = String(questionJa || '').trim();
+  if (!question) throw new Error('英語についての疑問を入力してください。');
+  const system = [
+    'You are a careful English-learning tutor for a Japanese learner.',
+    'Return JSON only and follow the response schema exactly.',
+    'Answer the learner\'s actual question directly before adding detail. Do not ask them to rephrase a short or ambiguous question; state a reasonable interpretation and answer it.',
+    'Distinguish verified historical etymology from a learning image. Never invent etymology, usage rules, or exceptions.',
+    'For phrasal verbs, explain the particle image, literal versus idiomatic meaning, transitivity, separability, and object placement when relevant.',
+    'For prepositions and conjunctions, explain the core relationship or connection, the basic sentence pattern, and a decisive contrast with a nearby form when useful.',
+    'Use Japanese for explanations and natural English only for examples, terms, and grammar labels.',
+    'Give two or three short natural examples. Include an irregular form or countability detail only when it actually helps the question.',
+    'Keep uncertainty visible. Do not claim a single rule if the choice depends on context.',
+    'Return no greeting, Markdown, or text outside the JSON object.',
+  ].join(' ');
+  const raw = await callAPI(
+    QUALITY_MODEL,
+    system,
+    JSON.stringify({ questionJa: question, language: 'English', learnerLevel: 'intermediate' }),
+    3800,
+    'json',
+    'english_question',
+    options
+  );
+  const parsed = tryParseJSON(raw) || {};
+  const examples = (Array.isArray(parsed.examples) ? parsed.examples : [])
+    .map(example => ({
+      english: String(example?.english || '').trim(),
+      japanese: String(example?.japanese || '').trim(),
+      noteJa: String(example?.noteJa || '').trim(),
+    }))
+    .filter(example => example.english && example.japanese)
+    .slice(0, 3);
+  const answer = {
+    shortAnswerJa: String(parsed.shortAnswerJa || '').trim(),
+    intuitionJa: String(parsed.intuitionJa || '').trim(),
+    explanationJa: String(parsed.explanationJa || '').trim(),
+    examples,
+    relatedTerms: normalizeStringList(parsed.relatedTerms, 8),
+    cautionsJa: normalizeStringList(parsed.cautionsJa, 5),
+    suggestedCategory: String(parsed.suggestedCategory || 'usage').trim(),
+  };
+  if (!answer.shortAnswerJa || !answer.explanationJa || examples.length < 2) {
+    throw new Error('学習用の回答を十分に作れませんでした。もう一度お試しください。');
+  }
+  return answer;
+}
+
 export async function generateNuanceEntries(
   {
     language = 'English',

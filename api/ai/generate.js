@@ -22,6 +22,7 @@ function pickThinkingConfig(model, actionType) {
     'task_schedule',
     'nuance_generate',
     'translation_variants',
+    'english_question',
   ]);
   const isComplex = complexActions.has(String(actionType || ''));
   if (String(model).startsWith('gemini-2.5-')) {
@@ -322,6 +323,35 @@ function pickResponseSchema(actionType, body) {
         },
       },
       required: ['category', 'topic', 'variants'],
+    };
+  }
+
+  if (action === 'english_question') {
+    return {
+      type: 'OBJECT',
+      properties: {
+        shortAnswerJa: { type: 'STRING', description: 'A direct Japanese answer in two or three sentences.' },
+        intuitionJa: { type: 'STRING', description: 'A short core image or intuitive explanation.' },
+        explanationJa: { type: 'STRING', description: 'A careful Japanese explanation with the relevant grammar or usage distinctions.' },
+        examples: {
+          type: 'ARRAY',
+          minItems: 2,
+          maxItems: 3,
+          items: {
+            type: 'OBJECT',
+            properties: {
+              english: { type: 'STRING' },
+              japanese: { type: 'STRING' },
+              noteJa: { type: 'STRING' },
+            },
+            required: ['english', 'japanese', 'noteJa'],
+          },
+        },
+        relatedTerms: stringArray('English words, phrases, or grammar labels worth linking to the learner library.'),
+        cautionsJa: stringArray('Only important caveats, exceptions, or ambiguity notes.'),
+        suggestedCategory: { type: 'STRING', description: 'One of vocabulary, phrasal verb, preposition, conjunction, grammar, or usage.' },
+      },
+      required: ['shortAnswerJa', 'intuitionJa', 'explanationJa', 'examples', 'relatedTerms', 'cautionsJa', 'suggestedCategory'],
     };
   }
 

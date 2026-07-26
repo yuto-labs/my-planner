@@ -753,6 +753,7 @@ const TERM_KEY      = 'mp_terms';
 const EXPRESSION_ATLAS_TAG = '__expression_atlas__';
 const EXPRESSION_ATLAS_BLOCK_TYPE = 'nuance-data';
 const TRANSLATION_SET_BLOCK_TYPE = 'translation-set-data';
+const ENGLISH_QUESTION_BLOCK_TYPE = 'english-question-data';
 const APP_MEDIA_PREFS_TAG = '__app_media_preferences__';
 const APP_MEDIA_PREFS_BLOCK_TYPE = 'app-media-preferences';
 
@@ -768,6 +769,7 @@ function isExpressionAtlasRecord(record) {
     && record.blocks.some(block => (
       block?.type === EXPRESSION_ATLAS_BLOCK_TYPE
       || block?.type === TRANSLATION_SET_BLOCK_TYPE
+      || block?.type === ENGLISH_QUESTION_BLOCK_TYPE
     ));
 }
 
@@ -790,6 +792,11 @@ function isNuanceRecord(record) {
 function isTranslationSetRecord(record) {
   return isExpressionAtlasRecord(record)
     && record.blocks.some(block => block?.type === TRANSLATION_SET_BLOCK_TYPE);
+}
+
+function isEnglishQuestionRecord(record) {
+  return isExpressionAtlasRecord(record)
+    && record.blocks.some(block => block?.type === ENGLISH_QUESTION_BLOCK_TYPE);
 }
 
 function expressionRecordToEntry(record) {
@@ -965,6 +972,47 @@ function translationSetToRecord(set, existing = null) {
     url: existing?.url || '',
     createdAt: existing?.createdAt || set.createdAt || now,
     updatedAt: unchanged ? (existing.updatedAt || set.updatedAt || now) : now,
+  };
+}
+
+function englishQuestionRecordToEntry(record) {
+  const data = record?.blocks?.find(block => block?.type === ENGLISH_QUESTION_BLOCK_TYPE)?.data;
+  if (!data || typeof data !== 'object') return null;
+  return {
+    ...data,
+    id: record.id,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
+function englishQuestionToRecord(question, existing = null) {
+  const now = new Date().toISOString();
+  const id = question.id || existing?.id || generateId();
+  const data = {
+    promptVersion: 1,
+    questionJa: '',
+    status: 'pending',
+    answer: null,
+    personalNote: '',
+    ...question,
+  };
+  delete data.id;
+  delete data.createdAt;
+  delete data.updatedAt;
+  const title = data.questionJa;
+  const summary = data.answer?.shortAnswerJa || (data.status === 'failed' ? '回答の再試行が必要です' : 'AIの回答を待っています');
+  const unchanged = atlasRecordIsUnchanged(existing, ENGLISH_QUESTION_BLOCK_TYPE, title, summary, data);
+  return {
+    id,
+    title,
+    summary,
+    blocks: [{ id: `${id}-question`, type: ENGLISH_QUESTION_BLOCK_TYPE, data }],
+    tags: existing?.tags || [EXPRESSION_ATLAS_TAG],
+    starred: existing?.starred || false,
+    url: existing?.url || '',
+    createdAt: existing?.createdAt || question.createdAt || now,
+    updatedAt: unchanged ? (existing.updatedAt || question.updatedAt || now) : now,
   };
 }
 
@@ -1147,6 +1195,46 @@ export function getTranslationSets() {
     .map(translationRecordToSet)
     .filter(Boolean)
     .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+}
+
+export function getEnglishQuestions() {
+  return getAllKnowledgeRecords()
+    .filter(isEnglishQuestionRecord)
+    .map(englishQuestionRecordToEntry)
+    .filter(Boolean)
+    .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+}
+
+export function addEnglishQuestion(question) {
+  const text = String(question?.questionJa || '').trim();
+  if (!text) return null;
+  const records = getAllKnowledgeRecords();
+  const existing = records.find(record => record.id === question.id);
+  const record = englishQuestionToRecord({ ...question, questionJa: text }, existing);
+  const next = existing
+    ? records.map(item => item.id === existing.id ? record : item)
+    : [record, ...records];
+  if (!save(KNOWLEDGE_KEY, next)) return null;
+  _notifySync('knowledge_memos');
+  return englishQuestionRecordToEntry(record);
+}
+
+export function updateEnglishQuestion(id, updates) {
+  const records = getAllKnowledgeRecords();
+  const existing = records.find(record => record.id === id && isEnglishQuestionRecord(record));
+  if (!existing) return null;
+  const current = englishQuestionRecordToEntry(existing);
+  return addEnglishQuestion({ ...current, ...updates, id });
+}
+
+export function deleteEnglishQuestion(id) {
+  const records = getAllKnowledgeRecords();
+  const target = records.find(record => record.id === id && isEnglishQuestionRecord(record));
+  if (!target) return false;
+  if (!addTrashItem({ entityType: 'atlas', payload: target, title: target.title || '英語の疑問' })) return false;
+  if (!save(KNOWLEDGE_KEY, records.filter(record => record.id !== id))) return false;
+  _notifyDelete({ table: 'knowledge_memos', id });
+  return true;
 }
 
 export function saveTranslationSets(sets) {
@@ -1491,6 +1579,7 @@ export function exportBackup() {
     memos: getKnowledgeMemos(),
     expressionEntries: getExpressionEntries(),
     translationSets: getTranslationSets(),
+    englishQuestions: getEnglishQuestions(),
     appMediaPreferences: getAppMediaPreferences(),
     trash: getTrashItems(),
     habits: getHabits(),
@@ -1508,6 +1597,7 @@ export function importBackup(jsonStr) {
   if (data.memos)     saveKnowledgeMemos(data.memos);
   if (data.expressionEntries) addExpressionEntries(data.expressionEntries);
   if (data.translationSets) data.translationSets.forEach(addTranslationSet);
+  if (data.englishQuestions) data.englishQuestions.forEach(addEnglishQuestion);
   if (data.appMediaPreferences) saveAppMediaPreferences(data.appMediaPreferences);
   if (data.trash)     saveTrashItems(data.trash);
   if (data.habits)    saveHabits(data.habits);

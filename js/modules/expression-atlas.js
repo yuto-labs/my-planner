@@ -5,15 +5,20 @@
 import {
   addExpressionEntries,
   addTranslationSet,
+  addEnglishQuestion,
+  deleteEnglishQuestion,
   deleteExpressionEntry,
+  getEnglishQuestions,
   getExpressionEntries,
   getTranslationSets,
   isAiAvailable,
   updateExpressionEntry,
+  updateEnglishQuestion,
   updateTranslationSet,
 } from '../storage.js';
 import {
   generateNuanceEntries,
+  answerEnglishLearningQuestion,
   generateTranslationVariants,
   NUANCE_ATLAS_CATEGORIES,
 } from '../ai.js';
@@ -43,6 +48,7 @@ let state = {
   topic: '',
   entryId: '',
   translationId: '',
+  questionId: '',
   morphemeId: '',
   morphologyType: 'all',
   libraryMode: 'expressions',
@@ -122,6 +128,12 @@ export function backFromExpressionAtlas() {
     scrollMainToTop();
     return;
   }
+  if (state.questionId) {
+    state.questionId = '';
+    render();
+    scrollMainToTop();
+    return;
+  }
   if (state.search) {
     state.search = '';
     render();
@@ -160,12 +172,20 @@ function render() {
     renderTranslationDetail();
     return;
   }
+  if (state.questionId) {
+    renderQuestionDetail();
+    return;
+  }
   if (state.morphemeId) {
     renderMorphologyDetail();
     return;
   }
   if (state.libraryMode === 'morphology') {
     renderMorphologyLibrary();
+    return;
+  }
+  if (state.libraryMode === 'questions') {
+    renderQuestionLibrary();
     return;
   }
   renderLibrary();
@@ -281,6 +301,9 @@ function renderModeSwitch() {
       <button type="button" role="tab" data-atlas-mode="morphology" aria-selected="${state.libraryMode === 'morphology'}" class="${state.libraryMode === 'morphology' ? 'active' : ''}">
         単語のしくみ
       </button>
+      <button type="button" role="tab" data-atlas-mode="questions" aria-selected="${state.libraryMode === 'questions'}" class="${state.libraryMode === 'questions' ? 'active' : ''}">
+        英語の疑問
+      </button>
     </div>
   `;
 }
@@ -288,7 +311,7 @@ function renderModeSwitch() {
 function wireModeSwitch() {
   state.container?.querySelectorAll('[data-atlas-mode]').forEach(button => {
     button.addEventListener('click', () => {
-      state.libraryMode = ['translations', 'morphology'].includes(button.dataset.atlasMode)
+      state.libraryMode = ['translations', 'morphology', 'questions'].includes(button.dataset.atlasMode)
         ? button.dataset.atlasMode
         : 'expressions';
       state.search = '';
@@ -296,6 +319,7 @@ function wireModeSwitch() {
       state.topic = '';
       state.entryId = '';
       state.translationId = '';
+      state.questionId = '';
       state.morphemeId = '';
       render();
       scrollMainToTop();
@@ -630,6 +654,183 @@ function renderTranslationLibrary() {
   });
 }
 
+const ENGLISH_QUESTION_STARTERS = [
+  ['句動詞', '句動詞の particle はどういうイメージで覚えるといい？'],
+  ['前置詞', 'in / on / at のコアイメージと使い分けを知りたい。'],
+  ['接続詞', 'because / since / as のニュアンスの違いを知りたい。'],
+  ['可算・不可算', 'work と works の違いを、数えられる意味も含めて知りたい。'],
+];
+
+function renderQuestionLibrary() {
+  const questions = getEnglishQuestions();
+  const query = normalize(state.search);
+  const visible = query
+    ? questions.filter(item => [item.questionJa, item.answer?.shortAnswerJa, item.answer?.explanationJa, ...(item.answer?.relatedTerms || [])].filter(Boolean).join(' ').toLocaleLowerCase().includes(query))
+    : questions;
+  state.container.innerHTML = `
+    <section class="atlas-page atlas-question-page">
+      <header class="atlas-hero">
+        <p>学習中に浮かんだ疑問を、答え・例文・関連表現と一緒に残します。</p>
+      </header>
+      ${renderModeSwitch()}
+      <section class="atlas-question-compose" aria-labelledby="atlas-question-heading">
+        <div>
+          <div class="atlas-kicker">QUESTION INBOX</div>
+          <h2 id="atlas-question-heading">英語について聞く</h2>
+          <p>質問は先に保存されます。通信が失敗しても、あとから回答を再試行できます。</p>
+        </div>
+        <form id="atlas-question-form">
+          <textarea id="atlas-question-input" rows="3" required placeholder="例: look up と look for はどう違う？"></textarea>
+          <div class="atlas-question-actions">
+            <button class="btn btn-primary" type="submit" ${state.generating ? 'disabled' : ''}>${state.generating ? '回答を作成中…' : '質問して保存'}</button>
+          </div>
+        </form>
+        <div class="atlas-question-starters" aria-label="質問例">
+          ${ENGLISH_QUESTION_STARTERS.map(([label, prompt]) => `<button type="button" data-question-starter="${esc(prompt)}">${esc(label)}</button>`).join('')}
+        </div>
+      </section>
+      <div class="atlas-toolbar atlas-question-toolbar">
+        <label class="atlas-search">
+          <span class="sr-only">英語の疑問を検索</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"/></svg>
+          <input id="atlas-question-search" type="search" value="${esc(state.search)}" placeholder="質問・回答・関連語を検索">
+        </label>
+        <span class="atlas-count">${visible.length} questions</span>
+      </div>
+      <div class="atlas-library">
+        ${visible.length ? `<div class="atlas-entry-grid">${visible.map(renderQuestionCard).join('')}</div>` : `<div class="atlas-empty atlas-empty--compact"><h2>${questions.length ? '一致する疑問がありません' : '英語の疑問を残していきましょう'}</h2><p>${questions.length ? '言葉を短くして検索してください。' : '句動詞、前置詞、文法、単語の違いなど、途中で浮かんだ疑問をそのまま書けます。'}</p></div>`}
+      </div>
+    </section>
+  `;
+  wireModeSwitch();
+  state.container.querySelector('#atlas-question-form')?.addEventListener('submit', handleEnglishQuestionSubmit);
+  state.container.querySelectorAll('[data-question-starter]').forEach(button => {
+    button.addEventListener('click', () => {
+      const input = state.container?.querySelector('#atlas-question-input');
+      if (!input) return;
+      input.value = button.dataset.questionStarter || '';
+      input.focus();
+    });
+  });
+  const search = state.container.querySelector('#atlas-question-search');
+  search?.addEventListener('input', () => {
+    state.search = search.value || '';
+    renderQuestionLibrary();
+    state.container?.querySelector('#atlas-question-search')?.focus();
+  });
+  state.container.querySelectorAll('[data-question-id]').forEach(button => {
+    button.addEventListener('click', () => {
+      state.questionId = button.dataset.questionId;
+      render();
+      scrollMainToTop();
+    });
+  });
+}
+
+function renderQuestionCard(item) {
+  const status = item.status === 'ready' ? '回答済み' : item.status === 'failed' ? '再試行できます' : '回答待ち';
+  return `<button class="atlas-entry-card atlas-question-card" type="button" data-question-id="${esc(item.id)}">
+    <span class="atlas-entry-topline"><strong>${esc(item.questionJa)}</strong><span>${esc(status)}</span></span>
+    <span class="atlas-question-preview">${esc(item.answer?.shortAnswerJa || '質問は安全に保存されています。')}</span>
+    <span class="atlas-entry-path">${esc(item.answer?.suggestedCategory || 'English question')}</span>
+  </button>`;
+}
+
+async function handleEnglishQuestionSubmit(event) {
+  event.preventDefault();
+  if (state.generating) return;
+  const questionJa = state.container?.querySelector('#atlas-question-input')?.value.trim() || '';
+  if (!questionJa) return;
+  const saved = addEnglishQuestion({ questionJa, status: 'pending', answer: null });
+  if (!saved) {
+    toast('質問を保存できませんでした。入力内容は画面に残しています', 'error');
+    return;
+  }
+  state.questionId = saved.id;
+  await answerEnglishQuestion(saved);
+}
+
+async function answerEnglishQuestion(question) {
+  if (!isAiAvailable()) {
+    updateEnglishQuestion(question.id, { status: 'failed', errorMessage: 'AI設定またはログインが必要です' });
+    toast('質問は保存しました。AI設定後に「回答を作る」で再試行できます。', 'info');
+    render();
+    return;
+  }
+  state.generating = true;
+  state.controller = new AbortController();
+  render();
+  try {
+    const answer = await answerEnglishLearningQuestion(question.questionJa, { signal: state.controller.signal });
+    updateEnglishQuestion(question.id, { status: 'ready', answer, errorMessage: '' });
+    toast('回答を保存しました', 'success');
+  } catch (error) {
+    if (error?.name !== 'AbortError') {
+      updateEnglishQuestion(question.id, { status: 'failed', errorMessage: error?.message || '回答を作成できませんでした' });
+      toast('質問は保存済みです。あとから再試行できます。', 'error');
+    }
+  } finally {
+    state.generating = false;
+    state.controller = null;
+    render();
+  }
+}
+
+function renderQuestionDetail() {
+  const item = getEnglishQuestions().find(question => question.id === state.questionId);
+  if (!item) {
+    state.questionId = '';
+    render();
+    return;
+  }
+  const answer = item.answer || {};
+  const expressionIndex = buildExpressionIndex(getExpressionEntries());
+  const related = (answer.relatedTerms || []).map(term => {
+    const matches = findExpressionMatches(term, expressionIndex);
+    return matches.length
+      ? `<button class="atlas-related-term" type="button" data-question-related="${esc(term)}" data-linked-entries="${esc(matches.map(entry => entry.id).join(','))}" lang="en">${esc(term)}</button>`
+      : `<span class="atlas-detail-badges"><span lang="en">${esc(term)}</span></span>`;
+  }).join('');
+  state.container.innerHTML = `
+    <section class="atlas-page atlas-question-detail">
+      <button class="atlas-back-inline" id="atlas-question-root" type="button"><span aria-hidden="true">←</span> 英語の疑問へ戻る</button>
+      <header class="atlas-detail-header">
+        <div><div class="atlas-kicker">ENGLISH QUESTION</div><h1>${esc(item.questionJa)}</h1></div>
+        <button class="atlas-icon-btn atlas-delete-btn" id="atlas-delete-question" type="button" aria-label="この質問を削除" title="削除">×</button>
+      </header>
+      ${state.generating ? '<div class="atlas-question-progress"><span class="atlas-spinner" aria-hidden="true"></span> 回答を整理しています…</div>' : ''}
+      ${item.status === 'failed' ? `<div class="atlas-question-error">${esc(item.errorMessage || '回答を作成できませんでした')}</div>` : ''}
+      ${answer.shortAnswerJa ? `<section class="atlas-detail-section"><h2>まず答え</h2><p>${esc(answer.shortAnswerJa)}</p></section>` : ''}
+      ${answer.intuitionJa ? `<section class="atlas-detail-section"><h2>コアイメージ</h2><p>${esc(answer.intuitionJa)}</p></section>` : ''}
+      ${answer.explanationJa ? `<section class="atlas-detail-section"><h2>詳しく見る</h2><p>${esc(answer.explanationJa)}</p></section>` : ''}
+      ${(answer.examples || []).length ? `<section class="atlas-detail-section"><h2>例文</h2><div class="atlas-example-list">${answer.examples.map(example => `<div><strong lang="en">${esc(example.english)}</strong><span>${esc(example.japanese)}</span>${example.noteJa ? `<small>${esc(example.noteJa)}</small>` : ''}</div>`).join('')}</div></section>` : ''}
+      ${related ? `<section class="atlas-detail-section"><h2>関連して調べる</h2><div class="atlas-detail-badges">${related}</div></section>` : ''}
+      ${(answer.cautionsJa || []).length ? listSection('注意点', answer.cautionsJa, 'atlas-note-list--warning') : ''}
+      <div class="atlas-question-detail-actions">
+        <button class="btn btn-primary" id="atlas-question-retry" type="button" ${state.generating ? 'disabled' : ''}>${answer.shortAnswerJa ? '回答を作り直す' : '回答を作る'}</button>
+      </div>
+    </section>
+  `;
+  state.container.querySelector('#atlas-question-root')?.addEventListener('click', backFromExpressionAtlas);
+  state.container.querySelector('#atlas-question-retry')?.addEventListener('click', () => answerEnglishQuestion(item));
+  state.container.querySelectorAll('[data-question-related]').forEach(button => {
+    button.addEventListener('click', () => {
+      const ids = String(button.dataset.linkedEntries || '').split(',').filter(Boolean);
+      const matches = getExpressionEntries().filter(entry => ids.includes(entry.id));
+      if (matches.length === 1) openLinkedExpression(matches[0].id);
+      else if (matches.length > 1) showWordMatchPicker(button.dataset.questionRelated, matches);
+    });
+  });
+  state.container.querySelector('#atlas-delete-question')?.addEventListener('click', () => {
+    if (!window.confirm('この質問をTrashへ移動しますか？')) return;
+    if (deleteEnglishQuestion(item.id)) {
+      state.questionId = '';
+      toast('質問をTrashへ移動しました', 'success');
+      render();
+    }
+  });
+}
+
 function renderTranslationCard(set) {
   return `
     <button class="atlas-entry-card atlas-translation-card" type="button" data-translation-id="${esc(set.id)}">
@@ -818,8 +1019,9 @@ function wireTranslationVocabularyLinks() {
 }
 
 function openLinkedExpression(entryId) {
+  const fromQuestion = !!state.questionId;
   state.screen = 'library';
-  state.libraryMode = 'expressions';
+  state.libraryMode = fromQuestion ? 'questions' : 'expressions';
   state.translationId = '';
   state.morphemeId = '';
   state.entryId = entryId;
