@@ -136,6 +136,7 @@ function _setupSwipe(container) {
     'input',
     'textarea',
     'select',
+    '[role="button"]',
     '[contenteditable="true"]',
   ].join(',');
   const clearDrag = () => {
@@ -281,7 +282,7 @@ function render() {
     <div id="cal-view"></div>
   `;
 
-  // Title tap: month 竊・drum-roll year/month picker; other modes 竊・go to today
+  // Title tap: month -> drum-roll year/month picker; other modes -> go to today
   container.querySelector('#cal-title-btn').onclick = () => {
     if (state.mode === 'month') openYearMonthPicker();
     else {
@@ -620,7 +621,7 @@ function renderMonth() {
       ?.classList.add('cal-cell--selected');
   }
 
-  // Cell tap: 1st tap 竊・highlight; 2nd tap on same date 竊・open day sheet
+  // Cell tap: first tap highlights; second tap on the same date opens the day sheet.
   view.querySelectorAll('.cal-cell').forEach(cell => {
     cell.addEventListener('click', (e) => {
       if (e.target.classList.contains('cal-event-chip')) return;
@@ -758,7 +759,7 @@ function renderTimeGrid(numDays = 7) {
     nowDayCol.appendChild(line);
   }
 
-  // Click slot 竊・add event at that time
+  // Click slot -> add event at that time
   body?.querySelectorAll('.cal-hour-slot').forEach(slot => {
     slot.addEventListener('click', () => {
       const date = slot.dataset.date;
@@ -769,7 +770,7 @@ function renderTimeGrid(numDays = 7) {
     });
   });
 
-  // Click timed event 竊・edit
+  // Click timed event -> edit
   body?.querySelectorAll('.cal-timed-event').forEach(el => {
     el.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -934,7 +935,7 @@ function openDaySheet(dateStr) {
   // Tap backdrop to close
   sheet.addEventListener('click', e => { if (e.target === sheet) closeSheet(); });
 
-  // Tap event 竊・edit
+  // Tap event -> edit
   sheet.querySelectorAll('.cal-sheet-ev').forEach(el => {
     el.addEventListener('click', () => {
       const ev = getVisibleEvents().find(e => e.id === el.dataset.evId);
@@ -942,7 +943,7 @@ function openDaySheet(dateStr) {
     });
   });
 
-  // "+" button 竊・add event on this date
+  // "+" button -> add event on this date
   sheet.querySelector('.cal-day-sheet-add').onclick = () => {
     closeSheet();
     setTimeout(() => openEventModal(null, dateStr, null, null, getCurrentShareDefaults()), 80);
