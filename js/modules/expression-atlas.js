@@ -54,6 +54,7 @@ let state = {
   entryId: '',
   translationId: '',
   questionId: '',
+  questionConversionId: '',
   morphemeId: '',
   usageId: '',
   usageTrail: [],
@@ -164,6 +165,7 @@ export function backFromExpressionAtlas() {
     state.controller?.abort();
     state.screen = 'library';
     state.generating = false;
+    state.questionConversionId = '';
     render();
     scrollMainToTop();
     return;
@@ -1239,6 +1241,7 @@ function renderQuestionDetail() {
   }
   const answer = item.answer || {};
   const expressionIndex = buildExpressionIndex(getExpressionEntries());
+  const createdEntries = getExpressionEntries().filter(entry => (item.atlasEntryIds || []).includes(entry.id));
   const related = (answer.relatedTerms || []).map(term => {
     const matches = findExpressionMatches(term, expressionIndex);
     return matches.length
@@ -1259,14 +1262,17 @@ function renderQuestionDetail() {
       ${answer.explanationJa ? `<section class="atlas-detail-section"><h2>詳しく見る</h2><p>${esc(answer.explanationJa)}</p></section>` : ''}
       ${(answer.examples || []).length ? `<section class="atlas-detail-section"><h2>例文</h2><div class="atlas-example-list">${answer.examples.map(example => `<div><div class="atlas-audio-line"><strong lang="en">${esc(example.english)}</strong>${speakButton(example.english)}</div><span>${esc(example.japanese)}</span>${example.noteJa ? `<small>${esc(example.noteJa)}</small>` : ''}</div>`).join('')}</div></section>` : ''}
       ${related ? `<section class="atlas-detail-section"><h2>関連して調べる</h2><div class="atlas-detail-badges">${related}</div></section>` : ''}
+      ${createdEntries.length ? `<section class="atlas-detail-section"><h2>この疑問から作ったAtlas項目</h2><div class="atlas-detail-badges">${createdEntries.map(entry => `<button class="atlas-related-term" type="button" data-question-atlas-entry="${esc(entry.id)}" lang="en">${esc(entry.term)}</button>`).join('')}</div></section>` : ''}
       ${(answer.cautionsJa || []).length ? listSection('注意点', answer.cautionsJa, 'atlas-note-list--warning') : ''}
       <div class="atlas-question-detail-actions">
         <button class="btn btn-primary" id="atlas-question-retry" type="button" ${state.generating ? 'disabled' : ''}>${answer.shortAnswerJa ? '回答を作り直す' : '回答を作る'}</button>
+        ${answer.shortAnswerJa ? '<button class="btn btn-secondary" id="atlas-question-to-atlas" type="button">Atlas項目にする</button>' : ''}
       </div>
     </section>
   `;
   state.container.querySelector('#atlas-question-root')?.addEventListener('click', backFromExpressionAtlas);
   state.container.querySelector('#atlas-question-retry')?.addEventListener('click', () => answerEnglishQuestion(item));
+  state.container.querySelector('#atlas-question-to-atlas')?.addEventListener('click', () => openQuestionAtlasConversion(item));
   state.container.querySelectorAll('[data-question-related]').forEach(button => {
     button.addEventListener('click', () => {
       const ids = String(button.dataset.linkedEntries || '').split(',').filter(Boolean);
@@ -1274,6 +1280,9 @@ function renderQuestionDetail() {
       if (matches.length === 1) openLinkedExpression(matches[0].id);
       else if (matches.length > 1) showWordMatchPicker(button.dataset.questionRelated, matches);
     });
+  });
+  state.container.querySelectorAll('[data-question-atlas-entry]').forEach(button => {
+    button.addEventListener('click', () => openLinkedExpression(button.dataset.questionAtlasEntry));
   });
   state.container.querySelector('#atlas-delete-question')?.addEventListener('click', () => {
     if (!window.confirm('この質問をTrashへ移動しますか？')) return;
@@ -1295,6 +1304,27 @@ function renderTranslationCard(set) {
       <span class="atlas-entry-path">${esc(set.category)} › ${esc(set.topic)}</span>
     </button>
   `;
+}
+
+function openQuestionAtlasConversion(question) {
+  const relatedTerms = Array.isArray(question.answer?.relatedTerms) ? question.answer.relatedTerms : [];
+  state.questionConversionId = question.id;
+  state.questionId = '';
+  state.entryId = '';
+  state.translationId = '';
+  state.libraryMode = 'expressions';
+  state.screen = 'generate';
+  state.drafts = [];
+  state.selectedDrafts = new Set();
+  state.generatorInput = {
+    language: 'English',
+    learningTarget: question.questionJa || '',
+    category: '',
+    topic: '',
+    seedTerms: relatedTerms.slice(0, 8).join(', '),
+  };
+  render();
+  scrollMainToTop();
 }
 
 function openTranslationGenerator() {
@@ -1799,6 +1829,7 @@ function renderDetail() {
           <div class="atlas-kicker">${esc(entry.language || 'English')}</div>
           <div class="atlas-word-heading"><h1>${esc(entry.term)}</h1>${speakButton(entry.term)}</div>
           ${entry.pronunciation ? `<p class="atlas-pronunciation" lang="en">${esc(entry.pronunciation)}</p>` : ''}
+          ${entry.sourceQueryJa ? `<p class="atlas-source-query">最初に調べたこと: ${esc(entry.sourceQueryJa)}</p>` : ''}
           <div class="atlas-detail-badges">
             ${entry.partOfSpeech ? `<span>${esc(entry.partOfSpeech)}</span>` : ''}
             ${entry.register ? `<span>${esc(entry.register)}</span>` : ''}
@@ -1989,12 +2020,29 @@ function renderGenerator() {
     const selected = state.drafts.filter((_, index) => state.selectedDrafts.has(index));
     const saved = addExpressionEntries(selected);
     if (!saved.length) return;
+    const questionId = state.questionConversionId;
+    if (questionId) {
+      const question = getEnglishQuestions().find(item => item.id === questionId);
+      if (question) {
+        const previousIds = Array.isArray(question.atlasEntryIds) ? question.atlasEntryIds : [];
+        updateEnglishQuestion(questionId, {
+          atlasEntryIds: [...new Set([...previousIds, ...saved.map(entry => entry.id)])],
+        });
+      }
+    }
     state.category = saved[0].category;
     state.topic = saved[0].topic;
     state.screen = 'library';
     state.drafts = [];
     state.selectedDrafts = new Set();
-    toast(`${saved.length}件の表現を保存しました`, 'success');
+    state.questionConversionId = '';
+    if (questionId) {
+      state.questionId = questionId;
+      state.libraryMode = 'questions';
+      toast(`${saved.length}件をAtlasへ追加し、質問に関連付けました`, 'success');
+    } else {
+      toast(`${saved.length}件の表現を保存しました`, 'success');
+    }
     render();
     scrollMainToTop();
   });
@@ -2374,6 +2422,7 @@ function searchableText(entry) {
   return normalize([
     entry.term,
     entry.lemma,
+    entry.sourceQueryJa,
     ...(entry.aliases || []),
     entry.partOfSpeech,
     entry.etymologyJa,

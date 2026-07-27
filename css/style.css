@@ -3368,6 +3368,116 @@ button { cursor: pointer; font-family: inherit; }
 .kn-toggle-edit-btn:hover,
 .kn-toggle-edit-btn:focus-visible { background: var(--primary-bg); color: var(--primary); outline: none; }
 .kn-block--toggle { flex-wrap: wrap; align-items: flex-start; }
+
+/* Compact editor controls and tables keep the writing surface primary. */
+.kn-toolbar-type-select {
+  width: 96px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.kn-toolbar-btn { font-weight: 600; }
+.kn-block-text { font-weight: 400; }
+.kn-block--bullet .kn-block-prefix {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  min-width: 18px;
+  height: 22px;
+  margin-top: 0;
+  line-height: 1;
+  font-size: 15px;
+}
+.kn-view-bullet { align-items: baseline; gap: 7px; }
+.kn-view-bullet-dot {
+  display: inline-block;
+  width: 14px;
+  margin-top: 0;
+  line-height: inherit;
+  text-align: center;
+}
+.kn-block--table {
+  display: block;
+  padding-right: 0;
+  padding-bottom: 6px;
+}
+.kn-table-scroll,
+.kn-view-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--bg-card);
+}
+.kn-edit-table,
+.kn-view-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+}
+.kn-edit-table th,
+.kn-edit-table td,
+.kn-view-table th,
+.kn-view-table td {
+  min-width: 132px;
+  padding: 0;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+.kn-edit-table tr > :last-child,
+.kn-view-table tr > :last-child { border-right: 0; }
+.kn-edit-table tbody tr:last-child > *,
+.kn-view-table tbody tr:last-child > * { border-bottom: 0; }
+.kn-edit-table th,
+.kn-view-table th { background: var(--bg-hover); font-weight: 650; }
+.kn-table-input {
+  width: 100%;
+  min-width: 132px;
+  height: 34px;
+  padding: 7px 9px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.kn-table-input:focus { background: var(--primary-bg); box-shadow: inset 0 0 0 1px var(--primary-border); }
+.kn-view-table th,
+.kn-view-table td { padding: 8px 10px; line-height: 1.5; }
+.kn-table-actions { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 7px; }
+.kn-table-actions button {
+  min-height: 29px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.kn-table-actions button:disabled { opacity: .42; cursor: default; }
+.kn-table-actions button:not(:disabled):active { background: var(--primary-bg); color: var(--primary); }
+
+/* The library list is intentionally denser than the full memo reading view. */
+.kn-memo-card { padding: 11px 14px; }
+.kn-memo-card-top { margin-bottom: 2px; }
+.kn-memo-title { font-size: 14px; line-height: 1.25; }
+.kn-memo-preview { line-height: 1.42; margin: 0 0 6px; }
+
+.atlas-source-query {
+  margin: 7px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
 .kn-block--toggle > .kn-block-text { flex: 1 1 calc(100% - 24px); width: auto; }
 .kn-block--toggle > .kn-block-toggle-children-edit {
   flex: 0 0 calc(100% - 12px); width: calc(100% - 12px); min-width: 0;

@@ -122,7 +122,7 @@ export function openNewKnowledgeMemo(opts = {}) {
 // ============================================================
 
 const BLOCK_TYPES = [
-  { type: 'paragraph', icon: '¶',  label: '本文'             },
+  { type: 'paragraph', icon: '¶',  label: 'テキスト'         },
   { type: 'h1',        icon: 'H1', label: '見出し1'           },
   { type: 'h2',        icon: 'H2', label: '見出し2'           },
   { type: 'h3',        icon: 'H3', label: '見出し3'           },
@@ -131,6 +131,7 @@ const BLOCK_TYPES = [
   { type: 'quote',     icon: '❝',  label: '引用'              },
   { type: 'toggle',    icon: '▶',  label: 'トグル'            },
   { type: 'math',      icon: 'Σ',  label: '数式(KaTeX)'       },
+  { type: 'table',     icon: '▦',  label: '表'                },
   { type: 'divider',   icon: '─',  label: '区切り線'          },
 ];
 
@@ -1273,8 +1274,8 @@ export function renderBlocksView(blocks, indent = 0) {
 
 function renderBlockView(block, numCounter = 0, indent = 0) {
   const color = block.color || '';
-  const style = color ? `style="color:${color}"` : '';
-  const indentStyle = indent > 0 ? `style="margin-left:${indent * 20}px"` : '';
+  const styles = [color ? `color:${color}` : '', indent > 0 ? `margin-left:${indent * 20}px` : ''].filter(Boolean);
+  const style = styles.length ? `style="${styles.join(';')}"` : '';
   const id = `data-view-block-id="${esc(block.id || '')}"`;
 
   if (block.type === 'divider') {
@@ -1283,6 +1284,11 @@ function renderBlockView(block, numCounter = 0, indent = 0) {
 
   if (block.type === 'math') {
     return `<div class="kn-view-math" ${id} data-katex="${esc(block.text || '')}">${esc(block.text || '')}</div>`;
+  }
+
+  if (block.type === 'table') {
+    const table = normalizeTableData(block);
+    return `<div class="kn-view-table-wrap" ${id}><table class="kn-view-table"><thead><tr>${table.headers.map(cell => `<th>${esc(cell)}</th>`).join('')}</tr></thead><tbody>${table.rows.map(row => `<tr>${row.map(cell => `<td>${esc(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   }
 
   if (block.type === 'image') {
@@ -1317,7 +1323,7 @@ function renderBlockView(block, numCounter = 0, indent = 0) {
     h1:        `<h1 class="kn-view-h1" ${id} ${style}>${inlineText}</h1>`,
     h2:        `<h2 class="kn-view-h2" ${id} ${style}>${inlineText}</h2>`,
     h3:        `<h3 class="kn-view-h3" ${id} ${style}>${inlineText}</h3>`,
-    bullet:    `<div class="kn-view-bullet" ${id} ${indentStyle} ${style}><span class="kn-view-bullet-dot">•</span><span>${inlineText}</span></div>`,
+    bullet:    `<div class="kn-view-bullet" ${id} ${style}><span class="kn-view-bullet-dot">•</span><span>${inlineText}</span></div>`,
     numbered:  `<div class="kn-view-numbered" ${id} ${style}><span class="kn-view-numbered-n">${numCounter}.</span><span>${inlineText}</span></div>`,
     quote:     `<blockquote class="kn-view-quote" ${id} ${style}>${inlineText}</blockquote>`,
     paragraph: `<p class="kn-view-para" ${id} ${style}>${inlineText || '<br>'}</p>`,
@@ -1682,6 +1688,18 @@ function renderBlockEdit(block, idx, listNumber = 0) {
       ${insertRow}`;
   }
 
+  if (block.type === 'table') {
+    const table = normalizeTableData(block);
+    return `
+      <div class="kn-block kn-block--table${block.id === activeEditorBlockId ? ' kn-block--active' : ''}" data-block-id="${esc(block.id)}" tabindex="0">
+        ${dragHandle}
+        <div class="kn-table-scroll"><table class="kn-edit-table"><thead><tr>${table.headers.map((cell, col) => `<th><input class="kn-table-input" data-table-header data-block-id="${esc(block.id)}" data-table-col="${col}" value="${esc(cell)}" aria-label="表の見出し ${col + 1}"></th>`).join('')}</tr></thead><tbody>${table.rows.map((row, rowIndex) => `<tr>${row.map((cell, col) => `<td><input class="kn-table-input" data-table-cell data-block-id="${esc(block.id)}" data-table-row="${rowIndex}" data-table-col="${col}" value="${esc(cell)}" aria-label="表の${rowIndex + 1}行${col + 1}列"></td>`).join('')}</tr>`).join('')}</tbody></table></div>
+        <div class="kn-table-actions" aria-label="表の編集"><button type="button" data-table-action="add-row" data-block-id="${esc(block.id)}">行を追加</button><button type="button" data-table-action="remove-row" data-block-id="${esc(block.id)}" ${table.rows.length <= 1 ? 'disabled' : ''}>行を削除</button><button type="button" data-table-action="add-column" data-block-id="${esc(block.id)}">列を追加</button><button type="button" data-table-action="remove-column" data-block-id="${esc(block.id)}" ${table.headers.length <= 2 ? 'disabled' : ''}>列を削除</button></div>
+        ${controls}
+      </div>
+      ${insertRow}`;
+  }
+
   const placeholder = {
     paragraph: 'テキストを入力…',
     h1: '見出し1',
@@ -1745,6 +1763,19 @@ function wireBlocksEdit(container) {
   // Sync text on input
   wrap.addEventListener('input', e => {
     const el = e.target;
+    if (el.matches?.('[data-table-header], [data-table-cell]')) {
+      const block = findBlockInAllBlocks(edState.blocks, el.dataset.blockId);
+      if (!block) return;
+      const table = normalizeTableData(block);
+      const col = Number(el.dataset.tableCol);
+      if (el.hasAttribute('data-table-header')) {
+        table.headers[col] = el.value;
+      } else {
+        table.rows[Number(el.dataset.tableRow)][col] = el.value;
+      }
+      block.table = table;
+      return;
+    }
     const imageCaptionId = el.dataset.imageCaptionId;
     if (imageCaptionId) {
       const block = findBlockInAllBlocks(edState.blocks, imageCaptionId);
@@ -1827,6 +1858,12 @@ function wireBlocksEdit(container) {
       selectedBlock.classList.add('kn-block--active');
       const selected = findBlockInAllBlocks(edState.blocks, activeEditorBlockId);
       if (selected) highlightToolbarType(container, selected.type);
+    }
+
+    const tableAction = e.target.closest('[data-table-action]');
+    if (tableAction) {
+      changeTableShape(tableAction.dataset.blockId, tableAction.dataset.tableAction, container);
+      return;
     }
 
     const toggleBtn = e.target.closest('[data-toggle-edit-id]');
@@ -2420,9 +2457,17 @@ function changeBlockType(blockId, type, container) {
   if (type === 'toggle') {
     block.children = block.children || [];
     block.collapsed = block.collapsed ?? block.children.length === 0;
+  } else if (type === 'table') {
+    block.table = normalizeTableData(block);
+    delete block.children;
+    delete block.collapsed;
+    if (releasedChildren.length) {
+      loc.blocks.splice(loc.idx + 1, 0, ...releasedChildren);
+    }
   } else {
     delete block.children;
     delete block.collapsed;
+    delete block.table;
     if (releasedChildren.length) {
       loc.blocks.splice(loc.idx + 1, 0, ...releasedChildren);
     }
@@ -2434,7 +2479,7 @@ function changeBlockType(blockId, type, container) {
 function insertBlockAfter(blockId, type = 'paragraph') {
   const loc = findBlockLocation(blockId);
   if (!loc) return null;
-  const newBlock = { ...defaultBlock(), type };
+  const newBlock = defaultBlock(type);
   if (type === 'toggle') newBlock.children = [];
   loc.blocks.splice(loc.idx + 1, 0, newBlock);
   return newBlock;
@@ -3078,8 +3123,46 @@ function confirmDelete(memoId, container) {
 // HELPERS
 // ============================================================
 
-function defaultBlock() {
-  return { id: generateId(), type: 'paragraph', text: '', color: null };
+function defaultBlock(type = 'paragraph') {
+  const block = { id: generateId(), type, text: '', color: null };
+  if (type === 'table') block.table = createDefaultTable();
+  return block;
+}
+
+function createDefaultTable() {
+  return { headers: ['項目', '内容'], rows: [['', '']] };
+}
+
+function normalizeTableData(block) {
+  const source = block?.table || {};
+  const headers = Array.isArray(source.headers) ? source.headers.map(value => String(value ?? '')) : [];
+  const width = Math.max(2, headers.length);
+  const normalizedHeaders = Array.from({ length: width }, (_, index) => headers[index] || `列${index + 1}`);
+  const rows = Array.isArray(source.rows) && source.rows.length ? source.rows : [['', '']];
+  return {
+    headers: normalizedHeaders,
+    rows: rows.map(row => Array.from({ length: width }, (_, index) => String((row || [])[index] ?? ''))),
+  };
+}
+
+function changeTableShape(blockId, action, container) {
+  const block = findBlockInAllBlocks(edState.blocks, blockId);
+  if (!block || block.type !== 'table') return;
+  const table = normalizeTableData(block);
+  if (action === 'add-row') table.rows.push(Array(table.headers.length).fill(''));
+  if (action === 'remove-row' && table.rows.length > 1) table.rows.pop();
+  if (action === 'add-column') {
+    table.headers.push(`列${table.headers.length + 1}`);
+    table.rows.forEach(row => row.push(''));
+  }
+  if (action === 'remove-column' && table.headers.length > 2) {
+    table.headers.pop();
+    table.rows.forEach(row => row.pop());
+  }
+  block.table = table;
+  activeEditorBlockId = blockId;
+  rerenderBlocks(container);
+  container.querySelector(`[data-block-id="${blockId}"] .kn-table-input`)?.focus();
 }
 
 function collectImagePaths(blocks, paths = new Set()) {
@@ -3182,6 +3265,11 @@ function blocksToText(blocks, maxLen = 0) {
   let text = '';
   for (const b of (blocks || [])) {
     if (b.type === 'divider' || b.type === 'math') continue;
+    if (b.type === 'table') {
+      const table = normalizeTableData(b);
+      text += `${table.headers.join(' ')} ${table.rows.map(row => row.join(' ')).join(' ')} `;
+      continue;
+    }
     text += (b.text || '') + ' ';
     if (b.children) {
       for (const c of b.children) text += (c.text || '') + ' ';

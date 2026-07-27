@@ -845,6 +845,7 @@ function expressionEntryToRecord(entry, existing = null) {
   const data = {
     promptVersion: 4,
     language: 'English',
+    sourceQueryJa: '',
     category: '',
     topic: '',
     categoryId: '',

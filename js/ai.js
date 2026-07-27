@@ -494,7 +494,7 @@ function normalizeNuanceAtlasCategory(value, context = '') {
     ['意思・判断', /意思|判断|意見|選択|決定|希望|賛成|反対|decision|opinion|prefer|intend/],
     ['時間・頻度', /時間|頻度|期間|順序|時期|time|frequency|often|always|soon|late/],
     ['仕事・学習', /仕事|職場|会議|学習|勉強|学校|研究|work|business|study|learn/],
-    ['程度・評価', /程度|評価|品質|比較|強さ|弱さ|良い|悪い|degree|quality|evaluate|better|worse/],
+    ['程度・評価', /程度|評価|品質|比較|強さ|弱さ|良い|悪い|ばらつき|分散|変動|variance|variation|scatter|degree|quality|evaluate|better|worse/],
     ['行動・状態', /行動|状態|変化|移動|開始|終了|action|state|change|move|start|finish/],
   ];
   return rules.find(([, pattern]) => pattern.test(text))?.[0] || '日常生活';
@@ -646,6 +646,7 @@ export async function generateNuanceEntries(
       return {
         promptVersion: 4,
         language: String(language || 'English').trim() || 'English',
+        sourceQueryJa: cleanTarget,
         category: resolvedCategory,
         topic: resolvedTopic,
         term,

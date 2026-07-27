@@ -556,7 +556,7 @@ export default async function handler(req, res) {
     generationConfig.temperature = responseFormat === 'json' ? 0.2 : 0.4;
   }
 
-  const payload = {
+  let payload = {
     contents: [
       {
         role: 'user',
@@ -579,6 +579,17 @@ export default async function handler(req, res) {
 
   try {
     let { upstream, data } = await requestGemini(key, model, payload);
+    if (!upstream.ok && upstream.status === 400 && payload.generationConfig.responseSchema) {
+      // Some Gemini model revisions reject deeply nested response schemas even
+      // though they still support JSON mode. Preserve the prompt contract and
+      // retry once without only the optional schema constraint.
+      payload = {
+        ...payload,
+        generationConfig: { ...payload.generationConfig },
+      };
+      delete payload.generationConfig.responseSchema;
+      ({ upstream, data } = await requestGemini(key, model, payload));
+    }
     if (!upstream.ok) {
       await refundUsage(token, usage);
       const msg = data?.error?.message || `Gemini upstream error ${upstream.status}`;
