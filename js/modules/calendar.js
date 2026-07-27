@@ -623,7 +623,6 @@ function renderMonth() {
   // Cell tap: first tap highlights; second tap on the same date opens the day sheet.
   view.querySelectorAll('.cal-cell').forEach(cell => {
     cell.addEventListener('click', (e) => {
-      if (e.target.classList.contains('cal-event-chip')) return;
       const dateStr = cell.dataset.date;
       if (_selectedDate === dateStr) {
         openDaySheet(dateStr);
@@ -640,15 +639,6 @@ function renderMonth() {
     });
   });
 
-  // Event chip on grid: open the event directly. Date cells keep their own
-  // first-tap selection behavior, but an actual event must remain one-tap.
-  view.querySelectorAll('.cal-event-chip').forEach(chip => {
-    chip.addEventListener('click', e => {
-      e.stopPropagation();
-      const event = getVisibleEvents().find(item => item.id === chip.dataset.eventId);
-      if (event) openCalendarEvent(event);
-    });
-  });
 }
 
 // ============================================================
