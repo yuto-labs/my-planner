@@ -623,6 +623,7 @@ function renderMonth() {
   // Cell tap: first tap highlights; second tap on the same date opens the day sheet.
   view.querySelectorAll('.cal-cell').forEach(cell => {
     cell.addEventListener('click', (e) => {
+      if (e.target.classList.contains('cal-event-chip')) return;
       const dateStr = cell.dataset.date;
       if (_selectedDate === dateStr) {
         openDaySheet(dateStr);
@@ -636,6 +637,24 @@ function renderMonth() {
       if (e.key !== 'Enter' && e.key !== ' ') return;
       e.preventDefault();
       cell.click();
+    });
+  });
+
+  // Chip tap: same two-tap logic as the parent cell.
+  // Needs its own handler so iOS Safari reliably fires clicks on <span> elements.
+  view.querySelectorAll('.cal-event-chip').forEach(chip => {
+    chip.addEventListener('click', e => {
+      e.stopPropagation();
+      const cell = chip.closest('.cal-cell');
+      const dateStr = cell?.dataset.date;
+      if (!dateStr) return;
+      if (_selectedDate === dateStr) {
+        openDaySheet(dateStr);
+      } else {
+        _selectedDate = dateStr;
+        view.querySelectorAll('.cal-cell').forEach(c => c.classList.remove('cal-cell--selected'));
+        cell.classList.add('cal-cell--selected');
+      }
     });
   });
 
