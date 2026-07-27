@@ -1017,9 +1017,12 @@ function morphologySearchText(entry) {
 function renderTranslationLibrary() {
   const sets = getTranslationSets();
   const query = normalize(state.search);
-  const visible = query
-    ? sets.filter(set => searchableTranslationText(set).includes(query))
-    : sets;
+  const categories = [...new Set(sets.map(set => set.category).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'ja'));
+  const visible = sets.filter(set => {
+    if (state.category && set.category !== state.category) return false;
+    return !query || searchableTranslationText(set).includes(query);
+  });
   state.container.innerHTML = `
     <section class="atlas-page">
       <header class="atlas-hero">
@@ -1037,6 +1040,15 @@ function renderTranslationLibrary() {
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"/></svg>
           <input id="atlas-translation-search" type="search" value="${esc(state.search)}" placeholder="日本語・英訳・ニュアンスを検索">
         </label>
+        ${categories.length ? `
+          <label class="atlas-translation-genre-filter">
+            <span class="sr-only">英訳のジャンル</span>
+            <select id="atlas-translation-category-filter">
+              <option value="">すべてのジャンル</option>
+              ${categories.map(category => `<option value="${esc(category)}"${state.category === category ? ' selected' : ''}>${esc(category)}</option>`).join('')}
+            </select>
+          </label>
+        ` : ''}
         <span class="atlas-count">${visible.length} translations</span>
       </div>
 
@@ -1059,6 +1071,10 @@ function renderTranslationLibrary() {
   wireModeSwitch();
   state.container.querySelector('#atlas-translate-open')?.addEventListener('click', openTranslationGenerator);
   state.container.querySelector('#atlas-empty-translate')?.addEventListener('click', openTranslationGenerator);
+  state.container.querySelector('#atlas-translation-category-filter')?.addEventListener('change', event => {
+    state.category = event.target.value || '';
+    renderTranslationLibrary();
+  });
   const searchInput = state.container.querySelector('#atlas-translation-search');
   let searchTimer = null;
   let composing = false;

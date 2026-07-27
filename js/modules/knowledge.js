@@ -336,7 +336,7 @@ function renderList() {
       ${aiAvailable ? `
         <!-- AI input shortcut -->
         <button class="kn-ai-input-btn" id="kn-ai-input-btn">
-          <span class="kn-ai-input-btn-main">✨ AIに整理してもらう</span>
+          <span class="kn-ai-input-btn-main">✨ AI整理</span>
           <span class="kn-ai-input-btn-sub">テキストを貼り付けてブロック形式に整形</span>
         </button>
       ` : ''}
@@ -1438,7 +1438,7 @@ function showTermPopup(term, text, anchorEl, rootContainer) {
 // ============================================================
 
 function renderEditMode(container) {
-  const { title, blocks, tags, url, id } = edState;
+  const { title, blocks, tags, id } = edState;
   const hasApi = isAiAvailable();
 
   container.innerHTML = `
@@ -1464,20 +1464,16 @@ function renderEditMode(container) {
           </div>
           <input class="kn-tag-input" id="kn-tag-input" placeholder="タグ追加 (Enter)" autocomplete="off">
           ${hasApi ? `
-            <button class="kn-ai-tag-btn" id="kn-ai-tag-btn" title="AIでタグ提案">
+            <button class="kn-ai-tag-btn" id="kn-ai-tag-btn" title="AIでタグ候補を作る" aria-label="AIでタグ候補を作る">
               <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M21 3L3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z"/></svg>
-              AI提案
+              <span>AI</span>
             </button>
           ` : ''}
           <div class="kn-tag-suggestions" id="kn-tag-suggestions"></div>
         </div>
-        <input class="kn-url-input" id="kn-url-input" placeholder="参照URL (任意)" value="${esc(url)}" type="url" autocomplete="off">
         <label class="kn-review-toggle" for="kn-review-enabled">
           <input type="checkbox" id="kn-review-enabled"${edState.reviewEnabled ? ' checked' : ''}>
-          <span class="kn-review-toggle-copy">
-            <strong>復習する</strong>
-            <small>OFFにすると復習セッションへ表示しません</small>
-          </span>
+          <span class="kn-review-toggle-copy"><strong>復習対象</strong></span>
         </label>
       </div>
 
@@ -1578,11 +1574,6 @@ function renderEditMode(container) {
   // Wire title input
   container.querySelector('#kn-edit-title')?.addEventListener('input', e => {
     edState.title = e.target.value;
-  });
-
-  // Wire URL input
-  container.querySelector('#kn-url-input')?.addEventListener('input', e => {
-    edState.url = e.target.value;
   });
 
   container.querySelector('#kn-review-enabled')?.addEventListener('change', e => {
@@ -2832,6 +2823,11 @@ function syncKnowledgeTagSuggestions(container) {
   if (!row || !input) return;
 
   const query = input.value.trim().toLowerCase();
+  if (!query) {
+    row.innerHTML = '';
+    row.classList.add('hidden');
+    return;
+  }
   const selected = new Set(edState.tags);
   const candidates = collectExistingKnowledgeTags()
     .filter(tag => !selected.has(tag))
@@ -2958,10 +2954,6 @@ async function saveMemo(container) {
   // Sync title
   const titleInput = container.querySelector('#kn-edit-title');
   if (titleInput) edState.title = titleInput.value.trim();
-
-  // Sync URL
-  const urlInput = container.querySelector('#kn-url-input');
-  if (urlInput) edState.url = urlInput.value.trim();
 
   // Sync block texts from DOM
   container.querySelectorAll('.kn-block-focusable').forEach(el => {
