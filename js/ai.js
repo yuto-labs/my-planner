@@ -555,6 +555,39 @@ export async function answerEnglishLearningQuestion(questionJa, options = {}) {
   return answer;
 }
 
+export async function generateKnowledgeAnswer(question, taxonomy, options = {}) {
+  const cleanQuestion = String(question || '').trim();
+  if (!cleanQuestion) throw new Error('質問を入力してください。');
+  const system = [
+    'You create a durable Japanese learning-library entry from the user question.',
+    'Return JSON only and follow the response schema exactly.',
+    'Answer the question directly first, then explain it carefully in a coherent flow.',
+    'Target roughly 1500-3000 Japanese characters when the subject benefits from detail.',
+    'Use two to five natural paragraphs. Add a heading only when the topic genuinely changes; do not use generic headings such as 概要, 理由1, まとめ.',
+    'Do not greet, praise the question, repeat the conclusion, or append generic suggestions.',
+    'Do not output Markdown, HTML, **, __, code fences, or raw formatting symbols.',
+    'Formatting must use segment marks only: strong, highlight-yellow, highlight-blue, warning.',
+    'Use marks sparingly: strong for essential terms, one to three highlights across the whole answer, warning only for a real caveat.',
+    'Classify with only the supplied majorId and middleId values. Never invent category IDs.',
+    'Create stable lowercase ASCII concept keys with hyphens when possible. Include aliases for Japanese/English naming differences.',
+    'Put every concept mentioned as a future learning target in concepts, but keep the list focused.',
+    'If the question is ambiguous, state the most reasonable interpretation in the answer instead of asking for clarification.',
+    'Avoid unsupported precision. Put genuine uncertainty or disputed points in cautions.',
+  ].join('\n');
+  const raw = await callAPI(
+    QUALITY_MODEL,
+    system,
+    JSON.stringify({ question: cleanQuestion, taxonomy }),
+    5000,
+    'json',
+    'knowledge_answer',
+    options
+  );
+  const parsed = tryParseJSON(raw);
+  if (!parsed) throw new Error('AIの回答形式を確認できませんでした。もう一度お試しください。');
+  return parsed;
+}
+
 export async function generateNuanceEntries(
   {
     language = 'English',

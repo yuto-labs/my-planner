@@ -169,7 +169,7 @@ export function hasActiveExpressionAtlasWork() {
 
 export function backFromExpressionAtlas() {
   if (!state.container) {
-    nav('knowledge');
+    nav('memo');
     return;
   }
   if (state.screen === 'generate' || state.screen === 'translate') {
@@ -245,7 +245,7 @@ export function backFromExpressionAtlas() {
     scrollMainToTop();
     return;
   }
-  nav('knowledge');
+  nav('memo');
 }
 
 function render() {

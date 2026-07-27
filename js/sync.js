@@ -740,14 +740,30 @@ async function _pullMemos(client, userId, forceReplace = false) {
     ? new Set()
     : new Set(
       _filterPendingDeletes('trash_items', (trashResult.data || []).map(rowToTrash))
-        .filter(item => ['memo', 'atlas'].includes(item.entityType) && item.entityId)
+        .filter(item => ['memo', 'atlas', 'learning'].includes(item.entityType) && item.entityId)
         .map(item => item.entityId)
     );
   if (trashResult.error) {
     console.warn('[Sync] could not verify note deletion records; preserving local notes:', trashResult.error);
   }
-  const remote = _filterPendingDeletes('knowledge_memos', data.map(rowToMemo));
+  let remote = _filterPendingDeletes('knowledge_memos', data.map(rowToMemo));
   const local = _ls('mp_knowledge', []);
+  const learningMerge = mergeLearningRecordsForSync(local, remote);
+  remote = learningMerge.items;
+  if (learningMerge.pushCandidates.length) {
+    const result = await _upsertRowsCompat(
+      client,
+      'knowledge_memos',
+      learningMerge.pushCandidates.map(item => memoToRow(item, userId)),
+      'id'
+    );
+    if (result.error) {
+      _recordSyncError('knowledge_memos', result.error);
+      _schedulePushRetry('knowledge_memos');
+    } else {
+      _recordSyncSuccess('push', 'knowledge_memos');
+    }
+  }
   const next = await _reconcileRemoteCollection({
     client, userId, collectionKey: 'knowledge_memos', dbTable: 'knowledge_memos', local, remote,
     toRow: memoToRow, pendingDeleteTable: 'knowledge_memos', retryKeys: ['knowledge_memos'],
@@ -755,6 +771,87 @@ async function _pullMemos(client, userId, forceReplace = false) {
     restoreMissingToCloud: true,
   });
   return _writeCollectionAfterSync('mp_knowledge', local, next, userId, 'knowledge_memos');
+}
+
+function learningData(record) {
+  if (!Array.isArray(record?.tags) || !record.tags.includes('__learning_library__')) return null;
+  return record.blocks?.find(block => block?.type === 'learning-entry-data')?.data || null;
+}
+
+function fieldVersion(data, field) {
+  const time = new Date(data?.fieldUpdatedAt?.[field] || 0).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function stableSyncJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableSyncJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map(key => (
+      `${JSON.stringify(key)}:${stableSyncJson(value[key])}`
+    )).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function mergeLearningRecord(local, remote) {
+  const localData = learningData(local);
+  const remoteData = learningData(remote);
+  if (!localData || !remoteData) return remote;
+  const newerRecord = _syncVersion(local) > _syncVersion(remote) ? local : remote;
+  const newerData = newerRecord === local ? localData : remoteData;
+  const titleData = fieldVersion(localData, 'title') > fieldVersion(remoteData, 'title')
+    ? localData
+    : remoteData;
+  const answerData = fieldVersion(localData, 'answer') > fieldVersion(remoteData, 'answer')
+    ? localData
+    : remoteData;
+  const classificationData = fieldVersion(localData, 'classification') > fieldVersion(remoteData, 'classification')
+    ? localData
+    : remoteData;
+  const mergedData = {
+    ...newerData,
+    originalQuestion: localData.originalQuestion || remoteData.originalQuestion || '',
+    title: titleData.title,
+    titleSource: titleData.titleSource,
+    titleEditedByUser: titleData.titleEditedByUser,
+    answer: answerData.answer,
+    primaryConcept: answerData.primaryConcept,
+    concepts: answerData.concepts,
+    facets: answerData.facets,
+    status: answerData.status,
+    classification: classificationData.classification,
+    fieldUpdatedAt: {
+      title: titleData.fieldUpdatedAt?.title || '',
+      answer: answerData.fieldUpdatedAt?.answer || '',
+      classification: classificationData.fieldUpdatedAt?.classification || '',
+    },
+  };
+  if (stableSyncJson(mergedData) === stableSyncJson(remoteData)) return remote;
+  const block = newerRecord.blocks?.find(item => item?.type === 'learning-entry-data');
+  const merged = {
+    ...newerRecord,
+    title: mergedData.title || newerRecord.title,
+    summary: (mergedData.answer?.directAnswer || []).map(segment => segment?.text || '').join('')
+      || newerRecord.summary,
+    blocks: (newerRecord.blocks || []).map(item => (
+      item === block ? { ...item, data: mergedData } : item
+    )),
+  };
+  merged.updatedAt = new Date().toISOString();
+  return merged;
+}
+
+export function mergeLearningRecordsForSync(local, remote) {
+  const localById = new Map((local || []).filter(item => item?.id).map(item => [item.id, item]));
+  const pushCandidates = [];
+  const items = (remote || []).map(remoteItem => {
+    const localItem = localById.get(remoteItem?.id);
+    if (!localItem) return remoteItem;
+    const merged = mergeLearningRecord(localItem, remoteItem);
+    if (JSON.stringify(merged) !== JSON.stringify(remoteItem)) pushCandidates.push(merged);
+    return merged;
+  });
+  return { items, pushCandidates };
 }
 
 async function _pullTrash(client, userId, forceReplace = false) {

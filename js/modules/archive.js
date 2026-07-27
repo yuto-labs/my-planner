@@ -16,6 +16,7 @@ const TYPE_META = {
   task:  { label: 'Task',  icon: '✓' },
   event: { label: 'Event', icon: '📅' },
   memo:  { label: 'Note',  icon: '📝' },
+  learning: { label: 'Knowledge', icon: '◈' },
   goal:  { label: 'Goal',  icon: '◎' },
   schedule: { label: 'Schedule', icon: '◫' },
 };

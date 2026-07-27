@@ -442,7 +442,7 @@ function renderRelatedKnowledgeMemos(goal) {
 
   return `
     <div class="goal-knowledge-section" style="margin-top:10px">
-      <div style="font-size:11px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">📝 関連ナレッジ</div>
+      <div style="font-size:11px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">📝 関連メモ</div>
       ${related.map(m => `
         <div class="goal-knowledge-card" data-knowledge-id="${esc(m.id)}">
           <span style="font-size:13px;font-weight:600;flex:1">${esc(m.title || '無題')}</span>

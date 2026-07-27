@@ -764,6 +764,8 @@ const EXPRESSION_ATLAS_TAG = '__expression_atlas__';
 const EXPRESSION_ATLAS_BLOCK_TYPE = 'nuance-data';
 const TRANSLATION_SET_BLOCK_TYPE = 'translation-set-data';
 const ENGLISH_QUESTION_BLOCK_TYPE = 'english-question-data';
+const LEARNING_LIBRARY_TAG = '__learning_library__';
+const LEARNING_ENTRY_BLOCK_TYPE = 'learning-entry-data';
 const APP_MEDIA_PREFS_TAG = '__app_media_preferences__';
 const APP_MEDIA_PREFS_BLOCK_TYPE = 'app-media-preferences';
 
@@ -790,8 +792,17 @@ function isAppMediaPreferencesRecord(record) {
     && record.blocks.some(block => block?.type === APP_MEDIA_PREFS_BLOCK_TYPE);
 }
 
+function isLearningLibraryRecord(record) {
+  return Array.isArray(record?.tags)
+    && record.tags.includes(LEARNING_LIBRARY_TAG)
+    && Array.isArray(record.blocks)
+    && record.blocks.some(block => block?.type === LEARNING_ENTRY_BLOCK_TYPE);
+}
+
 function isInternalKnowledgeRecord(record) {
-  return isExpressionAtlasRecord(record) || isAppMediaPreferencesRecord(record);
+  return isExpressionAtlasRecord(record)
+    || isLearningLibraryRecord(record)
+    || isAppMediaPreferencesRecord(record);
 }
 
 function isNuanceRecord(record) {
@@ -1030,6 +1041,80 @@ function englishQuestionToRecord(question, existing = null) {
   };
 }
 
+function learningRecordToEntry(record) {
+  const data = record?.blocks?.find(block => block?.type === LEARNING_ENTRY_BLOCK_TYPE)?.data;
+  if (!data || typeof data !== 'object') return null;
+  return {
+    ...data,
+    id: record.id,
+    starred: !!record.starred,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
+function learningEntryToRecord(entry, existing = null) {
+  const now = new Date().toISOString();
+  const id = entry.id || existing?.id || generateId();
+  const data = {
+    schemaVersion: 1,
+    title: '',
+    originalQuestion: '',
+    titleSource: 'ai',
+    titleEditedByUser: false,
+    status: 'complete',
+    classification: {
+      majorId: 'interdisciplinary',
+      middleId: 'general_knowledge',
+      specialty: '',
+      relatedCategoryIds: [],
+    },
+    primaryConcept: null,
+    concepts: [],
+    facets: {
+      periods: [],
+      regions: [],
+      people: [],
+      organizations: [],
+      works: [],
+      systems: [],
+    },
+    answer: {
+      directAnswer: [],
+      sections: [],
+      cautions: [],
+    },
+    ...entry,
+  };
+  delete data.id;
+  delete data.starred;
+  delete data.createdAt;
+  delete data.updatedAt;
+  const title = String(data.title || data.originalQuestion || '無題の質問').trim();
+  const directText = (data.answer?.directAnswer || [])
+    .map(segment => segment?.text || '')
+    .join('');
+  const summary = directText || String(data.originalQuestion || '').trim();
+  const unchanged = atlasRecordIsUnchanged(
+    existing,
+    LEARNING_ENTRY_BLOCK_TYPE,
+    title,
+    summary,
+    data
+  ) && !!existing?.starred === !!entry.starred;
+  return {
+    id,
+    title,
+    summary,
+    blocks: [{ id: `${id}-learning`, type: LEARNING_ENTRY_BLOCK_TYPE, data }],
+    tags: existing?.tags || [LEARNING_LIBRARY_TAG],
+    starred: typeof entry.starred === 'boolean' ? entry.starred : !!existing?.starred,
+    url: '',
+    createdAt: existing?.createdAt || entry.createdAt || now,
+    updatedAt: unchanged ? (existing.updatedAt || entry.updatedAt || now) : now,
+  };
+}
+
 export function getKnowledgeMemos() {
   return getAllKnowledgeRecords().filter(record => !isInternalKnowledgeRecord(record));
 }
@@ -1219,6 +1304,60 @@ export function getEnglishQuestions() {
     .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
 }
 
+export function getLearningEntries() {
+  return getAllKnowledgeRecords()
+    .filter(isLearningLibraryRecord)
+    .map(learningRecordToEntry)
+    .filter(Boolean)
+    .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+}
+
+export function getLearningEntryById(id) {
+  return getLearningEntries().find(entry => entry.id === id) || null;
+}
+
+export function saveLearningEntries(entries) {
+  const records = getAllKnowledgeRecords();
+  const preserved = records.filter(record => !isLearningLibraryRecord(record));
+  const existingById = new Map(
+    records.filter(isLearningLibraryRecord).map(record => [record.id, record])
+  );
+  const learningRecords = (Array.isArray(entries) ? entries : [])
+    .filter(entry => entry && String(entry.originalQuestion || entry.title || '').trim())
+    .map(entry => learningEntryToRecord(entry, existingById.get(entry.id)));
+  if (!save(KNOWLEDGE_KEY, [...preserved, ...learningRecords])) return false;
+  _notifySync('knowledge_memos');
+  return true;
+}
+
+export function addLearningEntry(entry) {
+  const current = getLearningEntries();
+  const nextEntry = { ...entry, id: entry.id || generateId() };
+  return saveLearningEntries([nextEntry, ...current]) ? nextEntry : null;
+}
+
+export function updateLearningEntry(id, updates) {
+  const entries = getLearningEntries();
+  const index = entries.findIndex(entry => entry.id === id);
+  if (index < 0) return null;
+  entries[index] = { ...entries[index], ...updates, id };
+  return saveLearningEntries(entries) ? entries[index] : null;
+}
+
+export function deleteLearningEntry(id) {
+  const records = getAllKnowledgeRecords();
+  const target = records.find(record => record.id === id && isLearningLibraryRecord(record));
+  if (!target) return false;
+  if (!addTrashItem({
+    entityType: 'learning',
+    payload: target,
+    title: target.title || 'Knowledge',
+  })) return false;
+  if (!save(KNOWLEDGE_KEY, records.filter(record => record.id !== id))) return false;
+  _notifyDelete({ table: 'knowledge_memos', id });
+  return true;
+}
+
 export function addEnglishQuestion(question) {
   const text = String(question?.questionJa || '').trim();
   if (!text) return null;
@@ -1379,7 +1518,7 @@ export function restoreTrashItem(id) {
         }
       }
     } else restored = true;
-  } else if (item.entityType === 'atlas') {
+  } else if (item.entityType === 'atlas' || item.entityType === 'learning') {
     const records = getAllKnowledgeRecords();
     if (!records.find(record => record.id === entityId)) {
       restored = save(KNOWLEDGE_KEY, [
@@ -1583,7 +1722,7 @@ export function getReviewEntry(memoId) {
 export function exportBackup() {
   const { apiKey: _, ...safeSettings } = getSettings();
   return JSON.stringify({
-    version: 4,
+    version: 5,
     exportedAt: new Date().toISOString(),
     events: getEvents(),
     tasks: getTasks(),
@@ -1594,6 +1733,7 @@ export function exportBackup() {
     expressionEntries: getExpressionEntries(),
     translationSets: getTranslationSets(),
     englishQuestions: getEnglishQuestions(),
+    learningEntries: getLearningEntries(),
     appMediaPreferences: getAppMediaPreferences(),
     trash: getTrashItems(),
     habits: getHabits(),
@@ -1612,6 +1752,17 @@ export function importBackup(jsonStr) {
   if (data.expressionEntries) addExpressionEntries(data.expressionEntries);
   if (data.translationSets) data.translationSets.forEach(addTranslationSet);
   if (data.englishQuestions) data.englishQuestions.forEach(addEnglishQuestion);
+  if (data.learningEntries) {
+    const mergedLearning = new Map(getLearningEntries().map(entry => [entry.id, entry]));
+    data.learningEntries.forEach(entry => {
+      if (!entry?.id) return;
+      const current = mergedLearning.get(entry.id);
+      const currentTime = new Date(current?.updatedAt || 0).getTime() || 0;
+      const importedTime = new Date(entry.updatedAt || 0).getTime() || 0;
+      if (!current || importedTime >= currentTime) mergedLearning.set(entry.id, entry);
+    });
+    saveLearningEntries([...mergedLearning.values()]);
+  }
   if (data.appMediaPreferences) saveAppMediaPreferences(data.appMediaPreferences);
   if (data.trash)     saveTrashItems(data.trash);
   if (data.habits)    saveHabits(data.habits);

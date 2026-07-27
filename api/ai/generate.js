@@ -23,6 +23,7 @@ function pickThinkingConfig(model, actionType) {
     'nuance_generate',
     'translation_variants',
     'english_question',
+    'knowledge_answer',
   ]);
   const isComplex = complexActions.has(String(actionType || ''));
   if (String(model).startsWith('gemini-2.5-')) {
@@ -355,6 +356,94 @@ function pickResponseSchema(actionType, body) {
     };
   }
 
+  if (action === 'knowledge_answer') {
+    const segment = {
+      type: 'OBJECT',
+      properties: {
+        text: { type: 'STRING' },
+        marks: {
+          type: 'ARRAY',
+          items: {
+            type: 'STRING',
+            enum: ['strong', 'highlight-yellow', 'highlight-blue', 'warning'],
+          },
+        },
+        conceptKey: { type: 'STRING', description: 'A related concept key, or an empty string.' },
+      },
+      required: ['text', 'marks', 'conceptKey'],
+    };
+    const concept = {
+      type: 'OBJECT',
+      properties: {
+        key: { type: 'STRING', description: 'Stable lowercase concept key, preferably ASCII kebab-case.' },
+        label: { type: 'STRING', description: 'Natural Japanese display label.' },
+        aliases: stringArray('Useful Japanese or English alternate names.'),
+        role: { type: 'STRING', enum: ['primary', 'related'] },
+      },
+      required: ['key', 'label', 'aliases', 'role'],
+    };
+    return {
+      type: 'OBJECT',
+      properties: {
+        title: { type: 'STRING', description: 'A concise editable Japanese title.' },
+        classification: {
+          type: 'OBJECT',
+          properties: {
+            majorId: { type: 'STRING' },
+            middleId: { type: 'STRING' },
+            specialty: { type: 'STRING' },
+            relatedCategoryIds: {
+              type: 'ARRAY',
+              maxItems: 3,
+              items: { type: 'STRING' },
+            },
+          },
+          required: ['majorId', 'middleId', 'specialty', 'relatedCategoryIds'],
+        },
+        primaryConcept: concept,
+        concepts: { type: 'ARRAY', items: concept },
+        facets: {
+          type: 'OBJECT',
+          properties: {
+            periods: stringArray('Relevant periods or dates.'),
+            regions: stringArray('Relevant places or regions.'),
+            people: stringArray('Relevant people.'),
+            organizations: stringArray('Relevant organizations.'),
+            works: stringArray('Relevant works or source materials.'),
+            systems: stringArray('Relevant institutions or systems.'),
+          },
+          required: ['periods', 'regions', 'people', 'organizations', 'works', 'systems'],
+        },
+        answer: {
+          type: 'OBJECT',
+          properties: {
+            directAnswer: { type: 'ARRAY', items: segment },
+            sections: {
+              type: 'ARRAY',
+              minItems: 1,
+              maxItems: 4,
+              items: {
+                type: 'OBJECT',
+                properties: {
+                  heading: { type: 'STRING', description: 'Content-specific heading, or an empty string.' },
+                  paragraphs: {
+                    type: 'ARRAY',
+                    minItems: 1,
+                    items: { type: 'ARRAY', items: segment },
+                  },
+                },
+                required: ['heading', 'paragraphs'],
+              },
+            },
+            cautions: stringArray('Only genuine uncertainty, disputed points, or important caveats.'),
+          },
+          required: ['directAnswer', 'sections', 'cautions'],
+        },
+      },
+      required: ['title', 'classification', 'primaryConcept', 'concepts', 'facets', 'answer'],
+    };
+  }
+
   return null;
 }
 
@@ -404,6 +493,31 @@ function hasCompleteEnglishQuestionResponse(text) {
       String(example?.english || '').trim()
       && String(example?.japanese || '').trim()
     )).length >= 2
+  );
+}
+
+function hasCompleteKnowledgeResponse(text) {
+  const parsed = parseStructuredResponse(text);
+  const sections = Array.isArray(parsed?.answer?.sections) ? parsed.answer.sections : [];
+  const direct = Array.isArray(parsed?.answer?.directAnswer) ? parsed.answer.directAnswer : [];
+  const bodyText = [
+    ...direct.map(segment => segment?.text || ''),
+    ...sections.flatMap(section => (
+      Array.isArray(section?.paragraphs)
+        ? section.paragraphs.flatMap(paragraph => (
+          Array.isArray(paragraph) ? paragraph.map(segment => segment?.text || '') : []
+        ))
+        : []
+    )),
+  ].join('');
+  return Boolean(
+    String(parsed?.title || '').trim()
+    && String(parsed?.classification?.majorId || '').trim()
+    && String(parsed?.classification?.middleId || '').trim()
+    && direct.length
+    && sections.length
+    && bodyText.length >= 1000
+    && !/(\*\*|__|```|<\/?[a-z][^>]*>)/i.test(bodyText)
   );
 }
 
@@ -622,7 +736,9 @@ export default async function handler(req, res) {
       && !hasCompleteNuanceResponse(text);
     const incompleteEnglishQuestion = body.actionType === 'english_question'
       && !hasCompleteEnglishQuestionResponse(text);
-    if (!text || incompleteTranslation || incompleteNuance || incompleteEnglishQuestion) {
+    const incompleteKnowledge = body.actionType === 'knowledge_answer'
+      && !hasCompleteKnowledgeResponse(text);
+    if (!text || incompleteTranslation || incompleteNuance || incompleteEnglishQuestion || incompleteKnowledge) {
       const retryPayload = {
         ...payload,
         generationConfig: {
@@ -655,6 +771,15 @@ The previous response was incomplete. Return five to eight distinct expressions 
             text: `${String(body.systemText || '')}
 
 The previous response was incomplete. Answer the learner's exact question directly even when it is short, colloquial, or ambiguous. Return a concise direct answer, a careful explanation, and at least two natural English examples with Japanese translations. Do not ask the learner to rewrite or clarify the question when a reasonable interpretation is possible.`,
+          }],
+        };
+      }
+      if (body.actionType === 'knowledge_answer') {
+        retryPayload.systemInstruction = {
+          parts: [{
+            text: `${String(body.systemText || '')}
+
+The previous response was incomplete or contained formatting noise. Return one complete, self-contained Japanese learning entry. The explanatory body must contain at least 1200 Japanese characters and use natural paragraphs with only content-specific headings. Do not output Markdown, HTML, **, __, or code fences. Put emphasis only in the marks arrays. Never ask the user to clarify when a reasonable interpretation is possible.`,
           }],
         };
       }

@@ -186,6 +186,8 @@ function render() {
   const addExtras = container.querySelector('.tasks-add-extras');
   const addTagsRow = container.querySelector('.tasks-add-tags-row');
   if (addForm && addExtras && addTagsRow) {
+    const controls = document.createElement('div');
+    controls.className = 'tasks-top-controls';
     const toggle = document.createElement('button');
     toggle.type = 'button';
     toggle.id = 'task-add-toggle';
@@ -195,7 +197,15 @@ function render() {
       <span>+ 新しいタスクを追加</span>
       <span class="tasks-add-toggle-arrow">${state.addFormOpen ? '-' : '+'}</span>
     `;
-    addForm.parentNode.insertBefore(toggle, addForm);
+    const analyticsButton = document.createElement('button');
+    analyticsButton.type = 'button';
+    analyticsButton.className = 'btn-icon tasks-analysis-btn';
+    analyticsButton.setAttribute('aria-label', 'タスク分析を開く');
+    analyticsButton.title = 'タスク分析';
+    analyticsButton.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 3h14a2 2 0 0 1 2 2v14H3V5a2 2 0 0 1 2-2zm2 12h2V9H7v6zm4 0h2V6h-2v9zm4 0h2v-3h-2v3z"/></svg>';
+    controls.append(toggle, analyticsButton);
+    addForm.parentNode.insertBefore(controls, addForm);
+    analyticsButton.addEventListener('click', () => nav('analytics'));
 
     const applyAddFormVisibility = () => {
       addForm.style.display = state.addFormOpen ? '' : 'none';

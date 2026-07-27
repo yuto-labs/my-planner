@@ -472,7 +472,7 @@ export function initAnalytics(container) {
     <div class="analytics-page">
       <div class="analytics-tab-bar">
         <button class="analytics-tab active" data-tab="tasks">Tasks</button>
-        <button class="analytics-tab" data-tab="knowledge">Knowledge</button>
+        <button class="analytics-tab" data-tab="knowledge">Memo</button>
       </div>
       <div class="analytics-tab-panel" id="atab-tasks">${renderTasksTab()}</div>
       <div class="analytics-tab-panel hidden" id="atab-knowledge">${renderKnowledgeTab()}</div>

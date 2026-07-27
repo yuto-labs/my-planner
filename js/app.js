@@ -30,6 +30,12 @@ import {
   hasActiveExpressionAtlasWork,
 } from './modules/expression-atlas.js';
 import { initAnalytics } from './modules/analytics.js';
+import {
+  initLearningLibrary,
+  initLearningDetail,
+  backFromLearningDetail,
+  hasActiveKnowledgeWork,
+} from './modules/learning-library.js';
 import { openSearch, closeSearch } from './modules/search.js';
 import { initArchive } from './modules/archive.js';
 import { initTagsPage, setTagFilter } from './modules/tagspage.js';
@@ -44,11 +50,13 @@ const MODULES = {
   settings:          { title: 'Settings',   init: initSettings },
   'ai-settings':     { title: 'AI設定', init: initAISettings,      back: 'settings' },
   today:             { title: 'Today',      init: initToday,          back: 'home' },
-  knowledge:         { title: 'Knowledge Notes', init: initKnowledge },
-  'knowledge-detail':{ title: 'Note',       init: initKnowledgeDetail, back: 'knowledge', backAction: backFromKnowledgeDetail },
-  'knowledge-graph': { title: 'Knowledge Graph', init: initKnowledgeGraph, back: 'knowledge' },
-  'expression-atlas':{ title: 'NUANCE ATLAS', init: initExpressionAtlas, back: 'knowledge', backAction: backFromExpressionAtlas },
-  analytics:         { title: 'Analytics',  init: initAnalytics },
+  memo:              { title: 'Memo',       init: initKnowledge },
+  knowledge:         { title: 'Knowledge',  init: initLearningLibrary },
+  'learning-detail': { title: 'Knowledge',  init: initLearningDetail, back: 'knowledge', backAction: backFromLearningDetail, navRoot: 'knowledge' },
+  'knowledge-detail':{ title: 'Note',       init: initKnowledgeDetail, back: 'memo', backAction: backFromKnowledgeDetail, navRoot: 'memo' },
+  'knowledge-graph': { title: 'Memo Map', init: initKnowledgeGraph, back: 'memo', navRoot: 'memo' },
+  'expression-atlas':{ title: 'NUANCE ATLAS', init: initExpressionAtlas, back: 'memo', backAction: backFromExpressionAtlas, navRoot: 'memo' },
+  analytics:         { title: 'Task Analytics', init: initAnalytics, back: 'tasks', navRoot: 'tasks' },
   review:            { title: '復習セッション', init: initReview, back: 'home' },
   archive:           { title: 'Trash',      init: initArchive,         back: 'tasks' },
   tags:              { title: 'Tags',       init: initTagsPage },
@@ -107,6 +115,7 @@ function hasUnsavedDraft() {
 
   if (currentView === 'knowledge-detail' && hasUnsavedKnowledgeChanges()) return true;
   if (currentView === 'expression-atlas' && hasActiveExpressionAtlasWork()) return true;
+  if ((currentView === 'knowledge' || currentView === 'learning-detail') && hasActiveKnowledgeWork()) return true;
 
   if (currentView === 'calendar' && (hasOpenModal() || hasOpenDatePicker() || hasOpenCalendarSheet())) {
     return true;
@@ -225,7 +234,7 @@ export function navigate(view, options = {}) {
 
   // Update nav active state
   document.querySelectorAll('#bottom-nav .nav-btn').forEach(btn => {
-    const active = btn.dataset.view === view;
+    const active = btn.dataset.view === (MODULES[view].navRoot || view);
     btn.classList.toggle('active', active);
     if (active) btn.setAttribute('aria-current', 'page');
     else btn.removeAttribute('aria-current');
@@ -973,13 +982,13 @@ function setupFAB() {
 
   // Show/hide based on view
   const updateFab = () => {
-    const hidden = ['home', 'settings', 'ai-settings', 'analytics', 'knowledge-graph', 'knowledge-detail', 'expression-atlas', 'goals', 'review', 'archive'];
+    const hidden = ['home', 'settings', 'ai-settings', 'analytics', 'knowledge', 'learning-detail', 'knowledge-graph', 'knowledge-detail', 'expression-atlas', 'goals', 'review', 'archive'];
     fab.classList.toggle('hidden', hidden.includes(currentView));
     if (currentView === 'tasks') {
       fab.setAttribute('aria-label', 'Open AI planner');
       fab.title = 'Open AI planner';
       fab.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M7 2v2H5c-1.1 0-2 .9-2 2v13c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-2V2h-2v2H9V2H7zm12 8H5V8h14v2zm-8 3h2v2h-2v-2zm4 0h2v2h-2v-2zm-8 0h2v2H7v-2z"/></svg>';
-    } else if (currentView === 'knowledge') {
+    } else if (currentView === 'memo') {
       fab.setAttribute('aria-label', 'NUANCE ATLASを開く');
       fab.title = '表現帳';
       fab.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="25" height="25" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v16H6.5A2.5 2.5 0 0 0 4 21.5v-16Z"/><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H13v16h4.5a2.5 2.5 0 0 1 2.5 2.5v-16Z"/><path d="M7 7h1.5M15.5 7H17M7 10h1.5M15.5 10H17"/></svg>';
@@ -998,7 +1007,7 @@ function setupFAB() {
       case 'calendar':
         openCalendarAddFlow();
         break;
-      case 'knowledge':
+      case 'memo':
         navigate('expression-atlas');
         break;
       default:
@@ -1056,8 +1065,8 @@ function setupKeyboardShortcuts() {
       case '1': e.preventDefault(); navigate('home');      break;
       case '2': e.preventDefault(); navigate('calendar');  break;
       case '3': e.preventDefault(); navigate('tasks');     break;
-      case '4': e.preventDefault(); navigate('knowledge'); break;
-      case '5': e.preventDefault(); navigate('analytics'); break;
+      case '4': e.preventDefault(); navigate('memo');      break;
+      case '5': e.preventDefault(); navigate('knowledge'); break;
     }
   });
 }

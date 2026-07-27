@@ -17,7 +17,7 @@ export function initKnowledgeGraph(container) {
     container.innerHTML = `
       <div class="empty-state" style="height:100%">
         <div class="empty-state-icon">🕸️</div>
-        <div class="empty-state-text">ナレッジメモがまだありません</div>
+        <div class="empty-state-text">メモがまだありません</div>
         <div class="empty-state-sub">メモを作成するとタグのネットワークが表示されます</div>
       </div>`;
     return;

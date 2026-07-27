@@ -1,0 +1,10 @@
+{
+  "name": "my-planner",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/knowledge-model.test.mjs tests/knowledge-storage.test.mjs tests/knowledge-sync.test.mjs",
+    "lint": "node scripts/check-syntax.mjs",
+    "build": "node scripts/check-syntax.mjs"
+  }
+}

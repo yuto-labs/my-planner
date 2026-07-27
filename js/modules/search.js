@@ -172,7 +172,7 @@ function renderResults(q, container) {
       <div class="search-group">
         <div class="search-group-label">Notes (${memos.length})</div>
         ${memos.slice(0, 5).map(m => `
-          <div class="search-result-item" data-result-nav="knowledge" role="button" tabindex="0">
+          <div class="search-result-item" data-result-nav="memo" role="button" tabindex="0">
             <span class="search-result-title">${highlight(m.title || 'Untitled', q)}</span>
             ${(m.tags || []).length
               ? `<span class="search-result-meta">${m.tags.slice(0, 3).map(t => `#${esc(t)}`).join(' ')}</span>`

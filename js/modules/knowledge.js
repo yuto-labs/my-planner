@@ -75,7 +75,7 @@ export function backFromKnowledgeDetail() {
     _pendingListScrollTop = prev?.scrollTop || 0;
     _pendingListAnchorId = prev?.anchorId || null;
     _backFromDetail = true;
-    window.AppNav?.navigate('knowledge', { preserveScroll: true, skipUnsavedGuard: true });
+    window.AppNav?.navigate('memo', { preserveScroll: true, skipUnsavedGuard: true });
   } else {
     currentMemoId = prev.memoId;
     _pendingDetailScrollTop = prev.scrollTop || 0;
@@ -261,13 +261,13 @@ function restoreKnowledgeListPosition() {
     return;
   }
 
-  if (mainNow?.dataset.view === 'knowledge' && targetTop > 0) {
+  if (mainNow?.dataset.view === 'memo' && targetTop > 0) {
     mainNow.scrollTop = targetTop;
   }
 
   requestAnimationFrame(() => {
     const main = document.getElementById('main-content');
-    if (!main || main.dataset.view !== 'knowledge') return;
+    if (!main || main.dataset.view !== 'memo') return;
 
     if (targetTop > 0) main.scrollTop = targetTop;
 
@@ -857,7 +857,7 @@ export function initKnowledgeDetail(container) {
   // Load memo or initialize new
   if (currentMemoId) {
     const memo = getKnowledgeMemoById(currentMemoId);
-    if (!memo) { nav('knowledge'); return; }
+    if (!memo) { nav('memo'); return; }
     edState = {
       id:      memo.id,
       title:   memo.title,
@@ -1205,7 +1205,7 @@ function renderViewMode(container) {
   });
 
   container.querySelector('#kn-delete-btn')?.addEventListener('click', () => {
-    if (!edState.id) { nav('knowledge'); return; }
+    if (!edState.id) { nav('memo'); return; }
     confirmDelete(edState.id, container);
   });
 
@@ -1573,7 +1573,7 @@ function renderEditMode(container) {
       markEditorBaseline();
       renderDetail(container, { preserveScroll: true });
     } else {
-      nav('knowledge', { skipUnsavedGuard: true });
+      nav('memo', { skipUnsavedGuard: true });
     }
   });
 
@@ -3109,7 +3109,7 @@ function confirmDelete(memoId, container) {
     }
     pushUndo({ type: 'delete_memo', memo: deleted });
     close();
-    nav('knowledge');
+    nav('memo');
     // Show undo toast after navigation
     setTimeout(() => {
       undoToast('メモを削除しました', () => {
