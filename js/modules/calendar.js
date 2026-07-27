@@ -910,6 +910,7 @@ function openDaySheet(dateStr) {
 
   const closeSheet = () => {
     sheet.classList.remove('cal-day-sheet--open');
+    sheet.style.pointerEvents = 'none';
     setTimeout(() => sheet.remove(), 290);
   };
 
