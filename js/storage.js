@@ -398,7 +398,8 @@ export function getCategoryColor(id) {
 const DEFAULT_SETTINGS = {
   apiKey: '',
   theme: 'light',
-  aiEnabled: false,
+  aiEnabled: true,
+  aiVisibilityConfigured: false,
   myScheduleColor: '#60A5FA',
   accentRgb: DEFAULT_ACCENT_RGB,
   themeTuning: DEFAULT_THEME_TUNING,
@@ -413,7 +414,16 @@ const DEFAULT_AI_RUNTIME = {
   message: '',
 };
 
-export function getSettings() { return { ...DEFAULT_SETTINGS, ...load(KEY.SETS, {}) }; }
+export function getSettings() {
+  const stored = load(KEY.SETS, {});
+  // Earlier builds wrote the old default (false) into settings even when the
+  // user never chose to hide AI. Keep an explicit user choice respected while
+  // allowing configured server AI to work after the upgrade.
+  const aiEnabled = stored.aiVisibilityConfigured === true
+    ? stored.aiEnabled === true
+    : true;
+  return { ...DEFAULT_SETTINGS, ...stored, aiEnabled };
+}
 export function saveSettings(s) { save(KEY.SETS, { ...getSettings(), ...s }); }
 
 export function getApiKey() { return getSettings().apiKey || ''; }

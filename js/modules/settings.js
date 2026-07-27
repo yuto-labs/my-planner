@@ -565,7 +565,7 @@ function wireCategories(container) {
 
 function wireAISettings(container) {
   container.querySelector('#ai-enabled-toggle')?.addEventListener('change', e => {
-    saveSettings({ aiEnabled: e.target.checked });
+    saveSettings({ aiEnabled: e.target.checked, aiVisibilityConfigured: true });
     toast(e.target.checked ? 'AI機能を表示しました' : 'AI機能を非表示にしました', 'info');
   });
 
