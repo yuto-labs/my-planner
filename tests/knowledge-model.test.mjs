@@ -88,3 +88,17 @@ test('finds exact duplicate questions without matching unrelated wording', () =>
   assert.equal(findDuplicateKnowledgeEntries([entry], ' なぜ空は青いの？ ').length, 1);
   assert.equal(findDuplicateKnowledgeEntries([entry], '夕焼けはなぜ赤いの？').length, 0);
 });
+
+test('an edited display title does not block a distinct new question', () => {
+  const entry = normalizeKnowledgeAnswer(rawAnswer(), 'なぜ空は青いの？');
+  entry.id = 'sky';
+  entry.title = '光の散乱';
+  assert.equal(findDuplicateKnowledgeEntries([entry], '光の散乱').length, 0);
+});
+
+test('rejects concept links that are absent from the concept list', () => {
+  const raw = rawAnswer();
+  raw.answer.sections[0].paragraphs[0][0].conceptKey = 'missing-concept';
+  const entry = normalizeKnowledgeAnswer(raw, 'なぜ空は青いの？');
+  assert.equal(validateKnowledgeEntry(entry).errors.includes('danglingConceptKey'), true);
+});

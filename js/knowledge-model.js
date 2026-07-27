@@ -153,6 +153,19 @@ export function validateKnowledgeEntry(entry) {
   if (!LEARNING_MIDDLE_BY_ID.has(entry?.classification?.middleId)) errors.push('middleId');
   if (!(entry?.answer?.directAnswer || []).length) errors.push('directAnswer');
   if (!(entry?.answer?.sections || []).length) errors.push('sections');
+  const conceptKeys = new Set((entry?.concepts || []).map(concept => concept?.key).filter(Boolean));
+  if (!entry?.primaryConcept?.key) errors.push('primaryConcept');
+  if (!conceptKeys.size) errors.push('concepts');
+  if (entry?.primaryConcept?.key && !conceptKeys.has(entry.primaryConcept.key)) {
+    errors.push('primaryConceptMissing');
+  }
+  const referencedKeys = [
+    ...(entry?.answer?.directAnswer || []),
+    ...(entry?.answer?.sections || []).flatMap(section => (
+      (section.paragraphs || []).flatMap(paragraph => paragraph || [])
+    )),
+  ].map(segment => segment?.conceptKey).filter(Boolean);
+  if (referencedKeys.some(key => !conceptKeys.has(key))) errors.push('danglingConceptKey');
   if (knowledgeAnswerText(entry).length < 900) errors.push('answerLength');
   return { valid: errors.length === 0, errors };
 }
@@ -189,6 +202,5 @@ export function findDuplicateKnowledgeEntries(entries, question) {
   if (!key) return [];
   return (Array.isArray(entries) ? entries : []).filter(entry => (
     normalizeKnowledgeKey(entry.originalQuestion) === key
-    || normalizeKnowledgeKey(entry.title) === key
   ));
 }

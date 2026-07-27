@@ -500,6 +500,17 @@ function hasCompleteKnowledgeResponse(text) {
   const parsed = parseStructuredResponse(text);
   const sections = Array.isArray(parsed?.answer?.sections) ? parsed.answer.sections : [];
   const direct = Array.isArray(parsed?.answer?.directAnswer) ? parsed.answer.directAnswer : [];
+  const concepts = Array.isArray(parsed?.concepts) ? parsed.concepts : [];
+  const conceptKeys = new Set(concepts.map(concept => String(concept?.key || '').trim()).filter(Boolean));
+  const primaryKey = String(parsed?.primaryConcept?.key || '').trim();
+  const referencedKeys = [
+    ...direct,
+    ...sections.flatMap(section => (
+      Array.isArray(section?.paragraphs)
+        ? section.paragraphs.flatMap(paragraph => (Array.isArray(paragraph) ? paragraph : []))
+        : []
+    )),
+  ].map(segment => String(segment?.conceptKey || '').trim()).filter(Boolean);
   const bodyText = [
     ...direct.map(segment => segment?.text || ''),
     ...sections.flatMap(section => (
@@ -514,6 +525,10 @@ function hasCompleteKnowledgeResponse(text) {
     String(parsed?.title || '').trim()
     && String(parsed?.classification?.majorId || '').trim()
     && String(parsed?.classification?.middleId || '').trim()
+    && primaryKey
+    && conceptKeys.has(primaryKey)
+    && conceptKeys.size
+    && referencedKeys.every(key => conceptKeys.has(key))
     && direct.length
     && sections.length
     && bodyText.length >= 1000
@@ -791,6 +806,13 @@ The previous response was incomplete or contained formatting noise. Return one c
         return;
       }
       text = extractText(data);
+      if (body.actionType === 'knowledge_answer' && !hasCompleteKnowledgeResponse(text)) {
+        await refundUsage(token, usage);
+        res.status(502).json({
+          error: 'AIの回答形式を検証できませんでした。内容は保存されていません。もう一度お試しください。',
+        });
+        return;
+      }
     }
 
     if (!text) {

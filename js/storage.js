@@ -912,6 +912,12 @@ function expressionEntryToRecord(entry, existing = null) {
   delete data.starred;
   delete data.createdAt;
   delete data.updatedAt;
+  const fieldFallback = entry.updatedAt || existing?.updatedAt || now;
+  data.fieldUpdatedAt = {
+    title: data.fieldUpdatedAt?.title || fieldFallback,
+    answer: data.fieldUpdatedAt?.answer || fieldFallback,
+    classification: data.fieldUpdatedAt?.classification || fieldFallback,
+  };
   const title = data.term;
   const summary = data.coreMeaningJa || data.nuanceJa || '';
   const targetStarred = typeof entry.starred === 'boolean' ? entry.starred : (existing?.starred || false);
@@ -1764,7 +1770,17 @@ export function importBackup(jsonStr) {
     saveLearningEntries([...mergedLearning.values()]);
   }
   if (data.appMediaPreferences) saveAppMediaPreferences(data.appMediaPreferences);
-  if (data.trash)     saveTrashItems(data.trash);
+  if (data.trash) {
+    const mergedTrash = new Map(getTrashItems().map(item => [item.id, item]));
+    data.trash.forEach(item => {
+      if (!item?.id) return;
+      const current = mergedTrash.get(item.id);
+      const currentTime = new Date(current?.updatedAt || current?.deletedAt || 0).getTime() || 0;
+      const importedTime = new Date(item.updatedAt || item.deletedAt || 0).getTime() || 0;
+      if (!current || importedTime >= currentTime) mergedTrash.set(item.id, item);
+    });
+    saveTrashItems([...mergedTrash.values()]);
+  }
   if (data.habits)    saveHabits(data.habits);
   if (data.habitDone) save(HABIT_DONE_KEY, data.habitDone);
   if (data.focusLogs) saveFocusLogs(data.focusLogs);

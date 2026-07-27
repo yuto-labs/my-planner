@@ -799,15 +799,15 @@ function mergeLearningRecord(local, remote) {
   if (!localData || !remoteData) return remote;
   const newerRecord = _syncVersion(local) > _syncVersion(remote) ? local : remote;
   const newerData = newerRecord === local ? localData : remoteData;
-  const titleData = fieldVersion(localData, 'title') > fieldVersion(remoteData, 'title')
-    ? localData
-    : remoteData;
-  const answerData = fieldVersion(localData, 'answer') > fieldVersion(remoteData, 'answer')
-    ? localData
-    : remoteData;
-  const classificationData = fieldVersion(localData, 'classification') > fieldVersion(remoteData, 'classification')
-    ? localData
-    : remoteData;
+  const pickFieldData = field => {
+    const localVersion = fieldVersion(localData, field);
+    const remoteVersion = fieldVersion(remoteData, field);
+    if (localVersion === remoteVersion) return newerData;
+    return localVersion > remoteVersion ? localData : remoteData;
+  };
+  const titleData = pickFieldData('title');
+  const answerData = pickFieldData('answer');
+  const classificationData = pickFieldData('classification');
   const mergedData = {
     ...newerData,
     originalQuestion: localData.originalQuestion || remoteData.originalQuestion || '',
@@ -1026,7 +1026,7 @@ async function _executeDelete(scopedPayload, epoch = _syncEpoch) {
     if (scopedPayload.table === 'knowledge_memos' && scopedPayload.id) {
       const deletionRecord = _ls('mp_trash', []).find(item => (
         item?.entityId === scopedPayload.id
-        && ['memo', 'atlas'].includes(item.entityType)
+        && ['memo', 'atlas', 'learning'].includes(item.entityType)
       ));
       if (deletionRecord) {
         const tombstoneResult = await _upsertRowsCompat(

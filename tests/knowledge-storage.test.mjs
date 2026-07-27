@@ -80,3 +80,11 @@ test('backup import merges learning entries without deleting local-only data', (
     ['from-backup', 'local-only']
   );
 });
+
+test('backup import preserves local trash items omitted from the backup', () => {
+  addLearningEntry(entry('learning-trash', '削除対象'));
+  deleteLearningEntry('learning-trash');
+  const localTrashId = getTrashItems()[0].id;
+  importBackup(JSON.stringify({ version: 5, trash: [] }));
+  assert.equal(getTrashItems().some(item => item.id === localTrashId), true);
+});

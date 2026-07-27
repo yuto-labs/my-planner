@@ -66,3 +66,24 @@ test('does not create a push loop for identical learning records', () => {
   const result = mergeLearningRecordsForSync([item], [structuredClone(item)]);
   assert.equal(result.pushCandidates.length, 0);
 });
+
+test('falls back to the newer record when legacy field timestamps are absent', () => {
+  const local = record({
+    title: '新しいローカル題名',
+    answer: '新しいローカル回答',
+    titleAt: '',
+    answerAt: '',
+    updatedAt: '2026-07-27T10:20:00.000Z',
+  });
+  const remote = record({
+    title: '古いリモート題名',
+    answer: '古いリモート回答',
+    titleAt: '',
+    answerAt: '',
+    updatedAt: '2026-07-27T10:00:00.000Z',
+  });
+  const result = mergeLearningRecordsForSync([local], [remote]);
+  const data = result.items[0].blocks[0].data;
+  assert.equal(data.title, '新しいローカル題名');
+  assert.equal(data.answer.directAnswer[0].text, '新しいローカル回答');
+});
