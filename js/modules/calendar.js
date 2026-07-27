@@ -640,20 +640,13 @@ function renderMonth() {
     });
   });
 
-  // Event chip on grid: select the parent cell's date (same as tapping the date number)
+  // Event chip on grid: open the event directly. Date cells keep their own
+  // first-tap selection behavior, but an actual event must remain one-tap.
   view.querySelectorAll('.cal-event-chip').forEach(chip => {
     chip.addEventListener('click', e => {
       e.stopPropagation();
-      const cell = chip.closest('.cal-cell');
-      const dateStr = cell?.dataset.date;
-      if (!dateStr) return;
-      if (_selectedDate === dateStr) {
-        openDaySheet(dateStr);
-      } else {
-        _selectedDate = dateStr;
-        view.querySelectorAll('.cal-cell').forEach(c => c.classList.remove('cal-cell--selected'));
-        cell.classList.add('cal-cell--selected');
-      }
+      const event = getVisibleEvents().find(item => item.id === chip.dataset.eventId);
+      if (event) openCalendarEvent(event);
     });
   });
 }
