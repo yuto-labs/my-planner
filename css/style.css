@@ -9436,6 +9436,19 @@ button.atlas-nuance-map-row:focus-visible {
 
 .kn-edit-title { width: 100%; background: none; border-width: medium; border-style: none; border-color: currentcolor; border-image: none; color: var(--text); font-size: 28px; font-weight: 750; letter-spacing: 0px; outline: none; padding: 18px 18px 7px; font-family: var(--ui-font); }
 
+#page-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kn-view-title,
+.kn-edit-title {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .kn-tag-input { flex: 1 1 0%; min-width: 140px; background: none; border-width: medium; border-style: none; border-color: currentcolor; border-image: none; outline: none; color: var(--text); font-size: 13px; font-family: inherit; padding: 6px 2px; }
 
 .kn-tag-suggest-btn { border: 1px solid var(--border); border-radius: 999px; background: var(--bg-hover); color: var(--text-muted); font-style: inherit; font-variant: inherit; font-stretch: inherit; line-height: inherit; font-family: inherit; font-optical-sizing: inherit; font-size-adjust: inherit; font-kerning: inherit; font-feature-settings: inherit; font-variation-settings: inherit; font-language-override: inherit; font-size: 11px; font-weight: 700; padding: 3px 9px; cursor: pointer; transition: background var(--transition), color var(--transition), border-color var(--transition); }

@@ -224,7 +224,10 @@ export async function verifyEmailOtp(email, token) {
 
 export async function signOut() {
   const client = await getClient();
-  if (client) await client.auth.signOut();
+  if (client) {
+    const { error } = await client.auth.signOut();
+    if (error) throw error;
+  }
   _client = null;
   setActiveUserId(null);
 }

@@ -2183,7 +2183,7 @@ function openModalGlobal(opts) {
   modal.className = 'modal';
   modal.innerHTML = `
     <div class="modal-header">
-      <span class="modal-title">${opts.title || ''}</span>
+      <span class="modal-title"></span>
       <button class="modal-close" aria-label="閉じる">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
       </button>
@@ -2192,6 +2192,7 @@ function openModalGlobal(opts) {
     ${opts.footer !== null ? '<div class="modal-footer"></div>' : ''}
   `;
 
+  modal.querySelector('.modal-title').textContent = String(opts.title || '');
   modal.querySelector('.modal-body').appendChild(opts.body);
   if (opts.footer && modal.querySelector('.modal-footer')) {
     modal.querySelector('.modal-footer').appendChild(opts.footer);
@@ -2227,7 +2228,10 @@ function closeModalGlobal() {
 function confirmGlobal(message, opts = {}) {
   return new Promise(resolve => {
     const body = document.createElement('div');
-    body.innerHTML = `<p style="font-size:15px;line-height:1.6">${message}</p>`;
+    const messageEl = document.createElement('p');
+    messageEl.style.cssText = 'font-size:15px;line-height:1.6';
+    messageEl.textContent = String(message || '');
+    body.appendChild(messageEl);
 
     const footer = document.createElement('div');
     footer.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;width:100%';

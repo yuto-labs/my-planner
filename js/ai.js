@@ -1027,7 +1027,26 @@ export async function interpretPlannerInput(text, context = {}) {
     'planner_action'
   );
   const parsed = tryParseJSON(result);
-  if (!parsed?.action) throw new Error('AIが操作内容を判断できませんでした。予定名・日付・時刻をもう少し具体的に入力してください。');
+  const allowedActions = new Set([
+    'task', 'event', 'schedule', 'memo', 'database',
+    'delete_event', 'delete_task', 'delete_memo',
+  ]);
+  if (!allowedActions.has(parsed?.action)) {
+    throw new Error('AIが安全に実行できる操作を判断できませんでした。内容を変えず、もう一度お試しください。');
+  }
+  if (['delete_event', 'delete_task', 'delete_memo'].includes(parsed.action)
+    && !String(parsed.targetTitle || parsed.title || '').trim()) {
+    throw new Error('削除対象を特定できなかったため、何も削除していません。');
+  }
+  const validDate = value => value == null || /^\d{4}-\d{2}-\d{2}$/.test(String(value));
+  const validTime = value => value == null || /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(value));
+  if (!validDate(parsed.date) || !validDate(parsed.dueDate)
+    || !validTime(parsed.startTime) || !validTime(parsed.endTime) || !validTime(parsed.dueTime)) {
+    throw new Error('AIが返した日付または時刻が不正なため、何も保存していません。');
+  }
+  if (parsed.action === 'schedule' && parsed.startTime >= parsed.endTime) {
+    throw new Error('終了時刻が開始時刻より後になっていないため、何も保存していません。');
+  }
   const explicitDate = resolveRelativeDate(text, localToday);
   if (explicitDate) {
     if (parsed.action === 'task' || parsed.action === 'delete_task') parsed.dueDate = explicitDate;

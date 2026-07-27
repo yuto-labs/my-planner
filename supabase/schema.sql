@@ -763,19 +763,21 @@ set search_path = public
 as $$
 declare
   v_user_id uuid := auth.uid();
-  v_cost integer := greatest(1, least(coalesce(p_cost, 1), 20));
+  v_cost integer := 1;
+  v_user_daily_limit integer := 50;
+  v_app_daily_limit integer := 500;
+  v_minute_limit integer := 30;
   v_day_start timestamptz := (date_trunc('day', now() at time zone 'Asia/Tokyo') at time zone 'Asia/Tokyo');
   v_minute_start timestamptz := now() - interval '1 minute';
   v_user_used integer := 0;
   v_app_used integer := 0;
   v_minute_used integer := 0;
-  v_event_id uuid;
 begin
   if v_user_id is null then
     return jsonb_build_object('ok', false, 'reason', 'not_authenticated', 'message', 'AIを使うにはログインしてください。');
   end if;
 
-  perform pg_advisory_xact_lock(hashtext(v_user_id::text));
+  perform pg_advisory_xact_lock(hashtext('my-planner-ai-usage'));
 
   select coalesce(sum(cost), 0) into v_user_used
     from ai_usage_events
@@ -790,85 +792,57 @@ begin
     from ai_usage_events
     where created_at >= v_minute_start;
 
-  if v_user_used + v_cost > p_user_daily_limit then
+  if v_user_used + v_cost > v_user_daily_limit then
     return jsonb_build_object(
       'ok', false,
       'reason', 'user_daily_limit',
       'message', '今日はAIを使い切りました。明日また使えます。',
       'cost', v_cost,
       'userUsedToday', v_user_used,
-      'userDailyLimit', p_user_daily_limit,
-      'userRemaining', greatest(0, p_user_daily_limit - v_user_used)
+      'userDailyLimit', v_user_daily_limit,
+      'userRemaining', greatest(0, v_user_daily_limit - v_user_used)
     );
   end if;
 
-  if v_app_used + v_cost > p_app_daily_limit then
+  if v_app_used + v_cost > v_app_daily_limit then
     return jsonb_build_object(
       'ok', false,
       'reason', 'app_daily_limit',
       'message', '今日はアプリ全体のAI利用上限に達しました。明日また使えます。',
       'cost', v_cost,
       'userUsedToday', v_user_used,
-      'userDailyLimit', p_user_daily_limit,
-      'userRemaining', greatest(0, p_user_daily_limit - v_user_used)
+      'userDailyLimit', v_user_daily_limit,
+      'userRemaining', greatest(0, v_user_daily_limit - v_user_used)
     );
   end if;
 
-  if v_minute_used + v_cost > p_minute_limit then
+  if v_minute_used + v_cost > v_minute_limit then
     return jsonb_build_object(
       'ok', false,
       'reason', 'minute_limit',
       'message', 'AIリクエストが混み合っています。少し待ってからもう一度試してください。',
       'cost', v_cost,
       'userUsedToday', v_user_used,
-      'userDailyLimit', p_user_daily_limit,
-      'userRemaining', greatest(0, p_user_daily_limit - v_user_used)
+      'userDailyLimit', v_user_daily_limit,
+      'userRemaining', greatest(0, v_user_daily_limit - v_user_used)
     );
   end if;
 
   insert into ai_usage_events (user_id, action_type, cost)
-  values (v_user_id, coalesce(nullif(left(p_action_type, 60), ''), 'ai_request'), v_cost)
-  returning id into v_event_id;
+  values (v_user_id, coalesce(nullif(left(p_action_type, 60), ''), 'ai_request'), v_cost);
 
   return jsonb_build_object(
     'ok', true,
-    'claimId', v_event_id,
     'cost', v_cost,
     'userUsedToday', v_user_used + v_cost,
-    'userDailyLimit', p_user_daily_limit,
-    'userRemaining', greatest(0, p_user_daily_limit - v_user_used - v_cost),
+    'userDailyLimit', v_user_daily_limit,
+    'userRemaining', greatest(0, v_user_daily_limit - v_user_used - v_cost),
     'appUsedToday', v_app_used + v_cost
   );
 end;
 $$;
 
+revoke all on function claim_ai_usage(integer, text, integer, integer, integer) from public;
 grant execute on function claim_ai_usage(integer, text, integer, integer, integer) to authenticated;
 
 drop function if exists refund_ai_usage(uuid);
-
-create or replace function refund_ai_usage(
-  p_claim_id uuid
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_user_id uuid := auth.uid();
-  v_deleted integer := 0;
-begin
-  if v_user_id is null then
-    return jsonb_build_object('ok', false, 'reason', 'not_authenticated');
-  end if;
-
-  delete from ai_usage_events
-    where id = p_claim_id
-      and user_id = v_user_id;
-
-  get diagnostics v_deleted = row_count;
-  return jsonb_build_object('ok', true, 'refunded', v_deleted);
-end;
-$$;
-
-grant execute on function refund_ai_usage(uuid) to authenticated;

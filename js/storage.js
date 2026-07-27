@@ -1793,6 +1793,21 @@ export function clearUserContentLocal() {
   });
 }
 
+export function hasUserContentLocal() {
+  return USER_CONTENT_KEYS.some(key => {
+    try {
+      const value = localStorage.getItem(key);
+      if (value === null) return false;
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed.length > 0;
+      if (parsed && typeof parsed === 'object') return Object.keys(parsed).length > 0;
+      return String(parsed ?? '').trim().length > 0;
+    } catch {
+      return true;
+    }
+  });
+}
+
 const USER_SNAPSHOT_PREFIX = 'mp_user_snapshot:';
 const USER_SNAPSHOT_DB = 'my-planner-user-snapshots';
 const USER_SNAPSHOT_STORE = 'snapshots';

@@ -62,8 +62,11 @@ export function openKnowledgeMemo(id) {
   currentMemoId  = id;
   pendingNewOpts = null;
 
-  if (fromDetail && main) initKnowledgeDetail(main);
-  else nav('knowledge-detail');
+  const routeHash = `knowledge-detail?id=${encodeURIComponent(id)}`;
+  if (fromDetail && main) {
+    window.history.replaceState(null, '', `#${routeHash}`);
+    initKnowledgeDetail(main);
+  } else nav('knowledge-detail', { routeHash });
 
   if (fromDetail && main) main.scrollTop = 0;
 }
@@ -79,9 +82,12 @@ export function backFromKnowledgeDetail() {
   } else {
     currentMemoId = prev.memoId;
     _pendingDetailScrollTop = prev.scrollTop || 0;
+    const routeHash = `knowledge-detail?id=${encodeURIComponent(prev.memoId)}`;
     const main = document.getElementById('main-content');
-    if (main?.dataset.view === 'knowledge-detail') initKnowledgeDetail(main);
-    else nav('knowledge-detail');
+    if (main?.dataset.view === 'knowledge-detail') {
+      window.history.replaceState(null, '', `#${routeHash}`);
+      initKnowledgeDetail(main);
+    } else nav('knowledge-detail', { routeHash });
   }
 }
 
@@ -114,7 +120,7 @@ const knBack = backFromKnowledgeDetail;
 export function openNewKnowledgeMemo(opts = {}) {
   currentMemoId  = null;
   pendingNewOpts = opts;
-  nav('knowledge-detail');
+  nav('knowledge-detail', { routeHash: 'knowledge-detail?new=1' });
 }
 
 // ============================================================
@@ -854,6 +860,15 @@ export function initKnowledgeDetail(container) {
   const restoreScrollTop = _pendingDetailScrollTop > 0 ? _pendingDetailScrollTop : currentScrollTop;
   if (main) main.scrollTop = restoreScrollTop;
 
+  const routeQuery = new URLSearchParams(window.location.hash.split('?')[1] || '');
+  const routeMemoId = routeQuery.get('id');
+  if (routeMemoId) {
+    currentMemoId = routeMemoId;
+    pendingNewOpts = null;
+  } else if (routeQuery.has('new')) {
+    currentMemoId = null;
+  }
+
   // Load memo or initialize new
   if (currentMemoId) {
     const memo = getKnowledgeMemoById(currentMemoId);
@@ -1459,7 +1474,7 @@ function renderEditMode(container) {
 
       <!-- Title -->
       <input class="kn-edit-title" id="kn-edit-title"
-        placeholder="タイトルを入力…" value="${esc(title)}" autocomplete="off">
+        placeholder="タイトルを入力…" value="${esc(title)}" maxlength="180" autocomplete="off">
 
       <!-- Tags -->
       <div class="kn-edit-meta">
@@ -1581,7 +1596,7 @@ function renderEditMode(container) {
 
   // Wire title input
   container.querySelector('#kn-edit-title')?.addEventListener('input', e => {
-    edState.title = e.target.value;
+    edState.title = e.target.value.slice(0, 180);
   });
 
   container.querySelector('#kn-review-enabled')?.addEventListener('change', e => {
@@ -3000,7 +3015,7 @@ function renderTagDisplay(container) {
 async function saveMemo(container) {
   // Sync title
   const titleInput = container.querySelector('#kn-edit-title');
-  if (titleInput) edState.title = titleInput.value.trim();
+  if (titleInput) edState.title = titleInput.value.trim().slice(0, 180);
 
   // Sync block texts from DOM
   container.querySelectorAll('.kn-block-focusable').forEach(el => {

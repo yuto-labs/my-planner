@@ -1,8 +1,67 @@
 function readBody(req) {
   if (typeof req.body === 'string') {
-    try { return JSON.parse(req.body); } catch { return {}; }
+    try { return JSON.parse(req.body); } catch { return null; }
   }
   return req.body || {};
+}
+
+const ACTION_LIMITS = Object.freeze({
+  ai_request: 600,
+  daily_message: 240,
+  event_parse: 400,
+  energy_patterns: 500,
+  analytics_summary: 1200,
+  monthly_report: 1400,
+  tag_suggest: 300,
+  term_explain: 500,
+  memo_format: 2400,
+  english_question: 2600,
+  knowledge_answer: 12000,
+  nuance_generate: 12000,
+  translation_variants: 9000,
+  memo_summary: 700,
+  goal_split: 2200,
+  batch_tags: 2200,
+  planner_action: 1400,
+  task_schedule: 4000,
+});
+const MAX_SYSTEM_CHARS = 32_000;
+const MAX_USER_CHARS = 120_000;
+const JSON_ACTIONS = new Set([
+  'event_parse', 'energy_patterns', 'monthly_report', 'tag_suggest',
+  'memo_format', 'english_question', 'knowledge_answer', 'nuance_generate',
+  'translation_variants', 'memo_summary', 'goal_split', 'batch_tags',
+  'planner_action', 'task_schedule',
+]);
+
+function validateRequestBody(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw Object.assign(new Error('Invalid JSON request body.'), { status: 400 });
+  }
+  const actionType = String(body.actionType || 'ai_request');
+  const maxAllowed = ACTION_LIMITS[actionType];
+  if (!maxAllowed) {
+    throw Object.assign(new Error('Unsupported AI action.'), { status: 400 });
+  }
+  const systemText = String(body.systemText || '');
+  const userText = String(body.userText || '');
+  if (systemText.length > MAX_SYSTEM_CHARS || userText.length > MAX_USER_CHARS) {
+    throw Object.assign(new Error('AI request is too large.'), { status: 413 });
+  }
+  const requested = Number(body.maxTokens);
+  const maxTokens = Number.isFinite(requested)
+    ? Math.max(64, Math.min(maxAllowed, Math.trunc(requested)))
+    : Math.min(300, maxAllowed);
+  return {
+    actionType,
+    systemText,
+    userText,
+    maxTokens,
+    modelPreference: String(body.modelPreference || ''),
+    responseFormat: JSON_ACTIONS.has(actionType)
+      ? 'json'
+      : (body.responseFormat === 'json' ? 'json' : 'text'),
+  };
 }
 
 function pickModel(pref) {
@@ -95,6 +154,51 @@ function pickResponseSchema(actionType, body) {
     };
   }
 
+  if (action === 'planner_action') {
+    return {
+      type: 'OBJECT',
+      properties: {
+        action: {
+          type: 'STRING',
+          enum: ['task', 'event', 'schedule', 'memo', 'database', 'delete_event', 'delete_task', 'delete_memo'],
+        },
+        title: { type: 'STRING' },
+        targetTitle: { type: 'STRING' },
+        date: nullableString('Local date in YYYY-MM-DD format, or null.'),
+        startTime: nullableString('Local start time in HH:MM format, or null.'),
+        endTime: nullableString('Local end time in HH:MM format, or null.'),
+        dueDate: nullableString('Local due date in YYYY-MM-DD format, or null.'),
+        dueTime: nullableString('Local due time in HH:MM format, or null.'),
+        weight: { type: 'STRING', enum: ['large', 'medium', 'small'] },
+        categoryName: nullableString('One exact supplied category name, or null.'),
+        isTentative: { type: 'BOOLEAN' },
+        estimatedMinutes: { type: 'INTEGER', nullable: true, minimum: 1, maximum: 1440 },
+        tags: stringArray('Only tags supported by the user input or supplied context.'),
+        memo: { type: 'STRING' },
+        blocks: {
+          type: 'ARRAY',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              type: { type: 'STRING', enum: ['paragraph', 'h2', 'bullet'] },
+              text: { type: 'STRING' },
+            },
+            required: ['type', 'text'],
+          },
+        },
+        fields: stringArray('Database field labels.'),
+        rows: { type: 'ARRAY', items: { type: 'OBJECT' } },
+        message: { type: 'STRING' },
+      },
+      required: [
+        'action', 'title', 'targetTitle', 'date', 'startTime', 'endTime',
+        'dueDate', 'dueTime', 'weight', 'categoryName', 'isTentative',
+        'estimatedMinutes', 'tags', 'memo',
+        'blocks', 'fields', 'rows', 'message',
+      ],
+    };
+  }
+
   if (action === 'memo_format') {
     return {
       type: 'OBJECT',
@@ -154,6 +258,7 @@ function pickResponseSchema(actionType, body) {
             properties: {
               term: { type: 'STRING' },
               lemma: { type: 'STRING' },
+              pronunciationIpa: { type: 'STRING' },
               aliases: stringArray('Inflected forms or useful spelling variants.'),
               senseId: { type: 'STRING' },
               partOfSpeech: { type: 'STRING' },
@@ -221,6 +326,7 @@ function pickResponseSchema(actionType, body) {
             required: [
               'term',
               'lemma',
+              'pronunciationIpa',
               'aliases',
               'senseId',
               'partOfSpeech',
@@ -536,15 +642,53 @@ function hasCompleteKnowledgeResponse(text) {
   );
 }
 
+function hasCompleteStructuredResponse(actionType, text) {
+  const parsed = parseStructuredResponse(text);
+  if (!parsed) return false;
+  if (actionType === 'translation_variants') return hasCompleteTranslationResponse(text);
+  if (actionType === 'nuance_generate') return hasCompleteNuanceResponse(text);
+  if (actionType === 'english_question') return hasCompleteEnglishQuestionResponse(text);
+  if (actionType === 'knowledge_answer') return hasCompleteKnowledgeResponse(text);
+  if (actionType === 'event_parse') {
+    const dateTime = value => value === null || /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:00$/.test(value);
+    return Boolean(String(parsed.title || '').trim() && dateTime(parsed.start) && dateTime(parsed.end));
+  }
+  if (actionType === 'planner_action') {
+    const actions = new Set(['task', 'event', 'schedule', 'memo', 'database', 'delete_event', 'delete_task', 'delete_memo']);
+    const date = value => value === null || /^\d{4}-\d{2}-\d{2}$/.test(value);
+    const time = value => value === null || /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+    if (!actions.has(parsed.action) || !date(parsed.date) || !date(parsed.dueDate)
+      || !time(parsed.startTime) || !time(parsed.endTime) || !time(parsed.dueTime)) return false;
+    if (['delete_event', 'delete_task', 'delete_memo'].includes(parsed.action)) {
+      return Boolean(String(parsed.targetTitle || parsed.title || '').trim());
+    }
+    return Boolean(String(parsed.title || '').trim());
+  }
+  if (actionType === 'task_schedule') {
+    const items = Array.isArray(parsed.scheduleItems) ? parsed.scheduleItems : null;
+    return Boolean(items && items.every(item => (
+      String(item?.taskId || '').trim()
+      && /^\d{4}-\d{2}-\d{2}$/.test(item?.date)
+      && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(item?.startTime)
+      && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(item?.endTime)
+      && item.startTime < item.endTime
+    )));
+  }
+  return true;
+}
+
 async function requestGemini(key, model, payload) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 44_000);
   try {
     const upstream = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': key,
+        },
         body: JSON.stringify(payload),
         signal: controller.signal,
       }
@@ -558,9 +702,9 @@ async function requestGemini(key, model, payload) {
 
 const DEFAULT_SUPABASE_URL = 'https://nhgbvlovptelaqcurobv.supabase.co';
 const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5oZ2J2bG92cHRlbGFxY3Vyb2J2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMTY2NzcsImV4cCI6MjA5NjU5MjY3N30.Vgsy9--B3d5FoxoHpvjC00OPPzE2WUwzP8GV2LE4-p4';
-const USER_DAILY_LIMIT = Number(process.env.AI_USER_DAILY_LIMIT || 50);
-const APP_DAILY_LIMIT = Number(process.env.AI_APP_DAILY_LIMIT || 500);
-const APP_MINUTE_LIMIT = Number(process.env.AI_APP_MINUTE_LIMIT || 30);
+const USER_DAILY_LIMIT = 50;
+const APP_DAILY_LIMIT = 500;
+const APP_MINUTE_LIMIT = 30;
 
 function todayJstStr() {
   const parts = new Intl.DateTimeFormat('en', {
@@ -644,25 +788,6 @@ async function claimUsage(token, body) {
   return data;
 }
 
-async function refundUsage(token, usage) {
-  const claimId = usage?.claimId;
-  if (!claimId) return;
-  const cfg = getSupabaseConfig();
-  try {
-    await fetch(`${cfg.url}/rest/v1/rpc/refund_ai_usage`, {
-      method: 'POST',
-      headers: {
-        apikey: cfg.anonKey,
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ p_claim_id: claimId }),
-    });
-  } catch {
-    // Usage refund is best-effort; the user-facing error should stay about AI.
-  }
-}
-
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
 
@@ -677,7 +802,13 @@ export default async function handler(req, res) {
     return;
   }
 
-  const body = readBody(req);
+  let body;
+  try {
+    body = validateRequestBody(readBody(req));
+  } catch (error) {
+    res.status(error?.status || 400).json({ error: error?.message || 'Invalid AI request.' });
+    return;
+  }
   const token = getBearerToken(req);
   let usage = null;
   try {
@@ -692,9 +823,9 @@ export default async function handler(req, res) {
   }
 
   const model = pickModel(body.modelPreference);
-  const responseFormat = body.responseFormat === 'json' ? 'json' : 'text';
+  const responseFormat = body.responseFormat;
   const generationConfig = {
-    maxOutputTokens: Number(body.maxTokens || 300),
+    maxOutputTokens: body.maxTokens,
     responseMimeType: responseFormat === 'json' ? 'application/json' : 'text/plain',
     thinkingConfig: pickThinkingConfig(model, body.actionType),
   };
@@ -738,27 +869,23 @@ export default async function handler(req, res) {
       ({ upstream, data } = await requestGemini(key, model, payload));
     }
     if (!upstream.ok) {
-      await refundUsage(token, usage);
       const msg = data?.error?.message || `Gemini upstream error ${upstream.status}`;
       res.status(upstream.status).json({ error: msg });
       return;
     }
 
     let text = extractText(data);
-    const incompleteTranslation = body.actionType === 'translation_variants'
-      && !hasCompleteTranslationResponse(text);
-    const incompleteNuance = body.actionType === 'nuance_generate'
-      && !hasCompleteNuanceResponse(text);
-    const incompleteEnglishQuestion = body.actionType === 'english_question'
-      && !hasCompleteEnglishQuestionResponse(text);
-    const incompleteKnowledge = body.actionType === 'knowledge_answer'
-      && !hasCompleteKnowledgeResponse(text);
-    if (!text || incompleteTranslation || incompleteNuance || incompleteEnglishQuestion || incompleteKnowledge) {
+    const incompleteStructured = responseFormat === 'json'
+      && !hasCompleteStructuredResponse(body.actionType, text);
+    if (!text || incompleteStructured) {
       const retryPayload = {
         ...payload,
         generationConfig: {
           ...payload.generationConfig,
-          maxOutputTokens: Math.max(Number(body.maxTokens || 300) * 2, 512),
+          maxOutputTokens: Math.min(
+            ACTION_LIMITS[body.actionType],
+            Math.max(body.maxTokens * 2, 512)
+          ),
           thinkingConfig: pickThinkingConfig(model, body.actionType),
         },
       };
@@ -800,14 +927,12 @@ The previous response was incomplete or contained formatting noise. Return one c
       }
       ({ upstream, data } = await requestGemini(key, model, retryPayload));
       if (!upstream.ok) {
-        await refundUsage(token, usage);
         const msg = data?.error?.message || `Gemini upstream error ${upstream.status}`;
         res.status(upstream.status).json({ error: msg });
         return;
       }
       text = extractText(data);
-      if (body.actionType === 'knowledge_answer' && !hasCompleteKnowledgeResponse(text)) {
-        await refundUsage(token, usage);
+      if (responseFormat === 'json' && !hasCompleteStructuredResponse(body.actionType, text)) {
         res.status(502).json({
           error: 'AIの回答形式を検証できませんでした。内容は保存されていません。もう一度お試しください。',
         });
@@ -816,7 +941,6 @@ The previous response was incomplete or contained formatting noise. Return one c
     }
 
     if (!text) {
-      await refundUsage(token, usage);
       const blockReason = data?.promptFeedback?.blockReason;
       res.status(502).json({ error: blockReason ? `Gemini blocked the request: ${blockReason}` : 'Gemini returned an empty response.' });
       return;
@@ -824,7 +948,6 @@ The previous response was incomplete or contained formatting noise. Return one c
 
     res.status(200).json({ text, model, usage });
   } catch (error) {
-    await refundUsage(token, usage);
     const timedOut = error?.name === 'AbortError';
     res.status(timedOut ? 504 : 500).json({
       error: timedOut
@@ -833,3 +956,5 @@ The previous response was incomplete or contained formatting noise. Return one c
     });
   }
 }
+
+export { hasCompleteStructuredResponse, validateRequestBody };

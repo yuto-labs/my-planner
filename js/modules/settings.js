@@ -6,7 +6,7 @@ import {
   getSettings, saveSettings, getCategories, saveCategories,
   exportBackup, importBackup, clearAiCache, DEFAULT_CATEGORIES, DEFAULT_ACCENT_RGB, DEFAULT_THEME_TUNING,
   getPendingAIQueue, clearPendingAIQueue, getAiRuntime,
-  clearUserContentLocal,
+  clearUserContentLocal, hasUserContentLocal,
   preserveUserContentSnapshot,
   restoreUserContentSnapshot,
 } from '../storage.js';
@@ -719,6 +719,7 @@ function wireAccount(container, options = {}) {
         if (!await preserveUserContentSnapshot(previousUserId)) {
           throw new Error('端末内データを退避できなかったため、アカウント切替を中止しました');
         }
+        setActiveUserId(null);
         await resetSyncForUserSwitch();
         clearUserContentLocal();
         const restored = await restoreUserContentSnapshot(nextUserId);
@@ -730,6 +731,12 @@ function wireAccount(container, options = {}) {
         }
         setActiveUserId(nextUserId);
       } else {
+        const restored = nextUserId && !hasUserContentLocal()
+          ? await restoreUserContentSnapshot(nextUserId)
+          : null;
+        if (restored === false) {
+          throw new Error('保存済みの端末データを復元できなかったため、ログインを中止しました');
+        }
         setActiveUserId(nextUserId);
       }
       toast('ログインしました', 'success');
@@ -778,12 +785,22 @@ function wireAccount(container, options = {}) {
   });
 
   container.querySelector('#sb-signout-btn')?.addEventListener('click', async () => {
+    const activeUserId = getActiveUserId();
     const readyToSignOut = await resetSyncForUserSwitch({ flush: true });
     if (!readyToSignOut) {
       toast('未同期の変更があります。通信を確認して「今すぐ同期」してからログアウトしてください。', 'error');
       return;
     }
-    await signOut();
+    if (activeUserId && !await preserveUserContentSnapshot(activeUserId)) {
+      toast('端末内データを安全に退避できなかったため、ログアウトを中止しました。', 'error');
+      return;
+    }
+    try {
+      await signOut();
+    } catch (error) {
+      toast(`ログアウトできませんでした: ${error?.message || '通信を確認してください。'}`, 'error');
+      return;
+    }
     clearUserContentLocal();
     toast('ログアウトしました', 'info');
     await refreshAccountStatus(container, options);

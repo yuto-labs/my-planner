@@ -4,7 +4,8 @@
 
 import {
   getSettings, getPendingAIQueue, autoArchiveTasks, isAiAvailable,
-  clearUserContentLocal, preserveUserContentSnapshot, restoreUserContentSnapshot,
+  clearUserContentLocal, hasUserContentLocal,
+  preserveUserContentSnapshot, restoreUserContentSnapshot,
   DEFAULT_ACCENT_RGB, DEFAULT_THEME_TUNING,
 } from './storage.js';
 import { processBatchQueue, refreshAiRuntimeStatus } from './ai.js';
@@ -230,7 +231,10 @@ export function navigate(view, options = {}) {
   if (cleanupFn) { try { cleanupFn(); } catch {} cleanupFn = null; }
 
   currentView = view;
-  window.location.hash = view;
+  const existingRoute = window.location.hash.replace(/^#/, '');
+  const routeHash = options.routeHash
+    || (existingRoute && getViewFromHash() === view ? existingRoute : view);
+  window.location.hash = routeHash;
 
   // Update nav active state
   document.querySelectorAll('#bottom-nav .nav-btn').forEach(btn => {
@@ -313,11 +317,17 @@ export function showUndoToast(message, onUndo) {
   if (!container) return;
   const toast = document.createElement('div');
   toast.className = 'toast toast-info toast--undo';
-  toast.innerHTML = `<span>${message}</span><button class="toast-undo-btn">元に戻す</button>`;
+  const label = document.createElement('span');
+  label.textContent = String(message || '');
+  const undoButton = document.createElement('button');
+  undoButton.className = 'toast-undo-btn';
+  undoButton.type = 'button';
+  undoButton.textContent = '元に戻す';
+  toast.append(label, undoButton);
   container.appendChild(toast);
 
   const timer = setTimeout(() => toast.remove(), 5000);
-  toast.querySelector('.toast-undo-btn')?.addEventListener('click', () => {
+  undoButton.addEventListener('click', () => {
     clearTimeout(timer);
     toast.remove();
     onUndo?.();
@@ -346,7 +356,7 @@ export function openModal({ title, body, footer, onClose, wide = false }) {
 
   modal.innerHTML = `
     <div class="modal-header">
-      <span class="modal-title" id="app-modal-title">${title}</span>
+      <span class="modal-title" id="app-modal-title"></span>
       <button class="modal-close" aria-label="Close">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
       </button>
@@ -355,6 +365,7 @@ export function openModal({ title, body, footer, onClose, wide = false }) {
     ${footer ? '<div class="modal-footer"></div>' : ''}
   `;
 
+  modal.querySelector('.modal-title').textContent = String(title || '');
   modal.querySelector('.modal-body').appendChild(body);
   if (footer) modal.querySelector('.modal-footer').appendChild(footer);
 
@@ -602,8 +613,8 @@ function applySurfaceTheme(mode, tuningInput) {
     cardLight = Math.max(90, Math.min(100, bgLight + 2.2 + contrastStrength * 3.4));
     inputLight = Math.max(84, bgLight - (4.2 + contrastStrength * 3.2));
     textLight = Math.max(14, 19 + tone * 10);
-    textMutedAlpha = 0.54 + contrastStrength * 0.18;
-    textDimAlpha = 0.28 + contrastStrength * 0.18;
+    textMutedAlpha = 0.72 + contrastStrength * 0.14;
+    textDimAlpha = 0.62 + contrastStrength * 0.16;
     hoverAlpha = 0.035 + contrastStrength * 0.03;
     activeAlpha = 0.065 + contrastStrength * 0.04;
     borderAlpha = 0.06 + contrastStrength * 0.05;
@@ -712,6 +723,7 @@ async function init() {
         if (!await preserveUserContentSnapshot(prevUserId)) {
           throw new Error('Account switch stopped because local data could not be backed up');
         }
+        setActiveUserId(null);
         await resetSyncForUserSwitch();
         clearUserContentLocal();
         const restored = await restoreUserContentSnapshot(nextUserId);
@@ -723,6 +735,12 @@ async function init() {
         }
         setActiveUserId(nextUserId);
       } else {
+        const restored = nextUserId && !hasUserContentLocal()
+          ? await restoreUserContentSnapshot(nextUserId)
+          : null;
+        if (restored === false) {
+          throw new Error('Saved local data could not be restored');
+        }
         setActiveUserId(nextUserId);
       }
       if (hasPendingSyncWork()) {
@@ -799,12 +817,12 @@ async function init() {
   setupForegroundSync();
 
   // Route to initial view
-  const hash = window.location.hash.replace('#', '').trim() || 'home';
+  const hash = getViewFromHash();
   navigate(MODULES[hash] ? hash : 'home');
 
   // Handle hash changes (back/forward)
   window.addEventListener('hashchange', () => {
-    const h = window.location.hash.replace('#', '').trim() || 'home';
+    const h = getViewFromHash();
     if (h !== currentView) navigate(MODULES[h] ? h : 'home');
   });
 
@@ -852,6 +870,10 @@ async function init() {
       }).catch(() => {});
     }).catch(() => {});
   });
+}
+
+function getViewFromHash() {
+  return window.location.hash.replace(/^#/, '').split('?')[0].trim() || 'home';
 }
 
 async function setupServiceWorkerAutoUpdate() {

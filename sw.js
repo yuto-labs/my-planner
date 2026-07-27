@@ -2,7 +2,7 @@
 // sw.js — Service Worker: Cache-first offline support v3
 // ============================================================
 
-const CACHE_VER  = 'v265';
+const CACHE_VER  = 'v266';
 const APP_CACHE  = `my-planner-app-${CACHE_VER}`;
 const CDN_CACHE  = `my-planner-cdn-${CACHE_VER}`;
 const PERSISTENT_IMAGE_CACHE = 'my-planner-images-v1';
@@ -14,7 +14,7 @@ const APP_ASSETS = [
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
-  './css/style.css?v=265',
+  './css/style.css?v=266',
   './js/app.js',
   './js/storage.js',
   './js/datepicker.js',
@@ -68,9 +68,8 @@ self.addEventListener('install', event => {
       .then(cache => cache.addAll(
         APP_ASSETS.map(u => new Request(u, { cache: 'no-cache' }))
       ))
-      .catch(err => console.warn('[SW] Install cache failed (ok on file://):', err))
+      .then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
 // ---- Activate ----

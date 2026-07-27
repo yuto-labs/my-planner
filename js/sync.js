@@ -650,6 +650,7 @@ async function _reconcileRemoteCollection({
   confirmedDeleteIds = new Set(),
   restoreMissingToCloud = false,
 }) {
+  if (getActiveUserId() !== userId) return local;
   const snapshotKey = _remoteSnapshotKey(collectionKey, userId);
   const knownRemote = _ls(snapshotKey, {});
   const localPendingDeleteIds = _getPendingDeletes()
@@ -707,6 +708,7 @@ async function _reconcileRemoteCollection({
   protectedMissingIds.forEach(id => {
     if (knownRemote[id]) nextRemoteSnapshot[id] = knownRemote[id];
   });
+  if (getActiveUserId() !== userId) return local;
   localStorage.setItem(snapshotKey, JSON.stringify(nextRemoteSnapshot));
   return reconciled.next;
 }
@@ -751,6 +753,7 @@ async function _pullMemos(client, userId, forceReplace = false) {
   const learningMerge = mergeLearningRecordsForSync(local, remote);
   remote = learningMerge.items;
   if (learningMerge.pushCandidates.length) {
+    if (getActiveUserId() !== userId) return false;
     const result = await _upsertRowsCompat(
       client,
       'knowledge_memos',
@@ -918,6 +921,7 @@ async function _pullTags(client, userId, forceReplace = false) {
   const pushedNames = new Set();
 
   if (reconciled.pushCandidates.length) {
+    if (getActiveUserId() !== userId) return false;
     const rows = reconciled.pushCandidates.map(name => ({ user_id: userId, name }));
     const result = await _upsertRowsCompat(client, 'tags', rows, 'user_id,name');
     if (result.error) {
@@ -934,6 +938,7 @@ async function _pullTags(client, userId, forceReplace = false) {
   protectedMissingNames.forEach(name => {
     if (knownRemote[name]) nextSnapshot[name] = knownRemote[name];
   });
+  if (getActiveUserId() !== userId) return false;
   localStorage.setItem(snapshotKey, JSON.stringify(nextSnapshot));
   return _writeCollectionAfterSync('mp_tags', localTags, reconciled.next, userId, 'tags');
 }
@@ -1210,11 +1215,16 @@ function _markRecentUpserts(tableKey) {
   }
   const items = _ls(lsKey, []);
   const survivors = entries.filter(entry => entry.table !== tableKey);
+  const pendingById = new Map(
+    entries
+      .filter(entry => entry.table === tableKey && entry.id && _isStillPresent(entry))
+      .map(entry => [entry.id, entry])
+  );
   items.forEach(item => {
     if (!item?.id) return;
     const touchedAt = new Date(item.updatedAt || item.createdAt || 0).getTime();
     if (!Number.isFinite(touchedAt) || touchedAt < threshold) return;
-    survivors.push({
+    pendingById.set(item.id, {
       table: tableKey,
       id: item.id,
       version: String(item.updatedAt || item.createdAt || ''),
@@ -1222,6 +1232,7 @@ function _markRecentUpserts(tableKey) {
       userId,
     });
   });
+  survivors.push(...pendingById.values());
   _saveRecentUpserts(survivors);
 }
 
@@ -1406,12 +1417,15 @@ function _writeSyncBackup(collectionKey, userId, value) {
 }
 
 function _writeCollectionAfterSync(key, previous, next, userId, collectionKey) {
-  const prevJson = JSON.stringify(previous);
-  const nextJson = JSON.stringify(next);
+  if (getActiveUserId() !== userId) return false;
+  const fresh = _ls(key, []);
+  const resolved = mergeFreshLocalCollection(key, previous, fresh, next);
+  const prevJson = JSON.stringify(fresh);
+  const nextJson = JSON.stringify(resolved);
   if (prevJson === nextJson) return false;
 
-  if (previous.length > next.length) {
-    _writeSyncBackup(collectionKey, userId, previous);
+  if (fresh.length > resolved.length) {
+    _writeSyncBackup(collectionKey, userId, fresh);
   }
 
   localStorage.setItem(key, nextJson);
@@ -1419,14 +1433,101 @@ function _writeCollectionAfterSync(key, previous, next, userId, collectionKey) {
 }
 
 function _writeObjectAfterSync(key, previous, next, userId, collectionKey) {
-  const prevJson = JSON.stringify(previous);
-  const nextJson = JSON.stringify(next);
+  if (getActiveUserId() !== userId) return false;
+  const fresh = _ls(key, {});
+  const resolved = { ...(next || {}) };
+  if (JSON.stringify(fresh) !== JSON.stringify(previous)) {
+    const ids = new Set([
+      ...Object.keys(previous || {}),
+      ...Object.keys(fresh || {}),
+    ]);
+    ids.forEach(id => {
+      const before = previous?.[id];
+      const current = fresh?.[id];
+      if (JSON.stringify(before) === JSON.stringify(current)) return;
+      if (current) resolved[id] = current;
+      else delete resolved[id];
+    });
+  }
+  const prevJson = JSON.stringify(fresh);
+  const nextJson = JSON.stringify(resolved);
   if (prevJson === nextJson) return false;
-  if (Object.keys(previous || {}).length > Object.keys(next || {}).length) {
-    _writeSyncBackup(collectionKey, userId, previous);
+  if (Object.keys(fresh || {}).length > Object.keys(resolved || {}).length) {
+    _writeSyncBackup(collectionKey, userId, fresh);
   }
   localStorage.setItem(key, nextJson);
   return true;
+}
+
+export function mergeFreshLocalCollection(key, previous, fresh, pulled) {
+  if (JSON.stringify(fresh) === JSON.stringify(previous)) return pulled;
+
+  if (key === 'mp_tags') {
+    const previousNames = new Set(previous || []);
+    const freshNames = new Set(fresh || []);
+    const resolved = new Set(pulled || []);
+    previousNames.forEach(name => {
+      if (!freshNames.has(name)) resolved.delete(name);
+    });
+    freshNames.forEach(name => {
+      if (!previousNames.has(name)) resolved.add(name);
+    });
+    return [...resolved].sort();
+  }
+
+  const table = {
+    mp_tasks: 'tasks',
+    mp_task_archive: 'tasks',
+    mp_events: 'events',
+    mp_goals: 'goals',
+    mp_knowledge: 'knowledge_memos',
+    mp_trash: 'trash_items',
+    mp_schedule: 'schedule_items',
+  }[key];
+  const deletedIds = new Set(
+    _getPendingDeletes()
+      .filter(entry => entry.table === table && entry.id)
+      .map(entry => entry.id)
+  );
+  const previousById = new Map(
+    (previous || []).filter(item => item?.id).map(item => [item.id, item])
+  );
+  const freshById = new Map(
+    (fresh || []).filter(item => item?.id).map(item => [item.id, item])
+  );
+  const byId = new Map(
+    (pulled || [])
+      .filter(item => item?.id && !deletedIds.has(item.id))
+      .map(item => [item.id, item])
+  );
+
+  const allIds = new Set([...previousById.keys(), ...freshById.keys()]);
+  allIds.forEach(id => {
+    if (deletedIds.has(id)) {
+      byId.delete(id);
+      return;
+    }
+    const before = previousById.get(id);
+    const current = freshById.get(id);
+    if (JSON.stringify(before) === JSON.stringify(current)) return;
+    if (!current) {
+      byId.delete(id);
+      return;
+    }
+    const remote = byId.get(id);
+    if (
+      key === 'mp_knowledge'
+      && remote
+      && learningData(current)
+      && learningData(remote)
+    ) {
+      const merged = mergeLearningRecordsForSync([current], [remote]).items[0];
+      byId.set(id, merged || current);
+    } else {
+      byId.set(id, current);
+    }
+  });
+  return [...byId.values()];
 }
 
 function _dedupeById(items) {
