@@ -51,6 +51,8 @@ let _swipeLocked  = false; // true while slide animation plays - blocks consecut
 
 export function initCalendar(container) {
   state.container = container;
+  state.mode = 'month';
+  _selectedDate = null;
   if (!(state.cursor instanceof Date) || Number.isNaN(state.cursor.getTime())) {
     state.cursor = new Date();
   }
