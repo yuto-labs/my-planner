@@ -136,7 +136,6 @@ function _setupSwipe(container) {
     'input',
     'textarea',
     'select',
-    '[role="button"]',
     '[contenteditable="true"]',
   ].join(',');
   const clearDrag = () => {

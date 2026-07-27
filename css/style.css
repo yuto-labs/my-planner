@@ -145,7 +145,8 @@ html, body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overscroll-behavior: none;
-  touch-action: pan-x pan-y;
+  /* Keep browser history gestures out of the app. Calendar handles its own horizontal swipe. */
+  touch-action: pan-y;
 }
 
 ::-webkit-scrollbar { width: 3px; height: 3px; }
