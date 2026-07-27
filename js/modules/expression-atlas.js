@@ -45,6 +45,8 @@ import { esc } from '../utils.js';
 
 const nav = view => window.AppNav?.navigate(view);
 const toast = (message, type = 'info') => window.AppNav?.showToast(message, type);
+const ATLAS_RECENT_KEY = 'mp_atlas_recent_entries';
+const MAX_RECENT_ENTRIES = 12;
 
 let state = {
   container: null,
@@ -58,6 +60,9 @@ let state = {
   morphemeId: '',
   usageId: '',
   usageTrail: [],
+  detailTrail: [],
+  libraryScrollTop: 0,
+  collapsedDetailSections: new Set(),
   morphologyType: 'all',
   usageType: 'all',
   libraryMode: 'expressions',
@@ -68,6 +73,7 @@ let state = {
   generating: false,
   controller: null,
   noteTimer: null,
+  searchTimer: null,
   speechText: '',
   speechHandler: null,
   generatorInput: {
@@ -89,6 +95,10 @@ export function initExpressionAtlas(container) {
     container,
     controller: null,
     noteTimer: null,
+    searchTimer: null,
+    detailTrail: [],
+    libraryScrollTop: 0,
+    collapsedDetailSections: new Set(),
   };
   state.speechHandler = event => handleSpeakClick(event);
   container.addEventListener('click', state.speechHandler);
@@ -97,6 +107,7 @@ export function initExpressionAtlas(container) {
     persistOpenPersonalNote();
     persistOpenTranslationNote();
     clearTimeout(state.noteTimer);
+    clearTimeout(state.searchTimer);
     state.controller?.abort();
     window.speechSynthesis?.cancel?.();
     state.speechText = '';
@@ -126,7 +137,7 @@ function handleSpeakClick(event) {
   if (state.speechText === text) {
     window.speechSynthesis.cancel();
     state.speechText = '';
-    button.classList.remove('is-speaking');
+    state.container.querySelectorAll('.atlas-speak-btn.is-speaking').forEach(item => item.classList.remove('is-speaking'));
     return;
   }
   window.speechSynthesis.cancel();
@@ -162,25 +173,33 @@ export function backFromExpressionAtlas() {
     return;
   }
   if (state.screen === 'generate' || state.screen === 'translate') {
+    const originQuestionId = state.screen === 'generate' ? state.questionConversionId : '';
     state.controller?.abort();
     state.screen = 'library';
     state.generating = false;
     state.questionConversionId = '';
+    if (originQuestionId) {
+      state.questionId = originQuestionId;
+      state.libraryMode = 'questions';
+    }
     render();
     scrollMainToTop();
     return;
   }
   if (state.entryId) {
     persistOpenPersonalNote();
-    state.entryId = '';
-    render();
-    scrollMainToTop();
+    if (!restorePreviousDetail()) {
+      state.entryId = '';
+      render();
+      restoreMainScroll(state.libraryScrollTop);
+    }
     return;
   }
   if (state.morphemeId) {
+    if (restorePreviousDetail()) return;
     state.morphemeId = '';
     render();
-    scrollMainToTop();
+    restoreMainScroll(state.libraryScrollTop);
     return;
   }
   if (state.usageId) {
@@ -190,16 +209,17 @@ export function backFromExpressionAtlas() {
       scrollMainToTop();
       return;
     }
+    if (restorePreviousDetail()) return;
     state.usageId = '';
     render();
-    scrollMainToTop();
+    restoreMainScroll(state.libraryScrollTop);
     return;
   }
   if (state.translationId) {
     persistOpenTranslationNote();
     state.translationId = '';
     render();
-    scrollMainToTop();
+    restoreMainScroll(state.libraryScrollTop);
     return;
   }
   if (state.questionId) {
@@ -230,6 +250,8 @@ export function backFromExpressionAtlas() {
 
 function render() {
   if (!state.container) return;
+  clearTimeout(state.searchTimer);
+  state.searchTimer = null;
   if (state.screen === 'generate') {
     renderGenerator();
     return;
@@ -279,7 +301,7 @@ function renderLibrary() {
     return;
   }
   const view = getLibraryView();
-  const { entries, visibleEntries, categories, topics, level } = view;
+  const { entries, visibleEntries, categories, topics, level, unifiedResults } = view;
 
   state.container.innerHTML = `
     <section class="atlas-page">
@@ -304,11 +326,11 @@ function renderLibrary() {
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"/></svg>
           <input id="atlas-search" type="search" value="${esc(state.search)}" placeholder="単語・意味・ニュアンスを検索">
         </label>
-        <span class="atlas-count" id="atlas-count">${visibleEntries.length || (!state.search && !state.category ? entries.length : 0)} expressions</span>
+        <span class="atlas-count" id="atlas-count">${state.search ? unifiedResults.total : (visibleEntries.length || (!state.category ? entries.length : 0))} items</span>
       </div>
 
       <div class="atlas-library" id="atlas-library">
-        ${renderLibraryContent({ level, entries: visibleEntries, categories, topics, allEntries: entries })}
+        ${renderLibraryContent({ level, entries: visibleEntries, categories, topics, allEntries: entries, unifiedResults })}
       </div>
     </section>
   `;
@@ -321,6 +343,7 @@ function renderLibrary() {
 function getLibraryView() {
   const entries = getExpressionEntries();
   const query = normalize(state.search);
+  const unifiedResults = getUnifiedSearchResults(query, entries);
   const matchingEntries = query
     ? entries.filter(entry => searchableText(entry).includes(query))
     : entries;
@@ -336,7 +359,7 @@ function getLibraryView() {
     .map(entry => entry.topic)
     .filter(Boolean));
   const level = query || state.topic ? 'entries' : state.category ? 'topics' : 'categories';
-  return { entries, visibleEntries, categories, topics, level };
+  return { entries, visibleEntries, categories, topics, level, unifiedResults };
 }
 
 function wireLibraryShell() {
@@ -469,11 +492,10 @@ function renderUsageLibrary() {
     });
   });
   const searchInput = state.container.querySelector('#atlas-usage-search');
-  let timer = null;
   searchInput?.addEventListener('input', event => {
     state.search = event.target.value;
-    clearTimeout(timer);
-    timer = setTimeout(() => {
+    clearTimeout(state.searchTimer);
+    state.searchTimer = setTimeout(() => {
       renderUsageLibrary();
       requestAnimationFrame(() => {
         const input = state.container?.querySelector('#atlas-usage-search');
@@ -569,6 +591,59 @@ function renderUsageDetail() {
       scrollMainToTop();
     });
   });
+}
+
+function renderRelationMotion(entry) {
+  const kind = String(entry?.motionKind || '').trim();
+  if (!kind) return '';
+  const scenes = {
+    point: `<span class="atlas-v-pin"><i></i></span><span class="atlas-v-pin-pulse"></span><span class="atlas-v-map-grid"></span>`,
+    container: `<span class="atlas-v-contained-space"><i></i><i></i><i></i></span><span class="atlas-v-contained-focus"></span>`,
+    enter: `<span class="atlas-v-room"><i></i></span><span class="atlas-v-person"></span><span class="atlas-v-boundary"></span>`,
+    exit: `<span class="atlas-v-room"><i></i></span><span class="atlas-v-person"></span><span class="atlas-v-boundary"></span>`,
+    surface: `<span class="atlas-v-shelf"></span><span class="atlas-v-block"><i></i></span><span class="atlas-v-contact"></span>`,
+    land: `<span class="atlas-v-shelf"></span><span class="atlas-v-block"><i></i></span><span class="atlas-v-contact"></span>`,
+    arrow: `<span class="atlas-v-route"></span><span class="atlas-v-package"></span><span class="atlas-v-destination"><i></i></span>`,
+    purpose: `<span class="atlas-v-plane"></span><span class="atlas-v-target"><i></i><b></b></span>`,
+    origin: `<span class="atlas-v-source-station"><i></i></span><span class="atlas-v-origin-arrow"></span><span class="atlas-v-origin-parcel"><i></i></span>`,
+    portion: `<span class="atlas-v-whole"></span><span class="atlas-v-slice"></span>`,
+    companion: `<span class="atlas-v-companion atlas-v-companion--one"><i></i></span><span class="atlas-v-companion atlas-v-companion--two"><i></i></span><span class="atlas-v-companion-link"></span>`,
+    beside: `<span class="atlas-v-landmark"><i></i></span><span class="atlas-v-bystander"></span><span class="atlas-v-near-mark"></span>`,
+    orbit: `<span class="atlas-v-sun"></span><span class="atlas-v-orbit"></span><span class="atlas-v-planet"></span>`,
+    arch: `<span class="atlas-v-obstacle"></span><span class="atlas-v-arc"></span><span class="atlas-v-ball"></span>`,
+    shelter: `<span class="atlas-v-roof"></span><span class="atlas-v-sheltered"><i></i></span><span class="atlas-v-rain atlas-v-rain--one"></span><span class="atlas-v-rain atlas-v-rain--two"></span><span class="atlas-v-rain atlas-v-rain--three"></span>`,
+    between: `<span class="atlas-v-post atlas-v-post--one"></span><span class="atlas-v-post atlas-v-post--two"></span><span class="atlas-v-between-bead"></span><span class="atlas-v-between-line"></span>`,
+    cluster: `<span class="atlas-v-cluster"><i></i><i></i><i></i><i></i><i></i><b class="atlas-v-cluster-focus"></b></span>`,
+    tunnel: `<span class="atlas-v-tunnel"></span><span class="atlas-v-train"><i></i><i></i><b></b></span>`,
+    cross: `<span class="atlas-v-river"><i></i><i></i><i></i></span><span class="atlas-v-boat"></span>`,
+    along: `<svg class="atlas-v-along-map" viewBox="0 0 420 126" preserveAspectRatio="none"><path d="M24 91 C100 91 92 35 176 35 S256 101 396 62"></path></svg><span class="atlas-v-trail-start"></span><span class="atlas-v-trail-end"></span><span class="atlas-v-hiker"><i></i><b></b></span>`,
+    press: `<span class="atlas-v-wall"></span><span class="atlas-v-spring"></span><span class="atlas-v-pusher"></span>`,
+    'timeline-before': `<span class="atlas-v-timeline"></span><span class="atlas-v-reference"></span><span class="atlas-v-event"></span>`,
+    'timeline-after': `<span class="atlas-v-timeline"></span><span class="atlas-v-reference"></span><span class="atlas-v-event"></span>`,
+    duration: `<span class="atlas-v-duration-band"></span><span class="atlas-v-clock"><i></i></span>`,
+    'timeline-from': `<span class="atlas-v-since-start"></span><span class="atlas-v-since-line"></span><span class="atlas-v-now"></span>`,
+    deadline: `<span class="atlas-v-deadline-track"></span><span class="atlas-v-deadline-fill"></span><span class="atlas-v-stop"></span>`,
+    absence: `<span class="atlas-v-expected"></span><span class="atlas-v-missing"><i></i></span>`,
+    join: `<span class="atlas-v-puzzle atlas-v-puzzle--one"></span><span class="atlas-v-puzzle atlas-v-puzzle--two"></span>`,
+    turn: `<svg class="atlas-v-turn-map" viewBox="0 0 420 126" preserveAspectRatio="none"><path d="M70 18 V83 Q70 106 94 106 H356"></path></svg><span class="atlas-v-turn-car"><i></i><b></b></span>`,
+    fork: `<span class="atlas-v-fork"></span><span class="atlas-v-choice atlas-v-choice--one"></span><span class="atlas-v-choice atlas-v-choice--two"></span>`,
+    result: `<span class="atlas-v-domino atlas-v-domino--one"></span><span class="atlas-v-domino atlas-v-domino--two"></span><span class="atlas-v-domino atlas-v-domino--three"></span><span class="atlas-v-result-star"></span>`,
+    cause: `<span class="atlas-v-switch"><i></i></span><span class="atlas-v-wire"></span><span class="atlas-v-lamp"><i></i></span>`,
+    contrast: `<span class="atlas-v-contrast-side atlas-v-contrast-side--one"></span><span class="atlas-v-contrast-side atlas-v-contrast-side--two"></span><span class="atlas-v-contrast-divider"></span>`,
+    condition: `<span class="atlas-v-key"></span><span class="atlas-v-gate"><i></i></span><span class="atlas-v-gate-result"><i></i></span>`,
+    parallel: `<span class="atlas-v-lane atlas-v-lane--one"><i class="atlas-v-activity-card"><b></b></i></span><span class="atlas-v-lane atlas-v-lane--two"><i class="atlas-v-activity-card"><b></b></i></span><span class="atlas-v-parallel-link"></span>`,
+    trigger: `<span class="atlas-v-bell"><i></i></span><span class="atlas-v-trigger-wave atlas-v-trigger-wave--one"></span><span class="atlas-v-trigger-wave atlas-v-trigger-wave--two"></span><span class="atlas-v-trigger-result"></span>`,
+  };
+  const word = String(entry.form || '').toUpperCase();
+  return `
+    <figure class="atlas-usage-motion atlas-visual-motion" data-motion-kind="${esc(kind)}" aria-label="${esc(`${entry.form} の核イメージ。${entry.motionSummaryJa || entry.coreImageJa || ''}`)}">
+      <div class="atlas-usage-motion-stage" aria-hidden="true">
+        ${scenes[kind] || scenes.arrow}
+        <span class="atlas-motion-word">${esc(word)}</span>
+      </div>
+      <figcaption>${esc(entry.motionSummaryJa || entry.coreImageJa || '')}</figcaption>
+    </figure>
+  `;
 }
 
 function renderUsageMotion(entry) {
@@ -750,7 +825,7 @@ function renderUsageMotion(entry) {
       </figure>
     `;
   }
-  return '';
+  return renderRelationMotion(entry);
 }
 
 function usageSearchText(entry) {
@@ -822,11 +897,10 @@ function renderMorphologyLibrary() {
     });
   });
   const searchInput = state.container.querySelector('#atlas-morphology-search');
-  let timer = null;
   searchInput?.addEventListener('input', event => {
     state.search = event.target.value;
-    clearTimeout(timer);
-    timer = setTimeout(() => {
+    clearTimeout(state.searchTimer);
+    state.searchTimer = setTimeout(() => {
       renderMorphologyLibrary();
       requestAnimationFrame(() => {
         const input = state.container?.querySelector('#atlas-morphology-search');
@@ -867,8 +941,15 @@ function renderMorphologyDetail() {
     return;
   }
   const expressionIndex = buildExpressionIndex(getExpressionEntries());
+  const previousDetail = state.detailTrail.at(-1);
   state.container.innerHTML = `
     <article class="atlas-page atlas-detail-page atlas-morphology-detail">
+      ${previousDetail ? `
+        <button type="button" class="atlas-detail-history-back" id="atlas-morphology-history-back">
+          <span aria-hidden="true">‹</span>
+          前に見ていた項目へ
+        </button>
+      ` : ''}
       <nav class="atlas-breadcrumbs" aria-label="語源辞典の階層">
         <button type="button" id="atlas-morphology-root">単語のしくみ</button>
         <span aria-hidden="true">›</span>
@@ -933,25 +1014,21 @@ function renderMorphologyDetail() {
       ${renderMorphologySources(entry.sourceRefs)}
     </article>
   `;
+  state.container.querySelector('#atlas-morphology-history-back')?.addEventListener('click', restorePreviousDetail);
   state.container.querySelector('#atlas-morphology-root')?.addEventListener('click', () => {
+    state.detailTrail = [];
     state.morphemeId = '';
     render();
     scrollMainToTop();
   });
   state.container.querySelectorAll('[data-linked-entry]').forEach(button => {
     button.addEventListener('click', () => {
-      state.entryId = button.dataset.linkedEntry;
-      state.morphemeId = '';
-      state.libraryMode = 'expressions';
-      render();
-      scrollMainToTop();
+      openLinkedExpression(button.dataset.linkedEntry);
     });
   });
   state.container.querySelectorAll('[data-core-related]').forEach(button => {
     button.addEventListener('click', () => {
-      state.morphemeId = button.dataset.coreRelated;
-      renderMorphologyDetail();
-      scrollMainToTop();
+      openMorphologyDetail(button.dataset.coreRelated);
     });
   });
 }
@@ -1078,7 +1155,6 @@ function renderTranslationLibrary() {
     renderTranslationLibrary();
   });
   const searchInput = state.container.querySelector('#atlas-translation-search');
-  let searchTimer = null;
   let composing = false;
   const applySearch = () => {
     state.search = searchInput?.value || '';
@@ -1093,13 +1169,13 @@ function renderTranslationLibrary() {
   searchInput?.addEventListener('compositionstart', () => { composing = true; });
   searchInput?.addEventListener('compositionend', () => {
     composing = false;
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(applySearch, 0);
+    clearTimeout(state.searchTimer);
+    state.searchTimer = setTimeout(applySearch, 0);
   });
   searchInput?.addEventListener('input', () => {
     if (composing) return;
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(applySearch, 120);
+    clearTimeout(state.searchTimer);
+    state.searchTimer = setTimeout(applySearch, 120);
   });
   state.container.querySelectorAll('[data-translation-id]').forEach(card => {
     card.addEventListener('click', () => {
@@ -1169,10 +1245,27 @@ function renderQuestionLibrary() {
     });
   });
   const search = state.container.querySelector('#atlas-question-search');
-  search?.addEventListener('input', () => {
-    state.search = search.value || '';
+  let composing = false;
+  const applySearch = () => {
+    state.search = search?.value || '';
     renderQuestionLibrary();
-    state.container?.querySelector('#atlas-question-search')?.focus();
+    requestAnimationFrame(() => {
+      const input = state.container?.querySelector('#atlas-question-search');
+      if (!input) return;
+      input.focus();
+      try { input.setSelectionRange(input.value.length, input.value.length); } catch {}
+    });
+  };
+  search?.addEventListener('compositionstart', () => { composing = true; });
+  search?.addEventListener('compositionend', () => {
+    composing = false;
+    clearTimeout(state.searchTimer);
+    state.searchTimer = setTimeout(applySearch, 0);
+  });
+  search?.addEventListener('input', () => {
+    if (composing) return;
+    clearTimeout(state.searchTimer);
+    state.searchTimer = setTimeout(applySearch, 120);
   });
   state.container.querySelectorAll('[data-question-id]').forEach(button => {
     button.addEventListener('click', () => {
@@ -1435,7 +1528,7 @@ function renderTranslationVariant(variant, index) {
     '表現的・洗練',
   ][index] || `パターン ${index + 1}`;
   const expressionIndex = buildExpressionIndex(getExpressionEntries());
-  const hasLinkedWords = tokenizeEnglishForLinks(variant.translation)
+  const hasLinkedWords = tokenizeEnglishForLinks(variant.translation, expressionIndex)
     .some(part => part.token && isUsefulLinkedToken(part.token, expressionIndex));
   return `
     <article class="atlas-translation-variant">
@@ -1456,7 +1549,7 @@ function renderTranslationVariant(variant, index) {
       </div>
       ${variant.backTranslationJa ? `<div class="atlas-back-translation"><span>和訳（逆翻訳）</span>${esc(variant.backTranslationJa)}</div>` : ''}
       ${detailSection('この文自体の全体ニュアンス', variant.overallNuanceJa || variant.nuanceJa)}
-      ${translationVocabularySection(variant.vocabularyNotes)}
+      ${translationVocabularySection(variant.vocabularyNotes, expressionIndex)}
       ${translationComparisonSection(variant.comparisons)}
       ${listSection('注意点', variant.cautionsJa, 'atlas-note-list--warning')}
     </article>
@@ -1464,7 +1557,7 @@ function renderTranslationVariant(variant, index) {
 }
 
 function renderLinkedEnglishText(text, expressionIndex) {
-  return tokenizeEnglishForLinks(text).map(part => {
+  return tokenizeEnglishForLinks(text, expressionIndex).map(part => {
     if (!part.token || !isUsefulLinkedToken(part.token, expressionIndex)) return esc(part.text);
     const matches = findExpressionMatches(part.token, expressionIndex);
     return `<button type="button" class="atlas-linked-token" data-linked-token="${esc(part.token)}" data-linked-entries="${esc(matches.map(entry => entry.id).join(','))}">${esc(part.text)}</button>`;
@@ -1499,12 +1592,37 @@ function wireTranslationVocabularyLinks() {
 }
 
 function openLinkedExpression(entryId) {
-  const fromQuestion = !!state.questionId;
+  persistCurrentDetailNotes();
+  const currentDetail = getCurrentDetailState();
+  if (currentDetail && !(currentDetail.kind === 'expression' && currentDetail.id === entryId)) {
+    pushDetailHistory(currentDetail);
+  }
   state.screen = 'library';
-  state.libraryMode = fromQuestion ? 'questions' : 'expressions';
+  state.libraryMode = 'expressions';
+  state.entryId = '';
   state.translationId = '';
+  state.questionId = '';
   state.morphemeId = '';
+  state.usageId = '';
   state.entryId = entryId;
+  render();
+  scrollMainToTop();
+}
+
+function openMorphologyDetail(morphemeId) {
+  if (!morphemeId) return;
+  persistCurrentDetailNotes();
+  const currentDetail = getCurrentDetailState();
+  if (currentDetail && !(currentDetail.kind === 'morphology' && currentDetail.id === morphemeId)) {
+    pushDetailHistory(currentDetail);
+  }
+  state.screen = 'library';
+  state.entryId = '';
+  state.translationId = '';
+  state.questionId = '';
+  state.usageId = '';
+  state.morphemeId = morphemeId;
+  state.libraryMode = 'morphology';
   render();
   scrollMainToTop();
 }
@@ -1533,11 +1651,15 @@ function showWordMatchPicker(token, entries) {
   `;
   state.container?.appendChild(sheet);
   const close = () => sheet.remove();
+  sheet.addEventListener('keydown', event => {
+    if (event.key === 'Escape') close();
+  });
   sheet.querySelector('.atlas-word-picker-backdrop')?.addEventListener('click', close);
   sheet.querySelector('[data-word-picker-close]')?.addEventListener('click', close);
   sheet.querySelectorAll('[data-word-picker-entry]').forEach(button => {
     button.addEventListener('click', () => openLinkedExpression(button.dataset.wordPickerEntry));
   });
+  sheet.querySelector('[data-word-picker-close]')?.focus();
 }
 
 async function handleTranslationGenerate(event) {
@@ -1669,6 +1791,7 @@ function renderTranslationDetail() {
   });
   state.container.querySelector('#atlas-delete-translation')?.addEventListener('click', () => {
     if (!window.confirm(`「${set.sourceTextJa}」の英訳セットを削除しますか？`)) return;
+    persistOpenTranslationNote();
     if (deleteExpressionEntry(set.id)) {
       state.translationId = '';
       toast('英訳セットを削除しました');
@@ -1683,14 +1806,15 @@ function updateLibraryContent() {
   const library = state.container?.querySelector('#atlas-library');
   const count = state.container?.querySelector('#atlas-count');
   if (!library || !count) return;
-  const { entries, visibleEntries, categories, topics, level } = getLibraryView();
-  count.textContent = `${visibleEntries.length || (!state.search && !state.category ? entries.length : 0)} expressions`;
+  const { entries, visibleEntries, categories, topics, level, unifiedResults } = getLibraryView();
+  count.textContent = `${state.search ? unifiedResults.total : (visibleEntries.length || (!state.category ? entries.length : 0))} items`;
   library.innerHTML = renderLibraryContent({
     level,
     entries: visibleEntries,
     categories,
     topics,
     allEntries: entries,
+    unifiedResults,
   });
   wireLibraryContent();
 }
@@ -1724,14 +1848,55 @@ function wireLibraryContent() {
   });
   state.container.querySelectorAll('[data-atlas-entry]').forEach(card => {
     card.addEventListener('click', () => {
+      state.libraryScrollTop = getMainScrollTop();
+      state.detailTrail = [];
       state.entryId = card.dataset.atlasEntry;
+      render();
+      scrollMainToTop();
+    });
+  });
+  state.container.querySelectorAll('[data-atlas-translation-result]').forEach(card => {
+    card.addEventListener('click', () => {
+      state.libraryScrollTop = getMainScrollTop();
+      state.detailTrail = [];
+      state.translationId = card.dataset.atlasTranslationResult;
+      render();
+      scrollMainToTop();
+    });
+  });
+  state.container.querySelectorAll('[data-atlas-morpheme-result]').forEach(card => {
+    card.addEventListener('click', () => {
+      state.libraryScrollTop = getMainScrollTop();
+      state.detailTrail = [];
+      state.morphemeId = card.dataset.atlasMorphemeResult;
+      render();
+      scrollMainToTop();
+    });
+  });
+  state.container.querySelectorAll('[data-atlas-usage-result]').forEach(card => {
+    card.addEventListener('click', () => {
+      state.libraryScrollTop = getMainScrollTop();
+      state.detailTrail = [];
+      state.usageId = card.dataset.atlasUsageResult;
+      render();
+      scrollMainToTop();
+    });
+  });
+  state.container.querySelectorAll('[data-atlas-theme-result]').forEach(card => {
+    card.addEventListener('click', () => {
+      state.category = card.dataset.atlasCategory || '';
+      state.topic = card.dataset.atlasThemeResult || '';
+      state.search = '';
       render();
       scrollMainToTop();
     });
   });
 }
 
-function renderLibraryContent({ level, entries, categories, topics, allEntries }) {
+function renderLibraryContent({ level, entries, categories, topics, allEntries, unifiedResults }) {
+  if (state.search) {
+    return renderUnifiedSearchResults(unifiedResults);
+  }
   if (!allEntries.length) {
     return `
       <div class="atlas-empty">
@@ -1743,7 +1908,7 @@ function renderLibraryContent({ level, entries, categories, topics, allEntries }
     `;
   }
   if (level === 'categories') {
-    return `<div class="atlas-folder-grid">${categories.map(category => {
+    return `${renderPersonalShelves(allEntries)}<div class="atlas-folder-grid">${categories.map(category => {
       const count = allEntries.filter(entry => entry.category === category).length;
       const topicCount = unique(allEntries.filter(entry => entry.category === category).map(entry => entry.topic)).length;
       return `
@@ -1803,6 +1968,101 @@ function renderEntryCard(entry) {
   `;
 }
 
+function getUnifiedSearchResults(query, entries = getExpressionEntries()) {
+  if (!query) {
+    return { expressions: [], themes: [], translations: [], morphemes: [], usage: [], total: 0 };
+  }
+  const expressions = entries.filter(entry => searchableText(entry).includes(query));
+  const themeKeys = new Set();
+  const themes = entries.reduce((items, entry) => {
+    const text = normalize([
+      entry.category,
+      entry.topic,
+      ...(entry.categoryAliases || []),
+      ...(entry.topicAliases || []),
+    ].join(' '));
+    const key = `${entry.category}|${entry.topic}`;
+    if (text.includes(query) && !themeKeys.has(key)) {
+      themeKeys.add(key);
+      items.push({ category: entry.category, topic: entry.topic });
+    }
+    return items;
+  }, []);
+  const translations = getTranslationSets().filter(set => searchableTranslationText(set).includes(query));
+  const morphemes = ETYMOLOGY_CORE.filter(entry => morphologySearchText(entry).includes(query));
+  const usage = ENGLISH_USAGE_CORE.filter(entry => usageSearchText(entry).includes(query));
+  return {
+    expressions,
+    themes,
+    translations,
+    morphemes,
+    usage,
+    total: expressions.length + themes.length + translations.length + morphemes.length + usage.length,
+  };
+}
+
+function renderUnifiedSearchResults(results) {
+  if (!results.total) {
+    return `
+      <div class="atlas-empty atlas-empty--compact">
+        <h2>一致する項目がありません</h2>
+        <p>検索語を短くするか、別の言葉で検索してください。</p>
+      </div>
+    `;
+  }
+  const group = (title, items) => items.length ? `
+    <section class="atlas-search-group">
+      <h2>${esc(title)} <span>${items.length}</span></h2>
+      <div class="atlas-search-result-list">${items.join('')}</div>
+    </section>
+  ` : '';
+  return `<div class="atlas-unified-results">
+    ${group('表現', results.expressions.map(renderEntryCard))}
+    ${group('テーマ', results.themes.map(item => `
+      <button type="button" class="atlas-search-result" data-atlas-theme-result="${esc(item.topic)}" data-atlas-category="${esc(item.category)}">
+        <strong>${esc(item.topic)}</strong><span>${esc(item.category)}のテーマ</span>
+      </button>
+    `))}
+    ${group('和文英訳', results.translations.map(item => `
+      <button type="button" class="atlas-search-result" data-atlas-translation-result="${esc(item.id)}">
+        <strong lang="ja">${esc(item.sourceTextJa)}</strong><span>${esc(item.category)} › ${esc(item.topic)}</span>
+      </button>
+    `))}
+    ${group('単語のしくみ', results.morphemes.map(item => `
+      <button type="button" class="atlas-search-result" data-atlas-morpheme-result="${esc(item.id)}">
+        <strong lang="en">${esc(item.displayForm || item.form || item.id)}</strong><span>${esc(item.senses?.[0]?.labelJa || item.quickSummaryJa || '')}</span>
+      </button>
+    `))}
+    ${group('関係のしくみ', results.usage.map(item => `
+      <button type="button" class="atlas-search-result" data-atlas-usage-result="${esc(item.id)}">
+        <strong lang="en">${esc(item.form || item.id)}</strong><span>${esc(item.coreImageJa || '')}</span>
+      </button>
+    `))}
+  </div>`;
+}
+
+function renderPersonalShelves(entries) {
+  const pinned = entries.filter(entry => entry.starred).slice(0, 6);
+  const byId = new Map(entries.map(entry => [entry.id, entry]));
+  const recent = getRecentEntryIds()
+    .map(id => byId.get(id))
+    .filter(entry => entry && !entry.starred)
+    .slice(0, 6);
+  if (!pinned.length && !recent.length) return '';
+  const shelf = (title, items) => items.length ? `
+    <section class="atlas-personal-shelf">
+      <h2>${esc(title)}</h2>
+      <div>${items.map(entry => `
+        <button type="button" data-atlas-entry="${esc(entry.id)}">
+          <strong lang="en">${esc(entry.term)}</strong>
+          <span>${esc(entry.topic)}</span>
+        </button>
+      `).join('')}</div>
+    </section>
+  ` : '';
+  return `<div class="atlas-personal-shelves">${shelf('ピン留め', pinned)}${shelf('最近見た項目', recent)}</div>`;
+}
+
 function renderDetail() {
   const entry = getExpressionEntries().find(item => item.id === state.entryId);
   if (!entry) {
@@ -1810,10 +2070,19 @@ function renderDetail() {
     render();
     return;
   }
+  rememberRecentEntry(entry.id);
   const intensityLevel = getIntensityLevel(entry);
+  const sameWordElsewhere = findSameWordInOtherThemes(entry);
+  const previousDetail = state.detailTrail.at(-1);
 
   state.container.innerHTML = `
     <article class="atlas-page atlas-detail-page">
+      ${previousDetail ? `
+        <button type="button" class="atlas-detail-history-back" id="atlas-detail-history-back">
+          <span aria-hidden="true">‹</span>
+          前に見ていた項目へ
+        </button>
+      ` : ''}
       <nav class="atlas-breadcrumbs" aria-label="辞典の階層">
         <button type="button" id="atlas-detail-root">English</button>
         <span aria-hidden="true">›</span>
@@ -1839,15 +2108,21 @@ function renderDetail() {
             ${entry.nuanceTypeJa ? `<span>${esc(entry.nuanceTypeJa)}</span>` : ''}
           </div>
         </div>
-        <button class="atlas-icon-btn atlas-delete-btn" id="atlas-delete" type="button" aria-label="この表現を削除" title="削除">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"/></svg>
-        </button>
+        <div class="atlas-detail-header-actions">
+          <button class="atlas-icon-btn atlas-pin-btn ${entry.starred ? 'is-active' : ''}" id="atlas-pin" type="button" aria-pressed="${entry.starred ? 'true' : 'false'}" aria-label="${entry.starred ? 'ピン留めを外す' : 'ピン留めする'}" title="${entry.starred ? 'ピン留めを外す' : 'ピン留め'}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 4 6 6-3 1-4 4v4l-2 2-2-6-6-2 2-2h4l4-4 1-3Z"/></svg>
+          </button>
+          <button class="atlas-icon-btn atlas-delete-btn" id="atlas-delete" type="button" aria-label="この表現を削除" title="削除">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"/></svg>
+          </button>
+        </div>
       </header>
 
       ${classificationEditor(entry, 'expression')}
       ${etymologyCoreSection(entry)}
       ${detailSection('深いニュアンス', entry.nuanceJa)}
       ${comparisonsSection(entry.comparisons)}
+      ${sameWordElsewhere.length ? sameWordThemeSection(entry, sameWordElsewhere) : ''}
       ${listSection('自然に使われる場面', entry.useCasesJa)}
       ${examplesSection(entry.examples)}
       ${grammarNotesSection(entry.grammarNotes)}
@@ -1866,6 +2141,7 @@ function renderDetail() {
     </article>
   `;
 
+  state.container.querySelector('#atlas-detail-history-back')?.addEventListener('click', restorePreviousDetail);
   state.container.querySelector('#atlas-detail-root')?.addEventListener('click', () => returnToLibrary('', ''));
   state.container.querySelector('#atlas-detail-category')?.addEventListener('click', () => returnToLibrary(entry.category, ''));
   state.container.querySelector('#atlas-detail-topic')?.addEventListener('click', () => returnToLibrary(entry.category, entry.topic));
@@ -1879,14 +2155,88 @@ function renderDetail() {
   });
   state.container.querySelector('#atlas-delete')?.addEventListener('click', () => {
     if (!window.confirm(`「${entry.term}」を辞典から削除しますか？`)) return;
+    persistOpenPersonalNote();
     if (deleteExpressionEntry(entry.id)) {
       state.entryId = '';
       toast('表現を削除しました');
       render();
     }
   });
+  state.container.querySelector('#atlas-pin')?.addEventListener('click', () => {
+    const scrollTop = getMainScrollTop();
+    persistOpenPersonalNote();
+    const updated = updateExpressionEntry(entry.id, { starred: !entry.starred });
+    if (!updated) {
+      toast('ピン留めを変更できませんでした', 'error');
+      return;
+    }
+    renderDetail();
+    restoreMainScroll(scrollTop);
+    toast(updated.starred ? 'ピン留めしました' : 'ピン留めを外しました', 'success');
+  });
+  state.container.querySelectorAll('[data-atlas-same-word]').forEach(button => {
+    button.addEventListener('click', () => openLinkedExpression(button.dataset.atlasSameWord));
+  });
+  state.container.querySelector('[data-atlas-same-word-more]')?.addEventListener('click', event => {
+    const button = event.currentTarget;
+    const more = button.previousElementSibling;
+    const expanded = button.getAttribute('aria-expanded') === 'true';
+    button.setAttribute('aria-expanded', String(!expanded));
+    if (more) more.hidden = expanded;
+    button.textContent = expanded
+      ? `ほか${more?.querySelectorAll('[data-atlas-same-word]').length || 0}件を見る`
+      : '閉じる';
+  });
   wireClassificationEditor(entry, 'expression');
   wireRelatedEtymologyLinks();
+  wireCollapsibleDetailSections();
+}
+
+function findSameWordInOtherThemes(entry) {
+  const entries = getExpressionEntries();
+  const matches = findExpressionMatches(entry.lemma || entry.term, buildExpressionIndex(entries));
+  const seenThemes = new Set();
+  return matches.filter(candidate => {
+    if (candidate.id === entry.id) return false;
+    const themeKey = `${candidate.categoryId || candidate.category}|${candidate.topicId || candidate.topic}`;
+    const currentThemeKey = `${entry.categoryId || entry.category}|${entry.topicId || entry.topic}`;
+    if (themeKey === currentThemeKey || seenThemes.has(themeKey)) return false;
+    seenThemes.add(themeKey);
+    return true;
+  }).sort((a, b) => `${a.category} ${a.topic}`.localeCompare(`${b.category} ${b.topic}`, 'ja'));
+}
+
+function sameWordThemeSection(entry, matches) {
+  const label = entry.lemma || entry.term;
+  const visible = matches.slice(0, 3);
+  const hidden = matches.slice(3);
+  return `
+    <section class="atlas-detail-section atlas-same-word-section">
+      <h2>この語を別のテーマでも見る</h2>
+      <p class="atlas-same-word-intro"><strong lang="en">${esc(label)}</strong> は、テーマによって焦点や説明が変わります。</p>
+      <div class="atlas-same-word-list">
+        ${visible.map(match => `
+          <button class="atlas-same-word-link" type="button" data-atlas-same-word="${esc(match.id)}">
+            <span lang="en">${esc(match.term)}</span>
+            <small>${esc(match.category)} › ${esc(match.topic)}</small>
+          </button>
+        `).join('')}
+        ${hidden.length ? `
+          <div class="atlas-same-word-more" hidden>
+            ${hidden.map(match => `
+              <button class="atlas-same-word-link" type="button" data-atlas-same-word="${esc(match.id)}">
+                <span lang="en">${esc(match.term)}</span>
+                <small>${esc(match.category)} › ${esc(match.topic)}</small>
+              </button>
+            `).join('')}
+          </div>
+          <button class="atlas-same-word-more-toggle" type="button" data-atlas-same-word-more aria-expanded="false">
+            ほか${hidden.length}件を見る
+          </button>
+        ` : ''}
+      </div>
+    </section>
+  `;
 }
 
 function renderGenerator() {
@@ -2124,9 +2474,119 @@ function updateDraftSelectionUi() {
   }
 }
 
+function getRecentEntryIds() {
+  try {
+    const value = JSON.parse(localStorage.getItem(ATLAS_RECENT_KEY) || '[]');
+    return Array.isArray(value) ? value.filter(Boolean).slice(0, MAX_RECENT_ENTRIES) : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberRecentEntry(entryId) {
+  if (!entryId) return;
+  const next = [entryId, ...getRecentEntryIds().filter(id => id !== entryId)]
+    .slice(0, MAX_RECENT_ENTRIES);
+  try {
+    localStorage.setItem(ATLAS_RECENT_KEY, JSON.stringify(next));
+  } catch {}
+}
+
+function getMainScrollTop() {
+  return document.getElementById('main-content')?.scrollTop || 0;
+}
+
+function restoreMainScroll(scrollTop = 0) {
+  requestAnimationFrame(() => {
+    const main = document.getElementById('main-content');
+    if (!main) return;
+    main.scrollTop = Math.max(0, Number(scrollTop) || 0);
+  });
+}
+
+function restorePreviousDetail() {
+  const previous = state.detailTrail.pop();
+  if (!previous?.id) return false;
+  persistCurrentDetailNotes();
+  state.entryId = '';
+  state.translationId = '';
+  state.questionId = '';
+  state.morphemeId = '';
+  state.usageId = '';
+  state.entryId = previous.kind === 'expression' ? previous.id : '';
+  state.translationId = previous.kind === 'translation' ? previous.id : '';
+  state.questionId = previous.kind === 'question' ? previous.id : '';
+  state.morphemeId = previous.kind === 'morphology' ? previous.id : '';
+  state.usageId = previous.kind === 'usage' ? previous.id : '';
+  state.libraryMode = previous.kind === 'translation'
+    ? 'translations'
+    : previous.kind === 'question'
+      ? 'questions'
+      : previous.kind === 'morphology'
+        ? 'morphology'
+        : previous.kind === 'usage'
+          ? 'usage'
+          : 'expressions';
+  render();
+  restoreMainScroll(previous.scrollTop);
+  return true;
+}
+
+function getCurrentDetailState() {
+  if (state.entryId) return { kind: 'expression', id: state.entryId };
+  if (state.translationId) return { kind: 'translation', id: state.translationId };
+  if (state.questionId) return { kind: 'question', id: state.questionId };
+  if (state.morphemeId) return { kind: 'morphology', id: state.morphemeId };
+  if (state.usageId) return { kind: 'usage', id: state.usageId };
+  return null;
+}
+
+function pushDetailHistory(detail = getCurrentDetailState()) {
+  if (!detail?.id) return;
+  const previous = state.detailTrail.at(-1);
+  if (previous?.kind === detail.kind && previous?.id === detail.id) return;
+  state.detailTrail.push({ ...detail, scrollTop: getMainScrollTop() });
+  state.detailTrail = state.detailTrail.slice(-20);
+}
+
+function persistCurrentDetailNotes() {
+  if (state.entryId) persistOpenPersonalNote();
+  if (state.translationId) persistOpenTranslationNote();
+}
+
+function wireCollapsibleDetailSections() {
+  state.container?.querySelectorAll('.atlas-detail-section').forEach((section, index) => {
+    const heading = section.querySelector(':scope > h2');
+    if (!heading || section.classList.contains('atlas-same-word-section')) return;
+    const sectionKey = `${state.entryId}:${index}:${heading.textContent.trim()}`;
+    const content = [...section.children].filter(child => child !== heading);
+    if (!content.length) return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'atlas-section-toggle';
+    button.setAttribute('aria-expanded', String(!state.collapsedDetailSections.has(sectionKey)));
+    button.setAttribute('aria-label', `${heading.textContent.trim()}を開閉`);
+    button.innerHTML = '<span aria-hidden="true">⌄</span>';
+    heading.appendChild(button);
+    const apply = expanded => {
+      content.forEach(child => { child.hidden = !expanded; });
+      button.setAttribute('aria-expanded', String(expanded));
+      section.classList.toggle('is-collapsed', !expanded);
+    };
+    apply(!state.collapsedDetailSections.has(sectionKey));
+    button.addEventListener('click', () => {
+      const expanded = button.getAttribute('aria-expanded') === 'true';
+      if (expanded) state.collapsedDetailSections.add(sectionKey);
+      else state.collapsedDetailSections.delete(sectionKey);
+      apply(!expanded);
+    });
+  });
+}
+
 function returnToLibrary(category, topic) {
   persistOpenPersonalNote();
   state.entryId = '';
+  state.detailTrail = [];
   state.category = category;
   state.topic = topic;
   state.search = '';
@@ -2174,7 +2634,15 @@ function wireClassificationEditor(record, kind) {
       toast('カテゴリとテーマを入力してください', 'error');
       return;
     }
-    const updates = applyManualClassification(record, category, topic);
+    persistCurrentDetailNotes();
+    const latest = kind === 'translation'
+      ? getTranslationSets().find(item => item.id === record.id)
+      : getExpressionEntries().find(item => item.id === record.id);
+    if (!latest) {
+      toast('項目を読み直せませんでした', 'error');
+      return;
+    }
+    const updates = applyManualClassification(latest, category, topic);
     const saved = kind === 'translation'
       ? updateTranslationSet(record.id, updates)
       : updateExpressionEntry(record.id, updates);
@@ -2245,13 +2713,7 @@ function relatedEtymologySection(entry) {
 function wireRelatedEtymologyLinks() {
   state.container?.querySelectorAll('[data-related-morpheme]').forEach(button => {
     button.addEventListener('click', () => {
-      persistOpenPersonalNote();
-      state.entryId = '';
-      state.translationId = '';
-      state.morphemeId = button.dataset.relatedMorpheme;
-      state.libraryMode = 'morphology';
-      render();
-      scrollMainToTop();
+      openMorphologyDetail(button.dataset.relatedMorpheme);
     });
   });
 }
@@ -2370,20 +2832,27 @@ function examplesSection(examples) {
   `;
 }
 
-function translationVocabularySection(notes) {
+function translationVocabularySection(notes, expressionIndex = buildExpressionIndex(getExpressionEntries())) {
   if (!Array.isArray(notes) || !notes.length) return '';
   return `
     <section class="atlas-detail-section">
       <h2>内部解説：主要語彙・構文の語源と深掘り</h2>
       <div class="atlas-language-note-list">
-        ${notes.map(note => `
+        ${notes.map(note => {
+          const lookupTerm = note.lemma || note.expression;
+          const matches = findExpressionMatches(lookupTerm, expressionIndex);
+          const heading = matches.length
+            ? `<button type="button" class="atlas-inline-word-link" lang="en" data-linked-token="${esc(lookupTerm)}" data-linked-entries="${esc(matches.map(entry => entry.id).join(','))}">${esc(note.expression)}</button>`
+            : `<strong lang="en">${esc(note.expression)}</strong>`;
+          return `
           <div class="atlas-language-note">
-            <strong lang="en">${esc(note.expression)}</strong>
+            ${heading}
             ${note.etymologyJa ? `<p><span>語源</span>${esc(note.etymologyJa)}</p>` : ''}
             ${note.coreImageJa ? `<p><span>コアイメージ</span>${esc(note.coreImageJa)}</p>` : ''}
             ${note.nuanceJa ? `<p><span>深いニュアンス</span>${esc(note.nuanceJa)}</p>` : ''}
           </div>
-        `).join('')}
+        `;
+        }).join('')}
       </div>
     </section>
   `;

@@ -121,6 +121,15 @@ export function toEnglishLemma(value) {
   return token;
 }
 
+function toEnglishPhraseLemma(value) {
+  const token = normalizeEnglishToken(value);
+  if (!token || !/[\s-]/.test(token)) return toEnglishLemma(token);
+  return token
+    .split(/([\s-]+)/)
+    .map(part => /^[\s-]+$/.test(part) ? part : toEnglishLemma(part))
+    .join('');
+}
+
 export function expressionLookupKeys(entry = {}) {
   return uniqueStrings([
     entry.term,
@@ -129,7 +138,7 @@ export function expressionLookupKeys(entry = {}) {
     ...(Array.isArray(entry.grammarNotes?.exampleForms) ? entry.grammarNotes.exampleForms : []),
   ]).flatMap(value => {
     const token = normalizeEnglishToken(value);
-    const lemma = toEnglishLemma(value);
+    const lemma = toEnglishPhraseLemma(value);
     return token === lemma ? [token] : [token, lemma];
   }).filter(Boolean);
 }
@@ -152,7 +161,7 @@ export function findExpressionMatches(value, entriesOrIndex = []) {
     ? entriesOrIndex
     : buildExpressionIndex(entriesOrIndex);
   const token = normalizeEnglishToken(value);
-  const lemma = toEnglishLemma(value);
+  const lemma = toEnglishPhraseLemma(value);
   const matches = [...(index.get(token) || []), ...(index.get(lemma) || [])];
   return [...new Map(matches.map(entry => [entry.id, entry])).values()];
 }
@@ -164,8 +173,59 @@ export function isUsefulLinkedToken(value, entriesOrIndex = []) {
   return matches.length > 0 && (!FUNCTION_WORDS.has(token) || matches.some(entry => entry.linkFunctionWord));
 }
 
-export function tokenizeEnglishForLinks(text) {
+export function tokenizeEnglishForLinks(text, entriesOrIndex = null) {
   const source = String(text || '');
+  if (entriesOrIndex) {
+    const index = entriesOrIndex instanceof Map
+      ? entriesOrIndex
+      : buildExpressionIndex(entriesOrIndex);
+    const words = [...source.matchAll(/[A-Za-z]+(?:['’][A-Za-z]+)?/g)];
+    if (!words.length) return source ? [{ text: source, token: '' }] : [];
+
+    const parts = [];
+    let cursor = 0;
+    let wordIndex = 0;
+    while (wordIndex < words.length) {
+      const start = words[wordIndex].index;
+      let matchedEnd = wordIndex;
+      let matchedToken = '';
+      const maxEnd = Math.min(words.length - 1, wordIndex + 5);
+
+      for (let end = maxEnd; end >= wordIndex; end -= 1) {
+        let hasOnlyPhraseSeparators = true;
+        for (let gap = wordIndex; gap < end; gap += 1) {
+          const between = source.slice(
+            words[gap].index + words[gap][0].length,
+            words[gap + 1].index
+          );
+          if (!/^[\s-]+$/.test(between)) {
+            hasOnlyPhraseSeparators = false;
+            break;
+          }
+        }
+        if (!hasOnlyPhraseSeparators) continue;
+        const endOffset = words[end].index + words[end][0].length;
+        const candidate = source.slice(start, endOffset);
+        if (isUsefulLinkedToken(candidate, index)) {
+          matchedEnd = end;
+          matchedToken = normalizeEnglishToken(candidate);
+          break;
+        }
+      }
+
+      if (start > cursor) parts.push({ text: source.slice(cursor, start), token: '' });
+      const endOffset = words[matchedEnd].index + words[matchedEnd][0].length;
+      parts.push({
+        text: source.slice(start, endOffset),
+        token: matchedToken || normalizeEnglishToken(words[wordIndex][0]),
+      });
+      cursor = endOffset;
+      wordIndex = matchedEnd + 1;
+    }
+    if (cursor < source.length) parts.push({ text: source.slice(cursor), token: '' });
+    return parts;
+  }
+
   const parts = source.split(/([A-Za-z]+(?:['’][A-Za-z]+)?)/g);
   return parts.filter(part => part !== '').map(part => ({
     text: part,

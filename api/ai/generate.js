@@ -363,30 +363,48 @@ function extractText(data) {
   return parts.map(part => part?.text || '').join('').trim();
 }
 
-function hasCompleteTranslationResponse(text) {
+function parseStructuredResponse(text) {
+  const cleaned = String(text || '')
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '')
+    .trim();
   try {
-    const parsed = JSON.parse(String(text || ''));
-    const variants = Array.isArray(parsed?.variants) ? parsed.variants : [];
-    const translations = variants
-      .map(variant => String(variant?.translation || '').trim().toLocaleLowerCase())
-      .filter(Boolean);
-    return variants.length === 3 && new Set(translations).size === 3;
+    return JSON.parse(cleaned);
   } catch {
-    return false;
+    return null;
   }
 }
 
+function hasCompleteTranslationResponse(text) {
+  const parsed = parseStructuredResponse(text);
+  const variants = Array.isArray(parsed?.variants) ? parsed.variants : [];
+  const translations = variants
+    .map(variant => String(variant?.translation || '').trim().toLocaleLowerCase())
+    .filter(Boolean);
+  return variants.length === 3 && new Set(translations).size === 3;
+}
+
 function hasCompleteNuanceResponse(text) {
-  try {
-    const parsed = JSON.parse(String(text || ''));
-    const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
-    const terms = entries
-      .map(entry => String(entry?.term || '').trim().toLocaleLowerCase())
-      .filter(Boolean);
-    return entries.length >= 5 && new Set(terms).size >= 5;
-  } catch {
-    return false;
-  }
+  const parsed = parseStructuredResponse(text);
+  const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
+  const terms = entries
+    .map(entry => String(entry?.term || '').trim().toLocaleLowerCase())
+    .filter(Boolean);
+  return entries.length >= 5 && new Set(terms).size >= 5;
+}
+
+function hasCompleteEnglishQuestionResponse(text) {
+  const parsed = parseStructuredResponse(text);
+  const examples = Array.isArray(parsed?.examples) ? parsed.examples : [];
+  return Boolean(
+    String(parsed?.shortAnswerJa || '').trim()
+    && String(parsed?.explanationJa || '').trim()
+    && examples.filter(example => (
+      String(example?.english || '').trim()
+      && String(example?.japanese || '').trim()
+    )).length >= 2
+  );
 }
 
 async function requestGemini(key, model, payload) {
@@ -602,7 +620,9 @@ export default async function handler(req, res) {
       && !hasCompleteTranslationResponse(text);
     const incompleteNuance = body.actionType === 'nuance_generate'
       && !hasCompleteNuanceResponse(text);
-    if (!text || incompleteTranslation || incompleteNuance) {
+    const incompleteEnglishQuestion = body.actionType === 'english_question'
+      && !hasCompleteEnglishQuestionResponse(text);
+    if (!text || incompleteTranslation || incompleteNuance || incompleteEnglishQuestion) {
       const retryPayload = {
         ...payload,
         generationConfig: {
@@ -626,6 +646,15 @@ The previous response was incomplete. Return all three distinct translation vari
             text: `${String(body.systemText || '')}
 
 The previous response was incomplete. Return five to eight distinct expressions with every required explanation field. The user does not need to provide a usage situation: infer several realistic situations for each expression and explain them in useCasesJa. Never ask the user to make the theme or words more specific when a reasonable interpretation is possible.`,
+          }],
+        };
+      }
+      if (body.actionType === 'english_question') {
+        retryPayload.systemInstruction = {
+          parts: [{
+            text: `${String(body.systemText || '')}
+
+The previous response was incomplete. Answer the learner's exact question directly even when it is short, colloquial, or ambiguous. Return a concise direct answer, a careful explanation, and at least two natural English examples with Japanese translations. Do not ask the learner to rewrite or clarify the question when a reasonable interpretation is possible.`,
           }],
         };
       }

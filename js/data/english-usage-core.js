@@ -119,12 +119,66 @@ const PARTICLE_USAGE_GUIDES = {
   around: 'around は中心に正面からぶつからず、その周囲を回り込みます。look around は周囲を見回し、get around a problem は問題の中心を避けて別の経路を探し、pass around は物を輪の周りへ回します。through が中を抜けるのに対し、around は外縁をたどる動きです。',
 };
 
+// Each motion is deliberately concrete. The renderer reuses a small set of
+// visual grammars, while this table keeps the learning scene specific to every
+// relationship word in the built-in guide.
+const RELATION_MOTION_CONFIG = Object.fromEntries([
+  ['preposition-at', ['point', '広がる場所の中から、一点だけを狙って止める。']],
+  ['preposition-in', ['container', '境界で囲まれた空間の内側にある。']],
+  ['preposition-on', ['surface', '物が面に接触し、その面に支えられている。']],
+  ['preposition-to', ['arrow', '出発点から決まった到達点へ進み、その終点に届く。']],
+  ['preposition-for', ['purpose', '行為が、目的や受け手のほうへ確保される。']],
+  ['preposition-from', ['origin', '起点から外へ向かって、流れが始まる。']],
+  ['preposition-of', ['portion', '全体の中から一部分だけを切り出して示す。']],
+  ['preposition-with', ['companion', '二つのものが離れず、同じ場に伴っている。']],
+  ['preposition-by', ['beside', 'ある基準のすぐそばに位置する。その近さが手段や行為者の意味へ広がる。']],
+  ['preposition-about', ['orbit', '中心そのものではなく、その周りを話題がめぐる。']],
+  ['preposition-over', ['arch', '障害や基準の上を越え、反対側まで渡る。']],
+  ['preposition-under', ['shelter', '上のものの下に入り、覆われる位置に置かれる。']],
+  ['preposition-between', ['between', '二つの基準に挟まれ、その間の位置を占める。']],
+  ['preposition-among', ['cluster', '複数のものからなる集団の一員として、その中にある。']],
+  ['preposition-through', ['tunnel', '入口から内部を通り、出口まで抜け切る。']],
+  ['preposition-across', ['cross', '一方の端から、幅を横切って反対側へ届く。']],
+  ['preposition-along', ['along', '長い線を横切らず、そのそばをたどり続ける。']],
+  ['preposition-around', ['orbit', '中心を囲みながら、その周囲を回る。']],
+  ['preposition-against', ['press', '二つの面がぶつかり、押し当てる力が生まれる。']],
+  ['preposition-before', ['timeline-before', '基準の出来事より前の位置で、行為が止まる。']],
+  ['preposition-after', ['timeline-after', '基準の出来事を通り過ぎた後に、次が続く。']],
+  ['preposition-during', ['duration', '始まりと終わりのある時間箱の内側で出来事が起きる。']],
+  ['preposition-since', ['timeline-from', '過去の起点から、今へ向かう線が伸び続ける。']],
+  ['preposition-until', ['deadline', '動きや状態が、終点の直前まで続く。']],
+  ['preposition-within', ['container', 'はっきりした境界を越えず、その内側に収める。']],
+  ['preposition-without', ['absence', '本来あるはずのものがない空白を残したまま進む。']],
+  ['preposition-into', ['enter', '外側から境界を越え、内側へ移動する。']],
+  ['preposition-onto', ['land', '動きが面へ到着し、その上に乗る。']],
+  ['preposition-out-of', ['exit', '内側から境界を越えて、外へ抜け出す。']],
+
+  ['conjunction-and', ['join', '二つの流れが合流し、同じ方向へ続く。']],
+  ['conjunction-but', ['turn', '前の流れが折れ、予想と違う方向へ向く。']],
+  ['conjunction-or', ['fork', '一つの流れが、選べる二つの枝に分かれる。']],
+  ['conjunction-so', ['result', '前の出来事から、結果が後ろへ生まれる。']],
+  ['conjunction-yet', ['turn', '予想と反対の事実が、それでも続いて現れる。']],
+  ['conjunction-because', ['cause', '理由が押し出し、結果がその先に現れる。']],
+  ['conjunction-although', ['contrast', '不利な事実を越えて、主張が前へ進む。']],
+  ['conjunction-if', ['condition', '条件の門が開いたときだけ、次の流れへ進める。']],
+  ['conjunction-unless', ['condition', '例外の門が閉じない限り、流れは前へ進む。']],
+  ['conjunction-while', ['parallel', '二つの出来事が、同じ時間帯を並行して進む。']],
+  ['conjunction-when', ['trigger', 'ある時点で合図が入り、次の出来事が始まる。']],
+  ['conjunction-before', ['timeline-before', '基準になる出来事の前で、先の行為が完了する。']],
+  ['conjunction-after', ['timeline-after', '基準になる出来事が終わってから、次の行為が続く。']],
+  ['conjunction-until', ['deadline', '終点になる出来事まで、状態が保たれる。']],
+  ['conjunction-as-soon-as', ['trigger', '一つが起きた直後に、次の出来事がすぐ続く。']],
+  ['conjunction-so-that', ['purpose', '前の行為が、目的となる結果のほうへ届く。']],
+  ['conjunction-whether', ['fork', '答えを決めず、二つの可能性を分岐として保留する。']],
+].map(([id, [motionKind, motionSummaryJa]]) => [id, { motionKind, motionSummaryJa }]));
+
 const IPA_BY_FORM = {
   at: '/æt/', in: '/ɪn/', on: '/ɑːn/', to: '/tuː/・/tə/', for: '/fɔːr/・/fər/', from: '/frʌm/', of: '/əv/', with: '/wɪð/', by: '/baɪ/', about: '/əˈbaʊt/', over: '/ˈoʊvər/', under: '/ˈʌndər/', between: '/bɪˈtwiːn/', among: '/əˈmʌŋ/', through: '/θruː/', across: '/əˈkrɔːs/', along: '/əˈlɔːŋ/', around: '/əˈraʊnd/', against: '/əˈɡenst/', before: '/bɪˈfɔːr/', after: '/ˈæftər/', during: '/ˈdʊrɪŋ/', since: '/sɪns/', until: '/ənˈtɪl/', within: '/wɪˈðɪn/', without: '/wɪˈðaʊt/', into: '/ˈɪntuː/', onto: '/ˈɑːntuː/', 'out of': '/ˈaʊt əv/', and: '/ænd/・/ənd/', but: '/bʌt/', or: '/ɔːr/・/ər/', so: '/soʊ/', yet: '/jet/', because: '/bɪˈkɔːz/', although: '/ɔːlˈðoʊ/', if: '/ɪf/', unless: '/ənˈles/', while: '/waɪl/', when: '/wen/', 'as soon as': '/æz suːn æz/', 'so that': '/soʊ ðæt/', whether: '/ˈweðər/', out: '/aʊt/', off: '/ɔːf/', up: '/ʌp/', down: '/daʊn/', away: '/əˈweɪ/', back: '/bæk/',
 };
 
 PARTICLES.forEach(particle => Object.assign(particle, PARTICLE_MOTION_SUMMARIES[particle.form] || {}, { usageGuideJa: PARTICLE_USAGE_GUIDES[particle.form] || '' }));
 [...PREPOSITIONS, ...CONJUNCTIONS, ...PARTICLES].forEach(entry => {
+  Object.assign(entry, RELATION_MOTION_CONFIG[entry.id] || {});
   entry.pronunciation = IPA_BY_FORM[entry.form] || '';
 });
 

@@ -13,7 +13,7 @@ import { parseJapaneseTimes, today } from './utils.js';
 
 const SERVER_STATUS_URL = '/api/ai/status';
 const SERVER_GENERATE_URL = '/api/ai/generate';
-const AI_REQUEST_TIMEOUT_MS = 95_000;
+const AI_REQUEST_TIMEOUT_MS = 110_000;
 
 const FAST_MODEL = 'fast';
 const QUALITY_MODEL = 'quality';

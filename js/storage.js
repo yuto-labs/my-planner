@@ -815,6 +815,7 @@ function expressionRecordToEntry(record) {
   return withStableClassification({
     ...data,
     id: record.id,
+    starred: !!record.starred,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   });
@@ -897,24 +898,26 @@ function expressionEntryToRecord(entry, existing = null) {
     ...withStableClassification(entry),
   };
   delete data.id;
+  delete data.starred;
   delete data.createdAt;
   delete data.updatedAt;
   const title = data.term;
   const summary = data.coreMeaningJa || data.nuanceJa || '';
+  const targetStarred = typeof entry.starred === 'boolean' ? entry.starred : (existing?.starred || false);
   const unchanged = atlasRecordIsUnchanged(
     existing,
     EXPRESSION_ATLAS_BLOCK_TYPE,
     title,
     summary,
     data
-  );
+  ) && !!existing?.starred === targetStarred;
   return {
     id,
     title,
     summary,
     blocks: [{ id: `${id}-nuance`, type: EXPRESSION_ATLAS_BLOCK_TYPE, data }],
     tags: existing?.tags || [EXPRESSION_ATLAS_TAG],
-    starred: existing?.starred || false,
+    starred: targetStarred,
     url: existing?.url || '',
     createdAt: existing?.createdAt || entry.createdAt || now,
     updatedAt: unchanged ? (existing.updatedAt || entry.updatedAt || now) : now,
