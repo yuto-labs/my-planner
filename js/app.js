@@ -1,5 +1,5 @@
 ﻿// ============================================================
-// app.js 窶・Main SPA router & app shell
+// app.js - Main SPA router and app shell
 // ============================================================
 
 import {
@@ -658,10 +658,13 @@ function applyAccentTheme(rgb, tuningInput) {
   const vividness = tuning.accentVividness / 100;
   const neutralness = Math.max(0, 1 - (hsl.s / 0.28));
   const lightnessLift = 0.16 - vividness * 0.12 - neutralness * 0.12;
+  const isDark = root.getAttribute('data-theme') === 'dark';
+  // Near-white accents need a darker UI rendering on light surfaces to stay legible.
+  const maxBaseLightness = isDark ? 0.8 : 0.8 - neutralness * 0.34;
   const adjustedBase = hslToRgb(
     hsl.h,
     Math.max(0.04, Math.min(0.92, hsl.s * (0.62 + vividness * 0.85))),
-    Math.max(0.16, Math.min(0.8, hsl.l + lightnessLift)),
+    Math.max(0.16, Math.min(maxBaseLightness, hsl.l + lightnessLift)),
   );
   const lighter = mixRgb(adjustedBase, { r: 255, g: 255, b: 255 }, 0.34 - vividness * 0.16 - neutralness * 0.18);
   const lightest = mixRgb(adjustedBase, { r: 255, g: 255, b: 255 }, 0.58 - vividness * 0.18 - neutralness * 0.28);
@@ -883,7 +886,7 @@ async function setupServiceWorkerAutoUpdate() {
   }, 60 * 1000);
 }
 
-// Expose to global (for modules to call 窶・avoids circular imports)
+// Expose to global for modules without introducing circular imports.
 window.AppNav = { navigate, refreshCurrentView, showToast, showUndoToast, openSearch, closeSearch, openModal };
 window.AppTheme = { apply: applyTheme };
 // Knowledge graph uses this to open memos without circular import
