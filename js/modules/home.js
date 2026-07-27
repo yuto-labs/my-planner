@@ -26,6 +26,7 @@ import { flushPendingSync } from '../sync.js';
 
 const nav   = (view) => window.AppNav?.navigate(view);
 const toast = (msg, type) => window.AppNav?.showToast(msg, type);
+const undoToast = (msg, cb) => window.AppNav?.showUndoToast(msg, cb);
 let nlBusy = false;
 
 export function initHome(container) {
@@ -212,8 +213,19 @@ export function initHome(container) {
       const taskId = btn.dataset.taskId;
       const task = getTasks().find(t => t.id === taskId);
       if (!task) return;
-      updateTask(taskId, { completed: !task.completed });
+      const wasCompleted = Boolean(task.completed);
+      const previousCompletedAt = task.completedAt || null;
+      updateTask(taskId, {
+        completed: !wasCompleted,
+        completedAt: wasCompleted ? null : new Date().toISOString(),
+      });
       reinit(container);
+      if (!wasCompleted) {
+        undoToast(`「${task.title.slice(0, 20)}」を完了にしました`, () => {
+          updateTask(taskId, { completed: false, completedAt: previousCompletedAt });
+          reinit(container);
+        });
+      }
     });
   });
 

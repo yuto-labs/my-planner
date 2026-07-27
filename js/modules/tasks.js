@@ -168,9 +168,6 @@ function render() {
       </datalist>
     </div>
 
-    <!-- Completion bar -->
-    <div class="tasks-progress-wrap" id="tasks-progress-wrap"></div>
-
     <!-- Filters -->
     <div class="tasks-filters">${renderFiltersHTML()}</div>
 
@@ -1119,7 +1116,7 @@ function renderTaskItem(task) {
   const isGoal = task.taskType === 'goal';
 
   return `
-    <li class="task-item${task.completed ? ' completed' : ''}${task.abandoned ? ' abandoned' : ''}${isGoal ? ' task-item--goal' : ''}${task.highlightColor ? ' task-item--highlight' : ''}" data-task-id="${esc(task.id)}" draggable="true"${highlightStyle}>
+    <li class="task-item${task.completed ? ' completed' : ''}${task.abandoned ? ' abandoned' : ''}${isGoal ? ' task-item--goal' : ''}${task.highlightColor ? ' task-item--highlight' : ''}" data-task-id="${esc(task.id)}" draggable="true" role="group" tabindex="0" aria-label="${esc(task.title)}を編集"${highlightStyle}>
       <button class="task-check${task.completed ? ' done' : ''}" data-action="toggle"
         ${task.abandoned ? 'disabled aria-label="諦めたタスクは完了にできません" title="諦めたタスクは完了にできません"' : 'aria-label="完了を切り替え"'}>
         <svg viewBox="0 0 24 24" fill="currentColor">
@@ -1186,6 +1183,16 @@ function wireTaskActions() {
     else if (action === 'unabandon')  handleUnabandon(taskId, li);
     else if (action === 'edit-title') startTitleEdit(li, taskId);
     else if (action === 'decompose')  handleDecompose(taskId, e.target.closest('[data-action="decompose"]'));
+    else                              startTitleEdit(li, taskId);
+  });
+
+  listEl.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    if (e.target.closest('button, input, textarea, select, [contenteditable="true"]')) return;
+    const li = e.target.closest('[data-task-id]');
+    if (!li) return;
+    e.preventDefault();
+    startTitleEdit(li, li.dataset.taskId);
   });
 }
 

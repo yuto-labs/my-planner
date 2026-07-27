@@ -145,6 +145,7 @@ html, body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overscroll-behavior: none;
+  touch-action: pan-x pan-y;
 }
 
 ::-webkit-scrollbar { width: 3px; height: 3px; }
@@ -1389,6 +1390,11 @@ button { cursor: pointer; font-family: inherit; }
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-sm);
   transition: opacity var(--transition);
+  cursor: pointer;
+}
+.task-item:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 .task-item--highlight {
   border-color: color-mix(in srgb, var(--task-highlight, var(--primary)) 38%, var(--border));
@@ -2620,6 +2626,14 @@ button { cursor: pointer; font-family: inherit; }
 
 .kn-memo-card-top {
   display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px;
+}
+.kn-memo-heading {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
 }
 .kn-memo-title { flex: 1; font-size: 14px; font-weight: 700; line-height: 1.35; }
 .kn-star-btn {
@@ -4604,8 +4618,7 @@ button { cursor: pointer; font-family: inherit; }
   display: flex;
   align-items: flex-start;
   gap: 6px;
-  margin-bottom: 4px;
-  flex-wrap: wrap;
+  margin-bottom: 2px;
 }
 
 /* ============================================================
@@ -4709,31 +4722,6 @@ button { cursor: pointer; font-family: inherit; }
   flex: 1;
   max-width: 148px;
   font-size: 13px;
-}
-
-/* Completion progress bar */
-.tasks-progress-wrap {
-  padding: 8px 16px 0;
-}
-.tasks-progress {
-  position: relative;
-  background: var(--bg-hover);
-  border-radius: 100px;
-  height: 8px;
-  overflow: hidden;
-}
-.tasks-progress-bar {
-  height: 100%;
-  background: linear-gradient(90deg, var(--primary), var(--accent));
-  border-radius: 100px;
-  transition: width 0.4s ease;
-}
-.tasks-progress-label {
-  display: block;
-  font-size: 11px;
-  color: var(--text-dim);
-  margin-top: 4px;
-  text-align: right;
 }
 
 .codex-plan-card {
@@ -6387,7 +6375,7 @@ kbd {
 /* ============================================================
    57. KNOWLEDGE REVIEW BADGES
    ============================================================ */
-.kn-review-row { margin-bottom: 4px; }
+.kn-review-row { margin: 0; line-height: 1; }
 .kn-review-badge {
   display: inline-flex;
   align-items: center;
