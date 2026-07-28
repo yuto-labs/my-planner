@@ -926,8 +926,8 @@ function openDaySheet(dateStr) {
   `;
 
   document.getElementById('app').appendChild(sheet);
-  // Animate in (next frame to allow transition)
-  requestAnimationFrame(() => sheet.classList.add('cal-day-sheet--open'));
+  // Double RAF: first frame paints the element, second triggers the transition (iOS Safari fix)
+  requestAnimationFrame(() => requestAnimationFrame(() => sheet.classList.add('cal-day-sheet--open')));
 
   const closeSheet = () => {
     sheet.classList.remove('cal-day-sheet--open');

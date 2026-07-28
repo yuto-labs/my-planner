@@ -6655,9 +6655,10 @@ kbd {
   display: flex;
   align-items: flex-end;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.25s ease;
 }
-.cal-day-sheet--open { opacity: 1; }
+.cal-day-sheet--open { opacity: 1; pointer-events: auto; }
 
 .cal-day-sheet-panel {
   width: 100%;
@@ -9735,8 +9736,6 @@ button.atlas-nuance-map-row:focus-visible {
 .ev-tag-suggest-btn { border: 1px solid var(--border); border-radius: 999px; background: var(--bg-hover); color: var(--text-muted); font-style: inherit; font-variant: inherit; font-stretch: inherit; line-height: inherit; font-family: inherit; font-optical-sizing: inherit; font-size-adjust: inherit; font-kerning: inherit; font-feature-settings: inherit; font-variation-settings: inherit; font-language-override: inherit; font-size: 11px; font-weight: 700; padding: 4px 10px; cursor: pointer; }
 
 #supabase-section hr { border-right-width: medium; border-bottom-width: medium; border-left-width: medium; border-right-style: none; border-bottom-style: none; border-left-style: none; border-right-color: currentcolor; border-bottom-color: currentcolor; border-left-color: currentcolor; border-image: none; border-top: 1px solid var(--border); }
-
-.cal-day-sheet { position: fixed; inset: 0px; z-index: 300; background: rgba(0, 0, 0, 0.45); display: flex; align-items: flex-end; opacity: 0; transition: opacity 0.25s; }
 
 .cal-day-sheet-close { background: none; border-width: medium; border-style: none; border-color: currentcolor; border-image: none; color: var(--text-muted); padding: 4px; display: flex; align-items: center; justify-content: center; }
 
