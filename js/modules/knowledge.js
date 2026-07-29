@@ -2604,6 +2604,38 @@ function hasStructuredClipboardHtml(html) {
   ));
 }
 
+function clipboardImageFiles(clipboard) {
+  const files = [...(clipboard?.files || [])].filter(file => file.type.startsWith('image/'));
+  for (const item of [...(clipboard?.items || [])]) {
+    if (item.kind !== 'file' || !item.type.startsWith('image/')) continue;
+    const file = item.getAsFile?.();
+    if (file && !files.some(existing => existing.name === file.name && existing.size === file.size && existing.type === file.type)) {
+      files.push(file);
+    }
+  }
+  return files;
+}
+
+function clipboardImageSources(html) {
+  const template = document.createElement('template');
+  template.innerHTML = String(html || '');
+  return [...template.content.querySelectorAll('img[src]')]
+    .map(image => image.getAttribute('src') || '')
+    .filter(Boolean);
+}
+
+async function clipboardImageSourceToFile(source, index) {
+  try {
+    const response = await fetch(source);
+    const blob = await response.blob();
+    if (!blob.type.startsWith('image/')) return null;
+    const extension = blob.type.split('/')[1]?.replace(/[^a-z0-9]/gi, '') || 'png';
+    return new File([blob], `clipboard-${Date.now()}-${index}.${extension}`, { type: blob.type });
+  } catch {
+    return null;
+  }
+}
+
 function insertRichClipboardBlocks(blockId, editable, blocks, container) {
   const loc = findBlockLocation(blockId);
   if (!loc || !blocks.length) return false;
@@ -2637,10 +2669,11 @@ function insertRichClipboardBlocks(blockId, editable, blocks, container) {
 
 function handleEditorPaste(event, container) {
   const target = event.target;
-  if (target?.contentEditable !== 'true') return;
+  const editable = target?.closest?.('[contenteditable="true"]');
+  if (!editable) return;
   const clipboard = event.clipboardData;
   if (!clipboard) return;
-  const imageFiles = [...clipboard.files].filter(file => file.type.startsWith('image/'));
+  const imageFiles = clipboardImageFiles(clipboard);
   if (imageFiles.length) {
     event.preventDefault();
     event.stopPropagation();
@@ -2652,20 +2685,37 @@ function handleEditorPaste(event, container) {
   }
   const html = clipboard.getData('text/html');
   if (!html) return;
+  const imageSources = clipboardImageSources(html);
+  if (imageSources.length) {
+    event.preventDefault();
+    event.stopPropagation();
+    Promise.all(imageSources.map(clipboardImageSourceToFile)).then(files => {
+      const readableFiles = files.filter(Boolean);
+      if (!readableFiles.length) {
+        toast('この画像は安全に読み取れませんでした。画像ファイルとして貼り付け直してください。', 'error');
+        return;
+      }
+      readableFiles.reduce(
+        (pending, file) => pending.then(() => insertMemoImageFile(file, container)),
+        Promise.resolve()
+      );
+    });
+    return;
+  }
   if (!hasStructuredClipboardHtml(html)) {
     const safeHtml = sanitizeBlockHtml(html);
     if (!safeHtml) return;
     event.preventDefault();
     event.stopPropagation();
     document.execCommand?.('insertHTML', false, safeHtml);
-    syncEditableBlock(target.dataset.blockId, target);
+    syncEditableBlock(editable.dataset.blockId, editable);
     return;
   }
   const blocks = clipboardBlocksFromHtml(html);
   if (!blocks.length) return;
   event.preventDefault();
   event.stopPropagation();
-  insertRichClipboardBlocks(target.dataset.blockId, target, blocks, container);
+  insertRichClipboardBlocks(editable.dataset.blockId, editable, blocks, container);
 }
 
 function insertMediaBlock(blockId, media) {

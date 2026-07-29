@@ -2952,7 +2952,7 @@ button { cursor: pointer; font-family: inherit; }
 /* ---- EDIT MODE ---- */
 .knowledge-editor-open #app-header,
 .knowledge-editor-open #bottom-nav { display: none !important; }
-.kn-edit-page { min-height: 100%; padding-bottom: max(24px, env(safe-area-inset-bottom)); }
+.kn-edit-page { min-height: 100%; padding-bottom: max(24px, env(safe-area-inset-bottom)); overflow-x: clip; }
 
 .kn-edit-topbar {
   display: flex; justify-content: space-between; align-items: center;
@@ -3239,7 +3239,7 @@ button { cursor: pointer; font-family: inherit; }
 .kn-toggle-target-arrow { color: var(--primary); font-weight: 700; }
 
 /* Blocks wrapper */
-.kn-blocks-wrap { padding: 6px 12px; display: flex; flex-direction: column; gap: 0; }
+.kn-blocks-wrap { padding: 6px 12px; display: flex; flex-direction: column; gap: 0; min-width: 0; overflow-x: clip; }
 
 /* Individual block */
 .kn-block {
@@ -3289,6 +3289,14 @@ button { cursor: pointer; font-family: inherit; }
   font-size: 14px; line-height: 1.55; color: var(--text);
   font-family: inherit; word-break: break-word;
   white-space: pre-wrap;
+}
+.kn-block-text img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: 48vh;
+  object-fit: contain;
 }
 .kn-block-text mark,
 .kn-view-para mark,
