@@ -752,12 +752,15 @@ async function _pullMemos(client, userId, forceReplace = false) {
   const local = _ls('mp_knowledge', []);
   const learningMerge = mergeLearningRecordsForSync(local, remote);
   remote = learningMerge.items;
-  if (learningMerge.pushCandidates.length) {
+  const atlasMerge = mergeAtlasRecordsForSync(local, remote);
+  remote = atlasMerge.items;
+  const pushCandidates = [...learningMerge.pushCandidates, ...atlasMerge.pushCandidates];
+  if (pushCandidates.length) {
     if (getActiveUserId() !== userId) return false;
     const result = await _upsertRowsCompat(
       client,
       'knowledge_memos',
-      learningMerge.pushCandidates.map(item => memoToRow(item, userId)),
+      pushCandidates.map(item => memoToRow(item, userId)),
       'id'
     );
     if (result.error) {
@@ -851,6 +854,70 @@ export function mergeLearningRecordsForSync(local, remote) {
     const localItem = localById.get(remoteItem?.id);
     if (!localItem) return remoteItem;
     const merged = mergeLearningRecord(localItem, remoteItem);
+    if (JSON.stringify(merged) !== JSON.stringify(remoteItem)) pushCandidates.push(merged);
+    return merged;
+  });
+  return { items, pushCandidates };
+}
+
+function atlasRecordData(record) {
+  if (!Array.isArray(record?.tags) || !record.tags.includes('__expression_atlas__')) return null;
+  const block = record.blocks?.find(item => [
+    'expression-atlas-data',
+    'translation-set-data',
+    'english-question-data',
+  ].includes(item?.type));
+  return block?.data && typeof block.data === 'object'
+    ? { block, data: block.data }
+    : null;
+}
+
+function mergeAtlasRecord(local, remote) {
+  const localAtlas = atlasRecordData(local);
+  const remoteAtlas = atlasRecordData(remote);
+  if (!localAtlas || !remoteAtlas || localAtlas.block.type !== remoteAtlas.block.type) return remote;
+  const newerRecord = _syncVersion(local) > _syncVersion(remote) ? local : remote;
+  const newerData = newerRecord === local ? localAtlas.data : remoteAtlas.data;
+  const contentField = localAtlas.block.type === 'expression-atlas-data' ? 'answer' : 'content';
+  const pickData = field => {
+    const localVersion = fieldVersion(localAtlas.data, field);
+    const remoteVersion = fieldVersion(remoteAtlas.data, field);
+    if (localVersion === remoteVersion) return newerData;
+    return localVersion > remoteVersion ? localAtlas.data : remoteAtlas.data;
+  };
+  const contentData = pickData(contentField);
+  const classificationData = pickData('classification');
+  const noteData = pickData('personalNote');
+  const classificationKeys = [
+    'category', 'topic', 'categoryId', 'topicId', 'categoryAliases', 'topicAliases',
+    'classificationSource', 'manualClassification',
+  ];
+  const mergedData = {
+    ...contentData,
+    ...Object.fromEntries(classificationKeys.map(key => [key, classificationData[key]])),
+    personalNote: noteData.personalNote || '',
+    fieldUpdatedAt: {
+      ...(contentData.fieldUpdatedAt || {}),
+      classification: classificationData.fieldUpdatedAt?.classification || '',
+      personalNote: noteData.fieldUpdatedAt?.personalNote || '',
+    },
+  };
+  if (stableSyncJson(mergedData) === stableSyncJson(remoteAtlas.data)) return remote;
+  const mergedBlock = newerRecord.blocks?.find(item => item?.type === localAtlas.block.type);
+  return {
+    ...newerRecord,
+    blocks: (newerRecord.blocks || []).map(item => item === mergedBlock ? { ...item, data: mergedData } : item),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function mergeAtlasRecordsForSync(local, remote) {
+  const localById = new Map((local || []).filter(item => item?.id).map(item => [item.id, item]));
+  const pushCandidates = [];
+  const items = (remote || []).map(remoteItem => {
+    const localItem = localById.get(remoteItem?.id);
+    if (!localItem) return remoteItem;
+    const merged = mergeAtlasRecord(localItem, remoteItem);
     if (JSON.stringify(merged) !== JSON.stringify(remoteItem)) pushCandidates.push(merged);
     return merged;
   });
@@ -1522,6 +1589,9 @@ export function mergeFreshLocalCollection(key, previous, fresh, pulled) {
       && learningData(remote)
     ) {
       const merged = mergeLearningRecordsForSync([current], [remote]).items[0];
+      byId.set(id, merged || current);
+    } else if (key === 'mp_knowledge' && remote && atlasRecordData(current) && atlasRecordData(remote)) {
+      const merged = mergeAtlasRecordsForSync([current], [remote]).items[0];
       byId.set(id, merged || current);
     } else {
       byId.set(id, current);

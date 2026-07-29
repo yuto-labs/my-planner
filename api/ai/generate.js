@@ -250,9 +250,9 @@ function pickResponseSchema(actionType, body) {
         },
         entries: {
           type: 'ARRAY',
-          description: 'Five to eight distinct expressions for the requested topic.',
-          minItems: 5,
-          maxItems: 12,
+          description: 'Three to five distinct expressions for the requested topic.',
+          minItems: 3,
+          maxItems: 5,
           items: {
             type: 'OBJECT',
             properties: {
@@ -558,6 +558,15 @@ function extractText(data) {
   return parts.map(part => part?.text || '').join('').trim();
 }
 
+function extractGeminiIssue(data) {
+  const blockReason = data?.promptFeedback?.blockReason;
+  if (blockReason) return `Gemini blocked the request: ${blockReason}`;
+  const finishReason = data?.candidates?.[0]?.finishReason;
+  if (finishReason === 'MAX_TOKENS') return 'Gemini stopped before completing the response.';
+  if (finishReason) return `Gemini could not complete the response: ${finishReason}`;
+  return 'Gemini returned an empty response.';
+}
+
 function parseStructuredResponse(text) {
   const cleaned = String(text || '')
     .trim()
@@ -577,7 +586,16 @@ function hasCompleteTranslationResponse(text) {
   const translations = variants
     .map(variant => String(variant?.translation || '').trim().toLocaleLowerCase())
     .filter(Boolean);
-  return variants.length === 3 && new Set(translations).size === 3;
+  return variants.length === 3
+    && new Set(translations).size === 3
+    && variants.every(variant => (
+      String(variant?.translation || '').trim()
+      && String(variant?.backTranslationJa || '').trim()
+      && String(variant?.overallNuanceJa || '').trim()
+      && String(variant?.register || '').trim()
+      && Array.isArray(variant?.vocabularyNotes)
+      && variant.vocabularyNotes.some(note => String(note?.expression || '').trim())
+    ));
 }
 
 function hasCompleteNuanceResponse(text) {
@@ -586,7 +604,22 @@ function hasCompleteNuanceResponse(text) {
   const terms = entries
     .map(entry => String(entry?.term || '').trim().toLocaleLowerCase())
     .filter(Boolean);
-  return entries.length >= 3 && new Set(terms).size >= 3;
+  return entries.length >= 3
+    && entries.length <= 5
+    && new Set(terms).size >= 3
+    && entries.every(entry => (
+      String(entry?.term || '').trim()
+      && String(entry?.lemma || '').trim()
+      && String(entry?.ipa || '').trim()
+      && String(entry?.coreMeaningJa || '').trim()
+      && String(entry?.nuanceJa || '').trim()
+      && Array.isArray(entry?.useCasesJa)
+      && entry.useCasesJa.some(value => String(value || '').trim())
+      && Array.isArray(entry?.examples)
+      && entry.examples.filter(example => (
+        String(example?.english || '').trim() && String(example?.japanese || '').trim()
+      )).length >= 2
+    ));
 }
 
 function hasCompleteEnglishQuestionResponse(text) {
@@ -594,6 +627,7 @@ function hasCompleteEnglishQuestionResponse(text) {
   const examples = Array.isArray(parsed?.examples) ? parsed.examples : [];
   return Boolean(
     String(parsed?.shortAnswerJa || '').trim()
+    && String(parsed?.intuitionJa || '').trim()
     && String(parsed?.explanationJa || '').trim()
     && examples.filter(example => (
       String(example?.english || '').trim()
@@ -609,6 +643,7 @@ function hasCompleteKnowledgeResponse(text) {
   const concepts = Array.isArray(parsed?.concepts) ? parsed.concepts : [];
   const conceptKeys = new Set(concepts.map(concept => String(concept?.key || '').trim()).filter(Boolean));
   const primaryKey = String(parsed?.primaryConcept?.key || '').trim();
+  const availableConceptKeys = new Set([...conceptKeys, primaryKey].filter(Boolean));
   const referencedKeys = [
     ...direct,
     ...sections.flatMap(section => (
@@ -632,9 +667,8 @@ function hasCompleteKnowledgeResponse(text) {
     && String(parsed?.classification?.majorId || '').trim()
     && String(parsed?.classification?.middleId || '').trim()
     && primaryKey
-    && conceptKeys.has(primaryKey)
-    && conceptKeys.size
-    && referencedKeys.every(key => conceptKeys.has(key))
+    && availableConceptKeys.size
+    && referencedKeys.every(key => availableConceptKeys.has(key))
     && direct.length
     && sections.length
     // Keep the server-side contract aligned with the client-side persistence
@@ -684,7 +718,7 @@ export const maxDuration = 60;
 
 async function requestGemini(key, model, payload, timeoutMs = 50_000) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), Math.min(Math.max(timeoutMs, 1_000), 50_000));
+  const timeoutId = setTimeout(() => controller.abort(), Math.min(Math.max(timeoutMs, 1_000), 48_000));
   try {
     const upstream = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
@@ -705,11 +739,23 @@ async function requestGemini(key, model, payload, timeoutMs = 50_000) {
   }
 }
 
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), Math.max(1_000, timeoutMs));
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 const DEFAULT_SUPABASE_URL = 'https://nhgbvlovptelaqcurobv.supabase.co';
 const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5oZ2J2bG92cHRlbGFxY3Vyb2J2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMTY2NzcsImV4cCI6MjA5NjU5MjY3N30.Vgsy9--B3d5FoxoHpvjC00OPPzE2WUwzP8GV2LE4-p4';
 const USER_DAILY_LIMIT = 50;
 const APP_DAILY_LIMIT = 500;
 const APP_MINUTE_LIMIT = 30;
+const HANDLER_BUDGET_MS = 55_000;
+const NETWORK_SAFETY_MS = 2_000;
 
 function todayJstStr() {
   const parts = new Intl.DateTimeFormat('en', {
@@ -739,16 +785,16 @@ function getSupabaseConfig() {
   };
 }
 
-async function requireAuthenticatedUser(token) {
+async function requireAuthenticatedUser(token, timeoutMs) {
   const cfg = getSupabaseConfig();
   if (!token) throw Object.assign(new Error('AIを使うにはログインしてください。'), { status: 401 });
 
-  const response = await fetch(`${cfg.url}/auth/v1/user`, {
+  const response = await fetchWithTimeout(`${cfg.url}/auth/v1/user`, {
     headers: {
       apikey: cfg.anonKey,
       Authorization: `Bearer ${token}`,
     },
-  });
+  }, timeoutMs);
 
   if (!response.ok) {
     throw Object.assign(new Error('ログイン状態を確認できませんでした。もう一度ログインしてください。'), { status: 401 });
@@ -757,11 +803,11 @@ async function requireAuthenticatedUser(token) {
   return response.json();
 }
 
-async function claimUsage(token, body) {
+async function claimUsage(token, body, timeoutMs) {
   const cfg = getSupabaseConfig();
   const actionType = String(body.actionType || 'ai_request').slice(0, 60);
 
-  const response = await fetch(`${cfg.url}/rest/v1/rpc/claim_ai_usage`, {
+  const response = await fetchWithTimeout(`${cfg.url}/rest/v1/rpc/claim_ai_usage`, {
     method: 'POST',
     headers: {
       apikey: cfg.anonKey,
@@ -775,7 +821,7 @@ async function claimUsage(token, body) {
       p_app_daily_limit: APP_DAILY_LIMIT,
       p_minute_limit: APP_MINUTE_LIMIT,
     }),
-  });
+  }, timeoutMs);
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -795,6 +841,8 @@ async function claimUsage(token, body) {
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
+  const startedAt = Date.now();
+  const remainingTimeMs = (minimum = 0) => Math.max(0, HANDLER_BUDGET_MS - (Date.now() - startedAt) - minimum);
 
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' });
@@ -815,15 +863,10 @@ export default async function handler(req, res) {
     return;
   }
   const token = getBearerToken(req);
-  let usage = null;
   try {
-    await requireAuthenticatedUser(token);
-    usage = withUsageDate(await claimUsage(token, body));
+    await requireAuthenticatedUser(token, Math.min(7_000, remainingTimeMs(NETWORK_SAFETY_MS)));
   } catch (error) {
-    res.status(error?.status || 500).json({
-      error: error?.message || 'AI usage check failed.',
-      usage: withUsageDate(error?.usage || null),
-    });
+    res.status(error?.status || 500).json({ error: error?.message || 'AI authentication check failed.' });
     return;
   }
 
@@ -861,8 +904,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    const generationStartedAt = Date.now();
-    let { upstream, data } = await requestGemini(key, model, payload);
+    let { upstream, data } = await requestGemini(
+      key, model, payload, Math.min(48_000, remainingTimeMs(NETWORK_SAFETY_MS))
+    );
     if (!upstream.ok && upstream.status === 400 && payload.generationConfig.responseSchema) {
       // Some Gemini model revisions reject deeply nested response schemas even
       // though they still support JSON mode. Preserve the prompt contract and
@@ -872,7 +916,12 @@ export default async function handler(req, res) {
         generationConfig: { ...payload.generationConfig },
       };
       delete payload.generationConfig.responseSchema;
-      ({ upstream, data } = await requestGemini(key, model, payload));
+      const schemaFallbackTimeMs = Math.min(48_000, remainingTimeMs(NETWORK_SAFETY_MS));
+      if (schemaFallbackTimeMs < 8_000) {
+        res.status(504).json({ error: 'AI request timed out before a safe retry could start.' });
+        return;
+      }
+      ({ upstream, data } = await requestGemini(key, model, payload, schemaFallbackTimeMs));
     }
     if (!upstream.ok) {
       const msg = data?.error?.message || `Gemini upstream error ${upstream.status}`;
@@ -889,7 +938,7 @@ export default async function handler(req, res) {
     if (shouldRetry) {
       // Preserve room for Vercel to send a useful response and for the client
       // to receive it. A retry is only valuable when it has real time to run.
-      const retryTimeoutMs = 55_000 - (Date.now() - generationStartedAt);
+      const retryTimeoutMs = Math.min(48_000, remainingTimeMs(NETWORK_SAFETY_MS));
       if (retryTimeoutMs < 10_000) {
         res.status(502).json({
           error: 'AIの回答を最後まで整えられませんでした。もう一度お試しください。',
@@ -921,7 +970,7 @@ The previous response was incomplete. Return all three distinct translation vari
           parts: [{
             text: `${String(body.systemText || '')}
 
-The previous response was incomplete. Return five to eight distinct expressions with every required explanation field. The user does not need to provide a usage situation: infer several realistic situations for each expression and explain them in useCasesJa. Never ask the user to make the theme or words more specific when a reasonable interpretation is possible.`,
+The previous response was incomplete. Return three to five distinct expressions with every required explanation field. The user does not need to provide a usage situation: infer several realistic situations for each expression and explain them in useCasesJa. Never ask the user to make the theme or words more specific when a reasonable interpretation is possible.`,
           }],
         };
       }
@@ -964,7 +1013,7 @@ The previous response was incomplete or contained formatting noise. Return one c
       return;
     }
 
-    res.status(200).json({ text, model, usage });
+    res.status(200).json({ text, model });
   } catch (error) {
     const timedOut = error?.name === 'AbortError';
     res.status(timedOut ? 504 : 500).json({

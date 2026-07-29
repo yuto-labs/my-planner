@@ -917,6 +917,7 @@ function expressionEntryToRecord(entry, existing = null) {
     title: data.fieldUpdatedAt?.title || fieldFallback,
     answer: data.fieldUpdatedAt?.answer || fieldFallback,
     classification: data.fieldUpdatedAt?.classification || fieldFallback,
+    personalNote: data.fieldUpdatedAt?.personalNote || fieldFallback,
   };
   const title = data.term;
   const summary = data.coreMeaningJa || data.nuanceJa || '';
@@ -984,6 +985,12 @@ function translationSetToRecord(set, existing = null) {
   delete data.id;
   delete data.createdAt;
   delete data.updatedAt;
+  const fieldFallback = set.updatedAt || existing?.updatedAt || now;
+  data.fieldUpdatedAt = {
+    content: data.fieldUpdatedAt?.content || fieldFallback,
+    classification: data.fieldUpdatedAt?.classification || fieldFallback,
+    personalNote: data.fieldUpdatedAt?.personalNote || fieldFallback,
+  };
   const title = data.sourceTextJa;
   const summary = data.summaryJa || data.variants?.[0]?.translation || '';
   const unchanged = atlasRecordIsUnchanged(
@@ -1031,6 +1038,11 @@ function englishQuestionToRecord(question, existing = null) {
   delete data.id;
   delete data.createdAt;
   delete data.updatedAt;
+  const fieldFallback = question.updatedAt || existing?.updatedAt || now;
+  data.fieldUpdatedAt = {
+    content: data.fieldUpdatedAt?.content || fieldFallback,
+    personalNote: data.fieldUpdatedAt?.personalNote || fieldFallback,
+  };
   const title = data.questionJa;
   const summary = data.answer?.shortAnswerJa || (data.status === 'failed' ? '回答の再試行が必要です' : 'AIの回答を待っています');
   const unchanged = atlasRecordIsUnchanged(existing, ENGLISH_QUESTION_BLOCK_TYPE, title, summary, data);
@@ -1216,7 +1228,19 @@ export function updateExpressionEntry(id, updates) {
   const entries = getExpressionEntries();
   const index = entries.findIndex(entry => entry.id === id);
   if (index < 0) return null;
-  entries[index] = { ...entries[index], ...updates, id };
+  const now = new Date().toISOString();
+  const classificationKeys = ['category', 'topic', 'categoryId', 'topicId', 'categoryAliases', 'topicAliases', 'manualClassification', 'classificationSource'];
+  entries[index] = {
+    ...entries[index],
+    ...updates,
+    id,
+    fieldUpdatedAt: {
+      ...(entries[index].fieldUpdatedAt || {}),
+      ...(Object.prototype.hasOwnProperty.call(updates, 'personalNote') ? { personalNote: now } : {}),
+      ...(classificationKeys.some(key => Object.prototype.hasOwnProperty.call(updates, key)) ? { classification: now } : {}),
+      ...(Object.keys(updates).some(key => key !== 'personalNote' && !classificationKeys.includes(key)) ? { answer: now } : {}),
+    },
+  };
   return saveExpressionEntries(entries) ? entries[index] : null;
 }
 
@@ -1383,7 +1407,17 @@ export function updateEnglishQuestion(id, updates) {
   const existing = records.find(record => record.id === id && isEnglishQuestionRecord(record));
   if (!existing) return null;
   const current = englishQuestionRecordToEntry(existing);
-  return addEnglishQuestion({ ...current, ...updates, id });
+  const now = new Date().toISOString();
+  return addEnglishQuestion({
+    ...current,
+    ...updates,
+    id,
+    fieldUpdatedAt: {
+      ...(current.fieldUpdatedAt || {}),
+      ...(Object.prototype.hasOwnProperty.call(updates, 'personalNote') ? { personalNote: now } : {}),
+      ...(Object.keys(updates).some(key => key !== 'personalNote') ? { content: now } : {}),
+    },
+  });
 }
 
 export function deleteEnglishQuestion(id) {
@@ -1429,7 +1463,19 @@ export function updateTranslationSet(id, updates) {
   const sets = getTranslationSets();
   const index = sets.findIndex(set => set.id === id);
   if (index < 0) return null;
-  sets[index] = { ...sets[index], ...updates, id };
+  const now = new Date().toISOString();
+  const classificationKeys = ['category', 'topic', 'categoryId', 'topicId', 'categoryAliases', 'topicAliases', 'manualClassification', 'classificationSource'];
+  sets[index] = {
+    ...sets[index],
+    ...updates,
+    id,
+    fieldUpdatedAt: {
+      ...(sets[index].fieldUpdatedAt || {}),
+      ...(Object.prototype.hasOwnProperty.call(updates, 'personalNote') ? { personalNote: now } : {}),
+      ...(classificationKeys.some(key => Object.prototype.hasOwnProperty.call(updates, key)) ? { classification: now } : {}),
+      ...(Object.keys(updates).some(key => key !== 'personalNote' && !classificationKeys.includes(key)) ? { content: now } : {}),
+    },
+  };
   return saveTranslationSets(sets) ? sets[index] : null;
 }
 

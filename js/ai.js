@@ -8,7 +8,7 @@ import {
   getPendingAIQueue, removeFromPendingAIQueue,
   getKnowledgeMemoById, updateKnowledgeMemo,
 } from './storage.js';
-import { getSession } from './supabase.js';
+import { getActiveUserId, getSession } from './supabase.js';
 import { parseJapaneseTimes, today } from './utils.js';
 
 const SERVER_STATUS_URL = '/api/ai/status';
@@ -66,6 +66,7 @@ async function callServerAI(
 ) {
   const session = await getSession();
   const token = session?.access_token || '';
+  const requestUserId = session?.user?.id || getActiveUserId();
   if (!token) {
     throw new Error('AIを使うには、AI設定でログインしてください。');
   }
@@ -120,6 +121,11 @@ async function callServerAI(
   const data = await res.json();
   const text = data.text ?? '';
   if (!String(text).trim()) throw new Error('AIの応答が空でした。少し時間を置いてもう一度お試しください。');
+  const currentSession = await getSession();
+  const currentUserId = currentSession?.user?.id || getActiveUserId();
+  if (!requestUserId || currentUserId !== requestUserId) {
+    throw new Error('アカウントが切り替わったため、回答は保存していません。元のアカウントで再試行してください。');
+  }
   return text;
 }
 
@@ -450,7 +456,9 @@ export async function formatKnowledgeMemo(rawText, existingMemosCtx = '', option
     'Choose 1 to 5 short reusable tags from the actual content.',
     'Existing memo context is only vocabulary context for titles and tags. Never copy its facts into the new memo.',
   ].join(' ');
-  const user = 'Text to organize:\n' + rawText.slice(0, 1800)
+  const sourceLimit = 12_000;
+  const sourceText = String(rawText || '');
+  const user = 'Text to organize:\n' + sourceText.slice(0, sourceLimit)
     + (existingMemosCtx ? '\n\nExisting memo context:\n' + existingMemosCtx : '');
 
   const raw = await callAPI(QUALITY_MODEL, system, user, 1800, 'json', 'memo_format', options);
@@ -472,6 +480,7 @@ export async function formatKnowledgeMemo(rawText, existingMemosCtx = '', option
     tags: Array.isArray(parsed.tags)
       ? [...new Set(parsed.tags.map(tag => String(tag || '').trim()).filter(Boolean))].slice(0, 5)
       : [],
+    sourceWasTrimmed: sourceText.length > sourceLimit,
   };
 }
 
@@ -599,7 +608,7 @@ export async function generateKnowledgeAnswer(question, taxonomy, options = {}) 
     'You create a durable Japanese learning-library entry from the user question.',
     'Return JSON only and follow the response schema exactly.',
     'Answer the question directly first, then explain it carefully in a coherent flow.',
-    'Target roughly 800-1600 Japanese characters. Prioritize a complete, accurate answer over length.',
+    'Target roughly 900-1600 Japanese characters. Prioritize a complete, accurate answer over length.',
     'Use two to five natural paragraphs. Add a heading only when the topic genuinely changes; do not use generic headings such as 概要, 理由1, まとめ.',
     'Do not greet, praise the question, repeat the conclusion, or append generic suggestions.',
     'Do not output Markdown, HTML, **, __, code fences, or raw formatting symbols.',

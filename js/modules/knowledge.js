@@ -668,6 +668,7 @@ function openAIInputSheet() {
       // Attach block IDs and store on sheet element for cross-function access
       _aiResult = {
         ...result,
+        sourceText: rawText,
         blocks: result.blocks.map(b => ({
           id: generateId(), type: b.type || 'paragraph', text: b.text || '', color: null,
         })),
@@ -742,13 +743,23 @@ function openAIInputSheet() {
     const finalTitle = sheet.querySelector('#kn-ai-title-input')?.value?.trim()
       || result.title || '無題のメモ';
 
+    const savedBlocks = [...result.blocks];
+    if (String(result.sourceText || '').length > 1800) {
+      savedBlocks.push({
+        id: generateId(),
+        type: 'toggle',
+        text: 'AI整理前の原文',
+        collapsed: true,
+        children: [{ id: generateId(), type: 'paragraph', text: result.sourceText }],
+      });
+    }
     const saved = addKnowledgeMemo({
       title:   finalTitle,
-      blocks:  result.blocks,
+      blocks:  savedBlocks,
       tags:    result.tags,
       url:     '',
       starred: false,
-      summary: blocksToText(result.blocks, 200),
+      summary: blocksToText(savedBlocks, 200),
     });
     if (!saved) {
       toast('メモを保存できませんでした', 'error');
@@ -1777,6 +1788,10 @@ function wireBlocksEdit(container) {
   hydratePlannerImages(wrap);
   wirePlannerImageViewer(wrap);
 
+  wrap.addEventListener('paste', event => {
+    handleEditorPaste(event, container);
+  });
+
   // Sync text on input
   wrap.addEventListener('input', e => {
     const el = e.target;
@@ -2502,6 +2517,157 @@ function insertBlockAfter(blockId, type = 'paragraph') {
   return newBlock;
 }
 
+function clipboardBlocksFromHtml(html) {
+  const template = document.createElement('template');
+  template.innerHTML = String(html || '');
+  const blocks = [];
+  const inferredTextBlockType = element => {
+    const tag = element?.tagName;
+    if (tag === 'H1') return 'h1';
+    if (tag === 'H2') return 'h2';
+    if (tag && /^H[3-6]$/.test(tag)) return 'h3';
+    const size = Number.parseFloat(element?.style?.fontSize || '');
+    if (Number.isFinite(size)) {
+      if (size >= 24) return 'h1';
+      if (size >= 19) return 'h2';
+      if (size >= 16 && (element?.querySelector('b,strong') || Number.parseInt(element?.style?.fontWeight, 10) >= 600)) return 'h3';
+    }
+    return 'paragraph';
+  };
+  const addTextBlock = (element, type = 'paragraph') => {
+    const text = String(element?.textContent || '').replace(/\u200B/g, '').trim();
+    const inlineHtml = sanitizeBlockHtml(element?.innerHTML || '').replace(/\u200B/g, '').trim();
+    if (!text && !inlineHtml) return;
+    blocks.push({ id: generateId(), type: type === 'paragraph' ? inferredTextBlockType(element) : type, text, html: inlineHtml, color: null });
+  };
+  const addTable = table => {
+    const rows = [...table.querySelectorAll('tr')].map(row => (
+      [...row.querySelectorAll('th,td')].map(cell => String(cell.textContent || '').trim())
+    )).filter(row => row.some(Boolean));
+    if (!rows.length) return;
+    const headerRow = rows.shift() || [];
+    const width = Math.max(2, headerRow.length, ...rows.map(row => row.length));
+    blocks.push({
+      id: generateId(),
+      type: 'table',
+      text: '',
+      color: null,
+      table: {
+        headers: Array.from({ length: width }, (_, index) => headerRow[index] || ''),
+        rows: rows.map(row => Array.from({ length: width }, (_, index) => row[index] || '')),
+      },
+    });
+  };
+  const visit = node => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      if (node.textContent.trim()) addTextBlock({ textContent: node.textContent, innerHTML: esc(node.textContent) });
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const tag = node.tagName;
+    if (/^H[1-6]$/.test(tag)) return addTextBlock(node, inferredTextBlockType(node));
+    if (tag === 'P') return addTextBlock(node, 'paragraph');
+    if (tag === 'DIV') {
+      const hasBlockChildren = [...node.children].some(child => (
+        ['H1', 'H2', 'H3', 'P', 'DIV', 'UL', 'OL', 'BLOCKQUOTE', 'TABLE', 'HR'].includes(child.tagName)
+      ));
+      if (hasBlockChildren) {
+        [...node.childNodes].forEach(visit);
+        return;
+      }
+      return addTextBlock(node, 'paragraph');
+    }
+    if (tag === 'BLOCKQUOTE') return addTextBlock(node, 'quote');
+    if (tag === 'HR') {
+      blocks.push({ id: generateId(), type: 'divider', text: '', color: null });
+      return;
+    }
+    if (tag === 'UL' || tag === 'OL') {
+      [...node.children].filter(child => child.tagName === 'LI').forEach(child => addTextBlock(child, tag === 'OL' ? 'numbered' : 'bullet'));
+      return;
+    }
+    if (tag === 'TABLE') {
+      addTable(node);
+      return;
+    }
+    [...node.childNodes].forEach(visit);
+  };
+  [...template.content.childNodes].forEach(visit);
+  return blocks;
+}
+
+function hasStructuredClipboardHtml(html) {
+  const template = document.createElement('template');
+  template.innerHTML = String(html || '');
+  return Boolean(template.content.querySelector(
+    'h1,h2,h3,h4,h5,h6,p,div,ul,ol,li,blockquote,table,hr'
+  ));
+}
+
+function insertRichClipboardBlocks(blockId, editable, blocks, container) {
+  const loc = findBlockLocation(blockId);
+  if (!loc || !blocks.length) return false;
+  const split = splitEditableAtCaret(editable);
+  const current = loc.blocks[loc.idx];
+  const before = split?.before || { text: current.text || '', html: current.html || '' };
+  const after = split?.after || { text: '', html: '' };
+  const beforeIsEmpty = !String(before.text || '').trim() && !String(before.html || '').replace(/<br\s*\/?>(\s*)/gi, '').trim();
+  const inserted = blocks.map(block => ({ ...block }));
+  if (beforeIsEmpty) {
+    const first = inserted.shift();
+    Object.keys(current).forEach(key => delete current[key]);
+    Object.assign(current, first, { id: current.id });
+  } else {
+    current.text = before.text;
+    current.html = before.html;
+  }
+  const insertAt = loc.idx + 1;
+  if (inserted.length) loc.blocks.splice(insertAt, 0, ...inserted);
+  if (String(after.text || '').trim() || String(after.html || '').trim()) {
+    loc.blocks.splice(insertAt + inserted.length, 0, {
+      id: generateId(), type: 'paragraph', text: after.text, html: after.html, color: null,
+    });
+  }
+  const focusTarget = inserted[inserted.length - 1]?.id || current.id;
+  activeEditorBlockId = focusTarget;
+  rerenderBlocks(container);
+  focusBlock(focusTarget, container, true);
+  return true;
+}
+
+function handleEditorPaste(event, container) {
+  const target = event.target;
+  if (target?.contentEditable !== 'true') return;
+  const clipboard = event.clipboardData;
+  if (!clipboard) return;
+  const imageFiles = [...clipboard.files].filter(file => file.type.startsWith('image/'));
+  if (imageFiles.length) {
+    event.preventDefault();
+    event.stopPropagation();
+    imageFiles.reduce(
+      (pending, file) => pending.then(() => insertMemoImageFile(file, container)),
+      Promise.resolve()
+    );
+    return;
+  }
+  const html = clipboard.getData('text/html');
+  if (!html) return;
+  if (!hasStructuredClipboardHtml(html)) {
+    const safeHtml = sanitizeBlockHtml(html);
+    if (!safeHtml) return;
+    event.preventDefault();
+    event.stopPropagation();
+    document.execCommand?.('insertHTML', false, safeHtml);
+    syncEditableBlock(target.dataset.blockId, target);
+    return;
+  }
+  const blocks = clipboardBlocksFromHtml(html);
+  if (!blocks.length) return;
+  event.preventDefault();
+  event.stopPropagation();
+  insertRichClipboardBlocks(target.dataset.blockId, target, blocks, container);
+}
+
 function insertMediaBlock(blockId, media) {
   const block = {
     id: generateId(),
@@ -2519,6 +2685,42 @@ function insertMediaBlock(blockId, media) {
   return block;
 }
 
+async function insertMemoImageFile(file, container, button = null) {
+  if (!(file instanceof File) || !file.type.startsWith('image/')) return false;
+  const previous = button?.textContent;
+  if (button) {
+    button.disabled = true;
+    button.textContent = '...';
+  }
+  try {
+    const uploadSession = editorSessionToken;
+    const uploadMemoId = edState.id;
+    const media = await uploadPlannerImage(file, 'memos');
+    if (uploadSession !== editorSessionToken || uploadMemoId !== edState.id) {
+      await deletePlannerImage(media.path).catch(() => {});
+      return false;
+    }
+    pendingImageUploads.add(media.path);
+    const block = insertMediaBlock(resolveActiveEditorBlockId(container), media);
+    activeEditorBlockId = block.id;
+    rerenderBlocks(container);
+    requestAnimationFrame(() => {
+      hydratePlannerImages(container);
+      container.querySelector(`[data-image-caption-id="${block.id}"]`)?.focus({ preventScroll: true });
+    });
+    toast('写真を追加しました。保存すると確定します', 'success');
+    return true;
+  } catch (error) {
+    toast(error?.message || '写真を追加できませんでした', 'error');
+    return false;
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = previous;
+    }
+  }
+}
+
 function wireKnowledgeImageInputs(container) {
   const photoInput = container.querySelector('#kn-photo-input');
   const cameraInput = container.querySelector('#kn-camera-input');
@@ -2532,36 +2734,7 @@ function wireKnowledgeImageInputs(container) {
     const button = event.target === cameraInput
       ? container.querySelector('#kn-camera-btn')
       : container.querySelector('#kn-photo-btn');
-    const previous = button?.textContent;
-    if (button) {
-      button.disabled = true;
-      button.textContent = '...';
-    }
-    try {
-      const uploadSession = editorSessionToken;
-      const uploadMemoId = edState.id;
-      const media = await uploadPlannerImage(file, 'memos');
-      if (uploadSession !== editorSessionToken || uploadMemoId !== edState.id) {
-        await deletePlannerImage(media.path).catch(() => {});
-        return;
-      }
-      pendingImageUploads.add(media.path);
-      const block = insertMediaBlock(resolveActiveEditorBlockId(container), media);
-      activeEditorBlockId = block.id;
-      rerenderBlocks(container);
-      requestAnimationFrame(() => {
-        hydratePlannerImages(container);
-        container.querySelector(`[data-image-caption-id="${block.id}"]`)?.focus({ preventScroll: true });
-      });
-      toast('写真を追加しました。保存すると確定します', 'success');
-    } catch (error) {
-      toast(error?.message || '写真を追加できませんでした', 'error');
-    } finally {
-      if (button) {
-        button.disabled = false;
-        button.textContent = previous;
-      }
-    }
+    await insertMemoImageFile(file, container, button);
   };
   photoInput?.addEventListener('change', handleFile);
   cameraInput?.addEventListener('change', handleFile);

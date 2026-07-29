@@ -1290,6 +1290,16 @@ async function handleEnglishQuestionSubmit(event) {
   if (state.generating) return;
   const questionJa = state.container?.querySelector('#atlas-question-input')?.value.trim() || '';
   if (!questionJa) return;
+  const questionKey = questionJa.normalize('NFKC').replace(/\s+/g, '').toLocaleLowerCase();
+  const existing = getEnglishQuestions().find(item => (
+    String(item.questionJa || '').normalize('NFKC').replace(/\s+/g, '').toLocaleLowerCase() === questionKey
+  ));
+  if (existing) {
+    state.questionId = existing.id;
+    toast('同じ疑問はすでに保存されています。既存の回答を開きます。', 'info');
+    render();
+    return;
+  }
   const saved = addEnglishQuestion({ questionJa, status: 'pending', answer: null });
   if (!saved) {
     toast('質問を保存できませんでした。入力内容は画面に残しています', 'error');
@@ -1311,7 +1321,8 @@ async function answerEnglishQuestion(question) {
   render();
   try {
     const answer = await answerEnglishLearningQuestion(question.questionJa, { signal: state.controller.signal });
-    updateEnglishQuestion(question.id, { status: 'ready', answer, errorMessage: '' });
+    const updated = updateEnglishQuestion(question.id, { status: 'ready', answer, errorMessage: '' });
+    if (!updated) throw new Error('回答を保存できませんでした。入力内容は残して、もう一度お試しください。');
     toast('回答を保存しました', 'success');
   } catch (error) {
     if (error?.name !== 'AbortError') {
@@ -2598,16 +2609,16 @@ function persistOpenPersonalNote() {
   clearTimeout(state.noteTimer);
   state.noteTimer = null;
   const textarea = state.container?.querySelector('#atlas-personal-note');
-  if (!textarea || !state.entryId) return;
-  updateExpressionEntry(state.entryId, { personalNote: textarea.value || '' });
+  if (!textarea || !state.entryId) return false;
+  return !!updateExpressionEntry(state.entryId, { personalNote: textarea.value || '' });
 }
 
 function persistOpenTranslationNote() {
   clearTimeout(state.noteTimer);
   state.noteTimer = null;
   const textarea = state.container?.querySelector('#atlas-translation-note');
-  if (!textarea || !state.translationId) return;
-  updateTranslationSet(state.translationId, { personalNote: textarea.value || '' });
+  if (!textarea || !state.translationId) return false;
+  return !!updateTranslationSet(state.translationId, { personalNote: textarea.value || '' });
 }
 
 function classificationEditor(record, kind) {
