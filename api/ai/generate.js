@@ -637,8 +637,10 @@ function hasCompleteKnowledgeResponse(text) {
     && referencedKeys.every(key => conceptKeys.has(key))
     && direct.length
     && sections.length
-    // A concise but complete answer is preferable to a second oversized call.
-    && bodyText.length >= 420
+    // Keep the server-side contract aligned with the client-side persistence
+    // validator. Otherwise a response can look complete here, then fail only
+    // after it reaches the Knowledge screen.
+    && bodyText.length >= 900
     && !/(\*\*|__|```|<\/?[a-z][^>]*>)/i.test(bodyText)
   );
 }
@@ -680,9 +682,9 @@ function hasCompleteStructuredResponse(actionType, text) {
 
 export const maxDuration = 60;
 
-async function requestGemini(key, model, payload) {
+async function requestGemini(key, model, payload, timeoutMs = 50_000) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 50_000);
+  const timeoutId = setTimeout(() => controller.abort(), Math.min(Math.max(timeoutMs, 1_000), 50_000));
   try {
     const upstream = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
@@ -859,6 +861,7 @@ export default async function handler(req, res) {
   }
 
   try {
+    const generationStartedAt = Date.now();
     let { upstream, data } = await requestGemini(key, model, payload);
     if (!upstream.ok && upstream.status === 400 && payload.generationConfig.responseSchema) {
       // Some Gemini model revisions reject deeply nested response schemas even
@@ -880,9 +883,19 @@ export default async function handler(req, res) {
     let text = extractText(data);
     const incompleteStructured = responseFormat === 'json'
       && !hasCompleteStructuredResponse(body.actionType, text);
-    const shouldRetry = (!text || incompleteStructured)
-      && !['knowledge_answer', 'nuance_generate', 'translation_variants', 'english_question'].includes(body.actionType);
+    // These actions have action-specific recovery instructions below. They
+    // used to be excluded here, making that recovery path unreachable.
+    const shouldRetry = !text || incompleteStructured;
     if (shouldRetry) {
+      // Preserve room for Vercel to send a useful response and for the client
+      // to receive it. A retry is only valuable when it has real time to run.
+      const retryTimeoutMs = 55_000 - (Date.now() - generationStartedAt);
+      if (retryTimeoutMs < 10_000) {
+        res.status(502).json({
+          error: 'AIの回答を最後まで整えられませんでした。もう一度お試しください。',
+        });
+        return;
+      }
       const retryPayload = {
         ...payload,
         generationConfig: {
@@ -930,7 +943,7 @@ The previous response was incomplete or contained formatting noise. Return one c
           }],
         };
       }
-      ({ upstream, data } = await requestGemini(key, model, retryPayload));
+      ({ upstream, data } = await requestGemini(key, model, retryPayload, retryTimeoutMs));
       if (!upstream.ok) {
         const msg = data?.error?.message || `Gemini upstream error ${upstream.status}`;
         res.status(upstream.status).json({ error: msg });
