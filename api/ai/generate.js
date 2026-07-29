@@ -586,7 +586,7 @@ function hasCompleteNuanceResponse(text) {
   const terms = entries
     .map(entry => String(entry?.term || '').trim().toLocaleLowerCase())
     .filter(Boolean);
-  return entries.length >= 5 && new Set(terms).size >= 5;
+  return entries.length >= 3 && new Set(terms).size >= 3;
 }
 
 function hasCompleteEnglishQuestionResponse(text) {
@@ -637,7 +637,8 @@ function hasCompleteKnowledgeResponse(text) {
     && referencedKeys.every(key => conceptKeys.has(key))
     && direct.length
     && sections.length
-    && bodyText.length >= 1000
+    // A concise but complete answer is preferable to a second oversized call.
+    && bodyText.length >= 420
     && !/(\*\*|__|```|<\/?[a-z][^>]*>)/i.test(bodyText)
   );
 }
@@ -677,9 +678,11 @@ function hasCompleteStructuredResponse(actionType, text) {
   return true;
 }
 
+export const maxDuration = 60;
+
 async function requestGemini(key, model, payload) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 44_000);
+  const timeoutId = setTimeout(() => controller.abort(), 50_000);
   try {
     const upstream = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
@@ -877,14 +880,16 @@ export default async function handler(req, res) {
     let text = extractText(data);
     const incompleteStructured = responseFormat === 'json'
       && !hasCompleteStructuredResponse(body.actionType, text);
-    if (!text || incompleteStructured) {
+    const shouldRetry = (!text || incompleteStructured)
+      && !['knowledge_answer', 'nuance_generate', 'translation_variants', 'english_question'].includes(body.actionType);
+    if (shouldRetry) {
       const retryPayload = {
         ...payload,
         generationConfig: {
           ...payload.generationConfig,
           maxOutputTokens: Math.min(
             ACTION_LIMITS[body.actionType],
-            Math.max(body.maxTokens * 2, 512)
+            Math.max(body.maxTokens + 800, 512)
           ),
           thinkingConfig: pickThinkingConfig(model, body.actionType),
         },

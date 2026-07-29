@@ -13,7 +13,7 @@ import { parseJapaneseTimes, today } from './utils.js';
 
 const SERVER_STATUS_URL = '/api/ai/status';
 const SERVER_GENERATE_URL = '/api/ai/generate';
-const AI_REQUEST_TIMEOUT_MS = 110_000;
+const AI_REQUEST_TIMEOUT_MS = 65_000;
 
 const FAST_MODEL = 'fast';
 const QUALITY_MODEL = 'quality';
@@ -483,6 +483,40 @@ export const NUANCE_ATLAS_CATEGORIES = [
   '日常生活',
 ];
 
+function normalizedTopicText(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .toLocaleLowerCase()
+    .replace(/[\s・、】【「」『』()（）!?！？、,./]/g, '');
+}
+
+export function canonicalTopicKey(value) {
+  const text = normalizedTopicText(value);
+  if (/(恐怖|恐れ|怖|こわ|不安|anxiety|fear|scare|frighten)/.test(text)) return 'fear-anxiety';
+  if (/(面倒|煩|負担|bother|burden|trouble)/.test(text)) return 'burden-bother';
+  if (/(喜び|嬉し|幸せ|happy|joy|delight)/.test(text)) return 'joy-happiness';
+  if (/(怒り|腹立|苛立|angry|anger|annoy)/.test(text)) return 'anger-irritation';
+  if (/(悲し|寂し|sad|sorrow|lonely)/.test(text)) return 'sadness-loneliness';
+  return text;
+}
+
+export function reuseEquivalentAtlasTopic(existingTaxonomy, category, topic, context = '') {
+  const targetKey = canonicalTopicKey(`${topic} ${context}`);
+  if (!targetKey) return { category, topic };
+  const categories = Array.isArray(existingTaxonomy) ? existingTaxonomy : [];
+  const preferred = categories.filter(item => String(item?.category || '') === category);
+  const candidates = [...preferred, ...categories.filter(item => !preferred.includes(item))];
+  for (const item of candidates) {
+    const records = Array.isArray(item?.topicRecords) ? item.topicRecords : [];
+    const match = records.find(record => canonicalTopicKey([
+      record?.label,
+      ...(Array.isArray(record?.aliases) ? record.aliases : []),
+    ].filter(Boolean).join(' ')) === targetKey);
+    if (match?.label) return { category: item.category || category, topic: match.label };
+  }
+  return { category, topic };
+}
+
 function normalizeNuanceAtlasCategory(value, context = '') {
   const category = String(value || '').trim();
   if (NUANCE_ATLAS_CATEGORIES.includes(category)) return category;
@@ -562,7 +596,7 @@ export async function generateKnowledgeAnswer(question, taxonomy, options = {}) 
     'You create a durable Japanese learning-library entry from the user question.',
     'Return JSON only and follow the response schema exactly.',
     'Answer the question directly first, then explain it carefully in a coherent flow.',
-    'Target roughly 1500-3000 Japanese characters when the subject benefits from detail.',
+    'Target roughly 800-1600 Japanese characters. Prioritize a complete, accurate answer over length.',
     'Use two to five natural paragraphs. Add a heading only when the topic genuinely changes; do not use generic headings such as 概要, 理由1, まとめ.',
     'Do not greet, praise the question, repeat the conclusion, or append generic suggestions.',
     'Do not output Markdown, HTML, **, __, code fences, or raw formatting symbols.',
@@ -578,7 +612,7 @@ export async function generateKnowledgeAnswer(question, taxonomy, options = {}) 
     QUALITY_MODEL,
     system,
     JSON.stringify({ question: cleanQuestion, taxonomy }),
-    5000,
+    3200,
     'json',
     'knowledge_answer',
     options
@@ -621,7 +655,7 @@ export async function generateNuanceEntries(
     'The user will not provide a desired usage situation. Infer several realistic situations for each expression and explain them in useCasesJa.',
     'Always answer when at least a category, topic, or expression is supplied. For a broad or ambiguous request, choose the most useful interpretation and make that interpretation clear instead of asking for more detail.',
     'Prefer an existing category/topic from existingTaxonomy when it is semantically equivalent; otherwise create a clear, reusable label. Never use vague labels such as その他 or 一般.',
-    'Create 5 to 8 genuinely useful expressions for the requested semantic topic, unless seed terms are supplied; always include every supplied seed term.',
+    'Create 3 to 5 genuinely useful expressions for the requested semantic topic, unless seed terms are supplied; always include every supplied seed term.',
     'For the whole set, rate each expression from intensityLevel 1 (weak/subtle) to 5 (strong/extreme), and assign a short Japanese nuanceTypeJa that explains its qualitative type rather than merely repeating the strength.',
     'For every expression, explain in clear Japanese: historical etymology, the original physical/root image, the core meaning, the deep emotional or conceptual mechanism, decisive differences from similar expressions, natural situations, register, emotional tone, grammar cautions, and collocations.',
     'For every expression, include pronunciationIpa in standard IPA. Give the most useful General American pronunciation; include a second form only when it materially helps learners.',
@@ -644,14 +678,14 @@ export async function generateNuanceEntries(
     seedTerms: terms,
     existingTaxonomy: (Array.isArray(existingTaxonomy) ? existingTaxonomy : []).slice(0, 40),
     allowedCategories: NUANCE_ATLAS_CATEGORIES,
-    requestedEntryCount: terms.length ? Math.max(terms.length, 5) : 6,
+    requestedEntryCount: terms.length ? Math.max(terms.length, 3) : 4,
   });
 
   const raw = await callAPI(
     QUALITY_MODEL,
     system,
     user,
-    7200,
+    5200,
     'json',
     'nuance_generate',
     options
@@ -661,12 +695,16 @@ export async function generateNuanceEntries(
     cleanCategory || parsed?.category,
     `${cleanTarget} ${cleanTopic} ${terms.join(' ')}`
   );
-  const resolvedTopic = cleanTopic
+  const proposedTopic = cleanTopic
     || String(parsed?.topic || '').trim()
     || cleanTarget
     || terms.join('・')
     || cleanCategory
     || '英語表現';
+  const reusedClassification = cleanTopic
+    ? { category: resolvedCategory, topic: proposedTopic }
+    : reuseEquivalentAtlasTopic(existingTaxonomy, resolvedCategory, proposedTopic, `${cleanTarget} ${terms.join(' ')}`);
+  const resolvedTopic = reusedClassification.topic;
   const sourceEntries = Array.isArray(parsed?.entries) ? parsed.entries : [];
   const unique = new Set();
   const entries = sourceEntries
@@ -680,7 +718,7 @@ export async function generateNuanceEntries(
         promptVersion: 4,
         language: String(language || 'English').trim() || 'English',
         sourceQueryJa: cleanTarget,
-        category: resolvedCategory,
+        category: reusedClassification.category,
         topic: resolvedTopic,
         term,
         lemma: String(entry.lemma || term).trim(),
