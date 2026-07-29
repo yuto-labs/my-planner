@@ -19,28 +19,23 @@ const REGION_CODES = {
   europe: 'AD AL AT AX BA BE BG BY CH CY CZ DE DK EE ES FI FO FR GB GG GI GR HR HU IE IM IS IT JE LI LT LU LV MC MD ME MK MT NL NO PL PT RO RS RU SE SI SJ SK SM UA VA'.split(' '),
   north_america: 'BM CA GL PM US'.split(' '),
   latin_america_caribbean: 'AI AG AR AW BB BL BO BQ BR BS BZ CL CO CR CU CW DM DO EC FK GD GF GP GT GY HN HT JM KN KY LC MF MQ MS MX NI PA PE PR PY SR SV SX TC TT UY VC VE VG VI'.split(' '),
-  africa: 'AO BF BI BJ BW CD CF CG CI CM CV DJ DZ EG EH ER ET GA GH GM GN GQ GW KE KM LR LS LY MA MG ML MR MW MZ NA NE NG RE RW SC SD SH SL SN SO SS ST SZ TD TG TN TZ UG YT ZA ZM ZW'.split(' '),
+  africa: 'AO BF BI BJ BW CD CF CG CI CM CV DJ DZ EG EH ER ET GA GH GM GN GQ GW KE KM LR LS LY MA MG ML MR MU MW MZ NA NE NG RE RW SC SD SH SL SN SO SS ST SZ TD TG TN TZ UG YT ZA ZM ZW'.split(' '),
   west_asia: 'AE AM AZ BH GE IL IQ IR JO KW LB OM PS QA SA SY TR YE'.split(' '),
   central_asia: 'KZ KG TJ TM UZ'.split(' '),
   south_asia: 'AF BD BT IN LK MV NP PK'.split(' '),
-  east_asia: 'CN HK JP KR MN MO TW'.split(' '),
+  east_asia: 'CN HK JP KP KR MN MO TW'.split(' '),
   southeast_asia: 'BN ID KH LA MM MY PH SG TH TL VN'.split(' '),
   oceania: 'AS AU CC CK CX FJ FM GU KI MH MP NC NF NR NU NZ PF PG PN PW SB TK TO TV UM VU WF WS'.split(' '),
   polar_ocean: 'AQ BV GS HM IO TF'.split(' '),
 };
 
-const FALLBACK_CODES = [...new Set(Object.values(REGION_CODES).flat())];
+const COUNTRY_CODES = Object.freeze([...new Set(Object.values(REGION_CODES).flat())]);
+const COUNTRY_CODE_SET = new Set(COUNTRY_CODES);
 const regionByCode = new Map();
 Object.entries(REGION_CODES).forEach(([regionId, codes]) => codes.forEach(code => regionByCode.set(code, regionId)));
 
 export function getLearningCountryCodes() {
-  try {
-    const supported = Intl.supportedValuesOf?.('region') || [];
-    const codes = supported.filter(code => /^[A-Z]{2}$/.test(code));
-    return codes.length ? codes : FALLBACK_CODES;
-  } catch {
-    return FALLBACK_CODES;
-  }
+  return COUNTRY_CODES;
 }
 
 export function getLearningCountryLabel(code) {
@@ -59,15 +54,13 @@ export function getLearningRegionForCountry(code) {
 export function getLearningCountriesForRegion(regionId) {
   if (regionId === 'world') return getLearningCountryCodes();
   return (REGION_CODES[regionId] || [])
-    .filter(code => getLearningCountryCodes().includes(code))
     .sort((a, b) => getLearningCountryLabel(a).localeCompare(getLearningCountryLabel(b), 'ja'));
 }
 
 export function normalizeLearningCountryCodes(values) {
-  const allowed = new Set(getLearningCountryCodes());
   return [...new Set((Array.isArray(values) ? values : [])
     .map(value => String(value || '').toUpperCase())
-    .filter(code => allowed.has(code)))].slice(0, 12);
+    .filter(code => COUNTRY_CODE_SET.has(code)))].slice(0, 12);
 }
 
 export function normalizeLearningRegionIds(values, countryCodes = []) {
@@ -76,7 +69,11 @@ export function normalizeLearningRegionIds(values, countryCodes = []) {
     .map(value => String(value || ''))
     .filter(id => allowed.has(id));
   const inferred = countryCodes.map(getLearningRegionForCountry).filter(id => id !== 'world');
-  return [...new Set([...supplied, ...inferred])].slice(0, 6);
+  const normalized = [...new Set([...supplied, ...inferred])];
+  if (countryCodes.length || normalized.some(id => id !== 'world')) {
+    return normalized.filter(id => id !== 'world').slice(0, 6);
+  }
+  return normalized.slice(0, 6);
 }
 
 export function getLearningTimelineBucket(timeline = {}) {

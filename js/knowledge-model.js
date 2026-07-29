@@ -113,9 +113,11 @@ function normalizeTimeline(value = {}) {
 function normalizeGeography(value = {}) {
   const countryCodes = normalizeLearningCountryCodes(value?.countryCodes);
   const regionIds = normalizeLearningRegionIds(value?.regionIds, countryCodes);
-  const scope = ['global', 'regional', 'country', 'unclassified'].includes(value?.scope)
-    ? value.scope
-    : (countryCodes.length ? 'country' : (regionIds.length ? 'regional' : 'unclassified'));
+  const scope = countryCodes.length
+    ? 'country'
+    : (regionIds.some(id => id !== 'world')
+      ? 'regional'
+      : (value?.scope === 'global' || regionIds.includes('world') ? 'global' : 'unclassified'));
   return { scope, regionIds, countryCodes };
 }
 

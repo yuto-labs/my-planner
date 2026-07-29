@@ -131,7 +131,7 @@ function renderLibrary(container) {
         </select>
       </div>
 
-      ${renderKnowledgeBrowse(entries)}
+      ${renderKnowledgeBrowse(filtered)}
 
       ${showStandardList ? `<div class="learning-list-meta">${filtered.length}件</div>
         <div class="learning-list" id="learning-list">
@@ -164,6 +164,7 @@ function renderLibrary(container) {
   container.querySelectorAll('[data-learning-browse-axis]').forEach(button => {
     button.addEventListener('click', () => {
       listState.browseAxis = button.dataset.learningBrowseAxis || 'list';
+      if (listState.browseAxis === 'domain') listState.majorId = 'all';
       listState.timeCentury = ''; listState.timeDecade = '';
       listState.regionId = ''; listState.countryCode = ''; listState.conceptKey = '';
       renderLibrary(container);
@@ -257,7 +258,13 @@ function renderTimeBrowse(entries) {
     if (!centuries.has(key)) centuries.set(key, { ...item.bucket, entries: [] });
     centuries.get(key).entries.push(item.entry);
   });
-  if (!listState.timeCentury) return `<div class="learning-browse-stack">${special.map(item => `<button type="button" data-learning-time-century="${item.mode}" ${item.entries.length ? '' : 'disabled'}><strong>${({ timeless: '恒常', cross_period: '横断', unclassified: '未整理' })[item.mode]}</strong><b>${item.entries.length}</b></button>`).join('')}${[...centuries.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([key, item]) => `<button type="button" data-learning-time-century="${key}"><strong>${item.era === 'bce' ? '紀元前' : ''}${item.century}世紀</strong><b>${item.entries.length}</b></button>`).join('')}</div>`;
+  const sortTimeline = (a, b) => {
+    if (a[1].era !== b[1].era) return a[1].era === 'bce' ? -1 : 1;
+    return a[1].era === 'bce'
+      ? b[1].century - a[1].century
+      : a[1].century - b[1].century;
+  };
+  if (!listState.timeCentury) return `<div class="learning-browse-stack">${special.map(item => `<button type="button" data-learning-time-century="${item.mode}" ${item.entries.length ? '' : 'disabled'}><strong>${({ timeless: '恒常', cross_period: '横断', unclassified: '未整理' })[item.mode]}</strong><b>${item.entries.length}</b></button>`).join('')}${[...centuries.entries()].sort(sortTimeline).map(([key, item]) => `<button type="button" data-learning-time-century="${key}"><strong>${item.era === 'bce' ? '紀元前' : ''}${item.century}世紀</strong><b>${item.entries.length}</b></button>`).join('')}</div>`;
   if (['timeless', 'cross_period', 'unclassified'].includes(listState.timeCentury)) {
     return renderBrowseResults(special.find(item => item.mode === listState.timeCentury)?.entries || [], '時代');
   }
@@ -267,7 +274,9 @@ function renderTimeBrowse(entries) {
     if (!decadeMap.has(key)) decadeMap.set(key, { ...item.bucket, entries: [] });
     decadeMap.get(key).entries.push(item.entry);
   });
-  if (!listState.timeDecade) return `<div class="learning-browse-stack">${[...decadeMap.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([key, item]) => `<button type="button" data-learning-time-decade="${key}"><strong>${item.era === 'bce' ? `紀元前${item.decade}年代` : `${item.decade}年代`}</strong><b>${item.entries.length}</b></button>`).join('')}</div>`;
+  if (!listState.timeDecade) return `<div class="learning-browse-stack">${[...decadeMap.entries()].sort((a, b) => (
+    a[1].era === 'bce' ? b[1].decade - a[1].decade : a[1].decade - b[1].decade
+  )).map(([key, item]) => `<button type="button" data-learning-time-decade="${key}"><strong>${item.era === 'bce' ? `紀元前${item.decade}年代` : `${item.decade}年代`}</strong><b>${item.entries.length}</b></button>`).join('')}</div>`;
   return renderBrowseResults(decadeMap.get(listState.timeDecade)?.entries || [], '時代');
 }
 

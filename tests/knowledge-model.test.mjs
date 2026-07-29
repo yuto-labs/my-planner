@@ -9,6 +9,7 @@ import {
   findDuplicateKnowledgeEntries,
   getKnowledgeTimelineBucket,
 } from '../js/knowledge-model.js';
+import { getLearningCountryCodes } from '../js/data/learning-geography.js';
 
 function rawAnswer(overrides = {}) {
   const paragraph = '空気中の分子は、太陽光のうち波長が短い青い光を赤い光より強く散乱します。'
@@ -76,6 +77,23 @@ test('normalizes dated geography for the new knowledge browser', () => {
   assert.deepEqual(getKnowledgeTimelineBucket(entry), {
     mode: 'dated', era: 'ce', century: 20, decade: 1960, startYear: 1961, endYear: 1963,
   });
+});
+
+test('ships the complete country code set without pseudo-region codes', () => {
+  const codes = getLearningCountryCodes();
+  assert.equal(codes.length, 249);
+  assert.equal(new Set(codes).size, 249);
+  assert.equal(codes.includes('KP'), true);
+  assert.equal(codes.includes('MU'), true);
+});
+
+test('country metadata wins over contradictory world scope', () => {
+  const entry = normalizeKnowledgeAnswer(rawAnswer({
+    geography: { scope: 'global', regionIds: ['world'], countryCodes: ['JP'] },
+  }), 'country scope');
+  assert.equal(entry.geography.scope, 'country');
+  assert.deepEqual(entry.geography.regionIds, ['east_asia']);
+  assert.deepEqual(entry.geography.countryCodes, ['JP']);
 });
 
 test('keeps malformed timeline metadata safely unclassified', () => {
