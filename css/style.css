@@ -11818,14 +11818,14 @@ button.atlas-nuance-map-row:focus-visible {
 }
 
 .learning-ask {
-  padding: 18px;
+  padding: 15px 16px;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
 }
 
-.learning-ask-copy { margin-bottom: 16px; }
+.learning-ask-copy { margin-bottom: 10px; }
 .learning-eyebrow {
   display: block;
   color: var(--primary-dark);
@@ -11835,10 +11835,10 @@ button.atlas-nuance-map-row:focus-visible {
   margin-bottom: 4px;
 }
 .learning-ask h2 {
-  font-size: 19px;
+  font-size: 17px;
   line-height: 1.4;
   font-weight: 600;
-  margin-bottom: 5px;
+  margin-bottom: 3px;
 }
 .learning-ask p {
   color: var(--text-muted);
@@ -11847,9 +11847,9 @@ button.atlas-nuance-map-row:focus-visible {
 .learning-question-form { display: grid; gap: 10px; }
 .learning-question-input {
   width: 100%;
-  min-height: 86px;
+  min-height: 66px;
   resize: vertical;
-  line-height: 1.7;
+  line-height: 1.6;
 }
 .learning-question-actions {
   display: flex;
@@ -11894,7 +11894,7 @@ button.atlas-nuance-map-row:focus-visible {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 155px;
   gap: 8px;
-  margin-top: 16px;
+  margin-top: 12px;
 }
 .learning-search { position: relative; display: block; }
 .learning-search > span {
@@ -11917,15 +11917,65 @@ button.atlas-nuance-map-row:focus-visible {
 .learning-list { display: grid; gap: 8px; }
 .learning-browse { display: grid; gap: 10px; margin-top: 12px; }
 .learning-browse-tabs {
-  display: flex; gap: 4px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 2px;
+  margin-top: 10px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-card) 70%, var(--bg));
 }
+.learning-browse > .learning-browse-tabs { margin-top: 0; }
 .learning-browse-tabs::-webkit-scrollbar { display: none; }
 .learning-browse-tabs button {
-  flex: 0 0 auto; border: 1px solid var(--border); border-radius: 999px;
-  background: var(--bg-card); color: var(--text-muted); padding: 6px 10px;
-  font: inherit; font-size: 11px; font-weight: 600;
+  min-width: 0;
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 2px);
+  background: transparent;
+  color: var(--text-muted);
+  padding: 7px 4px;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
 }
-.learning-browse-tabs button.active { color: var(--primary-dark); border-color: var(--primary-border); background: var(--primary-bg); }
+.learning-browse-tabs button.active {
+  color: var(--primary-dark);
+  background: var(--bg-card);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--text) 10%, transparent);
+}
+.learning-browse-intro {
+  display: grid;
+  gap: 2px;
+  padding: 2px 2px 1px;
+}
+.learning-browse-intro strong { font-size: 13px; font-weight: 600; }
+.learning-browse-intro span { color: var(--text-muted); font-size: 10px; line-height: 1.5; }
+.learning-browse-heading {
+  display: grid;
+  grid-template-columns: minmax(70px, auto) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+}
+.learning-browse-heading button {
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  color: var(--primary-dark);
+  padding: 5px 2px;
+  font: inherit;
+  font-size: 10px;
+}
+.learning-browse-heading strong {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.learning-browse-heading > span { color: var(--text-dim); font-size: 10px; }
 .learning-browse-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
 .learning-browse-grid button,
 .learning-browse-stack button,
@@ -11933,8 +11983,33 @@ button.atlas-nuance-map-row:focus-visible {
   min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px;
   text-align: left; align-items: center; border: 1px solid var(--border); border-radius: var(--radius-sm);
   background: var(--bg-card); color: var(--text); padding: 9px 10px; font: inherit;
+  transition: border-color var(--transition), background var(--transition);
 }
-.learning-browse-grid button span { grid-column: 1 / -1; color: var(--text-dim); font-size: 9px; line-height: 1.35; }
+.learning-browse-grid button:hover:not(:disabled),
+.learning-browse-stack button:hover:not(:disabled),
+.learning-country-grid button:hover:not(:disabled) {
+  border-color: var(--primary-border);
+  background: color-mix(in srgb, var(--bg-card) 96%, var(--primary));
+}
+.learning-browse-grid button:focus-visible,
+.learning-browse-stack button:focus-visible,
+.learning-country-grid button:focus-visible,
+.learning-browse-tabs button:focus-visible,
+.learning-browse-heading button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.learning-domain-grid button > span {
+  display: grid;
+  grid-column: auto;
+  gap: 2px;
+  color: var(--text);
+}
+.learning-domain-grid button small {
+  color: var(--text-dim);
+  font-size: 9px;
+  font-weight: 500;
+}
 .learning-browse-grid button strong,
 .learning-browse-stack button strong { font-size: 12px; font-weight: 600; }
 .learning-browse-grid button b,
@@ -11947,8 +12022,6 @@ button.atlas-nuance-map-row:focus-visible {
 .learning-browse-stack button:disabled,
 .learning-country-grid button:disabled { opacity: .42; cursor: default; }
 .learning-browse-results { display: grid; gap: 8px; }
-.learning-browse-results > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-dim); font-size: 11px; }
-.learning-browse-results > div button { border: 0; background: transparent; color: var(--primary-dark); font: inherit; font-size: 11px; }
 .learning-browse-results > p { color: var(--text-muted); font-size: 12px; padding: 8px 2px; }
 .learning-card {
   width: 100%;
@@ -12198,6 +12271,8 @@ button.atlas-nuance-map-row:focus-visible {
   .learning-toolbar { grid-template-columns: 1fr; }
   .learning-question-actions { align-items: flex-end; }
   .learning-save-note { max-width: 56%; }
+  .learning-country-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .learning-browse-heading { grid-template-columns: 70px minmax(0, 1fr) 38px; }
   .learning-answer { font-size: 13px; line-height: 1.9; }
 }
 

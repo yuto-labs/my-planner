@@ -10,6 +10,7 @@ import {
   getKnowledgeTimelineBucket,
 } from '../js/knowledge-model.js';
 import { getLearningCountryCodes } from '../js/data/learning-geography.js';
+import { serializeLearningTaxonomyForAI } from '../js/data/learning-taxonomy.js';
 
 function rawAnswer(overrides = {}) {
   const paragraph = '空気中の分子は、太陽光のうち波長が短い青い光を赤い光より強く散乱します。'
@@ -63,6 +64,26 @@ test('invalid classification safely falls back to unclassified', () => {
   assert.deepEqual(
     [entry.classification.majorId, entry.classification.middleId],
     ['interdisciplinary', 'unclassified']
+  );
+});
+
+test('a mismatched major and middle classification safely falls back', () => {
+  const raw = rawAnswer();
+  raw.classification = { majorId: 'humanities', middleId: 'physics' };
+  const entry = normalizeKnowledgeAnswer(raw, '質問');
+  assert.deepEqual(
+    [entry.classification.majorId, entry.classification.middleId],
+    ['interdisciplinary', 'unclassified']
+  );
+});
+
+test('AI taxonomy includes readable labels and valid child relationships', () => {
+  const taxonomy = serializeLearningTaxonomyForAI();
+  const naturalSciences = taxonomy.find(group => group.id === 'natural_sciences');
+  assert.equal(naturalSciences.label, '自然科学');
+  assert.deepEqual(
+    naturalSciences.children.find(item => item.id === 'physics'),
+    { id: 'physics', label: '物理学' }
   );
 });
 

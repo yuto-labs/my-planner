@@ -143,6 +143,10 @@ export function getLearningClassificationLabel(classification = {}) {
 export function serializeLearningTaxonomyForAI() {
   return LEARNING_TAXONOMY.map(group => ({
     id: group.id,
-    children: group.children.map(item => item.id),
+    label: group.label,
+    children: group.children.map(item => ({
+      id: item.id,
+      label: item.label,
+    })),
   }));
 }

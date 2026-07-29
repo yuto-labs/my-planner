@@ -37,6 +37,7 @@ let selectedEntryId = null;
 let detailHistory = [];
 let listState = {
   query: '', majorId: 'all', browseAxis: 'list',
+  browseMajorId: '', middleId: '',
   timeCentury: '', timeDecade: '', regionId: '', countryCode: '', conceptKey: '',
 };
 let questionDraft = '';
@@ -104,7 +105,7 @@ function renderLibrary(container) {
         </div>
         <form class="learning-question-form" id="learning-question-form">
           <textarea id="learning-question-input" class="input learning-question-input"
-            rows="3" maxlength="1200" placeholder="知りたいことをそのまま入力">${esc(questionDraft)}</textarea>
+            rows="2" maxlength="1200" placeholder="知りたいことをそのまま入力">${esc(questionDraft)}</textarea>
           <div class="learning-question-actions">
             <span class="learning-save-note">回答が完成してから保存されます</span>
             <button class="btn btn-primary" id="learning-ask-btn" type="submit">解説を作る</button>
@@ -159,21 +160,41 @@ function renderLibrary(container) {
   });
   container.querySelector('#learning-major-filter')?.addEventListener('change', event => {
     listState.majorId = event.target.value;
+    listState.browseAxis = 'list';
+    resetBrowseTrail();
     renderLibrary(container);
   });
   container.querySelectorAll('[data-learning-browse-axis]').forEach(button => {
     button.addEventListener('click', () => {
       listState.browseAxis = button.dataset.learningBrowseAxis || 'list';
       if (listState.browseAxis === 'domain') listState.majorId = 'all';
-      listState.timeCentury = ''; listState.timeDecade = '';
-      listState.regionId = ''; listState.countryCode = ''; listState.conceptKey = '';
+      resetBrowseTrail();
       renderLibrary(container);
     });
   });
   container.querySelectorAll('[data-learning-browse-major]').forEach(button => {
     button.addEventListener('click', () => {
-      listState.majorId = button.dataset.learningBrowseMajor || 'all';
-      listState.browseAxis = 'list';
+      listState.browseMajorId = button.dataset.learningBrowseMajor || '';
+      listState.middleId = '';
+      renderLibrary(container);
+    });
+  });
+  container.querySelectorAll('[data-learning-browse-middle]').forEach(button => {
+    button.addEventListener('click', () => {
+      listState.middleId = button.dataset.learningBrowseMiddle || '';
+      renderLibrary(container);
+    });
+  });
+  container.querySelectorAll('[data-learning-domain-root]').forEach(button => {
+    button.addEventListener('click', () => {
+      listState.browseMajorId = '';
+      listState.middleId = '';
+      renderLibrary(container);
+    });
+  });
+  container.querySelectorAll('[data-learning-domain-major]').forEach(button => {
+    button.addEventListener('click', () => {
+      listState.middleId = '';
       renderLibrary(container);
     });
   });
@@ -209,22 +230,50 @@ function renderLibrary(container) {
       renderLibrary(container);
     });
   });
+  container.querySelectorAll('[data-learning-time-back]').forEach(button => {
+    button.addEventListener('click', () => {
+      if (listState.timeDecade) listState.timeDecade = '';
+      else listState.timeCentury = '';
+      renderLibrary(container);
+    });
+  });
+  container.querySelectorAll('[data-learning-region-back]').forEach(button => {
+    button.addEventListener('click', () => {
+      if (listState.countryCode) listState.countryCode = '';
+      else listState.regionId = '';
+      renderLibrary(container);
+    });
+  });
+  container.querySelectorAll('[data-learning-concept-back]').forEach(button => {
+    button.addEventListener('click', () => {
+      listState.conceptKey = '';
+      renderLibrary(container);
+    });
+  });
   container.querySelectorAll('[data-learning-id]').forEach(card => {
     card.addEventListener('click', () => openLearningEntry(card.dataset.learningId));
   });
 }
 
+function resetBrowseTrail() {
+  listState.browseMajorId = ''; listState.middleId = '';
+  listState.timeCentury = ''; listState.timeDecade = '';
+  listState.regionId = ''; listState.countryCode = ''; listState.conceptKey = '';
+}
+
 function renderEntryCard(entry) {
   const classification = getLearningClassificationLabel(entry.classification) || '未分類';
   const preview = (entry.answer?.directAnswer || []).map(segment => segment.text).join('');
+  const title = entry.title || entry.originalQuestion;
+  const showQuestion = entry.originalQuestion && entry.originalQuestion !== title;
   return `
     <button class="learning-card" type="button" data-learning-id="${esc(entry.id)}">
       <span class="learning-card-path">${esc(classification)}</span>
-      <strong class="learning-card-title">${esc(entry.title || entry.originalQuestion)}</strong>
-      <span class="learning-card-question">${esc(entry.originalQuestion)}</span>
+      <strong class="learning-card-title">${esc(title)}</strong>
+      ${showQuestion ? `<span class="learning-card-question">${esc(entry.originalQuestion)}</span>` : ''}
       ${preview ? `<span class="learning-card-preview">${esc(preview)}</span>` : ''}
       <span class="learning-card-foot">
-        <span>${(entry.concepts || []).length} concepts</span>
+        <span>関連概念 ${(entry.concepts || []).length}</span>
         <time>${formatEntryDate(entry.updatedAt)}</time>
       </span>
     </button>
@@ -236,15 +285,39 @@ function renderKnowledgeBrowse(entries) {
   const tabs = [['list', 'すべて'], ['domain', '分野'], ['time', '時代'], ['region', '地域'], ['connections', 'つながり']];
   const tabHtml = `<nav class="learning-browse-tabs" aria-label="Knowledgeの見方">${tabs.map(([id, label]) => `<button type="button" class="${axis === id ? 'active' : ''}" data-learning-browse-axis="${id}">${label}</button>`).join('')}</nav>`;
   if (axis === 'list') return tabHtml;
-  if (axis === 'domain') {
-    return `<section class="learning-browse">${tabHtml}<div class="learning-browse-grid">${LEARNING_TAXONOMY.map(group => {
-      const count = entries.filter(entry => entry.classification?.majorId === group.id).length;
-      return `<button type="button" data-learning-browse-major="${esc(group.id)}"><strong>${esc(group.label)}</strong><span>${group.children.map(item => esc(item.label)).join(' / ')}</span><b>${count}</b></button>`;
-    }).join('')}</div></section>`;
-  }
+  if (axis === 'domain') return `<section class="learning-browse">${tabHtml}${renderDomainBrowse(entries)}</section>`;
   if (axis === 'time') return `<section class="learning-browse">${tabHtml}${renderTimeBrowse(entries)}</section>`;
   if (axis === 'region') return `<section class="learning-browse">${tabHtml}${renderRegionBrowse(entries)}</section>`;
   return `<section class="learning-browse">${tabHtml}${renderConnectionBrowse(entries)}</section>`;
+}
+
+function renderDomainBrowse(entries) {
+  if (!listState.browseMajorId) {
+    return `${renderBrowseIntro('分野から探す', '大分類を選ぶと、中分類へ進みます。')}
+      <div class="learning-browse-grid learning-domain-grid">${LEARNING_TAXONOMY.map(group => {
+        const count = entries.filter(entry => entry.classification?.majorId === group.id).length;
+        return `<button type="button" data-learning-browse-major="${esc(group.id)}"><span><strong>${esc(group.label)}</strong><small>${group.children.length}分類</small></span><b>${count}</b></button>`;
+      }).join('')}</div>`;
+  }
+  const group = LEARNING_MAJOR_BY_ID.get(listState.browseMajorId);
+  if (!group) {
+    listState.browseMajorId = '';
+    return renderDomainBrowse(entries);
+  }
+  if (!listState.middleId) {
+    return `${renderBrowseHeading(group.label, entries.filter(entry => entry.classification?.majorId === group.id).length, 'data-learning-domain-root', '大分類')}
+      <div class="learning-browse-grid learning-middle-grid">${group.children.map(item => {
+        const count = entries.filter(entry => entry.classification?.middleId === item.id).length;
+        return `<button type="button" data-learning-browse-middle="${esc(item.id)}"><strong>${esc(item.label)}</strong><b>${count}</b></button>`;
+      }).join('')}</div>`;
+  }
+  const middle = LEARNING_MIDDLE_BY_ID.get(listState.middleId);
+  if (!middle || middle.majorId !== group.id) {
+    listState.middleId = '';
+    return renderDomainBrowse(entries);
+  }
+  const matches = entries.filter(entry => entry.classification?.middleId === middle.id);
+  return renderBrowseResults(matches, `${group.label} › ${middle.label}`, 'data-learning-domain-major', group.label);
 }
 
 function renderTimeBrowse(entries) {
@@ -264,9 +337,10 @@ function renderTimeBrowse(entries) {
       ? b[1].century - a[1].century
       : a[1].century - b[1].century;
   };
-  if (!listState.timeCentury) return `<div class="learning-browse-stack">${special.map(item => `<button type="button" data-learning-time-century="${item.mode}" ${item.entries.length ? '' : 'disabled'}><strong>${({ timeless: '恒常', cross_period: '横断', unclassified: '未整理' })[item.mode]}</strong><b>${item.entries.length}</b></button>`).join('')}${[...centuries.entries()].sort(sortTimeline).map(([key, item]) => `<button type="button" data-learning-time-century="${key}"><strong>${item.era === 'bce' ? '紀元前' : ''}${item.century}世紀</strong><b>${item.entries.length}</b></button>`).join('')}</div>`;
+  if (!listState.timeCentury) return `${renderBrowseIntro('時代から探す', '時代に依存しない知識と、世紀別の知識を分けて辿れます。')}<div class="learning-browse-stack">${special.map(item => `<button type="button" data-learning-time-century="${item.mode}" ${item.entries.length ? '' : 'disabled'}><strong>${({ timeless: '恒常', cross_period: '横断', unclassified: '未整理' })[item.mode]}</strong><b>${item.entries.length}</b></button>`).join('')}${[...centuries.entries()].sort(sortTimeline).map(([key, item]) => `<button type="button" data-learning-time-century="${key}"><strong>${item.era === 'bce' ? '紀元前' : ''}${item.century}世紀</strong><b>${item.entries.length}</b></button>`).join('')}</div>`;
   if (['timeless', 'cross_period', 'unclassified'].includes(listState.timeCentury)) {
-    return renderBrowseResults(special.find(item => item.mode === listState.timeCentury)?.entries || [], '時代');
+    const label = ({ timeless: '恒常', cross_period: '横断', unclassified: '未整理' })[listState.timeCentury];
+    return renderBrowseResults(special.find(item => item.mode === listState.timeCentury)?.entries || [], label, 'data-learning-time-back', '時代');
   }
   const decadeMap = new Map();
   buckets.filter(item => item.bucket.mode === 'dated' && `${item.bucket.era}:${item.bucket.century}` === listState.timeCentury).forEach(item => {
@@ -274,23 +348,28 @@ function renderTimeBrowse(entries) {
     if (!decadeMap.has(key)) decadeMap.set(key, { ...item.bucket, entries: [] });
     decadeMap.get(key).entries.push(item.entry);
   });
-  if (!listState.timeDecade) return `<div class="learning-browse-stack">${[...decadeMap.entries()].sort((a, b) => (
+  const century = centuries.get(listState.timeCentury);
+  const centuryLabel = century ? `${century.era === 'bce' ? '紀元前' : ''}${century.century}世紀` : '時代';
+  if (!listState.timeDecade) return `${renderBrowseHeading(centuryLabel, century?.entries.length || 0, 'data-learning-time-back', '時代')}<div class="learning-browse-stack">${[...decadeMap.entries()].sort((a, b) => (
     a[1].era === 'bce' ? b[1].decade - a[1].decade : a[1].decade - b[1].decade
   )).map(([key, item]) => `<button type="button" data-learning-time-decade="${key}"><strong>${item.era === 'bce' ? `紀元前${item.decade}年代` : `${item.decade}年代`}</strong><b>${item.entries.length}</b></button>`).join('')}</div>`;
-  return renderBrowseResults(decadeMap.get(listState.timeDecade)?.entries || [], '時代');
+  const decade = decadeMap.get(listState.timeDecade);
+  const decadeLabel = decade ? `${decade.era === 'bce' ? '紀元前' : ''}${decade.decade}年代` : centuryLabel;
+  return renderBrowseResults(decade?.entries || [], decadeLabel, 'data-learning-time-back', centuryLabel);
 }
 
 function renderRegionBrowse(entries) {
-  if (!listState.regionId) return `<div class="learning-browse-grid">${LEARNING_REGIONS.map(region => {
+  if (!listState.regionId) return `${renderBrowseIntro('地域から探す', '世界または地域を選び、必要なときだけ国まで絞り込みます。')}<div class="learning-browse-grid">${LEARNING_REGIONS.map(region => {
     const count = region.id === 'world' ? entries.filter(entry => entry.geography?.scope === 'global').length : entries.filter(entry => (entry.geography?.regionIds || []).includes(region.id)).length;
     return `<button type="button" data-learning-region="${region.id}"><strong>${esc(region.label)}</strong><b>${count}</b></button>`;
   }).join('')}</div>`;
-  if (listState.regionId === 'world') return renderBrowseResults(entries.filter(entry => entry.geography?.scope === 'global'), '世界');
-  if (!listState.countryCode) return `<div class="learning-country-grid">${getLearningCountriesForRegion(listState.regionId).map(code => {
+  if (listState.regionId === 'world') return renderBrowseResults(entries.filter(entry => entry.geography?.scope === 'global'), '世界', 'data-learning-region-back', '地域');
+  const region = LEARNING_REGIONS.find(item => item.id === listState.regionId);
+  if (!listState.countryCode) return `${renderBrowseHeading(region?.label || '地域', entries.filter(entry => (entry.geography?.regionIds || []).includes(listState.regionId)).length, 'data-learning-region-back', '地域')}<div class="learning-country-grid">${getLearningCountriesForRegion(listState.regionId).map(code => {
     const count = entries.filter(entry => (entry.geography?.countryCodes || []).includes(code)).length;
     return `<button type="button" data-learning-country="${code}" ${count ? '' : 'disabled'}>${esc(getLearningCountryLabel(code))}<b>${count}</b></button>`;
   }).join('')}</div>`;
-  return renderBrowseResults(entries.filter(entry => (entry.geography?.countryCodes || []).includes(listState.countryCode)), getLearningCountryLabel(listState.countryCode));
+  return renderBrowseResults(entries.filter(entry => (entry.geography?.countryCodes || []).includes(listState.countryCode)), getLearningCountryLabel(listState.countryCode), 'data-learning-region-back', region?.label || '地域');
 }
 
 function renderConnectionBrowse(entries) {
@@ -300,12 +379,23 @@ function renderConnectionBrowse(entries) {
     if (!concepts.has(concept.key)) concepts.set(concept.key, { label: concept.label, entries: [] });
     concepts.get(concept.key).entries.push(entry);
   }));
-  if (listState.conceptKey) return renderBrowseResults(concepts.get(listState.conceptKey)?.entries || [], 'つながり');
-  return `<div class="learning-browse-grid">${[...concepts.entries()].sort((a, b) => b[1].entries.length - a[1].entries.length || a[1].label.localeCompare(b[1].label, 'ja')).slice(0, 48).map(([key, item]) => `<button type="button" data-learning-concept="${esc(key)}"><strong>${esc(item.label)}</strong><b>${item.entries.length}</b></button>`).join('')}</div>`;
+  if (listState.conceptKey) {
+    const concept = concepts.get(listState.conceptKey);
+    return renderBrowseResults(concept?.entries || [], concept?.label || 'つながり', 'data-learning-concept-back', 'つながり');
+  }
+  return `${renderBrowseIntro('つながりから探す', '複数の解説に登場する概念から、関連する知識を横断します。')}<div class="learning-browse-grid">${[...concepts.entries()].sort((a, b) => b[1].entries.length - a[1].entries.length || a[1].label.localeCompare(b[1].label, 'ja')).slice(0, 48).map(([key, item]) => `<button type="button" data-learning-concept="${esc(key)}"><strong>${esc(item.label)}</strong><b>${item.entries.length}</b></button>`).join('')}</div>`;
 }
 
-function renderBrowseResults(entries, label) {
-  return `<div class="learning-browse-results"><div><span>${esc(label)}</span><button type="button" data-learning-browse-axis="list">一覧へ戻る</button></div>${entries.length ? entries.map(renderEntryCard).join('') : '<p>まだ保存済みの解説はありません。</p>'}</div>`;
+function renderBrowseIntro(title, description) {
+  return `<div class="learning-browse-intro"><strong>${esc(title)}</strong><span>${esc(description)}</span></div>`;
+}
+
+function renderBrowseHeading(label, count, backAttribute, backLabel) {
+  return `<div class="learning-browse-heading"><button type="button" ${backAttribute}>‹ ${esc(backLabel)}</button><strong>${esc(label)}</strong><span>${count}件</span></div>`;
+}
+
+function renderBrowseResults(entries, label, backAttribute, backLabel) {
+  return `<div class="learning-browse-results">${renderBrowseHeading(label, entries.length, backAttribute, backLabel)}${entries.length ? entries.map(renderEntryCard).join('') : '<p>まだ保存済みの解説はありません。</p>'}</div>`;
 }
 
 function renderEmptyState(hasEntries) {
