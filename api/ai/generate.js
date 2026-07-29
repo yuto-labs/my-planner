@@ -520,6 +520,26 @@ function pickResponseSchema(actionType, body) {
           },
           required: ['periods', 'regions', 'people', 'organizations', 'works', 'systems'],
         },
+        timeline: {
+          type: 'OBJECT',
+          properties: {
+            mode: { type: 'STRING', enum: ['timeless', 'cross_period', 'dated', 'unclassified'] },
+            startYear: { type: 'INTEGER', nullable: true, minimum: -5000, maximum: 3000 },
+            endYear: { type: 'INTEGER', nullable: true, minimum: -5000, maximum: 3000 },
+            precision: { type: 'STRING', enum: ['year', 'decade', 'century', 'range'] },
+            label: { type: 'STRING' },
+          },
+          required: ['mode', 'startYear', 'endYear', 'precision', 'label'],
+        },
+        geography: {
+          type: 'OBJECT',
+          properties: {
+            scope: { type: 'STRING', enum: ['global', 'regional', 'country', 'unclassified'] },
+            regionIds: stringArray('Only supplied region ids.'),
+            countryCodes: stringArray('ISO 3166-1 alpha-2 codes only.'),
+          },
+          required: ['scope', 'regionIds', 'countryCodes'],
+        },
         answer: {
           type: 'OBJECT',
           properties: {
@@ -546,7 +566,7 @@ function pickResponseSchema(actionType, body) {
           required: ['directAnswer', 'sections', 'cautions'],
         },
       },
-      required: ['title', 'classification', 'primaryConcept', 'concepts', 'facets', 'answer'],
+      required: ['title', 'classification', 'primaryConcept', 'concepts', 'facets', 'timeline', 'geography', 'answer'],
     };
   }
 

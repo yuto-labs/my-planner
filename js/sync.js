@@ -814,6 +814,8 @@ function mergeLearningRecord(local, remote) {
   const titleData = pickFieldData('title');
   const answerData = pickFieldData('answer');
   const classificationData = pickFieldData('classification');
+  const timeline = classificationData.timeline || newerData.timeline;
+  const geography = classificationData.geography || newerData.geography;
   const mergedData = {
     ...newerData,
     originalQuestion: localData.originalQuestion || remoteData.originalQuestion || '',
@@ -826,6 +828,9 @@ function mergeLearningRecord(local, remote) {
     facets: answerData.facets,
     status: answerData.status,
     classification: classificationData.classification,
+    // Preserve legacy records byte-for-byte until they gain these fields.
+    ...(timeline ? { timeline } : {}),
+    ...(geography ? { geography } : {}),
     fieldUpdatedAt: {
       title: titleData.fieldUpdatedAt?.title || '',
       answer: answerData.fieldUpdatedAt?.answer || '',

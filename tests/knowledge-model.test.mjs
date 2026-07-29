@@ -7,6 +7,7 @@ import {
   buildKnowledgeConceptIndex,
   findKnowledgeConceptMatches,
   findDuplicateKnowledgeEntries,
+  getKnowledgeTimelineBucket,
 } from '../js/knowledge-model.js';
 
 function rawAnswer(overrides = {}) {
@@ -62,6 +63,28 @@ test('invalid classification safely falls back to unclassified', () => {
     [entry.classification.majorId, entry.classification.middleId],
     ['interdisciplinary', 'unclassified']
   );
+});
+
+test('normalizes dated geography for the new knowledge browser', () => {
+  const raw = rawAnswer({
+    timeline: { mode: 'dated', startYear: 1961, endYear: 1963, precision: 'year', label: 'early space age' },
+    geography: { scope: 'country', regionIds: ['north_america'], countryCodes: ['us', 'zz'] },
+  });
+  const entry = normalizeKnowledgeAnswer(raw, 'timeline question');
+  assert.deepEqual(entry.geography.countryCodes, ['US']);
+  assert.deepEqual(entry.geography.regionIds, ['north_america']);
+  assert.deepEqual(getKnowledgeTimelineBucket(entry), {
+    mode: 'dated', era: 'ce', century: 20, decade: 1960, startYear: 1961, endYear: 1963,
+  });
+});
+
+test('keeps malformed timeline metadata safely unclassified', () => {
+  const entry = normalizeKnowledgeAnswer(rawAnswer({
+    timeline: { mode: 'dated', startYear: 0, endYear: 1960 },
+    geography: { scope: 'country', countryCodes: ['invalid'] },
+  }), 'safe legacy fallback');
+  assert.equal(entry.timeline.mode, 'unclassified');
+  assert.deepEqual(entry.geography.countryCodes, []);
 });
 
 test('a concept becomes linkable after a matching entry is added later', () => {

@@ -615,6 +615,7 @@ export async function generateKnowledgeAnswer(question, taxonomy, options = {}) 
     'Formatting must use segment marks only: strong, highlight-yellow, highlight-blue, warning.',
     'Use marks sparingly: strong for essential terms, one to three highlights across the whole answer, warning only for a real caveat.',
     'Classify with only the supplied majorId and middleId values. Never invent category IDs.',
+    'Also classify time and geography conservatively. Use ISO 3166-1 alpha-2 country codes only when the country is genuinely central. Use region ids only from the supplied list. A concept with no meaningful date must use timeless; a long-running concept must use cross_period; never invent exact years.',
     'Create stable lowercase ASCII concept keys with hyphens when possible. Include aliases for Japanese/English naming differences.',
     'Put every concept mentioned as a future learning target in concepts, but keep the list focused.',
     'If the question is ambiguous, state the most reasonable interpretation in the answer instead of asking for clarification.',
@@ -623,7 +624,18 @@ export async function generateKnowledgeAnswer(question, taxonomy, options = {}) 
   const raw = await callAPI(
     QUALITY_MODEL,
     system,
-    JSON.stringify({ question: cleanQuestion, taxonomy }),
+    JSON.stringify({
+      question: cleanQuestion,
+      taxonomy,
+      geography: {
+        regionIds: ['world', 'europe', 'north_america', 'latin_america_caribbean', 'africa', 'west_asia', 'central_asia', 'south_asia', 'east_asia', 'southeast_asia', 'oceania', 'polar_ocean'],
+        countryCodeFormat: 'ISO 3166-1 alpha-2',
+      },
+      timeline: {
+        modes: ['timeless', 'cross_period', 'dated', 'unclassified'],
+        note: 'For dated items use non-zero integer startYear and endYear. BCE is negative; use no year zero.',
+      },
+    }),
     3200,
     'json',
     'knowledge_answer',

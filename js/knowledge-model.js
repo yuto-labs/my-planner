@@ -1,4 +1,9 @@
 import { LEARNING_MAJOR_BY_ID, LEARNING_MIDDLE_BY_ID } from './data/learning-taxonomy.js';
+import {
+  normalizeLearningCountryCodes,
+  normalizeLearningRegionIds,
+  getLearningTimelineBucket,
+} from './data/learning-geography.js';
 
 const ALLOWED_MARKS = new Set(['strong', 'highlight-yellow', 'highlight-blue', 'warning']);
 const MARKDOWN_NOISE = /(\*\*|__|```|<\/?[a-z][^>]*>)/gi;
@@ -85,6 +90,35 @@ function normalizeFacets(value = {}) {
   };
 }
 
+function normalizeTimeline(value = {}) {
+  const mode = ['timeless', 'cross_period', 'dated', 'unclassified'].includes(value?.mode)
+    ? value.mode
+    : 'unclassified';
+  const number = raw => {
+    const parsed = Number(raw);
+    return Number.isInteger(parsed) && parsed >= -5000 && parsed <= 3000 && parsed !== 0 ? parsed : null;
+  };
+  const startYear = number(value?.startYear);
+  const endYear = number(value?.endYear) ?? startYear;
+  const dated = mode === 'dated' && startYear && endYear && startYear * endYear > 0;
+  return {
+    mode: dated ? 'dated' : (mode === 'dated' ? 'unclassified' : mode),
+    startYear: dated ? Math.min(startYear, endYear) : null,
+    endYear: dated ? Math.max(startYear, endYear) : null,
+    precision: ['year', 'decade', 'century', 'range'].includes(value?.precision) ? value.precision : 'range',
+    label: cleanKnowledgeText(value?.label).slice(0, 60),
+  };
+}
+
+function normalizeGeography(value = {}) {
+  const countryCodes = normalizeLearningCountryCodes(value?.countryCodes);
+  const regionIds = normalizeLearningRegionIds(value?.regionIds, countryCodes);
+  const scope = ['global', 'regional', 'country', 'unclassified'].includes(value?.scope)
+    ? value.scope
+    : (countryCodes.length ? 'country' : (regionIds.length ? 'regional' : 'unclassified'));
+  return { scope, regionIds, countryCodes };
+}
+
 export function normalizeKnowledgeAnswer(raw, question = '') {
   const concepts = (Array.isArray(raw?.concepts) ? raw.concepts : [])
     .map(normalizeConcept)
@@ -108,7 +142,7 @@ export function normalizeKnowledgeAnswer(raw, question = '') {
 
   const now = new Date().toISOString();
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     title: cleanKnowledgeText(raw?.title || question).slice(0, 80),
     originalQuestion: cleanKnowledgeText(question || raw?.originalQuestion),
     titleSource: 'ai',
@@ -118,6 +152,8 @@ export function normalizeKnowledgeAnswer(raw, question = '') {
     primaryConcept,
     concepts,
     facets: normalizeFacets(raw?.facets),
+    timeline: normalizeTimeline(raw?.timeline),
+    geography: normalizeGeography(raw?.geography),
     answer: {
       directAnswer: normalizeKnowledgeSegments(raw?.answer?.directAnswer),
       sections,
@@ -132,6 +168,10 @@ export function normalizeKnowledgeAnswer(raw, question = '') {
       classification: now,
     },
   };
+}
+
+export function getKnowledgeTimelineBucket(entry) {
+  return getLearningTimelineBucket(entry?.timeline || {});
 }
 
 export function knowledgeAnswerText(entry) {
