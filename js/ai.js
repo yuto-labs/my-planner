@@ -66,6 +66,9 @@ async function callServerAI(
 ) {
   const session = await getSession();
   const token = session?.access_token || '';
+  if (!token) {
+    throw new Error('AIを使うには、AI設定でログインしてください。');
+  }
   const controller = new AbortController();
   const abortFromCaller = () => controller.abort();
   const timeoutId = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
