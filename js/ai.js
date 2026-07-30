@@ -147,7 +147,10 @@ function getFriendlyAiError(status, message) {
   if (status === 401) return 'AIを使うにはログインしてください。';
   if (status === 403) return 'このアカウントではAIを利用できません。';
   if (status === 429) return 'AIの利用が集中しています。少し時間を置いてもう一度お試しください。';
-  if (status === 503) return 'AIサーバーを利用できません。通信状態を確認してもう一度お試しください。';
+  if (status === 503) {
+    const detail = raw && !/^AI Error \d+$/.test(raw) ? ` (${raw.slice(0, 180)})` : '';
+    return `AIサーバーを利用できません。Gemini側の一時的な障害または設定エラーの可能性があります。${detail}`;
+  }
   if (status >= 500) return 'AIから正常な応答を受け取れませんでした。もう一度お試しください。';
   return raw || `AIエラー (${status})`;
 }

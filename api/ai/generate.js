@@ -776,6 +776,43 @@ async function requestGemini(key, model, payload, timeoutMs = 50_000) {
   return requestGeminiOnce(key, model, payload, Math.min(remainingMs, 25_000));
 }
 
+function payloadForModel(payload, model, actionType) {
+  return {
+    ...payload,
+    generationConfig: {
+      ...payload.generationConfig,
+      thinkingConfig: pickThinkingConfig(model, actionType),
+    },
+  };
+}
+
+async function requestGeminiResilient(key, model, fallbackModel, payload, actionType, timeoutMs = 50_000) {
+  const startedAt = Date.now();
+  const first = await requestGemini(key, model, payload, timeoutMs);
+  if (first.upstream.ok || !RETRYABLE_GEMINI_STATUSES.has(first.upstream.status)
+    || !fallbackModel || fallbackModel === model) {
+    return { ...first, model };
+  }
+
+  // A model-specific 5xx can persist longer than a normal retry. Use one
+  // compatible stable fallback before returning the failure to the client.
+  const remainingMs = timeoutMs - (Date.now() - startedAt);
+  if (remainingMs < 8_000) return { ...first, model };
+  const fallbackPayload = payloadForModel(payload, fallbackModel, actionType);
+  const fallback = await requestGemini(key, fallbackModel, fallbackPayload, Math.min(remainingMs, 30_000));
+  return { ...fallback, model: fallbackModel };
+}
+
+function logGeminiFailure({ upstream, data, model, actionType }) {
+  const message = String(data?.error?.message || '').replace(/\s+/g, ' ').slice(0, 320);
+  console.error('[ai] Gemini request failed', {
+    actionType,
+    model,
+    status: upstream?.status || 0,
+    message,
+  });
+}
+
 async function fetchWithTimeout(url, options, timeoutMs) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), Math.max(1_000, timeoutMs));
@@ -908,6 +945,7 @@ export default async function handler(req, res) {
   }
 
   const model = pickModel(body.modelPreference);
+  const fallbackModel = process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.5-flash';
   const responseFormat = body.responseFormat;
   const generationConfig = {
     maxOutputTokens: body.maxTokens,
@@ -941,8 +979,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    let { upstream, data } = await requestGemini(
-      key, model, payload, Math.min(48_000, remainingTimeMs(NETWORK_SAFETY_MS))
+    let { upstream, data, model: activeModel } = await requestGeminiResilient(
+      key, model, fallbackModel, payload, body.actionType,
+      Math.min(48_000, remainingTimeMs(NETWORK_SAFETY_MS))
     );
     if (!upstream.ok && upstream.status === 400 && payload.generationConfig.responseSchema) {
       // Some Gemini model revisions reject deeply nested response schemas even
@@ -958,10 +997,13 @@ export default async function handler(req, res) {
         res.status(504).json({ error: 'AI request timed out before a safe retry could start.' });
         return;
       }
-      ({ upstream, data } = await requestGemini(key, model, payload, schemaFallbackTimeMs));
+      ({ upstream, data, model: activeModel } = await requestGeminiResilient(
+        key, activeModel, fallbackModel, payload, body.actionType, schemaFallbackTimeMs
+      ));
     }
     if (!upstream.ok) {
       const msg = data?.error?.message || `Gemini upstream error ${upstream.status}`;
+      logGeminiFailure({ upstream, data, model: activeModel, actionType: body.actionType });
       res.status(upstream.status).json({ error: msg });
       return;
     }
@@ -1029,9 +1071,12 @@ The previous response was incomplete or contained formatting noise. Return one c
           }],
         };
       }
-      ({ upstream, data } = await requestGemini(key, model, retryPayload, retryTimeoutMs));
+      ({ upstream, data, model: activeModel } = await requestGeminiResilient(
+        key, activeModel, fallbackModel, retryPayload, body.actionType, retryTimeoutMs
+      ));
       if (!upstream.ok) {
         const msg = data?.error?.message || `Gemini upstream error ${upstream.status}`;
+        logGeminiFailure({ upstream, data, model: activeModel, actionType: body.actionType });
         res.status(upstream.status).json({ error: msg });
         return;
       }
