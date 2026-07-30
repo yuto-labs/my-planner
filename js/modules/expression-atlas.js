@@ -1561,7 +1561,7 @@ function renderTranslationVariant(variant, index) {
       ${variant.backTranslationJa ? `<div class="atlas-back-translation"><span>和訳（逆翻訳）</span>${esc(variant.backTranslationJa)}</div>` : ''}
       ${detailSection('この文自体の全体ニュアンス', variant.overallNuanceJa || variant.nuanceJa)}
       ${translationVocabularySection(variant.vocabularyNotes, expressionIndex)}
-      ${translationComparisonSection(variant.comparisons)}
+      ${translationComparisonSection(variant.comparisons, expressionIndex)}
       ${listSection('注意点', variant.cautionsJa, 'atlas-note-list--warning')}
     </article>
   `;
@@ -2132,7 +2132,7 @@ function renderDetail() {
       ${classificationEditor(entry, 'expression')}
       ${etymologyCoreSection(entry)}
       ${detailSection('深いニュアンス', entry.nuanceJa)}
-      ${comparisonsSection(entry.comparisons)}
+      ${comparisonsSection(entry.comparisons, buildExpressionIndex(getExpressionEntries()))}
       ${sameWordElsewhere.length ? sameWordThemeSection(entry, sameWordElsewhere) : ''}
       ${listSection('自然に使われる場面', entry.useCasesJa)}
       ${examplesSection(entry.examples)}
@@ -2199,6 +2199,7 @@ function renderDetail() {
       : '閉じる';
   });
   wireClassificationEditor(entry, 'expression');
+  wireTranslationVocabularyLinks();
   wireRelatedEtymologyLinks();
   wireCollapsibleDetailSections();
 }
@@ -2869,7 +2870,16 @@ function translationVocabularySection(notes, expressionIndex = buildExpressionIn
   `;
 }
 
-function translationComparisonSection(comparisons) {
+function linkedExpressionTerm(term, expressionIndex) {
+  const value = String(term || '').trim();
+  if (!value) return '';
+  const matches = findExpressionMatches(value, expressionIndex);
+  if (!matches.length) return `<strong lang="en">${esc(value)}</strong>`;
+  return `<button type="button" class="atlas-inline-word-link" lang="en"
+    data-linked-token="${esc(value)}" data-linked-entries="${esc(matches.map(entry => entry.id).join(','))}">${esc(value)}</button>`;
+}
+
+function translationComparisonSection(comparisons, expressionIndex = buildExpressionIndex(getExpressionEntries())) {
   if (!Array.isArray(comparisons) || !comparisons.length) return '';
   return `
     <section class="atlas-detail-section">
@@ -2877,7 +2887,7 @@ function translationComparisonSection(comparisons) {
       <div class="atlas-comparison-list">
         ${comparisons.map(comparison => `
           <div>
-            <strong lang="en">${esc(comparison.expression)} / ${esc(comparison.alternative)}</strong>
+            <span class="atlas-comparison-terms">${linkedExpressionTerm(comparison.expression, expressionIndex)} <b aria-hidden="true">/</b> ${linkedExpressionTerm(comparison.alternative, expressionIndex)}</span>
             <p>${esc(comparison.differenceJa)}</p>
           </div>
         `).join('')}
@@ -2886,13 +2896,13 @@ function translationComparisonSection(comparisons) {
   `;
 }
 
-function comparisonsSection(comparisons) {
+function comparisonsSection(comparisons, expressionIndex = buildExpressionIndex(getExpressionEntries())) {
   if (!Array.isArray(comparisons) || !comparisons.length) return '';
   return `
     <section class="atlas-detail-section">
       <h2>似た表現との違い</h2>
       <div class="atlas-comparison-list">${comparisons.map(comparison => `
-        <div><strong>${esc(comparison.term)}</strong><p>${esc(comparison.differenceJa)}</p></div>
+        <div>${linkedExpressionTerm(comparison.term, expressionIndex)}<p>${esc(comparison.differenceJa)}</p></div>
       `).join('')}</div>
     </section>
   `;
