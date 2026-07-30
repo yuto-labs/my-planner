@@ -1388,6 +1388,7 @@ function renderQuestionDetail() {
   state.container.querySelectorAll('[data-question-atlas-entry]').forEach(button => {
     button.addEventListener('click', () => openLinkedExpression(button.dataset.questionAtlasEntry));
   });
+  wireCollapsibleDetailSections();
   state.container.querySelector('#atlas-delete-question')?.addEventListener('click', () => {
     if (!window.confirm('この質問をTrashへ移動しますか？')) return;
     if (deleteEnglishQuestion(item.id)) {
@@ -1548,7 +1549,7 @@ function renderTranslationVariant(variant, index) {
         <span class="atlas-translation-number">${String(index + 1).padStart(2, '0')}</span>
         <div>
           <span class="atlas-translation-field-label">英文</span>
-          <strong class="atlas-translation-plain" lang="en">${esc(variant.translation)}</strong>
+          <div class="atlas-audio-line"><strong class="atlas-translation-plain" lang="en">${esc(variant.translation)}</strong>${speakButton(variant.translation)}</div>
           ${hasLinkedWords ? `
             <div class="atlas-linked-translation" lang="en" hidden>${renderLinkedEnglishText(variant.translation, expressionIndex)}</div>
             <button class="atlas-vocabulary-toggle" type="button" aria-pressed="false">語彙を見る</button>
@@ -1811,6 +1812,7 @@ function renderTranslationDetail() {
   });
   wireTranslationVocabularyLinks();
   wireClassificationEditor(set, 'translation');
+  wireCollapsibleDetailSections();
 }
 
 function updateLibraryContent() {
@@ -2567,10 +2569,12 @@ function persistCurrentDetailNotes() {
 }
 
 function wireCollapsibleDetailSections() {
+  const detail = getCurrentDetailState();
+  const detailKey = `${detail?.kind || 'atlas'}:${detail?.id || 'root'}`;
   state.container?.querySelectorAll('.atlas-detail-section').forEach((section, index) => {
     const heading = section.querySelector(':scope > h2');
     if (!heading || section.classList.contains('atlas-same-word-section')) return;
-    const sectionKey = `${state.entryId}:${index}:${heading.textContent.trim()}`;
+    const sectionKey = `${detailKey}:${index}:${heading.textContent.trim()}`;
     const content = [...section.children].filter(child => child !== heading);
     if (!content.length) return;
     const button = document.createElement('button');
