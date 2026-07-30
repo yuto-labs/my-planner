@@ -3063,7 +3063,13 @@ button { cursor: pointer; font-family: inherit; }
 }
 .kn-toolbar::-webkit-scrollbar { display: none; }
 .kn-toolbar-types,
-.kn-toolbar-inline { display: flex; gap: 2px; }
+.kn-toolbar-inline,
+.kn-toolbar-history { display: flex; gap: 2px; }
+.kn-toolbar-history {
+  padding-right: 4px;
+  margin-right: 2px;
+  border-right: 1px solid var(--border);
+}
 .kn-toolbar-type-field {
   display: flex;
   align-items: center;
@@ -3098,6 +3104,11 @@ button { cursor: pointer; font-family: inherit; }
 .kn-toolbar-btn:active, .kn-toolbar-btn.active {
   background: var(--primary-bg);
   color: var(--primary);
+}
+.kn-toolbar-btn:disabled {
+  opacity: .35;
+  cursor: default;
+  pointer-events: none;
 }
 .kn-toolbar-color-btn { font-size: 14px; }
 .kn-toolbar-mark-btn { min-width: 46px; color: #b77900; }
@@ -3156,11 +3167,6 @@ button { cursor: pointer; font-family: inherit; }
   border-color: var(--primary-border);
   background: var(--primary-bg);
 }
-.kn-toolbar-block-btn--danger:active {
-  color: var(--danger);
-  border-color: var(--danger);
-}
-
 /* Color picker */
 .kn-color-picker {
   display: flex; gap: 8px; align-items: center;
@@ -3339,23 +3345,6 @@ button { cursor: pointer; font-family: inherit; }
 .kn-block--divider:focus {
   background: var(--primary-bg);
   box-shadow: inset 0 0 0 1px var(--primary-border);
-}
-.kn-divider-delete {
-  display: none;
-  width: 32px;
-  height: 32px;
-  flex: 0 0 32px;
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  background: var(--bg-card);
-  color: var(--text-muted);
-  font: inherit;
-  font-size: 16px;
-  cursor: pointer;
-}
-.kn-divider-delete:active {
-  border-color: var(--danger);
-  color: var(--danger);
 }
 .kn-block--math { flex-direction: column; gap: 6px; }
 .kn-block-math-label { font-size: 10px; color: var(--text-dim); font-weight: 700; letter-spacing: 0.05em; }
@@ -3536,8 +3525,14 @@ button { cursor: pointer; font-family: inherit; }
   pointer-events: auto;
   transform: translateY(0);
 }
-.kn-block-move,
-.kn-block-del {
+/* Blocks are reordered from their drag handle. Keep the redundant arrow menus
+   out of the writing surface so they cannot cover nearby text. */
+.kn-toolbar-block-menu-btn,
+.kn-toolbar-block-actions,
+.kn-block-controls {
+  display: none !important;
+}
+.kn-block-move {
   background: var(--bg-hover); border: 1px solid var(--border);
   border-radius: 999px; width: 24px; height: 24px;
   font-size: 11px; color: var(--text-dim); cursor: pointer;
@@ -3549,7 +3544,6 @@ button { cursor: pointer; font-family: inherit; }
   border-color: var(--primary-border);
   background: var(--primary-bg);
 }
-.kn-block-del:hover { color: var(--danger); border-color: var(--danger); }
 .kn-block-insert-row {
   display: none !important;
 }
@@ -3605,10 +3599,6 @@ button { cursor: pointer; font-family: inherit; }
   }
   .kn-block--divider {
     min-height: 34px;
-  }
-  .kn-divider-delete {
-    display: inline-grid;
-    place-items: center;
   }
   .kn-toolbar-block-actions {
     top: 100px;
@@ -9494,8 +9484,6 @@ button.atlas-nuance-map-row:focus-visible {
 
 .kn-block--drop-before::after, .kn-block--drop-after::after { content: ""; position: absolute; left: 24px; right: 0px; z-index: 8; height: 3px; border-radius: 3px; background: var(--primary); box-shadow: 0 0 0 2px var(--bg-card); pointer-events: none; }
 
-.kn-divider-delete { display: none; width: 32px; height: 32px; flex: 0 0 32px; border: 1px solid var(--border); border-radius: 50%; background: var(--bg-card); color: var(--text-muted); font-style: inherit; font-variant: inherit; font-weight: inherit; font-stretch: inherit; line-height: inherit; font-family: inherit; font-optical-sizing: inherit; font-size-adjust: inherit; font-kerning: inherit; font-feature-settings: inherit; font-variation-settings: inherit; font-language-override: inherit; font-size: 16px; cursor: pointer; }
-
 .kn-toggle-edit-btn { width: 20px; height: 24px; padding: 0px; border-width: medium; border-style: none; border-color: currentcolor; border-image: none; border-radius: 4px; background: transparent; cursor: pointer; }
 
 .kn-table-input { width: 100%; min-width: 132px; height: 34px; padding: 7px 9px; border: 0px; outline: 0px; background: transparent; color: var(--text); font-style: inherit; font-variant: inherit; font-weight: inherit; font-stretch: inherit; line-height: inherit; font-family: inherit; font-optical-sizing: inherit; font-size-adjust: inherit; font-kerning: inherit; font-feature-settings: inherit; font-variation-settings: inherit; font-language-override: inherit; font-size: 13px; }
@@ -9531,7 +9519,6 @@ button.atlas-nuance-map-row:focus-visible {
   .kn-block-drag-handle { width: 28px; height: 30px; opacity: 0.5; }
   .kn-block--toggle > .kn-block-toggle-children-edit { flex-basis: calc(100% - 8px); width: calc(100% - 8px); margin-left: 8px; padding-left: 3px; }
   .kn-block--divider { min-height: 34px; }
-  .kn-divider-delete { display: inline-grid; place-items: center; }
   .kn-toolbar-block-actions { top: 100px; }
   .kn-toolbar-block-btn { width: 40px; height: 40px; }
   .kn-block-insert-row { display: none !important; }

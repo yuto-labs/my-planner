@@ -32,7 +32,7 @@ export async function refreshAiRuntimeStatus({ force = false } = {}) {
     const next = {
       provider: data.provider || 'gemini',
       mode: data.mode || 'server',
-      configured: !!data.configured,
+      configured: !!data.configured && data.available !== false,
       models: data.models || null,
       limits: null,
       usage: null,

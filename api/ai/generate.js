@@ -736,7 +736,11 @@ function hasCompleteStructuredResponse(actionType, text) {
 
 export const maxDuration = 60;
 
-async function requestGemini(key, model, payload, timeoutMs = 50_000) {
+const RETRYABLE_GEMINI_STATUSES = new Set([500, 502, 503, 504]);
+
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+async function requestGeminiOnce(key, model, payload, timeoutMs = 50_000) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), Math.min(Math.max(timeoutMs, 1_000), 48_000));
   try {
@@ -757,6 +761,19 @@ async function requestGemini(key, model, payload, timeoutMs = 50_000) {
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+async function requestGemini(key, model, payload, timeoutMs = 50_000) {
+  const startedAt = Date.now();
+  const first = await requestGeminiOnce(key, model, payload, timeoutMs);
+  if (first.upstream.ok || !RETRYABLE_GEMINI_STATUSES.has(first.upstream.status)) return first;
+
+  // Gemini 5xx responses are commonly brief service interruptions. Retry once
+  // before surfacing the error, without retrying user-caused 4xx responses.
+  const remainingMs = timeoutMs - (Date.now() - startedAt) - 1_000;
+  if (remainingMs < 8_000) return first;
+  await delay(700);
+  return requestGeminiOnce(key, model, payload, Math.min(remainingMs, 25_000));
 }
 
 async function fetchWithTimeout(url, options, timeoutMs) {

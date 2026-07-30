@@ -42,6 +42,13 @@ let editorBaseline = '';
 let pendingImageUploads = new Set();
 let pendingImageDeletes = new Set();
 let editorSessionToken = 0;
+const EDITOR_HISTORY_LIMIT = 80;
+const KNOWLEDGE_TAG_RECENCY_KEY = 'mp_knowledge_tag_recency';
+let editorUndoHistory = [];
+let editorRedoHistory = [];
+let editorTypingHistoryOpen = false;
+let editorTypingHistoryTimer = null;
+let editorHistoryRestoring = false;
 
 // ---- Navigation history for swipe-back ----
 let _knHistory           = [];  // [{memoId: string|null, scrollTop: number}]
@@ -104,6 +111,102 @@ function editorSnapshot() {
 
 function markEditorBaseline() {
   editorBaseline = editorSnapshot();
+}
+
+function editorHistorySnapshot() {
+  return {
+    title: edState.title,
+    blocks: deepClone(edState.blocks),
+    tags: [...edState.tags],
+    url: edState.url,
+    starred: edState.starred,
+    reviewEnabled: edState.reviewEnabled,
+    activeBlockId: activeEditorBlockId,
+  };
+}
+
+function resetEditorHistory() {
+  editorUndoHistory = [];
+  editorRedoHistory = [];
+  editorTypingHistoryOpen = false;
+  clearTimeout(editorTypingHistoryTimer);
+  editorTypingHistoryTimer = null;
+}
+
+function updateEditorHistoryControls(container) {
+  const undo = container?.querySelector('#kn-undo-btn');
+  const redo = container?.querySelector('#kn-redo-btn');
+  if (undo) {
+    undo.disabled = !editorUndoHistory.length;
+  }
+  if (redo) {
+    redo.disabled = !editorRedoHistory.length;
+  }
+}
+
+function recordEditorHistory(container) {
+  if (!edState.isEdit || editorHistoryRestoring) return;
+  editorTypingHistoryOpen = false;
+  clearTimeout(editorTypingHistoryTimer);
+  const snapshot = editorHistorySnapshot();
+  const last = editorUndoHistory.at(-1);
+  if (last && JSON.stringify(last) === JSON.stringify(snapshot)) return;
+  editorUndoHistory.push(snapshot);
+  if (editorUndoHistory.length > EDITOR_HISTORY_LIMIT) editorUndoHistory.shift();
+  editorRedoHistory = [];
+  updateEditorHistoryControls(container);
+}
+
+function beginEditorTextHistory(container) {
+  if (!editorTypingHistoryOpen) recordEditorHistory(container);
+  editorTypingHistoryOpen = true;
+  clearTimeout(editorTypingHistoryTimer);
+  editorTypingHistoryTimer = setTimeout(() => {
+    editorTypingHistoryOpen = false;
+    editorTypingHistoryTimer = null;
+  }, 700);
+}
+
+function restoreEditorHistory(container, direction) {
+  const from = direction === 'undo' ? editorUndoHistory : editorRedoHistory;
+  const to = direction === 'undo' ? editorRedoHistory : editorUndoHistory;
+  const snapshot = from.pop();
+  if (!snapshot) return;
+  to.push(editorHistorySnapshot());
+  if (to.length > EDITOR_HISTORY_LIMIT) to.shift();
+  clearTimeout(editorTypingHistoryTimer);
+  editorTypingHistoryOpen = false;
+  edState = {
+    ...edState,
+    title: snapshot.title,
+    blocks: deepClone(snapshot.blocks),
+    tags: [...snapshot.tags],
+    url: snapshot.url,
+    starred: snapshot.starred,
+    reviewEnabled: snapshot.reviewEnabled,
+    isEdit: true,
+  };
+  activeEditorBlockId = snapshot.activeBlockId
+    && findBlockInAllBlocks(edState.blocks, snapshot.activeBlockId)
+    ? snapshot.activeBlockId
+    : edState.blocks[0]?.id || null;
+  // Rendering rebuilds the editor UI. Keep the history stacks intact even if a
+  // render-time handler runs while the restored block tree is being mounted.
+  const undoHistory = editorUndoHistory;
+  const redoHistory = editorRedoHistory;
+  editorHistoryRestoring = true;
+  renderEditMode(container, { preserveHistory: true });
+  editorUndoHistory = undoHistory;
+  editorRedoHistory = redoHistory;
+  // The render mounts nested editable controls synchronously. Apply the
+  // availability state on the next frame so their initial disabled markup
+  // cannot win over the restored history state.
+  requestAnimationFrame(() => {
+    editorHistoryRestoring = false;
+    updateEditorHistoryControls(container);
+  });
+  if (activeEditorBlockId) focusBlock(activeEditorBlockId, container, true);
+  toast(direction === 'undo' ? '変更を取り消しました' : '変更をやり直しました', 'info');
 }
 
 export function hasUnsavedKnowledgeChanges() {
@@ -292,7 +395,11 @@ function restoreKnowledgeListPosition() {
 
 function renderList() {
   const { container, search, filterTag } = listState;
-  const memos  = getKnowledgeMemos();
+  const memos = [...getKnowledgeMemos()].sort((a, b) => {
+    const aTime = Date.parse(a.updatedAt || a.createdAt || '') || 0;
+    const bTime = Date.parse(b.updatedAt || b.createdAt || '') || 0;
+    return bTime - aTime;
+  });
   const allTags = [...new Set(memos.flatMap(m => m.tags || []))].sort();
   const aiAvailable = isAiAvailable();
   const reviewSchedule = getReviewSchedule();
@@ -306,12 +413,10 @@ function renderList() {
     return matchSearch && matchTag;
   });
 
-  const starred = filtered.filter(m => m.starred);
-  const regular = filtered.filter(m => !m.starred);
-  const visibleStarred = starred.slice(0, listState.visibleCount);
-  const remainingSlots = Math.max(0, listState.visibleCount - visibleStarred.length);
-  const visibleRegular = regular.slice(0, remainingSlots);
-  const visibleTotal = visibleStarred.length + visibleRegular.length;
+  const visibleMemos = filtered.slice(0, listState.visibleCount);
+  const visibleTotal = visibleMemos.length;
+  const visibleStarred = [];
+  const visibleRegular = visibleMemos;
 
   container.innerHTML = `
     <div class="kn-list-page">
@@ -1471,9 +1576,10 @@ function showTermPopup(term, text, anchorEl, rootContainer) {
 // EDIT MODE
 // ============================================================
 
-function renderEditMode(container) {
+function renderEditMode(container, { preserveHistory = false } = {}) {
   const { title, blocks, tags, id } = edState;
   const hasApi = isAiAvailable();
+  if (!preserveHistory) resetEditorHistory();
 
   container.innerHTML = `
     <div class="kn-edit-page">
@@ -1513,6 +1619,10 @@ function renderEditMode(container) {
 
       <!-- Block toolbar -->
       <div class="kn-toolbar" id="kn-toolbar">
+        <div class="kn-toolbar-history" aria-label="編集履歴">
+          <button type="button" class="kn-toolbar-btn" id="kn-undo-btn" title="取り消し (Ctrl/Cmd+Z)" aria-label="取り消し" disabled>↶</button>
+          <button type="button" class="kn-toolbar-btn" id="kn-redo-btn" title="やり直し (Ctrl/Cmd+Shift+Z)" aria-label="やり直し" disabled>↷</button>
+        </div>
         <div class="kn-toolbar-types">
           <label class="kn-toolbar-type-field">
             <span class="sr-only">ブロック種類</span>
@@ -1537,7 +1647,6 @@ function renderEditMode(container) {
           <button type="button" class="kn-toolbar-block-btn" data-toolbar-block-action="down" title="下へ" aria-label="下へ移動">↓</button>
           <button type="button" class="kn-toolbar-block-btn" data-toolbar-block-action="indent" title="トグル内へ移動" aria-label="トグル内へ移動">→</button>
           <button type="button" class="kn-toolbar-block-btn" data-toolbar-block-action="outdent" title="外へ" aria-label="外側へ移動">←</button>
-          <button type="button" class="kn-toolbar-block-btn kn-toolbar-block-btn--danger" data-toolbar-block-action="delete" title="削除" aria-label="ブロックを削除">×</button>
         </div>
         <button type="button" class="kn-toolbar-btn kn-toolbar-media-btn" id="kn-photo-btn"
           title="写真を追加" aria-label="写真を追加">PHOTO</button>
@@ -1605,12 +1714,42 @@ function renderEditMode(container) {
 
   container.querySelector('#kn-save-btn')?.addEventListener('click', () => saveMemo(container));
 
+  const editPage = container.querySelector('.kn-edit-page');
+  editPage?.addEventListener('keydown', event => {
+    if (event.isComposing || !(event.ctrlKey || event.metaKey)) return;
+    const key = event.key.toLowerCase();
+    if (key === 'z') {
+      event.preventDefault();
+      restoreEditorHistory(container, event.shiftKey ? 'redo' : 'undo');
+    } else if (key === 'y') {
+      event.preventDefault();
+      restoreEditorHistory(container, 'redo');
+    }
+  });
+  editPage?.addEventListener('beforeinput', event => {
+    if (event.target?.closest?.('#kn-blocks-wrap, #kn-edit-title, #kn-tag-input')) {
+      beginEditorTextHistory(container);
+    }
+  });
+  // Some mobile keyboards and embedded browsers do not surface beforeinput
+  // consistently. Capturing the state when an editable control receives focus
+  // still gives the next edit a reliable undo point.
+  editPage?.addEventListener('focusin', event => {
+    if (event.target?.matches?.('[contenteditable="true"], input, textarea')) {
+      beginEditorTextHistory(container);
+    }
+  });
+  container.querySelector('#kn-undo-btn')?.addEventListener('click', () => restoreEditorHistory(container, 'undo'));
+  container.querySelector('#kn-redo-btn')?.addEventListener('click', () => restoreEditorHistory(container, 'redo'));
+
   // Wire title input
   container.querySelector('#kn-edit-title')?.addEventListener('input', e => {
+    beginEditorTextHistory(container);
     edState.title = e.target.value.slice(0, 180);
   });
 
   container.querySelector('#kn-review-enabled')?.addEventListener('change', e => {
+    recordEditorHistory(container);
     edState.reviewEnabled = e.target.checked;
   });
 
@@ -1629,6 +1768,7 @@ function renderEditMode(container) {
 
   // Wire add block button
   container.querySelector('#kn-add-block-btn')?.addEventListener('click', () => {
+    recordEditorHistory(container);
     const focusedBlockId = resolveActiveEditorBlockId(container);
     const inserted = focusedBlockId ? insertBlockAfter(focusedBlockId) : null;
     if (!inserted) edState.blocks.push(defaultBlock());
@@ -1669,7 +1809,6 @@ function renderBlockEdit(block, idx, listNumber = 0) {
       <button type="button" class="kn-block-move" data-block-action="down" data-block-id="${esc(block.id)}" title="下へ" aria-label="下へ移動">↓</button>
       <button type="button" class="kn-block-move" data-block-action="indent" data-block-id="${esc(block.id)}" title="上のトグルの中へ" aria-label="内側へ移動">→</button>
       <button type="button" class="kn-block-move" data-block-action="outdent" data-block-id="${esc(block.id)}" title="外へ" aria-label="外側へ移動">←</button>
-      <button type="button" class="kn-block-del" data-del-id="${esc(block.id)}" aria-label="削除">×</button>
     </div>`;
 
   if (block.type === 'divider') {
@@ -1679,8 +1818,6 @@ function renderBlockEdit(block, idx, listNumber = 0) {
         aria-label="区切り線。選択後、ブロック操作から移動または削除できます">
         ${dragHandle}
         <hr class="kn-view-divider">
-        <button type="button" class="kn-divider-delete" data-del-id="${esc(block.id)}"
-          title="区切り線を削除" aria-label="区切り線を削除">×</button>
         ${controls}
       </div>
       ${insertRow}`;
@@ -1792,8 +1929,17 @@ function wireBlocksEdit(container) {
     handleEditorPaste(event, container);
   });
 
+  wrap.addEventListener('beforeinput', event => {
+    if (event.target?.closest?.('[contenteditable="true"], textarea, input')) {
+      beginEditorTextHistory(container);
+    }
+  });
+
   // Sync text on input
   wrap.addEventListener('input', e => {
+    // Fallback for keyboards and browser automation paths that omit
+    // beforeinput. At this point edState still has the pre-edit value.
+    beginEditorTextHistory(container);
     const el = e.target;
     if (el.matches?.('[data-table-header], [data-table-cell]')) {
       const block = findBlockInAllBlocks(edState.blocks, el.dataset.blockId);
@@ -1851,8 +1997,11 @@ function wireBlocksEdit(container) {
   // Some mobile keyboards send only beforeinput for the return key.
   wrap.addEventListener('beforeinput', e => {
     const el = e.target;
-    if (el.contentEditable !== 'true' || e.isComposing) return;
-    if (e.inputType !== 'insertParagraph' && e.inputType !== 'insertLineBreak') return;
+    if (el.contentEditable !== 'true') return;
+    const isLineBreak = e.inputType === 'insertParagraph'
+      || e.inputType === 'insertLineBreak'
+      || (e.inputType === 'insertText' && /\r?\n/.test(e.data || ''));
+    if (!isLineBreak) return;
     const blockId = el.dataset.blockId;
     if (!blockId) return;
     e.preventDefault();
@@ -1906,6 +2055,7 @@ function wireBlocksEdit(container) {
 
     const insertBtn = e.target.closest('[data-insert-block-type]');
     if (insertBtn) {
+      recordEditorHistory(container);
       const afterId = insertBtn.dataset.insertAfter;
       const type = insertBtn.dataset.insertBlockType || 'paragraph';
       const inserted = insertBlockAfter(afterId, type);
@@ -1925,6 +2075,7 @@ function wireBlocksEdit(container) {
       }
       const scrollOwner = document.getElementById('main-content');
       const scrollTop = scrollOwner?.scrollTop || 0;
+      recordEditorHistory(container);
       if (moveBlock(blockId, moveBtn.dataset.blockAction)) {
         rerenderBlocks(container);
         if (scrollOwner) scrollOwner.scrollTop = scrollTop;
@@ -1933,9 +2084,6 @@ function wireBlocksEdit(container) {
       return;
     }
 
-    const btn = e.target.closest('[data-del-id]');
-    if (!btn) return;
-    deleteEditorBlock(btn.dataset.delId, container);
   });
 
   renderMathPreviews(container);
@@ -1956,6 +2104,7 @@ function wireBlockDrag(container, wrap) {
     wrap.querySelector(`[data-block-id="${state.blockId}"]`)?.classList.remove('kn-block--dragging');
 
     if (!cancelled && state.dragging && state.targetId && state.placement) {
+      recordEditorHistory(container);
       if (moveBlockByDrop(state.blockId, state.targetId, state.placement)) {
         activeEditorBlockId = state.blockId;
         rerenderBlocks(container);
@@ -2048,6 +2197,7 @@ function wireBlockDrag(container, wrap) {
     }
     if (!action) return;
     e.preventDefault();
+    recordEditorHistory(container);
     if (!moveBlock(blockId, action)) return;
     activeEditorBlockId = blockId;
     rerenderBlocks(container);
@@ -2089,6 +2239,7 @@ function handleBlockKeydown(e, blockId, container) {
     e.preventDefault();
     e.stopPropagation();
     const block = findBlockInAllBlocks(edState.blocks, blockId);
+    recordEditorHistory(container);
     if (block?.type === 'toggle' && !e.shiftKey) {
       openToggleForEditing(blockId, container);
       return;
@@ -2108,6 +2259,7 @@ function handleBlockKeydown(e, blockId, container) {
     e.preventDefault();
     const loc = findBlockLocation(blockId);
     if (!loc) return;
+    recordEditorHistory(container);
     const currentBlock = loc.blocks[loc.idx];
     const newBlock = defaultBlock();
     // If in toggle, add child
@@ -2128,6 +2280,7 @@ function handleBlockKeydown(e, blockId, container) {
     const loc = findBlockLocation(blockId);
     if (el.textContent === '' && loc && (loc.parent || edState.blocks.length > 1)) {
       e.preventDefault();
+      recordEditorHistory(container);
       removeBlockById(blockId);
       removeBlockElement(blockId, container);
       const prevBlock = loc.blocks[Math.max(0, loc.idx - 1)] || loc.parent || edState.blocks[0];
@@ -2137,6 +2290,7 @@ function handleBlockKeydown(e, blockId, container) {
 }
 
 function openToggleForEditing(blockId, container) {
+  recordEditorHistory(container);
   syncFocusedEditableBlock(container, blockId);
   const block = findBlockInAllBlocks(edState.blocks, blockId);
   if (!block || block.type !== 'toggle') return;
@@ -2149,6 +2303,7 @@ function openToggleForEditing(blockId, container) {
 }
 
 function toggleEditorBlock(blockId, container) {
+  recordEditorHistory(container);
   syncFocusedEditableBlock(container, blockId);
   const block = findBlockInAllBlocks(edState.blocks, blockId);
   if (!block || block.type !== 'toggle') return;
@@ -2222,8 +2377,6 @@ function continueListFromBlock(blockId, container, editable = null) {
 }
 
 function insertBlockLineBreak(editable) {
-  if (document.execCommand?.('insertLineBreak', false, null)) return;
-
   const selection = window.getSelection();
   if (!selection?.rangeCount) return;
   const range = selection.getRangeAt(0);
@@ -2294,10 +2447,6 @@ function wireToolbar(container) {
       if (!blockId) return;
       const action = btn.dataset.toolbarBlockAction;
       closeBlockMenu();
-      if (action === 'delete') {
-        deleteEditorBlock(blockId, container);
-        return;
-      }
       if (action === 'indent') {
         showToggleTargetPicker(container, blockId);
         return;
@@ -2305,6 +2454,7 @@ function wireToolbar(container) {
 
       const scrollOwner = document.getElementById('main-content');
       const scrollTop = scrollOwner?.scrollTop || 0;
+      recordEditorHistory(container);
       if (!moveBlock(blockId, action)) return;
       rerenderBlocks(container);
       if (scrollOwner) scrollOwner.scrollTop = scrollTop;
@@ -2318,6 +2468,7 @@ function wireToolbar(container) {
       const focusedBlockId = getFocusedBlockId(container);
       if (!focusedBlockId) return;
       const command = btn.dataset.inlineCommand;
+      recordEditorHistory(container);
       document.execCommand?.(command, false, null);
       syncFocusedEditableBlock(container, focusedBlockId);
       focusEditableWithoutScroll(container.querySelector(`.kn-block-focusable[data-block-id="${focusedBlockId}"]`));
@@ -2379,6 +2530,7 @@ function wireToolbar(container) {
       if (!color || !hasSelectedText) {
         toast('マーカーを付ける文字を選択してください', 'info');
       } else {
+        recordEditorHistory(container);
         const ok = document.execCommand?.('hiliteColor', false, color.css);
         if (!ok) document.execCommand?.('backColor', false, color.css);
         syncFocusedEditableBlock(container, focusedBlockId);
@@ -2399,6 +2551,7 @@ function wireToolbar(container) {
       const color = BLOCK_COLORS.find(c => c.id === colorId);
       const focusedBlockId = getFocusedBlockId(container);
       if (focusedBlockId && color) {
+        recordEditorHistory(container);
         const active = container.querySelector(`.kn-block-focusable[data-block-id="${focusedBlockId}"]:focus`);
         const selection = window.getSelection();
         if (active && selection && selection.rangeCount && !selection.isCollapsed && active.contains(selection.anchorNode)) {
@@ -2417,39 +2570,6 @@ function wireToolbar(container) {
       container.querySelector('#kn-color-picker')?.classList.add('hidden');
     });
   });
-}
-
-function deleteEditorBlock(blockId, container) {
-  if (!blockId) return;
-  const loc = findBlockLocation(blockId);
-  if (!loc) return;
-  collectImagePaths([loc.blocks[loc.idx]]).forEach(path => {
-    pendingImageDeletes.add(path);
-  });
-  if (!loc.parent && edState.blocks.length <= 1) {
-    const block = loc.blocks[loc.idx];
-    if (block) {
-      block.type = 'paragraph';
-      block.text = '';
-      block.color = null;
-      delete block.html;
-      delete block.children;
-    }
-    activeEditorBlockId = blockId;
-    rerenderBlocks(container);
-    highlightToolbarType(container, 'paragraph');
-    focusBlock(blockId, container);
-    return;
-  }
-
-  const nextFocusId = loc?.blocks[loc.idx - 1]?.id
-    || loc?.blocks[loc.idx + 1]?.id
-    || loc?.parent?.id
-    || edState.blocks.find(block => block.id !== blockId)?.id;
-  removeBlockById(blockId);
-  rerenderBlocks(container);
-  activeEditorBlockId = nextFocusId || null;
-  if (nextFocusId) focusBlock(nextFocusId, container, true);
 }
 
 function getFocusedBlockId(container) {
@@ -2473,6 +2593,7 @@ function changeBlockType(blockId, type, container) {
   const loc = findBlockLocation(blockId);
   const block = loc?.blocks[loc.idx];
   if (!block || !loc) return;
+  recordEditorHistory(container);
   if (type === 'divider') {
     const divider = insertBlockAfter(blockId, 'divider');
     if (!divider) return;
@@ -2671,6 +2792,7 @@ function handleEditorPaste(event, container) {
   const target = event.target;
   const editable = target?.closest?.('[contenteditable="true"]');
   if (!editable) return;
+  recordEditorHistory(container);
   const clipboard = event.clipboardData;
   if (!clipboard) return;
   const imageFiles = clipboardImageFiles(clipboard);
@@ -2751,6 +2873,7 @@ async function insertMemoImageFile(file, container, button = null) {
       return false;
     }
     pendingImageUploads.add(media.path);
+    recordEditorHistory(container);
     const block = insertMediaBlock(resolveActiveEditorBlockId(container), media);
     activeEditorBlockId = block.id;
     rerenderBlocks(container);
@@ -3083,20 +3206,49 @@ function focusEditableWithoutScroll(el) {
   catch { el.focus(); }
 }
 
+function getKnowledgeTagRecency() {
+  try {
+    const tags = JSON.parse(localStorage.getItem(KNOWLEDGE_TAG_RECENCY_KEY) || '[]');
+    return Array.isArray(tags) ? tags.filter(tag => typeof tag === 'string' && tag.trim()) : [];
+  } catch {
+    return [];
+  }
+}
+
+function touchKnowledgeTag(tag) {
+  const trimmed = String(tag || '').trim();
+  if (!trimmed) return;
+  const next = [trimmed, ...getKnowledgeTagRecency().filter(item => item !== trimmed)].slice(0, 80);
+  try { localStorage.setItem(KNOWLEDGE_TAG_RECENCY_KEY, JSON.stringify(next)); } catch {}
+}
+
 function collectExistingKnowledgeTags() {
   const tags = new Set(getTags());
+  const lastUsed = new Map();
   getKnowledgeMemos().forEach(memo => {
+    const updatedAt = Date.parse(memo.updatedAt || memo.createdAt || '') || 0;
     (memo.tags || []).forEach(tag => {
       const trimmed = String(tag || '').trim();
-      if (trimmed) tags.add(trimmed);
+      if (!trimmed) return;
+      tags.add(trimmed);
+      lastUsed.set(trimmed, Math.max(lastUsed.get(trimmed) || 0, updatedAt));
     });
   });
-  return [...tags].sort((a, b) => a.localeCompare(b, 'ja'));
+  const recency = new Map(getKnowledgeTagRecency().map((tag, index) => [tag, index]));
+  return [...tags].sort((a, b) => {
+    const recentA = recency.get(a);
+    const recentB = recency.get(b);
+    if (recentA != null || recentB != null) return (recentA ?? Infinity) - (recentB ?? Infinity);
+    const timeDiff = (lastUsed.get(b) || 0) - (lastUsed.get(a) || 0);
+    return timeDiff || a.localeCompare(b, 'ja');
+  });
 }
 
 function addKnowledgeTagToEdit(tag, container) {
   const trimmed = String(tag || '').trim();
   if (!trimmed || edState.tags.includes(trimmed)) return;
+  recordEditorHistory(container);
+  touchKnowledgeTag(trimmed);
   edState.tags.push(trimmed);
   addTag(trimmed);
   renderTagDisplay(container);
@@ -3108,7 +3260,8 @@ function syncKnowledgeTagSuggestions(container) {
   if (!row || !input) return;
 
   const query = input.value.trim().toLowerCase();
-  if (!query) {
+  const isFocused = document.activeElement === input;
+  if (!query && !isFocused) {
     row.innerHTML = '';
     row.classList.add('hidden');
     return;
@@ -3198,6 +3351,7 @@ function wireTagInput(container) {
 
   input.addEventListener('focus', () => syncKnowledgeTagSuggestions(container));
   input.addEventListener('input', () => syncKnowledgeTagSuggestions(container));
+  input.addEventListener('blur', () => setTimeout(() => syncKnowledgeTagSuggestions(container), 0));
 
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter' || e.key === ',') {
@@ -3205,6 +3359,7 @@ function wireTagInput(container) {
       addCurrentInputTag();
     }
     if (e.key === 'Backspace' && !input.value && edState.tags.length) {
+      recordEditorHistory(container);
       edState.tags.pop();
       renderTagDisplay(container);
       syncKnowledgeTagSuggestions(container);
@@ -3215,6 +3370,7 @@ function wireTagInput(container) {
   container.querySelector('#kn-tag-display')?.addEventListener('click', e => {
     const btn = e.target.closest('[data-tag]');
     if (!btn) return;
+    recordEditorHistory(container);
     edState.tags = edState.tags.filter(t => t !== btn.dataset.tag);
     renderTagDisplay(container);
     syncKnowledgeTagSuggestions(container);
@@ -3388,6 +3544,7 @@ function normalizeTableData(block) {
 function changeTableShape(blockId, action, container) {
   const block = findBlockInAllBlocks(edState.blocks, blockId);
   if (!block || block.type !== 'table') return;
+  recordEditorHistory(container);
   const table = normalizeTableData(block);
   if (action === 'add-row') table.rows.push(Array(table.headers.length).fill(''));
   if (action === 'remove-row' && table.rows.length > 1) table.rows.pop();
