@@ -72,25 +72,6 @@ function pickModel(pref) {
   return fastModel;
 }
 
-function pickThinkingConfig(model, actionType) {
-  const complexActions = new Set([
-    'analytics_summary',
-    'goal_split',
-    'monthly_report',
-    'planner_action',
-    'task_schedule',
-    'nuance_generate',
-    'translation_variants',
-    'english_question',
-    'knowledge_answer',
-  ]);
-  const isComplex = complexActions.has(String(actionType || ''));
-  if (String(model).startsWith('gemini-2.5-')) {
-    return { thinkingBudget: isComplex ? 2048 : 512 };
-  }
-  return { thinkingLevel: isComplex ? 'medium' : 'low' };
-}
-
 function nullableString(description) {
   return { type: 'STRING', nullable: true, description };
 }
@@ -776,17 +757,7 @@ async function requestGemini(key, model, payload, timeoutMs = 50_000) {
   return requestGeminiOnce(key, model, payload, Math.min(remainingMs, 25_000));
 }
 
-function payloadForModel(payload, model, actionType) {
-  return {
-    ...payload,
-    generationConfig: {
-      ...payload.generationConfig,
-      thinkingConfig: pickThinkingConfig(model, actionType),
-    },
-  };
-}
-
-async function requestGeminiResilient(key, model, fallbackModel, payload, actionType, timeoutMs = 50_000) {
+async function requestGeminiResilient(key, model, fallbackModel, payload, timeoutMs = 50_000) {
   const startedAt = Date.now();
   const first = await requestGemini(key, model, payload, timeoutMs);
   if (first.upstream.ok || !RETRYABLE_GEMINI_STATUSES.has(first.upstream.status)
@@ -798,8 +769,7 @@ async function requestGeminiResilient(key, model, fallbackModel, payload, action
   // compatible stable fallback before returning the failure to the client.
   const remainingMs = timeoutMs - (Date.now() - startedAt);
   if (remainingMs < 8_000) return { ...first, model };
-  const fallbackPayload = payloadForModel(payload, fallbackModel, actionType);
-  const fallback = await requestGemini(key, fallbackModel, fallbackPayload, Math.min(remainingMs, 30_000));
+  const fallback = await requestGemini(key, fallbackModel, payload, Math.min(remainingMs, 30_000));
   return { ...fallback, model: fallbackModel };
 }
 
@@ -950,7 +920,6 @@ export default async function handler(req, res) {
   const generationConfig = {
     maxOutputTokens: body.maxTokens,
     responseMimeType: responseFormat === 'json' ? 'application/json' : 'text/plain',
-    thinkingConfig: pickThinkingConfig(model, body.actionType),
   };
   // Gemini 3.x is tuned for its default sampling values.
   if (!String(model).startsWith('gemini-3')) {
@@ -980,7 +949,7 @@ export default async function handler(req, res) {
 
   try {
     let { upstream, data, model: activeModel } = await requestGeminiResilient(
-      key, model, fallbackModel, payload, body.actionType,
+      key, model, fallbackModel, payload,
       Math.min(48_000, remainingTimeMs(NETWORK_SAFETY_MS))
     );
     if (!upstream.ok && upstream.status === 400 && payload.generationConfig.responseSchema) {
@@ -998,7 +967,7 @@ export default async function handler(req, res) {
         return;
       }
       ({ upstream, data, model: activeModel } = await requestGeminiResilient(
-        key, activeModel, fallbackModel, payload, body.actionType, schemaFallbackTimeMs
+        key, activeModel, fallbackModel, payload, schemaFallbackTimeMs
       ));
     }
     if (!upstream.ok) {
@@ -1032,7 +1001,6 @@ export default async function handler(req, res) {
             ACTION_LIMITS[body.actionType],
             Math.max(body.maxTokens + 800, 512)
           ),
-          thinkingConfig: pickThinkingConfig(model, body.actionType),
         },
       };
       if (body.actionType === 'translation_variants') {
@@ -1072,7 +1040,7 @@ The previous response was incomplete or contained formatting noise. Return one c
         };
       }
       ({ upstream, data, model: activeModel } = await requestGeminiResilient(
-        key, activeModel, fallbackModel, retryPayload, body.actionType, retryTimeoutMs
+        key, activeModel, fallbackModel, retryPayload, retryTimeoutMs
       ));
       if (!upstream.ok) {
         const msg = data?.error?.message || `Gemini upstream error ${upstream.status}`;
