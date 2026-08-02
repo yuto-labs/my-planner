@@ -1,9 +1,36 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const { hasCompleteStructuredResponse, validateRequestBody } = await import('../api/ai/generate.js');
+const {
+  hasCompleteStructuredResponse,
+  pickFallbackModel,
+  pickModel,
+  validateRequestBody,
+} = await import('../api/ai/generate.js');
 
-test('rejects unknown AI actions before claiming usage', () => {
+test('routes fast and quality work to separate default model pools', () => {
+  const previousFast = process.env.GEMINI_MODEL_FAST;
+  const previousQuality = process.env.GEMINI_MODEL_QUALITY;
+  const previousFallback = process.env.GEMINI_FALLBACK_MODEL;
+  delete process.env.GEMINI_MODEL_FAST;
+  delete process.env.GEMINI_MODEL_QUALITY;
+  delete process.env.GEMINI_FALLBACK_MODEL;
+  try {
+    assert.equal(pickModel('fast'), 'gemini-3.5-flash-lite');
+    assert.equal(pickModel('quality'), 'gemini-3.5-flash');
+    assert.equal(pickFallbackModel('quality'), 'gemini-3.5-flash-lite');
+    assert.equal(pickFallbackModel('fast'), 'gemini-2.5-flash');
+  } finally {
+    if (previousFast === undefined) delete process.env.GEMINI_MODEL_FAST;
+    else process.env.GEMINI_MODEL_FAST = previousFast;
+    if (previousQuality === undefined) delete process.env.GEMINI_MODEL_QUALITY;
+    else process.env.GEMINI_MODEL_QUALITY = previousQuality;
+    if (previousFallback === undefined) delete process.env.GEMINI_FALLBACK_MODEL;
+    else process.env.GEMINI_FALLBACK_MODEL = previousFallback;
+  }
+});
+
+test('rejects unknown AI actions before calling Gemini', () => {
   assert.throws(
     () => validateRequestBody({ actionType: 'arbitrary_remote_command' }),
     /Unsupported AI action/
@@ -49,6 +76,48 @@ test('accepts a knowledge primary concept that is not duplicated in concepts', (
     },
   };
   assert.equal(hasCompleteStructuredResponse('knowledge_answer', JSON.stringify(response)), true);
+});
+
+test('accepts nuance output using the schema field names', () => {
+  const makeEntry = term => ({
+    term,
+    lemma: term,
+    pronunciationIpa: '/test/',
+    coreMeaningJa: '中心的な意味',
+    nuanceJa: '具体的なニュアンス',
+    useCasesJa: ['自然な使用場面'],
+    examples: [
+      { source: `${term} example one.`, translation: '例文一' },
+      { source: `${term} example two.`, translation: '例文二' },
+    ],
+  });
+  const response = {
+    category: '感情',
+    topic: '安心',
+    entries: [makeEntry('relief'), makeEntry('reassurance'), makeEntry('comfort')],
+  };
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(response)), true);
+});
+
+test('keeps legacy nuance field names readable during validation', () => {
+  const makeEntry = term => ({
+    term,
+    lemma: term,
+    ipa: '/test/',
+    coreMeaningJa: '中心的な意味',
+    nuanceJa: '具体的なニュアンス',
+    useCasesJa: ['自然な使用場面'],
+    examples: [
+      { english: `${term} example one.`, japanese: '例文一' },
+      { english: `${term} example two.`, japanese: '例文二' },
+    ],
+  });
+  const response = {
+    category: '感情',
+    topic: '安心',
+    entries: [makeEntry('relief'), makeEntry('reassurance'), makeEntry('comfort')],
+  };
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(response)), true);
 });
 
 test('rejects shallow translation variants before they can be saved', () => {

@@ -9,10 +9,14 @@ globalThis.localStorage = {
 };
 
 const {
+  addExpressionEntries,
   addLearningEntry,
+  addTranslationSet,
   deleteLearningEntry,
+  getExpressionEntries,
   getLearningEntries,
   getKnowledgeMemos,
+  getTranslationSets,
   getTrashItems,
   importBackup,
   restoreTrashItem,
@@ -57,6 +61,37 @@ test('learning writes preserve ordinary memo records', () => {
   assert.equal(getKnowledgeMemos().length, 1);
   assert.equal(getKnowledgeMemos()[0].title, '既存メモ');
   assert.equal(getLearningEntries().length, 1);
+});
+
+test('atlas writes preserve memos, learning entries, and other atlas record types', () => {
+  localStorage.setItem('mp_knowledge', JSON.stringify([{
+    id: 'memo-1',
+    title: '既存メモ',
+    summary: '残す',
+    tags: [],
+    blocks: [{ id: 'text-1', type: 'text', content: '本文' }],
+    createdAt: '2026-07-27T09:00:00.000Z',
+    updatedAt: '2026-07-27T09:00:00.000Z',
+  }]));
+  assert.ok(addLearningEntry(entry('learning-1', '空の色')));
+  assert.equal(addExpressionEntries([{
+    term: 'relief',
+    lemma: 'relief',
+    category: '感情',
+    topic: '安心',
+    coreMeaningJa: '緊張や苦痛が和らぐこと',
+  }]).length, 1);
+  assert.ok(addTranslationSet({
+    sourceTextJa: 'ほっとした。',
+    category: '感情',
+    topic: '安心',
+    variants: [{ translation: 'I felt relieved.' }],
+  }));
+
+  assert.equal(getKnowledgeMemos().length, 1);
+  assert.equal(getLearningEntries().length, 1);
+  assert.equal(getExpressionEntries().length, 1);
+  assert.equal(getTranslationSets().length, 1);
 });
 
 test('learning deletion is recoverable from trash', () => {

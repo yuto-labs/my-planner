@@ -65,11 +65,20 @@ function validateRequestBody(body) {
 }
 
 function pickModel(pref) {
-  const fastModel = process.env.GEMINI_MODEL_FAST || 'gemini-3.5-flash';
-  const qualityModel = process.env.GEMINI_MODEL_QUALITY || fastModel;
+  const fastModel = process.env.GEMINI_MODEL_FAST || 'gemini-3.5-flash-lite';
+  const qualityModel = process.env.GEMINI_MODEL_QUALITY || 'gemini-3.5-flash';
   const raw = String(pref || '').toLowerCase();
   if (raw.includes('sonnet') || raw === 'quality') return qualityModel;
   return fastModel;
+}
+
+function pickFallbackModel(pref) {
+  if (process.env.GEMINI_FALLBACK_MODEL) return process.env.GEMINI_FALLBACK_MODEL;
+  const raw = String(pref || '').toLowerCase();
+  if (raw.includes('sonnet') || raw === 'quality') {
+    return process.env.GEMINI_MODEL_FAST || 'gemini-3.5-flash-lite';
+  }
+  return 'gemini-2.5-flash';
 }
 
 function nullableString(description) {
@@ -611,14 +620,15 @@ function hasCompleteNuanceResponse(text) {
     && entries.every(entry => (
       String(entry?.term || '').trim()
       && String(entry?.lemma || '').trim()
-      && String(entry?.ipa || '').trim()
+      && String(entry?.pronunciationIpa || entry?.ipa || '').trim()
       && String(entry?.coreMeaningJa || '').trim()
       && String(entry?.nuanceJa || '').trim()
       && Array.isArray(entry?.useCasesJa)
       && entry.useCasesJa.some(value => String(value || '').trim())
       && Array.isArray(entry?.examples)
       && entry.examples.filter(example => (
-        String(example?.english || '').trim() && String(example?.japanese || '').trim()
+        String(example?.source || example?.english || '').trim()
+        && String(example?.translation || example?.japanese || '').trim()
       )).length >= 2
     ));
 }
@@ -718,6 +728,7 @@ function hasCompleteStructuredResponse(actionType, text) {
 export const maxDuration = 60;
 
 const RETRYABLE_GEMINI_STATUSES = new Set([500, 502, 503, 504]);
+const FALLBACK_GEMINI_STATUSES = new Set([404, 429, ...RETRYABLE_GEMINI_STATUSES]);
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -760,7 +771,7 @@ async function requestGemini(key, model, payload, timeoutMs = 50_000) {
 async function requestGeminiResilient(key, model, fallbackModel, payload, timeoutMs = 50_000) {
   const startedAt = Date.now();
   const first = await requestGemini(key, model, payload, timeoutMs);
-  if (first.upstream.ok || !RETRYABLE_GEMINI_STATUSES.has(first.upstream.status)
+  if (first.upstream.ok || !FALLBACK_GEMINI_STATUSES.has(first.upstream.status)
     || !fallbackModel || fallbackModel === model) {
     return { ...first, model };
   }
@@ -795,26 +806,8 @@ async function fetchWithTimeout(url, options, timeoutMs) {
 
 const DEFAULT_SUPABASE_URL = 'https://nhgbvlovptelaqcurobv.supabase.co';
 const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5oZ2J2bG92cHRlbGFxY3Vyb2J2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMTY2NzcsImV4cCI6MjA5NjU5MjY3N30.Vgsy9--B3d5FoxoHpvjC00OPPzE2WUwzP8GV2LE4-p4';
-const USER_DAILY_LIMIT = 50;
-const APP_DAILY_LIMIT = 500;
-const APP_MINUTE_LIMIT = 30;
 const HANDLER_BUDGET_MS = 55_000;
 const NETWORK_SAFETY_MS = 2_000;
-
-function todayJstStr() {
-  const parts = new Intl.DateTimeFormat('en', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date());
-  const values = Object.fromEntries(parts.filter(p => p.type !== 'literal').map(p => [p.type, p.value]));
-  return `${values.year}-${values.month}-${values.day}`;
-}
-
-function withUsageDate(usage) {
-  return usage ? { ...usage, usageDate: usage.usageDate || todayJstStr() } : null;
-}
 
 function getBearerToken(req) {
   const header = req.headers.authorization || req.headers.Authorization || '';
@@ -845,42 +838,6 @@ async function requireAuthenticatedUser(token, timeoutMs) {
   }
 
   return response.json();
-}
-
-async function claimUsage(token, body, timeoutMs) {
-  const cfg = getSupabaseConfig();
-  const actionType = String(body.actionType || 'ai_request').slice(0, 60);
-
-  const response = await fetchWithTimeout(`${cfg.url}/rest/v1/rpc/claim_ai_usage`, {
-    method: 'POST',
-    headers: {
-      apikey: cfg.anonKey,
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      p_cost: 1,
-      p_action_type: actionType,
-      p_user_daily_limit: USER_DAILY_LIMIT,
-      p_app_daily_limit: APP_DAILY_LIMIT,
-      p_minute_limit: APP_MINUTE_LIMIT,
-    }),
-  }, timeoutMs);
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const msg = data?.message || data?.error || 'AI使用量の確認に失敗しました。SupabaseのAI使用量SQLを反映してください。';
-    throw Object.assign(new Error(msg), { status: response.status >= 500 ? 503 : response.status });
-  }
-
-  if (data?.ok === false) {
-    throw Object.assign(new Error(data.message || '今日のAI利用上限に達しました。明日また使えます。'), {
-      status: 429,
-      usage: data,
-    });
-  }
-
-  return data;
 }
 
 export default async function handler(req, res) {
@@ -915,7 +872,7 @@ export default async function handler(req, res) {
   }
 
   const model = pickModel(body.modelPreference);
-  const fallbackModel = process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.5-flash';
+  const fallbackModel = pickFallbackModel(body.modelPreference);
   const responseFormat = body.responseFormat;
   const generationConfig = {
     maxOutputTokens: body.maxTokens,
@@ -1063,7 +1020,9 @@ The previous response was incomplete or contained formatting noise. Return one c
       return;
     }
 
-    res.status(200).json({ text, model });
+    // Report the model that actually produced the response. This matters when
+    // the primary route was rate-limited and the request completed via fallback.
+    res.status(200).json({ text, model: activeModel });
   } catch (error) {
     const timedOut = error?.name === 'AbortError';
     res.status(timedOut ? 504 : 500).json({
@@ -1074,4 +1033,4 @@ The previous response was incomplete or contained formatting noise. Return one c
   }
 }
 
-export { hasCompleteStructuredResponse, validateRequestBody };
+export { hasCompleteStructuredResponse, pickFallbackModel, pickModel, validateRequestBody };
