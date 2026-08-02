@@ -172,6 +172,11 @@ function restoreEditorHistory(container, direction) {
   const to = direction === 'undo' ? editorRedoHistory : editorUndoHistory;
   const snapshot = from.pop();
   if (!snapshot) return;
+  const scrollOwner = document.getElementById('main-content');
+  const scrollTop = scrollOwner?.scrollTop || 0;
+  // A keyboard undo should leave the user in the same block, but clicking the
+  // toolbar should not steal focus or jump the page back to that block.
+  const restoreEditableFocus = document.activeElement?.matches?.('[contenteditable="true"], textarea, input') || false;
   to.push(editorHistorySnapshot());
   if (to.length > EDITOR_HISTORY_LIMIT) to.shift();
   clearTimeout(editorTypingHistoryTimer);
@@ -198,15 +203,18 @@ function restoreEditorHistory(container, direction) {
   renderEditMode(container, { preserveHistory: true });
   editorUndoHistory = undoHistory;
   editorRedoHistory = redoHistory;
-  // The render mounts nested editable controls synchronously. Apply the
-  // availability state on the next frame so their initial disabled markup
-  // cannot win over the restored history state.
+  // Keep the viewport stable while the block tree is rebuilt. Re-focusing
+  // through the old helper selected the end of the block and made the page
+  // visibly jump on every undo/redo.
   requestAnimationFrame(() => {
+    if (scrollOwner) scrollOwner.scrollTop = scrollTop;
     editorHistoryRestoring = false;
     updateEditorHistoryControls(container);
+    if (restoreEditableFocus && activeEditorBlockId) {
+      const editable = container.querySelector(`.kn-block-focusable[data-block-id="${activeEditorBlockId}"]`);
+      focusEditableWithoutScroll(editable);
+    }
   });
-  if (activeEditorBlockId) focusBlock(activeEditorBlockId, container, true);
-  toast(direction === 'undo' ? '変更を取り消しました' : '変更をやり直しました', 'info');
 }
 
 export function hasUnsavedKnowledgeChanges() {
@@ -967,6 +975,13 @@ let edState = {
   reviewEnabled: true,
   isEdit:  false,
 };
+
+// Sync refreshes must never replace an open editor with the read-only view.
+// Keeping this separate from the unsaved-change check avoids warning about an
+// untouched memo while still protecting the current editing session.
+export function isKnowledgeEditorOpen() {
+  return !!edState?.isEdit;
+}
 
 export function initKnowledgeDetail(container) {
   editorSessionToken += 1;

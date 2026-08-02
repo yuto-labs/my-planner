@@ -9464,7 +9464,7 @@ button.atlas-nuance-map-row:focus-visible {
 
 .kn-toolbar { display: flex; align-items: center; justify-content: flex-start; padding: 6px 16px; background: var(--bg-card); border-bottom: 1px solid var(--border); position: sticky; top: 56px; z-index: 9; gap: 4px; overflow: auto hidden; scrollbar-width: none; overscroll-behavior-x: contain; scroll-padding-inline: 12px; }
 
-.kn-toolbar-type-select { width: 104px; height: 32px; border: 1px solid var(--border); border-radius: var(--radius-xs); background: var(--bg-hover); color: var(--text); font-style: inherit; font-variant: inherit; font-stretch: inherit; line-height: inherit; font-family: inherit; font-optical-sizing: inherit; font-size-adjust: inherit; font-kerning: inherit; font-feature-settings: inherit; font-variation-settings: inherit; font-language-override: inherit; font-size: 12px; font-weight: 700; padding: 0px 28px 0px 10px; outline: none; }
+.kn-toolbar-type-select { width: 118px; height: 32px; border: 1px solid var(--border); border-radius: var(--radius-xs); background: var(--bg-hover); color: var(--text); font-style: inherit; font-variant: inherit; font-stretch: inherit; line-height: inherit; font-family: inherit; font-optical-sizing: inherit; font-size-adjust: inherit; font-kerning: inherit; font-feature-settings: inherit; font-variation-settings: inherit; font-language-override: inherit; font-size: 11px; font-weight: 600; padding: 0px 26px 0px 9px; outline: none; }
 
 .kn-toolbar-btn { min-width: 32px; height: 32px; padding: 0px 6px; border-radius: var(--radius-xs); border-width: medium; border-style: none; border-color: currentcolor; border-image: none; background: none; color: var(--text-muted); font-size: 11px; font-weight: 700; cursor: pointer; transition: all var(--transition); white-space: nowrap; }
 
@@ -9512,7 +9512,7 @@ button.atlas-nuance-map-row:focus-visible {
 
 @media (max-width: 640px) {
   .kn-toolbar { flex-wrap: nowrap; justify-content: flex-start; padding: 5px 10px; overflow: auto hidden; }
-  .kn-toolbar-type-select { width: 84px; padding-inline: 8px 22px; }
+  .kn-toolbar-type-select { width: 108px; font-size: 10.5px; padding-inline: 8px 22px; }
   .kn-toolbar-mark-btn { min-width: 40px; padding-inline: 4px; }
   .kn-blocks-wrap { padding-inline: 6px; }
   .kn-block { gap: 4px; padding: 1px 0px 1px 32px; }

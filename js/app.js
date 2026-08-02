@@ -21,7 +21,7 @@ import { initSettings, initAISettings } from './modules/settings.js';
 import { initToday }    from './modules/today.js';
 import {
   initKnowledge, initKnowledgeDetail, openKnowledgeMemo, backFromKnowledgeDetail,
-  hasUnsavedKnowledgeChanges, confirmDiscardKnowledgeChanges,
+  hasUnsavedKnowledgeChanges, confirmDiscardKnowledgeChanges, isKnowledgeEditorOpen,
 } from './modules/knowledge.js';
 import { initReview } from './modules/review.js';
 import { initKnowledgeGraph } from './modules/knowledge-graph.js';
@@ -128,6 +128,7 @@ function hasUnsavedDraft() {
 function isUserEditing() {
   const active = document.activeElement;
   if (isComposingText) return true;
+  if (currentView === 'knowledge-detail' && isKnowledgeEditorOpen()) return true;
   if (hasUnsavedDraft()) return true;
   if (isEditableElement(active)) return true;
   if (hasOpenModal() && document.querySelector('#modal-overlay input, #modal-overlay textarea, #modal-overlay select, #modal-overlay [contenteditable="true"]')) {
