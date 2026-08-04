@@ -10,6 +10,14 @@ import {
 } from './storage.js';
 import { getActiveUserId, getSession } from './supabase.js';
 import { parseJapaneseTimes, today } from './utils.js';
+import {
+  NUANCE_ATLAS_CATEGORIES,
+  normalizeAtlasCategory,
+  normalizeAtlasTopic,
+  isValidAtlasTopic,
+} from './atlas-model.js';
+
+export { NUANCE_ATLAS_CATEGORIES };
 
 const SERVER_STATUS_URL = '/api/ai/status';
 const SERVER_GENERATE_URL = '/api/ai/generate';
@@ -488,17 +496,6 @@ export async function formatKnowledgeMemo(rawText, existingMemosCtx = '', option
   };
 }
 
-export const NUANCE_ATLAS_CATEGORIES = [
-  '感情',
-  '対人関係',
-  '意思・判断',
-  '行動・状態',
-  '程度・評価',
-  '時間・頻度',
-  '仕事・学習',
-  '日常生活',
-];
-
 function normalizedTopicText(value) {
   return String(value || '')
     .normalize('NFKC')
@@ -508,6 +505,7 @@ function normalizedTopicText(value) {
 
 export function canonicalTopicKey(value) {
   const text = normalizedTopicText(value);
+  if (/(怖がらせ|恐怖を与|脅|威圧|scare|frighten|intimidat)/.test(text)) return 'intimidation-frightening';
   if (/(恐怖|恐れ|怖|こわ|不安|anxiety|fear|scare|frighten)/.test(text)) return 'fear-anxiety';
   if (/(面倒|煩|負担|bother|burden|trouble)/.test(text)) return 'burden-bother';
   if (/(喜び|嬉し|幸せ|happy|joy|delight)/.test(text)) return 'joy-happiness';
@@ -518,9 +516,12 @@ export function canonicalTopicKey(value) {
 
 export function reuseEquivalentAtlasTopic(existingTaxonomy, category, topic, context = '') {
   const targetKey = canonicalTopicKey(`${topic} ${context}`);
-  if (!targetKey) return { category, topic };
+  const normalizedCategory = normalizeAtlasCategory(category, `${topic} ${context}`);
+  if (!targetKey) return { category: normalizedCategory, topic };
   const categories = Array.isArray(existingTaxonomy) ? existingTaxonomy : [];
-  const preferred = categories.filter(item => String(item?.category || '') === category);
+  const preferred = categories.filter(item => (
+    normalizeAtlasCategory(item?.category || '', `${topic} ${context}`) === normalizedCategory
+  ));
   const candidates = [...preferred, ...categories.filter(item => !preferred.includes(item))];
   for (const item of candidates) {
     const records = Array.isArray(item?.topicRecords) ? item.topicRecords : [];
@@ -528,26 +529,22 @@ export function reuseEquivalentAtlasTopic(existingTaxonomy, category, topic, con
       record?.label,
       ...(Array.isArray(record?.aliases) ? record.aliases : []),
     ].filter(Boolean).join(' ')) === targetKey);
-    if (match?.label) return { category: item.category || category, topic: match.label };
+    if (match?.label) {
+      return {
+        category: normalizeAtlasCategory(item.category || normalizedCategory, `${topic} ${context}`),
+        topic: match.label,
+      };
+    }
   }
-  return { category, topic };
+  return { category: normalizedCategory, topic };
 }
 
-function normalizeNuanceAtlasCategory(value, context = '') {
-  const category = String(value || '').trim();
-  if (NUANCE_ATLAS_CATEGORIES.includes(category)) return category;
-
-  const text = `${category} ${context}`.toLocaleLowerCase();
-  const rules = [
-    ['感情', /感情|喜|悲|怒|不安|驚|安心|emotion|happy|sad|angry|feel/],
-    ['対人関係', /対人|関係|会話|依頼|断り|謝|感謝|挨拶|polite|request|apolog|thank|friend/],
-    ['意思・判断', /意思|判断|意見|選択|決定|希望|賛成|反対|decision|opinion|prefer|intend/],
-    ['時間・頻度', /時間|頻度|期間|順序|時期|time|frequency|often|always|soon|late/],
-    ['仕事・学習', /仕事|職場|会議|学習|勉強|学校|研究|work|business|study|learn/],
-    ['程度・評価', /程度|評価|品質|比較|強さ|弱さ|良い|悪い|ばらつき|分散|変動|variance|variation|scatter|degree|quality|evaluate|better|worse/],
-    ['行動・状態', /行動|状態|変化|移動|開始|終了|action|state|change|move|start|finish/],
-  ];
-  return rules.find(([, pattern]) => pattern.test(text))?.[0] || '日常生活';
+function resolveAtlasTopic(value, category, fallback = '') {
+  const candidate = normalizeAtlasTopic(value, category);
+  if (isValidAtlasTopic(candidate, category)) return candidate;
+  const fallbackTopic = normalizeAtlasTopic(fallback, category);
+  if (isValidAtlasTopic(fallbackTopic, category)) return fallbackTopic;
+  return '関連表現';
 }
 
 function normalizeNuanceIntensity(value, fallback = '') {
@@ -685,12 +682,13 @@ export async function generateNuanceEntries(
     'Return JSON only and follow the response schema.',
     'Classify the entire expression set with one Japanese category and one concise semantic topic.',
     `When category is blank, choose exactly one category from this fixed list: ${NUANCE_ATLAS_CATEGORIES.join(', ')}.`,
-    'Category is the broad reusable domain. Topic is the narrower communicative intent or meaning shared by the expressions.',
+    'Category is the broad reusable domain. Topic is a shorter, more concrete semantic cluster shared by the expressions.',
     'learningTarget is the primary Japanese request, such as 視点, 遠慮する, or 怒りを表す表現. Treat it as required semantic intent, not as a category label.',
     'When the user supplies a category or topic, preserve that exact display label. When either is blank, infer it from learningTarget and supplied expressions.',
     'The user will not provide a desired usage situation. Infer several realistic situations for each expression and explain them in useCasesJa.',
     'Always answer when at least a category, topic, or expression is supplied. For a broad or ambiguous request, choose the most useful interpretation and make that interpretation clear instead of asking for more detail.',
-    'Prefer an existing category/topic from existingTaxonomy when it is semantically equivalent; otherwise create a clear, reusable label. Never use vague labels such as その他 or 一般.',
+    'Prefer an existing category/topic from existingTaxonomy when it is semantically equivalent; otherwise create a clear, reusable label. Never use vague labels such as その他, 一般, 英語表現, 表現の違い, or the category name itself.',
+    'Topic must be a compact Japanese noun phrase, usually 2 to 14 characters. Never write a full sentence or a label ending in 表現, 言い方, 場面, 〜を表す表現, or 〜するとき.',
     'Create 3 to 5 genuinely useful expressions for the requested semantic topic, unless seed terms are supplied; always include every supplied seed term.',
     'For the whole set, rate each expression from intensityLevel 1 (weak/subtle) to 5 (strong/extreme), and assign a short Japanese nuanceTypeJa that explains its qualitative type rather than merely repeating the strength.',
     'For every expression, explain in clear Japanese: historical etymology, the original physical/root image, the core meaning, the deep emotional or conceptual mechanism, decisive differences from similar expressions, natural situations, register, emotional tone, grammar cautions, and collocations.',
@@ -727,16 +725,15 @@ export async function generateNuanceEntries(
     options
   );
   const parsed = tryParseJSON(raw);
-  const resolvedCategory = normalizeNuanceAtlasCategory(
+  const resolvedCategory = normalizeAtlasCategory(
     cleanCategory || parsed?.category,
     `${cleanTarget} ${cleanTopic} ${terms.join(' ')}`
   );
-  const proposedTopic = cleanTopic
-    || String(parsed?.topic || '').trim()
-    || cleanTarget
-    || terms.join('・')
-    || cleanCategory
-    || '英語表現';
+  const proposedTopic = resolveAtlasTopic(
+    cleanTopic || String(parsed?.topic || '').trim(),
+    resolvedCategory,
+    cleanTarget || terms.join('・')
+  );
   const reusedClassification = cleanTopic
     ? { category: resolvedCategory, topic: proposedTopic }
     : reuseEquivalentAtlasTopic(existingTaxonomy, resolvedCategory, proposedTopic, `${cleanTarget} ${terms.join(' ')}`);
@@ -844,8 +841,9 @@ export async function generateTranslationVariants(
     'backTranslationJa must reveal any shift in implication rather than merely repeat the original source.',
     'Classify the entire set with one Japanese category and one concise Japanese topic.',
     `Choose the category exactly from this fixed list: ${NUANCE_ATLAS_CATEGORIES.join(', ')}.`,
-    'Category is the broad reusable domain. Topic is the narrower communicative intent expressed by the source sentence.',
-    'Prefer an existing category/topic from existingTaxonomy when semantically equivalent; otherwise create a clear reusable label. Never use vague labels such as その他 or 一般.',
+    'Category is the broad reusable domain. Topic is a short, reusable semantic cluster expressed by the source sentence.',
+    'Prefer an existing category/topic from existingTaxonomy when semantically equivalent; otherwise create a clear reusable label. Never use vague labels such as その他, 一般, 英語表現, or the category name itself.',
+    'Topic must be a compact Japanese noun phrase, usually 2 to 14 characters. Never use a full sentence or an ending such as 表現, 言い方, 場面, or 〜を表す表現.',
     'Return no greeting, preface, overall sentence dissection, conclusion, Markdown, or prose outside the JSON object.',
     'Use this exact JSON shape: {"category":"日本語の大分類","topic":"日本語の具体的テーマ","variants":[{"style":"standard_faithful","translation":"English translation","backTranslationJa":"和訳（逆翻訳）","overallNuanceJa":"文全体の印象・使用域・自然に合う場面","register":"使用域","vocabularyNotes":[{"expression":"主要語彙または構文","lemma":"dictionary headword","senseHintJa":"この文での短い意味","etymologyJa":"信頼できる語源。該当しなければ空欄","coreImageJa":"原義または構文のコアイメージ","nuanceJa":"この文で生まれる深いニュアンス"}],"comparisons":[{"expression":"使用表現","alternative":"似た表現","differenceJa":"決定的な違い"}]},{"style":"natural_conversational","translation":"English translation","backTranslationJa":"和訳（逆翻訳）","overallNuanceJa":"文全体の印象・使用域・自然に合う場面","register":"使用域","vocabularyNotes":[],"comparisons":[]},{"style":"expressive_polished","translation":"English translation","backTranslationJa":"和訳（逆翻訳）","overallNuanceJa":"文全体の印象・使用域・自然に合う場面","register":"使用域","vocabularyNotes":[],"comparisons":[]}]}',
   ].join(' ');
@@ -917,12 +915,15 @@ export async function generateTranslationVariants(
     })
     .filter(Boolean)
     .slice(0, 3);
-  const category = normalizeNuanceAtlasCategory(
+  const category = normalizeAtlasCategory(
     parsed?.category,
     `${source} ${parsed?.topic || ''}`
   );
-  const topic = String(parsed?.topic || '').trim()
-    || String(context || source).replace(/\s+/g, ' ').slice(0, 32);
+  const topic = resolveAtlasTopic(
+    String(parsed?.topic || '').trim(),
+    category,
+    String(context || source).replace(/\s+/g, ' ').slice(0, 24)
+  );
   if (!category || variants.length !== 3) {
     throw new Error('3種類の英訳を揃えられませんでした。もう一度お試しください。');
   }

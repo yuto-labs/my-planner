@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 const { reuseEquivalentAtlasTopic } = await import('../js/ai.js');
 
-test('reuses an existing fear and anxiety topic for related requests', () => {
+test('keeps expressions that cause fear distinct from fear and anxiety', () => {
   const taxonomy = [{
     category: '感情',
     topicRecords: [{ label: '恐怖・不安', aliases: ['恐れ'] }],
@@ -16,7 +16,7 @@ test('reuses an existing fear and anxiety topic for related requests', () => {
     '人を怖がらせる英語表現'
   );
 
-  assert.deepEqual(result, { category: '感情', topic: '恐怖・不安' });
+  assert.deepEqual(result, { category: '感情・感覚', topic: '怖がらせる・恐怖を与える表現' });
 });
 
 test('keeps a new topic when no equivalent taxonomy topic exists', () => {
@@ -27,5 +27,5 @@ test('keeps a new topic when no equivalent taxonomy topic exists', () => {
     'surprise expressions'
   );
 
-  assert.deepEqual(result, { category: '感情', topic: '驚き' });
+  assert.deepEqual(result, { category: '感情・感覚', topic: '驚き' });
 });

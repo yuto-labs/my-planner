@@ -27,6 +27,9 @@ import {
   collectStableTaxonomy,
   findExpressionMatches,
   isUsefulLinkedToken,
+  isValidAtlasTopic,
+  normalizeAtlasCategory,
+  normalizeAtlasTopic,
   stableAtlasId,
   tokenizeEnglishForLinks,
   withStableClassification,
@@ -2632,7 +2635,7 @@ function classificationEditor(record, kind) {
     <details class="atlas-classification-editor">
       <summary>分類を整理</summary>
       <div>
-        <label><span>カテゴリ</span><input id="${prefix}-category" value="${esc(record.category)}"></label>
+        <label><span>カテゴリ</span><select id="${prefix}-category">${NUANCE_ATLAS_CATEGORIES.map(category => `<option value="${esc(category)}" ${record.category === category ? 'selected' : ''}>${esc(category)}</option>`).join('')}</select></label>
         <label><span>テーマ</span><input id="${prefix}-topic" value="${esc(record.topic)}"></label>
         <button class="btn btn-secondary btn-sm" id="${prefix}-save" type="button">分類名を保存</button>
       </div>
@@ -2644,10 +2647,10 @@ function classificationEditor(record, kind) {
 function wireClassificationEditor(record, kind) {
   const prefix = kind === 'translation' ? 'atlas-translation-detail' : 'atlas-expression-detail';
   state.container?.querySelector(`#${prefix}-save`)?.addEventListener('click', () => {
-    const category = state.container.querySelector(`#${prefix}-category`)?.value.trim();
-    const topic = state.container.querySelector(`#${prefix}-topic`)?.value.trim();
-    if (!category || !topic) {
-      toast('カテゴリとテーマを入力してください', 'error');
+    const category = normalizeAtlasCategory(state.container.querySelector(`#${prefix}-category`)?.value.trim(), record.topic);
+    const topic = normalizeAtlasTopic(state.container.querySelector(`#${prefix}-topic`)?.value.trim(), category);
+    if (!category || !isValidAtlasTopic(topic, category)) {
+      toast('テーマはカテゴリと異なる短い意味のまとまりにしてください', 'error');
       return;
     }
     persistCurrentDetailNotes();
@@ -2986,8 +2989,9 @@ function searchableTranslationText(set) {
 
 function applyManualClassification(record, category, topic) {
   const current = withStableClassification(record);
-  const nextCategory = String(category || '').trim();
-  const nextTopic = String(topic || '').trim();
+  const nextCategory = normalizeAtlasCategory(category, `${topic} ${current.sourceQueryJa || ''}`);
+  const nextTopic = normalizeAtlasTopic(topic, nextCategory);
+  if (!nextCategory || !isValidAtlasTopic(nextTopic, nextCategory)) return current;
   const categoryAliases = unique([
     ...(current.categoryAliases || []),
     ...(current.category && current.category !== nextCategory ? [current.category] : []),
@@ -3000,8 +3004,8 @@ function applyManualClassification(record, category, topic) {
     ...current,
     category: nextCategory,
     topic: nextTopic,
-    categoryId: current.categoryId || stableAtlasId('cat', nextCategory),
-    topicId: current.topicId || stableAtlasId('topic', `${nextCategory}-${nextTopic}`),
+    categoryId: stableAtlasId('cat', nextCategory),
+    topicId: stableAtlasId('topic', `${nextCategory}-${nextTopic}`),
     categoryAliases,
     topicAliases,
     classificationSource: 'user',
