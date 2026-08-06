@@ -9920,6 +9920,8 @@ button.atlas-nuance-map-row:focus-visible {
 
 .atlas-section-toggle[aria-expanded="false"] span { transform: rotate(-90deg); }
 
+.atlas-detail-section > [data-atlas-collapsible-content][hidden] { display: none !important; }
+
 .atlas-detail-section.is-collapsed { padding-bottom: 10px; }
 
 .atlas-personal-note { width: 100%; min-height: 110px; resize: vertical; border: 1px solid var(--border); border-radius: var(--radius-sm); outline: none; background: var(--bg-card); color: var(--text); padding: 12px; font-style: inherit; font-variant: inherit; font-weight: inherit; font-stretch: inherit; font-family: inherit; font-optical-sizing: inherit; font-size-adjust: inherit; font-kerning: inherit; font-feature-settings: inherit; font-variation-settings: inherit; font-language-override: inherit; font-size: 16px; line-height: 1.65; }

@@ -2588,7 +2588,10 @@ function wireCollapsibleDetailSections() {
     button.innerHTML = '<span aria-hidden="true">⌄</span>';
     heading.appendChild(button);
     const apply = expanded => {
-      content.forEach(child => { child.hidden = !expanded; });
+      content.forEach(child => {
+        child.dataset.atlasCollapsibleContent = '';
+        child.hidden = !expanded;
+      });
       button.setAttribute('aria-expanded', String(expanded));
       section.classList.toggle('is-collapsed', !expanded);
     };
