@@ -578,7 +578,7 @@ function renderList() {
 }
 
 function renderMemoCard(m, reviewSchedule) {
-  const preview = blocksToText(m.blocks || [], 90);
+  const preview = renderMemoCardPreview(m.blocks || []);
   const dateStr = formatDate(m.updatedAt || m.createdAt, 'short');
   const tags    = m.tags || [];
 
@@ -619,7 +619,7 @@ function renderMemoCard(m, reviewSchedule) {
             : '<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z"/></svg>'}
         </button>
       </div>
-      ${preview ? `<div class="kn-memo-preview">${esc(preview)}</div>` : ''}
+      ${preview ? `<div class="kn-memo-preview">${preview}</div>` : ''}
       <div class="kn-memo-footer">
         <div class="kn-tag-list">
           ${tags.slice(0, 4).map(t => `<span class="kn-tag-chip">${esc(t)}</span>`).join('')}
@@ -629,6 +629,62 @@ function renderMemoCard(m, reviewSchedule) {
       </div>
     </div>
   `;
+}
+
+export function renderMemoCardPreview(blocks, maxBlocks = 7) {
+  const rows = [];
+  let rendered = 0;
+
+  const renderLevel = (items, depth = 0) => {
+    let numbered = 0;
+    for (const block of (items || [])) {
+      if (rendered >= maxBlocks) break;
+      numbered = block.type === 'numbered' ? numbered + 1 : 0;
+
+      if (block.type === 'divider') {
+        rows.push('<hr class="kn-memo-preview-divider">');
+        rendered++;
+        continue;
+      }
+
+      let text = String(block.text || '');
+      if (block.type === 'table') {
+        const table = normalizeTableData(block);
+        text = [table.headers.join(' / '), table.rows[0]?.join(' / ')].filter(Boolean).join('\n');
+      } else if (block.type === 'image') {
+        text = block.caption || '写真';
+      } else if (block.type === 'math') {
+        text = block.text ? `数式: ${block.text}` : '数式';
+      }
+      if (!text.trim()) continue;
+
+      const type = ['h1', 'h2', 'h3', 'bullet', 'numbered', 'quote', 'toggle'].includes(block.type)
+        ? block.type
+        : 'paragraph';
+      const toggleCollapsed = type === 'toggle'
+        ? (block.collapsed ?? !block.children?.length)
+        : false;
+      const prefix = type === 'bullet' ? '•'
+        : type === 'numbered' ? `${numbered || 1}.`
+          : type === 'toggle' ? (toggleCollapsed ? '▶' : '▼')
+            : type === 'quote' ? '“'
+              : '';
+      rows.push(`
+        <div class="kn-memo-preview-line kn-memo-preview-line--${type}" style="--preview-depth:${Math.min(depth, 2)}">
+          ${prefix ? `<span class="kn-memo-preview-prefix" aria-hidden="true">${prefix}</span>` : ''}
+          <div class="kn-memo-preview-text">${block.html ? getBlockRichHtml(block) : esc(text)}</div>
+        </div>
+      `);
+      rendered++;
+
+      if (type === 'toggle' && block.children?.length && !toggleCollapsed) {
+        renderLevel(block.children, depth + 1);
+      }
+    }
+  };
+
+  renderLevel(blocks);
+  return rows.join('');
 }
 
 function memoSearchText(memo) {
