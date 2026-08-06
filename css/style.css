@@ -7841,6 +7841,29 @@ button.atlas-nuance-map-row:focus-visible {
   margin: 20px 0 10px;
   font-size: 15px;
 }
+.atlas-translation-style-guide {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  margin: 0 0 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--border-light);
+}
+.atlas-translation-style-guide > div {
+  display: grid;
+  align-content: start;
+  gap: 3px;
+  padding: 9px 10px;
+  background: var(--bg-card);
+}
+.atlas-translation-style-guide strong { font-size: 11px; }
+.atlas-translation-style-guide span {
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.5;
+}
 .atlas-translation-variant {
   min-width: 0;
   padding: 17px;
@@ -7901,6 +7924,45 @@ button.atlas-nuance-map-row:focus-visible {
   font-size: 10px;
   font-weight: 800;
 }
+.atlas-translation-impression {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-light);
+}
+.atlas-translation-impression > span {
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 800;
+}
+.atlas-translation-impression > p {
+  margin: 5px 0 0;
+  font-size: 13px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
+.atlas-translation-expandable {
+  margin-top: 10px;
+  border-top: 1px solid var(--border-light);
+}
+.atlas-translation-expandable > summary {
+  position: relative;
+  padding: 11px 26px 8px 0;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+  list-style: none;
+}
+.atlas-translation-expandable > summary::-webkit-details-marker { display: none; }
+.atlas-translation-expandable > summary::after {
+  content: '+';
+  position: absolute;
+  right: 4px;
+  font-size: 16px;
+  font-weight: 500;
+}
+.atlas-translation-expandable[open] > summary::after { content: '−'; }
+.atlas-translation-expandable > :not(summary) { margin-top: 4px; }
 .atlas-translation-variant .atlas-detail-section {
   padding: 14px 0 0;
   border-bottom: none;
@@ -7936,6 +7998,7 @@ button.atlas-nuance-map-row:focus-visible {
   font-weight: 800;
 }
 .atlas-translation-detail-list > .atlas-translation-variant-list { margin-top: 12px; }
+.atlas-translation-detail-list > .atlas-translation-style-guide { margin-top: 10px; }
 .atlas-translation-detail-header h1 {
   max-width: 680px;
   font-size: clamp(21px, 3.5vw, 31px);
@@ -7952,6 +8015,13 @@ button.atlas-nuance-map-row:focus-visible {
   animation: atlasSpin 0.7s linear infinite;
 }
 @keyframes atlasSpin { to { transform: rotate(360deg); } }
+@media (max-width: 620px) {
+  .atlas-translation-style-guide { grid-template-columns: 1fr; }
+  .atlas-translation-style-guide > div {
+    grid-template-columns: 82px minmax(0, 1fr);
+    align-items: baseline;
+  }
+}
 .atlas-draft-section {
   padding-top: 20px;
   border-top: 1px solid var(--border);

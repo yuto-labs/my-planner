@@ -824,17 +824,19 @@ export async function generateTranslationVariants(
   const system = [
     'You are a careful bilingual editor for Japanese learners of English.',
     'Return JSON only and follow the response schema.',
-    'Create exactly three natural English translations in this exact order: standard_faithful (標準・忠実), natural_conversational (自然・会話), expressive_polished (表現的・洗練).',
-    'standard_faithful must be the clearest default translation and preserve the source structure and meaning without sounding unnatural.',
+    'Create exactly three natural English translations in this exact order: standard_faithful (明快・忠実), natural_conversational (自然・会話), expressive_polished (洗練・表現).',
+    'standard_faithful must be a clear, complete translation that favors common high-frequency vocabulary and straightforward grammar while preserving every fact, relation, condition, degree, and implication in the source.',
+    'Never shorten standard_faithful by omitting information. For a long source, keep the necessary length or split it into natural sentences. Plain language must not become childish, vague, overly casual, or a summary.',
     'natural_conversational should sound idiomatic in ordinary modern English and may restructure the sentence while preserving meaning.',
-    'expressive_polished may use richer rhythm or vocabulary when the source supports it, but must not invent facts or emotions.',
+    'expressive_polished may use richer rhythm or more precise vocabulary when the source supports it, but must remain contemporary and genuinely usable. Do not choose archaic, literary, or rare words merely to sound sophisticated, and do not invent facts or emotions.',
     'Each variant must preserve the source meaning while making a meaningful difference in voice, sentence structure, rhythm, register, and intended situation. Do not create superficial synonym swaps.',
     'The user will not provide a target situation. Do not force each translation into a fixed scenario. Explain the register, impression, and situations where each wording naturally fits in overallNuanceJa.',
     'Always answer, even when the Japanese is short, colloquial, fragmentary, or ambiguous. Never refuse or ask the user to provide a more specific sentence solely because context is missing.',
     'For ambiguous wording, choose reasonable interpretations for the three variants and clearly identify each assumption in overallNuanceJa. Keep uncertainty visible instead of returning an empty translation.',
     'Do not invent a person, relationship, event, time, place, emotion, or intention that the user did not supply.',
     'When the Japanese is ambiguous, keep alternatives conditional and explain the ambiguity in Japanese instead of silently choosing one interpretation.',
-    'For every variant, provide: the English translation, a Japanese back-translation that preserves the English implications, the overall impression and suitable situation, 2 to 4 notes on important vocabulary or constructions, and concrete comparisons with similar expressions.',
+    'For every variant, provide: the English translation, a Japanese back-translation that preserves the English implications, a focused one- or two-sentence explanation of its overall impression and suitable register, and 1 to 3 genuinely useful notes on important vocabulary or constructions.',
+    'Avoid repeating the same explanation across variants. Include only comparisons that reveal a meaningful choice; use zero to two comparisons per variant and return an empty comparisons array when no comparison would help.',
     'Each vocabulary note must explain the expression or construction, its historical etymology when reliably known, its physical/root core image, and its deep nuance in this sentence.',
     'Never invent an etymology. If the origin is uncertain or not relevant to a construction, leave etymologyJa empty and explain only the grammatical core image or function.',
     'Each comparison must name the expression used, a plausible alternative, and the decisive difference in nuance or usage.',
@@ -868,9 +870,9 @@ export async function generateTranslationVariants(
   );
   const parsed = tryParseJSON(raw);
   const styleDefinitions = [
-    { style: 'standard_faithful', labelJa: '標準・忠実' },
+    { style: 'standard_faithful', labelJa: '明快・忠実' },
     { style: 'natural_conversational', labelJa: '自然・会話' },
-    { style: 'expressive_polished', labelJa: '表現的・洗練' },
+    { style: 'expressive_polished', labelJa: '洗練・表現' },
   ];
   const sourceVariants = Array.isArray(parsed?.variants) ? parsed.variants : [];
   const unique = new Set();
@@ -900,7 +902,7 @@ export async function generateTranslationVariants(
             nuanceJa: String(note?.nuanceJa || '').trim(),
           }))
           .filter(note => note.expression && (note.etymologyJa || note.coreImageJa || note.nuanceJa))
-          .slice(0, 5),
+          .slice(0, 3),
         comparisons: (Array.isArray(item?.comparisons) ? item.comparisons : [])
           .map(comparison => ({
             expression: String(comparison?.expression || '').trim(),
@@ -908,7 +910,7 @@ export async function generateTranslationVariants(
             differenceJa: String(comparison?.differenceJa || '').trim(),
           }))
           .filter(comparison => comparison.expression && comparison.alternative && comparison.differenceJa)
-          .slice(0, 5),
+          .slice(0, 2),
         useCasesJa: normalizeStringList(item?.useCasesJa, 5),
         cautionsJa: normalizeStringList(item?.cautionsJa, 5),
       };
@@ -928,7 +930,7 @@ export async function generateTranslationVariants(
     throw new Error('3種類の英訳を揃えられませんでした。もう一度お試しください。');
   }
   return {
-    promptVersion: 3,
+    promptVersion: 4,
     language: 'English',
     sourceTextJa: source,
     contextJa: context,

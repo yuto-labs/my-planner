@@ -1455,7 +1455,7 @@ function renderTranslationGenerator() {
         <div>
           <div class="atlas-kicker">JAPANESE TO ENGLISH</div>
           <h1>和文から英訳を作る</h1>
-          <p>標準・忠実、自然・会話、表現的・洗練の3案を、元の意味を保って比較します。</p>
+          <p>明快・忠実、自然・会話、洗練・表現の3案を、情報を省かず比較します。</p>
         </div>
       </header>
 
@@ -1494,6 +1494,7 @@ function renderTranslationGenerator() {
             </label>
           </div>
           <h2 class="atlas-translation-result-title">ニュアンス別英訳3パターン＆深掘り解説</h2>
+          ${renderTranslationStyleGuide()}
           <div class="atlas-translation-variant-list">
             ${(draft.variants || []).map((variant, index) => renderTranslationVariant(variant, index)).join('')}
           </div>
@@ -1536,12 +1537,29 @@ function renderTranslationGenerator() {
   wireTranslationVocabularyLinks();
 }
 
+const TRANSLATION_STYLE_PRESENTATION = [
+  { style: 'standard_faithful', labelJa: '明快・忠実', descriptionJa: '基本的な語彙で、原文の情報を省かず伝える' },
+  { style: 'natural_conversational', labelJa: '自然・会話', descriptionJa: '実際の会話で選ばれやすい語順と表現にする' },
+  { style: 'expressive_polished', labelJa: '洗練・表現', descriptionJa: '使える自然さを保ちながら、語感と流れを整える' },
+];
+
+function renderTranslationStyleGuide() {
+  return `
+    <div class="atlas-translation-style-guide" aria-label="3つの英訳の違い">
+      ${TRANSLATION_STYLE_PRESENTATION.map(item => `
+        <div>
+          <strong>${esc(item.labelJa)}</strong>
+          <span>${esc(item.descriptionJa)}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
 function renderTranslationVariant(variant, index) {
-  const patternTitle = variant.labelJa || [
-    '標準・忠実',
-    '自然・会話',
-    '表現的・洗練',
-  ][index] || `パターン ${index + 1}`;
+  const presentation = TRANSLATION_STYLE_PRESENTATION.find(item => item.style === variant.style)
+    || TRANSLATION_STYLE_PRESENTATION[index];
+  const patternTitle = presentation?.labelJa || variant.labelJa || `パターン ${index + 1}`;
   const expressionIndex = buildExpressionIndex(getExpressionEntries());
   const hasLinkedWords = tokenizeEnglishForLinks(variant.translation, expressionIndex)
     .some(part => part.token && isUsefulLinkedToken(part.token, expressionIndex));
@@ -1563,10 +1581,10 @@ function renderTranslationVariant(variant, index) {
         </div>
       </div>
       ${variant.backTranslationJa ? `<div class="atlas-back-translation"><span>和訳（逆翻訳）</span>${esc(variant.backTranslationJa)}</div>` : ''}
-      ${detailSection('この文自体の全体ニュアンス', variant.overallNuanceJa || variant.nuanceJa)}
+      ${translationImpression(variant.overallNuanceJa || variant.nuanceJa)}
       ${translationVocabularySection(variant.vocabularyNotes, expressionIndex)}
       ${translationComparisonSection(variant.comparisons, expressionIndex)}
-      ${listSection('注意点', variant.cautionsJa, 'atlas-note-list--warning')}
+      ${translationCautionsSection(variant.cautionsJa)}
     </article>
   `;
 }
@@ -1777,6 +1795,7 @@ function renderTranslationDetail() {
       ${Number(set.promptVersion || 1) < 2 ? detailSection('英訳の考え方', set.summaryJa) : ''}
       <section class="atlas-detail-section atlas-translation-detail-list">
         <h2>ニュアンス別英訳3パターン＆深掘り解説</h2>
+        ${renderTranslationStyleGuide()}
         <div class="atlas-translation-variant-list">
           ${(set.variants || []).map((variant, index) => renderTranslationVariant(variant, index)).join('')}
         </div>
@@ -2857,8 +2876,8 @@ function examplesSection(examples) {
 function translationVocabularySection(notes, expressionIndex = buildExpressionIndex(getExpressionEntries())) {
   if (!Array.isArray(notes) || !notes.length) return '';
   return `
-    <section class="atlas-detail-section">
-      <h2>内部解説：主要語彙・構文の語源と深掘り</h2>
+    <details class="atlas-translation-expandable">
+      <summary>主要語彙・構文を詳しく見る</summary>
       <div class="atlas-language-note-list">
         ${notes.map(note => {
           const lookupTerm = note.lemma || note.expression;
@@ -2876,7 +2895,7 @@ function translationVocabularySection(notes, expressionIndex = buildExpressionIn
         `;
         }).join('')}
       </div>
-    </section>
+    </details>
   `;
 }
 
@@ -2892,8 +2911,8 @@ function linkedExpressionTerm(term, expressionIndex) {
 function translationComparisonSection(comparisons, expressionIndex = buildExpressionIndex(getExpressionEntries())) {
   if (!Array.isArray(comparisons) || !comparisons.length) return '';
   return `
-    <section class="atlas-detail-section">
-      <h2>似た表現との使い分け・比較</h2>
+    <details class="atlas-translation-expandable">
+      <summary>似た表現との違いを見る</summary>
       <div class="atlas-comparison-list">
         ${comparisons.map(comparison => `
           <div>
@@ -2902,7 +2921,27 @@ function translationComparisonSection(comparisons, expressionIndex = buildExpres
           </div>
         `).join('')}
       </div>
-    </section>
+    </details>
+  `;
+}
+
+function translationImpression(text) {
+  if (!String(text || '').trim()) return '';
+  return `
+    <div class="atlas-translation-impression">
+      <span>印象・使用域</span>
+      <p>${esc(text)}</p>
+    </div>
+  `;
+}
+
+function translationCautionsSection(items) {
+  if (!Array.isArray(items) || !items.length) return '';
+  return `
+    <details class="atlas-translation-expandable">
+      <summary>注意点を見る</summary>
+      <ul class="atlas-note-list atlas-note-list--warning">${items.map(item => `<li>${esc(item)}</li>`).join('')}</ul>
+    </details>
   `;
 }
 

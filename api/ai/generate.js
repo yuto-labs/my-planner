@@ -379,7 +379,9 @@ function pickResponseSchema(actionType, body) {
               register: { type: 'STRING' },
               vocabularyNotes: {
                 type: 'ARRAY',
-                description: 'Two to four important vocabulary or construction notes.',
+                description: 'One to three genuinely useful vocabulary or construction notes without repetition.',
+                minItems: 1,
+                maxItems: 3,
                 items: {
                   type: 'OBJECT',
                   properties: {
@@ -395,7 +397,8 @@ function pickResponseSchema(actionType, body) {
               },
               comparisons: {
                 type: 'ARRAY',
-                description: 'Concrete comparisons with similar English expressions.',
+                description: 'Zero to two concrete comparisons that clarify a meaningful wording choice.',
+                maxItems: 2,
                 items: {
                   type: 'OBJECT',
                   properties: {
