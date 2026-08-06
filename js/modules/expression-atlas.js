@@ -19,6 +19,7 @@ import {
 import {
   generateNuanceEntries,
   answerEnglishLearningQuestion,
+  detectAtlasQueryMode,
   generateTranslationVariants,
   NUANCE_ATLAS_CATEGORIES,
 } from '../ai.js';
@@ -1751,13 +1752,20 @@ function syncTranslationClassification() {
 }
 
 function collectAtlasTaxonomy() {
-  const items = [...getExpressionEntries(), ...getTranslationSets()];
+  const expressionEntries = getExpressionEntries();
+  const items = [...expressionEntries, ...getTranslationSets()];
   return collectStableTaxonomy(items).map(category => ({
     category: category.label,
     categoryId: category.id,
     aliases: category.aliases,
     topics: category.topics.map(topic => topic.label),
-    topicRecords: category.topics,
+    topicRecords: category.topics.map(topic => ({
+      ...topic,
+      terms: unique(expressionEntries
+        .filter(entry => entry.categoryId === category.id && entry.topicId === topic.id)
+        .flatMap(entry => [entry.term, entry.lemma, ...(entry.aliases || [])])
+        .filter(Boolean)),
+    })),
   }));
 }
 
@@ -2288,7 +2296,7 @@ function renderGenerator() {
         <div>
           <div class="atlas-kicker">AI DRAFT</div>
           <h1>表現セットを作る</h1>
-          <p>表現を入力すれば、AIがカテゴリとテーマも整理します。分類は保存前に修正できます。</p>
+          <p>日本語の意味でも英単語でも、AIが比較する表現と分類を整理します。分類は保存前に修正できます。</p>
         </div>
       </header>
 
@@ -2301,8 +2309,8 @@ function renderGenerator() {
         </label>
         <label class="atlas-generator-wide">
           <span>知りたい意味・表現 <small>必須</small></span>
-          <input id="atlas-learning-target" required placeholder="例: 視点 / 遠慮する / 怒りを表す表現" value="${esc(input.learningTarget)}">
-          <small class="atlas-field-help">分類名が分からなくても、知りたい日本語だけで始められます。</small>
+          <input id="atlas-learning-target" required placeholder="例: 視点 / 遠慮する / bother / look forward to" value="${esc(input.learningTarget)}">
+          <small class="atlas-field-help" id="atlas-query-mode-hint">${renderAtlasQueryModeHint(input.learningTarget)}</small>
         </label>
         <label>
           <span>カテゴリ <small>任意・AI判定</small></span>
@@ -2377,7 +2385,10 @@ function renderGenerator() {
     backFromExpressionAtlas();
   });
   ['atlas-language', 'atlas-learning-target', 'atlas-category', 'atlas-topic', 'atlas-seed-terms'].forEach(id => {
-    state.container.querySelector(`#${id}`)?.addEventListener('input', syncGeneratorInput);
+    state.container.querySelector(`#${id}`)?.addEventListener('input', () => {
+      syncGeneratorInput();
+      updateAtlasQueryModeHint();
+    });
     state.container.querySelector(`#${id}`)?.addEventListener('change', syncGeneratorInput);
   });
   state.container.querySelector('#atlas-generator-form')?.addEventListener('submit', handleGenerate);
@@ -2432,6 +2443,17 @@ function renderGenerator() {
     render();
     scrollMainToTop();
   });
+}
+
+function renderAtlasQueryModeHint(value) {
+  return detectAtlasQueryMode(value) === 'english_seed'
+    ? '英語表現を中心語として、関連表現との違いまで深く解説します。'
+    : '日本語の意味でも英単語でも、そのまま入力できます。';
+}
+
+function updateAtlasQueryModeHint() {
+  const hint = state.container?.querySelector('#atlas-query-mode-hint');
+  if (hint) hint.textContent = renderAtlasQueryModeHint(state.generatorInput.learningTarget);
 }
 
 async function handleGenerate(event) {
@@ -2962,6 +2984,7 @@ function searchableText(entry) {
     entry.term,
     entry.lemma,
     entry.sourceQueryJa,
+    ...(entry.sourceQueries || []),
     ...(entry.aliases || []),
     entry.partOfSpeech,
     entry.etymologyJa,

@@ -83,8 +83,10 @@ test('accepts nuance output using the schema field names', () => {
     term,
     lemma: term,
     pronunciationIpa: '/test/',
-    coreMeaningJa: '中心的な意味',
-    nuanceJa: '具体的なニュアンス',
+    etymologyJa: `語源の説明。${'歴史的な成り立ちを確認して説明します。'.repeat(3)}`,
+    coreImageJa: `根源的なイメージ。${'物理的な感覚と現代の意味の接続を説明します。'.repeat(3)}`,
+    coreMeaningJa: `中心的な意味。${'主要な意味がどのように枝分かれするかを説明します。'.repeat(3)}`,
+    nuanceJa: `具体的なニュアンス。${'話者の視点や強さと使用範囲を具体的に説明します。'.repeat(3)}`,
     useCasesJa: ['自然な使用場面'],
     examples: [
       { source: `${term} example one.`, translation: '例文一' },
@@ -104,8 +106,10 @@ test('keeps legacy nuance field names readable during validation', () => {
     term,
     lemma: term,
     ipa: '/test/',
-    coreMeaningJa: '中心的な意味',
-    nuanceJa: '具体的なニュアンス',
+    etymologyJa: `語源の説明。${'歴史的な成り立ちを確認して説明します。'.repeat(3)}`,
+    coreImageJa: `根源的なイメージ。${'物理的な感覚と現代の意味の接続を説明します。'.repeat(3)}`,
+    coreMeaningJa: `中心的な意味。${'主要な意味がどのように枝分かれするかを説明します。'.repeat(3)}`,
+    nuanceJa: `具体的なニュアンス。${'話者の視点や強さと使用範囲を具体的に説明します。'.repeat(3)}`,
     useCasesJa: ['自然な使用場面'],
     examples: [
       { english: `${term} example one.`, japanese: '例文一' },
@@ -118,6 +122,27 @@ test('keeps legacy nuance field names readable during validation', () => {
     entries: [makeEntry('relief'), makeEntry('reassurance'), makeEntry('comfort')],
   };
   assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(response)), true);
+});
+
+test('rejects a nuance set whose explanation fields are only placeholders', () => {
+  const makeEntry = term => ({
+    term,
+    lemma: term,
+    pronunciationIpa: '/test/',
+    coreMeaningJa: '中心的な意味',
+    nuanceJa: '具体的なニュアンス',
+    useCasesJa: ['自然な使用場面'],
+    examples: [
+      { source: `${term} example one.`, translation: '例文一' },
+      { source: `${term} example two.`, translation: '例文二' },
+    ],
+  });
+  const response = {
+    category: '感情',
+    topic: '安心',
+    entries: [makeEntry('relief'), makeEntry('reassurance'), makeEntry('comfort')],
+  };
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(response)), false);
 });
 
 test('rejects shallow translation variants before they can be saved', () => {

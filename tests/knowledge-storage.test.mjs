@@ -94,6 +94,31 @@ test('atlas writes preserve memos, learning entries, and other atlas record type
   assert.equal(getTranslationSets().length, 1);
 });
 
+test('atlas updates preserve every Japanese and English source query as a search alias', () => {
+  const base = {
+    term: 'bother',
+    lemma: 'bother',
+    category: '感情・感覚',
+    topic: '面倒・煩わしさ',
+    senseId: 'annoy-inconvenience',
+    coreMeaningJa: '人の注意や平穏に割り込んで負担を生じさせる。',
+  };
+  assert.equal(addExpressionEntries([{
+    ...base,
+    sourceQueryJa: 'bother',
+    sourceQueries: ['bother'],
+  }]).length, 1);
+  assert.equal(addExpressionEntries([{
+    ...base,
+    sourceQueryJa: '面倒',
+    sourceQueries: ['面倒'],
+  }]).length, 1);
+
+  const [saved] = getExpressionEntries();
+  assert.equal(saved.sourceQueryJa, 'bother');
+  assert.deepEqual(saved.sourceQueries.sort(), ['bother', '面倒'].sort());
+});
+
 test('learning deletion is recoverable from trash', () => {
   addLearningEntry(entry('learning-1', '空の色'));
   assert.equal(deleteLearningEntry('learning-1'), true);

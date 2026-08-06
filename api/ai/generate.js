@@ -253,9 +253,18 @@ function pickResponseSchema(actionType, body) {
               senseId: { type: 'STRING' },
               partOfSpeech: { type: 'STRING' },
               etymologyJa: { type: 'STRING' },
-              coreImageJa: { type: 'STRING' },
-              coreMeaningJa: { type: 'STRING' },
-              nuanceJa: { type: 'STRING' },
+              coreImageJa: {
+                type: 'STRING',
+                description: 'A substantial Japanese explanation of the root physical or conceptual image and what remains across modern senses.',
+              },
+              coreMeaningJa: {
+                type: 'STRING',
+                description: 'A substantial Japanese explanation of how the main meanings branch from the core image, not a short dictionary gloss.',
+              },
+              nuanceJa: {
+                type: 'STRING',
+                description: 'A deep Japanese explanation of viewpoint, psychology, intensity, boundaries, and real usage. Do not repeat coreMeaningJa.',
+              },
               nuanceTypeJa: { type: 'STRING' },
               register: { type: 'STRING' },
               intensityLevel: {
@@ -620,20 +629,29 @@ function hasCompleteNuanceResponse(text) {
   return entries.length >= 3
     && entries.length <= 5
     && new Set(terms).size >= 3
-    && entries.every(entry => (
-      String(entry?.term || '').trim()
-      && String(entry?.lemma || '').trim()
-      && String(entry?.pronunciationIpa || entry?.ipa || '').trim()
-      && String(entry?.coreMeaningJa || '').trim()
-      && String(entry?.nuanceJa || '').trim()
-      && Array.isArray(entry?.useCasesJa)
-      && entry.useCasesJa.some(value => String(value || '').trim())
-      && Array.isArray(entry?.examples)
-      && entry.examples.filter(example => (
-        String(example?.source || example?.english || '').trim()
-        && String(example?.translation || example?.japanese || '').trim()
-      )).length >= 2
-    ));
+    && entries.every(entry => {
+      const depthText = [
+        entry?.etymologyJa,
+        entry?.coreImageJa,
+        entry?.coreMeaningJa,
+        entry?.nuanceJa,
+      ].map(value => String(value || '').trim()).join('');
+      return Boolean(
+        String(entry?.term || '').trim()
+        && String(entry?.lemma || '').trim()
+        && String(entry?.pronunciationIpa || entry?.ipa || '').trim()
+        && String(entry?.coreMeaningJa || '').trim()
+        && String(entry?.nuanceJa || '').trim()
+        && depthText.length >= 220
+        && Array.isArray(entry?.useCasesJa)
+        && entry.useCasesJa.some(value => String(value || '').trim())
+        && Array.isArray(entry?.examples)
+        && entry.examples.filter(example => (
+          String(example?.source || example?.english || '').trim()
+          && String(example?.translation || example?.japanese || '').trim()
+        )).length >= 2
+      );
+    });
 }
 
 function hasCompleteEnglishQuestionResponse(text) {
@@ -977,7 +995,7 @@ The previous response was incomplete. Return all three distinct translation vari
           parts: [{
             text: `${String(body.systemText || '')}
 
-The previous response was incomplete. Return three to five distinct expressions with every required explanation field. The user does not need to provide a usage situation: infer several realistic situations for each expression and explain them in useCasesJa. Never ask the user to make the theme or words more specific when a reasonable interpretation is possible.`,
+The previous response was incomplete or too shallow. Return three to five distinct expressions with every required field. For each expression, make etymologyJa, coreImageJa, coreMeaningJa, and nuanceJa substantial, distinct, and connected enough to build a usable mental model; do not pad them with paraphrases. The user does not need to provide a usage situation: infer several realistic situations for each expression and explain them in useCasesJa. Never ask the user to make the theme or words more specific when a reasonable interpretation is possible.`,
           }],
         };
       }

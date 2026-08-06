@@ -835,7 +835,7 @@ function expressionRecordToEntry(record) {
 function expressionEntryKey(entry) {
   const stable = withStableClassification(entry);
   return [
-    String(stable.language || '').trim().toLocaleLowerCase(),
+    String(stable.language || 'English').trim().toLocaleLowerCase(),
     String(stable.categoryId || stable.category || '').trim().toLocaleLowerCase(),
     String(stable.topicId || stable.topic || '').trim().toLocaleLowerCase(),
     String(stable.lemma || stable.term || '').trim().toLocaleLowerCase(),
@@ -865,9 +865,11 @@ function expressionEntryToRecord(entry, existing = null) {
   const now = new Date().toISOString();
   const id = entry.id || existing?.id || generateId();
   const data = {
-    promptVersion: 4,
+    promptVersion: 5,
     language: 'English',
     sourceQueryJa: '',
+    sourceQueries: [],
+    queryMode: 'japanese_concept',
     category: '',
     topic: '',
     categoryId: '',
@@ -1216,7 +1218,19 @@ export function addExpressionEntries(entries) {
     if (!String(entry?.term || '').trim()) return;
     const existing = byKey.get(expressionEntryKey(entry));
     const merged = existing
-      ? { ...existing, ...entry, id: existing.id, personalNote: existing.personalNote || entry.personalNote || '' }
+      ? {
+        ...existing,
+        ...entry,
+        id: existing.id,
+        sourceQueryJa: existing.sourceQueryJa || entry.sourceQueryJa || '',
+        sourceQueries: [...new Set([
+          ...(existing.sourceQueries || []),
+          existing.sourceQueryJa,
+          ...(entry.sourceQueries || []),
+          entry.sourceQueryJa,
+        ].map(value => String(value || '').trim()).filter(Boolean))],
+        personalNote: existing.personalNote || entry.personalNote || '',
+      }
       : { ...entry, id: entry.id || generateId() };
     byKey.set(expressionEntryKey(merged), merged);
     saved.push(merged);

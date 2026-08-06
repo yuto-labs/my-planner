@@ -514,6 +514,18 @@ export function canonicalTopicKey(value) {
   return text;
 }
 
+export function detectAtlasQueryMode(value) {
+  const text = String(value || '').trim();
+  if (!text) return 'japanese_concept';
+  const hasJapanese = /[\u3040-\u30ff\u3400-\u9fff]/u.test(text);
+  const englishWords = text.match(/[A-Za-z]+(?:['’-][A-Za-z]+)*/g) || [];
+  const onlyEnglishExpression = !hasJapanese
+    && englishWords.length > 0
+    && englishWords.length <= 6
+    && /^[A-Za-z\s'’.,!?-]+$/u.test(text);
+  return onlyEnglishExpression ? 'english_seed' : 'japanese_concept';
+}
+
 export function reuseEquivalentAtlasTopic(existingTaxonomy, category, topic, context = '') {
   const targetKey = canonicalTopicKey(`${topic} ${context}`);
   const normalizedCategory = normalizeAtlasCategory(category, `${topic} ${context}`);
@@ -528,6 +540,7 @@ export function reuseEquivalentAtlasTopic(existingTaxonomy, category, topic, con
     const match = records.find(record => canonicalTopicKey([
       record?.label,
       ...(Array.isArray(record?.aliases) ? record.aliases : []),
+      ...(Array.isArray(record?.terms) ? record.terms : []),
     ].filter(Boolean).join(' ')) === targetKey);
     if (match?.label) {
       return {
@@ -669,10 +682,20 @@ export async function generateNuanceEntries(
   const cleanCategory = String(category || '').trim();
   const cleanTopic = String(topic || '').trim();
   const cleanTarget = String(learningTarget || '').trim();
-  const terms = (Array.isArray(seedTerms) ? seedTerms : String(seedTerms || '').split(/[\n,、]/))
+  const queryMode = detectAtlasQueryMode(cleanTarget);
+  const anchorTerm = queryMode === 'english_seed'
+    ? cleanTarget.replace(/^[\s'’“”".,!?-]+|[\s'’“”".,!?-]+$/gu, '').trim()
+    : '';
+  const suppliedTerms = (Array.isArray(seedTerms) ? seedTerms : String(seedTerms || '').split(/[\n,、]/))
     .map(term => String(term || '').trim())
     .filter(Boolean)
-    .slice(0, 12);
+    .slice(0, 5);
+  const terms = [...new Set([
+    ...(anchorTerm ? [anchorTerm] : []),
+    ...suppliedTerms,
+  ].map(term => term.toLocaleLowerCase()))]
+    .map(key => ([anchorTerm, ...suppliedTerms].find(term => term.toLocaleLowerCase() === key) || key))
+    .slice(0, 5);
   if (!cleanTarget && !cleanCategory && !cleanTopic && !terms.length) {
     throw new Error('知りたい意味・表現を入力してください。');
   }
@@ -683,7 +706,8 @@ export async function generateNuanceEntries(
     'Classify the entire expression set with one Japanese category and one concise semantic topic.',
     `When category is blank, choose exactly one category from this fixed list: ${NUANCE_ATLAS_CATEGORIES.join(', ')}.`,
     'Category is the broad reusable domain. Topic is a shorter, more concrete semantic cluster shared by the expressions.',
-    'learningTarget is the primary Japanese request, such as 視点, 遠慮する, or 怒りを表す表現. Treat it as required semantic intent, not as a category label.',
+    'learningTarget may be a Japanese concept request or a directly supplied English word, phrase, phrasal verb, or idiom. Treat it as required semantic intent, not as a category label.',
+    'When queryMode is english_seed, the English learningTarget is the anchor expression: include it exactly in the returned set, determine its most useful shared Japanese semantic theme, and add only expressions that are genuinely valuable for comparison. Do not replace or omit the anchor.',
     'When the user supplies a category or topic, preserve that exact display label. When either is blank, infer it from learningTarget and supplied expressions.',
     'The user will not provide a desired usage situation. Infer several realistic situations for each expression and explain them in useCasesJa.',
     'Always answer when at least a category, topic, or expression is supplied. For a broad or ambiguous request, choose the most useful interpretation and make that interpretation clear instead of asking for more detail.',
@@ -691,7 +715,9 @@ export async function generateNuanceEntries(
     'Topic must be a compact Japanese noun phrase, usually 2 to 14 characters. Never write a full sentence or a label ending in 表現, 言い方, 場面, 〜を表す表現, or 〜するとき.',
     'Create 3 to 5 genuinely useful expressions for the requested semantic topic, unless seed terms are supplied; always include every supplied seed term.',
     'For the whole set, rate each expression from intensityLevel 1 (weak/subtle) to 5 (strong/extreme), and assign a short Japanese nuanceTypeJa that explains its qualitative type rather than merely repeating the strength.',
-    'For every expression, explain in clear Japanese: historical etymology, the original physical/root image, the core meaning, the deep emotional or conceptual mechanism, decisive differences from similar expressions, natural situations, register, emotional tone, grammar cautions, and collocations.',
+    'Depth matters more than the number of headings. For every expression, write substantial connected Japanese explanations that let the learner form a usable mental model rather than a list of dictionary glosses.',
+    'Keep etymologyJa, coreImageJa, coreMeaningJa, and nuanceJa distinct: etymologyJa explains the verified historical path; coreImageJa develops the physical or conceptual image and shows what remains in modern senses; coreMeaningJa explains how the major senses branch from that image; nuanceJa explains the speaker psychology, viewpoint, intensity, and boundaries that determine real usage.',
+    'Give each of those fields enough substance to stand on its own. Do not fill several fields with paraphrases of the same sentence, generic advice, or one-line placeholders. Prefer fewer well-chosen expressions over shallow coverage.',
     'For every expression, include pronunciationIpa in standard IPA. Give the most useful General American pronunciation; include a second form only when it materially helps learners.',
     'Etymology must distinguish verified historical origin from a learning mnemonic. Never invent a root or confidently state a disputed origin. When uncertain, explicitly say that the origin is uncertain or leave etymologyJa empty.',
     'Return exactly two natural example sentences for every expression, each with a faithful Japanese translation and a short usage note.',
@@ -707,6 +733,7 @@ export async function generateNuanceEntries(
   const user = JSON.stringify({
     language: String(language || 'English').trim() || 'English',
     learningTarget: cleanTarget,
+    queryMode,
     category: cleanCategory,
     topic: cleanTopic,
     seedTerms: terms,
@@ -719,7 +746,7 @@ export async function generateNuanceEntries(
     QUALITY_MODEL,
     system,
     user,
-    5200,
+    8000,
     'json',
     'nuance_generate',
     options
@@ -748,9 +775,11 @@ export async function generateNuanceEntries(
       unique.add(key);
       const intensityLevel = normalizeNuanceIntensity(entry.intensityLevel, entry.intensity);
       return {
-        promptVersion: 4,
+        promptVersion: 5,
         language: String(language || 'English').trim() || 'English',
         sourceQueryJa: cleanTarget,
+        sourceQueries: cleanTarget ? [cleanTarget] : [],
+        queryMode,
         category: reusedClassification.category,
         topic: resolvedTopic,
         term,
