@@ -83,6 +83,8 @@ test('accepts nuance output using the schema field names', () => {
     term,
     lemma: term,
     pronunciationIpa: '/test/',
+    intensityMin: 2,
+    intensityMax: 3,
     etymologyJa: `語源の説明。${'歴史的な成り立ちを確認して説明します。'.repeat(3)}`,
     coreImageJa: `根源的なイメージ。${'物理的な感覚と現代の意味の接続を説明します。'.repeat(3)}`,
     coreMeaningJa: `中心的な意味。${'主要な意味がどのように枝分かれするかを説明します。'.repeat(3)}`,
@@ -96,6 +98,10 @@ test('accepts nuance output using the schema field names', () => {
   const response = {
     category: '感情',
     topic: '安心',
+    mapMode: 'scale',
+    mapAxisJa: '安心感の強さ',
+    mapLowLabelJa: 'ほっとする',
+    mapHighLabelJa: '深く安心する',
     entries: [makeEntry('relief'), makeEntry('reassurance'), makeEntry('comfort')],
   };
   assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(response)), true);
@@ -106,6 +112,8 @@ test('keeps legacy nuance field names readable during validation', () => {
     term,
     lemma: term,
     ipa: '/test/',
+    intensityMin: 2,
+    intensityMax: 3,
     etymologyJa: `語源の説明。${'歴史的な成り立ちを確認して説明します。'.repeat(3)}`,
     coreImageJa: `根源的なイメージ。${'物理的な感覚と現代の意味の接続を説明します。'.repeat(3)}`,
     coreMeaningJa: `中心的な意味。${'主要な意味がどのように枝分かれするかを説明します。'.repeat(3)}`,
@@ -119,6 +127,10 @@ test('keeps legacy nuance field names readable during validation', () => {
   const response = {
     category: '感情',
     topic: '安心',
+    mapMode: 'scale',
+    mapAxisJa: '安心感の強さ',
+    mapLowLabelJa: 'ほっとする',
+    mapHighLabelJa: '深く安心する',
     entries: [makeEntry('relief'), makeEntry('reassurance'), makeEntry('comfort')],
   };
   assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(response)), true);
@@ -141,6 +153,53 @@ test('rejects a nuance set whose explanation fields are only placeholders', () =
     category: '感情',
     topic: '安心',
     entries: [makeEntry('relief'), makeEntry('reassurance'), makeEntry('comfort')],
+  };
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(response)), false);
+});
+
+test('accepts a grouped nuance map without forcing a strength ranking', () => {
+  const makeEntry = (term, group) => ({
+    term,
+    lemma: term,
+    pronunciationIpa: '/test/',
+    nuanceTypeJa: group,
+    intensityMin: 3,
+    intensityMax: 3,
+    etymologyJa: '語源から現代の形に至る経路と、その変化の理由を具体的に説明します。'.repeat(4),
+    coreImageJa: '物理的な動きと話者の視点を結びつけ、意味の核となる像を具体的に説明します。'.repeat(4),
+    coreMeaningJa: '中心的な意味から各用法がどう枝分かれするかを、境界も含めて説明します。'.repeat(4),
+    nuanceJa: '場面、心理、距離感、使用域の違いを比較し、自然に選べる基準を説明します。'.repeat(4),
+    useCasesJa: ['自然な使用場面'],
+    examples: [
+      { source: `${term} example one.`, translation: '例文一' },
+      { source: `${term} example two.`, translation: '例文二' },
+    ],
+  });
+  const response = {
+    category: '伝達',
+    topic: '見る',
+    mapMode: 'groups',
+    mapAxisJa: '見る方法',
+    mapLowLabelJa: '',
+    mapHighLabelJa: '',
+    entries: [
+      makeEntry('look', '意図して視線を向ける'),
+      makeEntry('see', '自然に視界へ入る'),
+      makeEntry('watch', '動きを継続して見る'),
+    ],
+  };
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(response)), true);
+});
+
+test('rejects a nuance map with no meaningful comparison axis', () => {
+  const response = {
+    category: '感情',
+    topic: '安心',
+    mapMode: 'scale',
+    mapAxisJa: '',
+    mapLowLabelJa: '弱い',
+    mapHighLabelJa: '強い',
+    entries: [],
   };
   assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(response)), false);
 });

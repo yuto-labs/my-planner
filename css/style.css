@@ -7553,12 +7553,33 @@ kbd {
   font-size: 13px;
 }
 .atlas-nuance-map-heading p {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 10px;
   margin: 0;
   color: var(--text-dim);
   font-size: 10px;
   line-height: 1.5;
 }
+.atlas-nuance-map-heading p strong {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+}
+.atlas-nuance-map-heading p span { white-space: nowrap; }
 .atlas-nuance-map-list { display: grid; }
+.atlas-nuance-map-group + .atlas-nuance-map-group {
+  border-top: 1px solid var(--border);
+}
+.atlas-nuance-map-group h3 {
+  margin: 0;
+  padding: 7px 14px 5px;
+  background: var(--bg-hover);
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 700;
+}
 .atlas-nuance-map-row {
   display: grid;
   grid-template-columns: 76px minmax(92px, 0.7fr) minmax(0, 1.3fr);
@@ -7591,6 +7612,9 @@ button.atlas-nuance-map-row:focus-visible {
   color: var(--text-dim);
   font-size: 11px;
   line-height: 1.45;
+}
+.atlas-nuance-map-row.is-grouped {
+  grid-template-columns: minmax(92px, 0.7fr) minmax(0, 1.3fr);
 }
 .atlas-detail-page { max-width: 780px; }
 .atlas-detail-header {

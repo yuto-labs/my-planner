@@ -238,6 +238,23 @@ function pickResponseSchema(actionType, body) {
           type: 'STRING',
           description: 'A concise Japanese semantic theme for the whole expression set.',
         },
+        mapMode: {
+          type: 'STRING',
+          enum: ['scale', 'groups'],
+          description: 'Use scale only for a meaningful single continuum; otherwise use groups.',
+        },
+        mapAxisJa: {
+          type: 'STRING',
+          description: 'A concise Japanese label naming the actual comparison or grouping axis.',
+        },
+        mapLowLabelJa: {
+          type: 'STRING',
+          description: 'The low endpoint label for scale mode, or an empty string for groups mode.',
+        },
+        mapHighLabelJa: {
+          type: 'STRING',
+          description: 'The high endpoint label for scale mode, or an empty string for groups mode.',
+        },
         entries: {
           type: 'ARRAY',
           description: 'Three to five distinct expressions for the requested topic.',
@@ -268,6 +285,16 @@ function pickResponseSchema(actionType, body) {
               nuanceTypeJa: { type: 'STRING' },
               register: { type: 'STRING' },
               intensityLevel: {
+                type: 'INTEGER',
+                minimum: 1,
+                maximum: 5,
+              },
+              intensityMin: {
+                type: 'INTEGER',
+                minimum: 1,
+                maximum: 5,
+              },
+              intensityMax: {
                 type: 'INTEGER',
                 minimum: 1,
                 maximum: 5,
@@ -336,6 +363,8 @@ function pickResponseSchema(actionType, body) {
               'nuanceTypeJa',
               'register',
               'intensityLevel',
+              'intensityMin',
+              'intensityMax',
               'intensity',
               'emotionalToneJa',
               'useCasesJa',
@@ -348,7 +377,7 @@ function pickResponseSchema(actionType, body) {
           },
         },
       },
-      required: ['category', 'topic', 'entries'],
+      required: ['category', 'topic', 'mapMode', 'mapAxisJa', 'mapLowLabelJa', 'mapHighLabelJa', 'entries'],
     };
   }
 
@@ -623,13 +652,23 @@ function hasCompleteTranslationResponse(text) {
 function hasCompleteNuanceResponse(text) {
   const parsed = parseStructuredResponse(text);
   const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
+  const mapMode = String(parsed?.mapMode || '').trim();
+  const validMap = (mapMode === 'scale' || mapMode === 'groups')
+    && String(parsed?.mapAxisJa || '').trim()
+    && (mapMode === 'groups' || (
+      String(parsed?.mapLowLabelJa || '').trim()
+      && String(parsed?.mapHighLabelJa || '').trim()
+    ));
   const terms = entries
     .map(entry => String(entry?.term || '').trim().toLocaleLowerCase())
     .filter(Boolean);
-  return entries.length >= 3
+  return Boolean(validMap)
+    && entries.length >= 3
     && entries.length <= 5
     && new Set(terms).size >= 3
     && entries.every(entry => {
+      const intensityMin = Number(entry?.intensityMin);
+      const intensityMax = Number(entry?.intensityMax);
       const depthText = [
         entry?.etymologyJa,
         entry?.coreImageJa,
@@ -642,6 +681,13 @@ function hasCompleteNuanceResponse(text) {
         && String(entry?.pronunciationIpa || entry?.ipa || '').trim()
         && String(entry?.coreMeaningJa || '').trim()
         && String(entry?.nuanceJa || '').trim()
+        && Number.isInteger(intensityMin)
+        && intensityMin >= 1
+        && intensityMin <= 5
+        && Number.isInteger(intensityMax)
+        && intensityMax >= intensityMin
+        && intensityMax <= 5
+        && (mapMode !== 'groups' || String(entry?.nuanceTypeJa || '').trim())
         && depthText.length >= 220
         && Array.isArray(entry?.useCasesJa)
         && entry.useCasesJa.some(value => String(value || '').trim())
@@ -995,7 +1041,7 @@ The previous response was incomplete. Return all three distinct translation vari
           parts: [{
             text: `${String(body.systemText || '')}
 
-The previous response was incomplete or too shallow. Return three to five distinct expressions with every required field. For each expression, make etymologyJa, coreImageJa, coreMeaningJa, and nuanceJa substantial, distinct, and connected enough to build a usable mental model; do not pad them with paraphrases. The user does not need to provide a usage situation: infer several realistic situations for each expression and explain them in useCasesJa. Never ask the user to make the theme or words more specific when a reasonable interpretation is possible.`,
+The previous response was incomplete or too shallow. Return three to five distinct expressions with every required field. Choose one honest mapMode for the set: scale only when one named continuum is meaningful, otherwise groups. Always provide mapAxisJa and valid intensityMin/intensityMax values; scale also requires useful low/high endpoint labels, while groups requires a reusable nuanceTypeJa for every entry. For each expression, make etymologyJa, coreImageJa, coreMeaningJa, and nuanceJa substantial, distinct, and connected enough to build a usable mental model; do not pad them with paraphrases. The user does not need to provide a usage situation: infer several realistic situations for each expression and explain them in useCasesJa. Never ask the user to make the theme or words more specific when a reasonable interpretation is possible.`,
           }],
         };
       }

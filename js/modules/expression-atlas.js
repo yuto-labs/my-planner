@@ -1992,7 +1992,9 @@ function renderLibraryContent({ level, entries, categories, topics, allEntries, 
 
 function renderEntryCard(entry) {
   const intensityLevel = getIntensityLevel(entry);
-  const intensityLabel = intensityLevel ? intensityStars(intensityLevel) : String(entry.intensity || '').trim();
+  const intensityLabel = getNuanceMapMode(entry) === 'groups'
+    ? ''
+    : (intensityLevel ? intensityStars(intensityLevel) : String(entry.intensity || '').trim());
   return `
     <button class="atlas-entry-card" type="button" data-atlas-entry="${esc(entry.id)}">
       <span class="atlas-entry-topline">
@@ -2145,9 +2147,9 @@ function renderDetail() {
           <div class="atlas-detail-badges">
             ${entry.partOfSpeech ? `<span>${esc(entry.partOfSpeech)}</span>` : ''}
             ${entry.register ? `<span>${esc(entry.register)}</span>` : ''}
-            ${intensityLevel
+            ${getNuanceMapMode(entry) !== 'groups' && intensityLevel
               ? `<span aria-label="強さ5段階中${intensityLevel}">強さ ${intensityStars(intensityLevel)}</span>`
-              : entry.intensity ? `<span>強さ ${esc(entry.intensity)}</span>` : ''}
+              : getNuanceMapMode(entry) !== 'groups' && entry.intensity ? `<span>強さ ${esc(entry.intensity)}</span>` : ''}
             ${entry.nuanceTypeJa ? `<span>${esc(entry.nuanceTypeJa)}</span>` : ''}
           </div>
         </div>
@@ -2367,7 +2369,9 @@ function renderGenerator() {
                   <strong>${esc(entry.term)}</strong>
                   <small>${esc([
                     entry.partOfSpeech,
-                    getIntensityLevel(entry) ? intensityStars(getIntensityLevel(entry)) : entry.intensity,
+                    getNuanceMapMode(entry) === 'groups'
+                      ? ''
+                      : (getIntensityLevel(entry) ? intensityStars(getIntensityLevel(entry)) : entry.intensity),
                     entry.nuanceTypeJa,
                   ].filter(Boolean).join(' · '))}</small>
                   <span>${esc(entry.coreMeaningJa)}</span>
@@ -2825,35 +2829,90 @@ function intensityStars(level) {
   return `${'★'.repeat(safeLevel)}${'☆'.repeat(5 - safeLevel)}`;
 }
 
+function getNuanceMapMode(entry) {
+  return entry?.mapMode === 'groups' ? 'groups' : 'scale';
+}
+
+function getIntensityRange(entry) {
+  const fallback = getIntensityLevel(entry);
+  const rawMin = Number(entry?.intensityMin);
+  const rawMax = Number(entry?.intensityMax);
+  const min = Number.isFinite(rawMin) && rawMin >= 1 && rawMin <= 5
+    ? Math.round(rawMin)
+    : fallback;
+  const max = Number.isFinite(rawMax) && rawMax >= 1 && rawMax <= 5
+    ? Math.round(rawMax)
+    : fallback;
+  if (!min || !max) return null;
+  return { min: Math.min(min, max), max: Math.max(min, max) };
+}
+
+function intensityRangeLabel(range) {
+  if (!range) return '未設定';
+  if (range.min === range.max) return intensityStars(range.min);
+  return `★${range.min}–${range.max}`;
+}
+
+function resolveNuanceMapMeta(entries) {
+  const counts = new Map();
+  entries.forEach(entry => {
+    const mode = getNuanceMapMode(entry);
+    const axis = String(entry?.mapAxisJa || (mode === 'groups' ? 'ニュアンスの種類' : '強さ')).trim();
+    const low = String(entry?.mapLowLabelJa || (mode === 'scale' ? '控えめ' : '')).trim();
+    const high = String(entry?.mapHighLabelJa || (mode === 'scale' ? '強い' : '')).trim();
+    const key = JSON.stringify([mode, axis, low, high]);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  const best = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const [mode, axis, low, high] = best
+    ? JSON.parse(best)
+    : ['scale', '強さ', '控えめ', '強い'];
+  return { mode, axis, low, high };
+}
+
 function renderNuanceMap(entries, { interactive = true } = {}) {
   if (!Array.isArray(entries) || !entries.length) return '';
+  const meta = resolveNuanceMapMeta(entries);
   const sorted = [...entries].sort((a, b) => (
-    (getIntensityLevel(a) ?? 6) - (getIntensityLevel(b) ?? 6)
+    (getIntensityRange(a)?.min ?? 6) - (getIntensityRange(b)?.min ?? 6)
     || String(a.term || '').localeCompare(String(b.term || ''), 'en')
   ));
+  const renderRow = (entry, grouped = false) => {
+    const range = getIntensityRange(entry);
+    const tagName = interactive && entry.id ? 'button' : 'div';
+    const attributes = interactive && entry.id
+      ? `type="button" data-atlas-entry="${esc(entry.id)}"`
+      : '';
+    const description = entry.emotionalToneJa || entry.coreMeaningJa || '';
+    return `
+      <${tagName} class="atlas-nuance-map-row${grouped ? ' is-grouped' : ''}" ${attributes}>
+        ${grouped ? '' : `<span class="atlas-nuance-stars"${range ? ` aria-label="5段階中${range.min}${range.max !== range.min ? `から${range.max}` : ''}"` : ''}>${esc(intensityRangeLabel(range))}</span>`}
+        <strong>${esc(entry.term)}</strong>
+        <span>${esc(description)}</span>
+      </${tagName}>
+    `;
+  };
+  const mapContent = meta.mode === 'groups'
+    ? Object.entries(sorted.reduce((groups, entry) => {
+      const label = String(entry.nuanceTypeJa || 'その他').trim();
+      if (!groups[label]) groups[label] = [];
+      groups[label].push(entry);
+      return groups;
+    }, {})).map(([label, groupEntries]) => `
+      <section class="atlas-nuance-map-group">
+        <h3>${esc(label)}</h3>
+        ${groupEntries.map(entry => renderRow(entry, true)).join('')}
+      </section>
+    `).join('')
+    : sorted.map(entry => renderRow(entry)).join('');
   return `
     <section class="atlas-nuance-map" aria-labelledby="atlas-nuance-map-title">
       <div class="atlas-nuance-map-heading">
         <h2 id="atlas-nuance-map-title">度合い・ニュアンス全体マップ</h2>
-        <p>★はこのテーマ内での強さです。分類と合わせて使い分けを確認できます。</p>
+        <p><strong>比較軸: ${esc(meta.axis)}</strong>${meta.mode === 'scale' ? `<span>${esc(meta.low)} ↔ ${esc(meta.high)}</span>` : ''}</p>
       </div>
       <div class="atlas-nuance-map-list">
-        ${sorted.map(entry => {
-          const level = getIntensityLevel(entry);
-          const intensityLabel = level ? intensityStars(level) : String(entry.intensity || '未設定').trim();
-          const tagName = interactive && entry.id ? 'button' : 'div';
-          const attributes = interactive && entry.id
-            ? `type="button" data-atlas-entry="${esc(entry.id)}"`
-            : '';
-          const description = entry.nuanceTypeJa || entry.emotionalToneJa || entry.coreMeaningJa || '';
-          return `
-            <${tagName} class="atlas-nuance-map-row" ${attributes}>
-              <span class="atlas-nuance-stars"${level ? ` aria-label="強さ5段階中${level}"` : ''}>${esc(intensityLabel)}</span>
-              <strong>${esc(entry.term)}</strong>
-              <span>${esc(description)}</span>
-            </${tagName}>
-          `;
-        }).join('')}
+        ${mapContent}
       </div>
     </section>
   `;

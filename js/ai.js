@@ -567,6 +567,14 @@ function normalizeNuanceIntensity(value, fallback = '') {
   return match ? Number(match[0]) : 3;
 }
 
+function normalizeIntensityBound(value, fallback = null) {
+  if (value === null || value === undefined || value === '') return fallback;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 1 && numeric <= 5
+    ? Math.round(numeric)
+    : fallback;
+}
+
 export async function answerEnglishLearningQuestion(questionJa, options = {}) {
   const question = String(questionJa || '').trim();
   if (!question) throw new Error('英語についての疑問を入力してください。');
@@ -714,7 +722,9 @@ export async function generateNuanceEntries(
     'Prefer an existing category/topic from existingTaxonomy when it is semantically equivalent; otherwise create a clear, reusable label. Never use vague labels such as その他, 一般, 英語表現, 表現の違い, or the category name itself.',
     'Topic must be a compact Japanese noun phrase, usually 2 to 14 characters. Never write a full sentence or a label ending in 表現, 言い方, 場面, 〜を表す表現, or 〜するとき.',
     'Create 3 to 5 genuinely useful expressions for the requested semantic topic, unless seed terms are supplied; always include every supplied seed term.',
-    'For the whole set, rate each expression from intensityLevel 1 (weak/subtle) to 5 (strong/extreme), and assign a short Japanese nuanceTypeJa that explains its qualitative type rather than merely repeating the strength.',
+    'Choose mapMode for the whole set. Use scale only when every expression can be compared on one genuinely meaningful continuum. In that case provide a concise theme-specific mapAxisJa plus low and high endpoint labels, and give each expression intensityMin and intensityMax from 1 to 5; use a range when context can materially shift its position.',
+    'Use groups when forcing the expressions onto one continuum would mislead the learner. In groups mode, mapAxisJa should name the organizing principle and nuanceTypeJa must be a concise reusable group label. Do not invent a strength ranking merely to fill the map.',
+    'For scale mode, intensityLevel is the representative midpoint from 1 to 5. For groups mode it may be 3 for schema compatibility, but it will not be shown. In both modes nuanceTypeJa must explain a qualitative type rather than repeat a number.',
     'Depth matters more than the number of headings. For every expression, write substantial connected Japanese explanations that let the learner form a usable mental model rather than a list of dictionary glosses.',
     'Keep etymologyJa, coreImageJa, coreMeaningJa, and nuanceJa distinct: etymologyJa explains the verified historical path; coreImageJa develops the physical or conceptual image and shows what remains in modern senses; coreMeaningJa explains how the major senses branch from that image; nuanceJa explains the speaker psychology, viewpoint, intensity, and boundaries that determine real usage.',
     'Give each of those fields enough substance to stand on its own. Do not fill several fields with paraphrases of the same sentence, generic advice, or one-line placeholders. Prefer fewer well-chosen expressions over shallow coverage.',
@@ -728,7 +738,7 @@ export async function generateNuanceEntries(
     'Keep comparisons concrete and compare only expressions in the returned set when possible.',
     'Do not invent quotations, statistics, citations, or unsupported claims.',
     'Return no greeting, preface, conclusion, Markdown, or prose outside the JSON object.',
-    'Use this exact JSON shape: {"category":"日本語の大分類","topic":"日本語の具体的テーマ","entries":[{"term":"English expression","lemma":"dictionary headword","pronunciationIpa":"/General American IPA/","aliases":["inflected or alternate form"],"senseId":"short semantic sense key","partOfSpeech":"品詞","etymologyJa":"語源の説明","coreImageJa":"原義から分かる根源的なイメージ","coreMeaningJa":"中心的な意味","nuanceJa":"深いニュアンス","nuanceTypeJa":"短いニュアンス分類","intensityLevel":1,"register":"使用域","emotionalToneJa":"感情の温度","useCasesJa":["具体的な場面"],"collocations":["自然な組み合わせ"],"examples":[{"source":"English sentence","translation":"日本語訳","noteJa":"使い方"}],"comparisons":[{"term":"similar expression","differenceJa":"決定的な違い"}],"cautionsJa":["注意点"],"grammarNotes":{"partOfSpeech":"品詞","countability":"可算性。不要なら空欄","plural":"複数形。特記事項がなければ空欄","past":"過去形。特記事項がなければ空欄","pastParticiple":"過去分詞。特記事項がなければ空欄","usageNotes":["意味で可算性が変わる等"],"exampleForms":["重要な活用形"]}}]}',
+    'Use this exact JSON shape: {"category":"日本語の大分類","topic":"日本語の具体的テーマ","mapMode":"scale or groups","mapAxisJa":"比較軸または分類軸","mapLowLabelJa":"scaleの弱い側。groupsなら空欄","mapHighLabelJa":"scaleの強い側。groupsなら空欄","entries":[{"term":"English expression","lemma":"dictionary headword","pronunciationIpa":"/General American IPA/","aliases":["inflected or alternate form"],"senseId":"short semantic sense key","partOfSpeech":"品詞","etymologyJa":"語源の説明","coreImageJa":"原義から分かる根源的なイメージ","coreMeaningJa":"中心的な意味","nuanceJa":"深いニュアンス","nuanceTypeJa":"短いニュアンス分類","intensityMin":1,"intensityMax":2,"intensityLevel":2,"register":"使用域","emotionalToneJa":"感情の温度","useCasesJa":["具体的な場面"],"collocations":["自然な組み合わせ"],"examples":[{"source":"English sentence","translation":"日本語訳","noteJa":"使い方"}],"comparisons":[{"term":"similar expression","differenceJa":"決定的な違い"}],"cautionsJa":["注意点"],"grammarNotes":{"partOfSpeech":"品詞","countability":"可算性。不要なら空欄","plural":"複数形。特記事項がなければ空欄","past":"過去形。特記事項がなければ空欄","pastParticiple":"過去分詞。特記事項がなければ空欄","usageNotes":["意味で可算性が変わる等"],"exampleForms":["重要な活用形"]}}]}',
   ].join(' ');
   const user = JSON.stringify({
     language: String(language || 'English').trim() || 'English',
@@ -752,6 +762,10 @@ export async function generateNuanceEntries(
     options
   );
   const parsed = tryParseJSON(raw);
+  const mapMode = parsed?.mapMode === 'groups' ? 'groups' : 'scale';
+  const mapAxisJa = String(parsed?.mapAxisJa || (mapMode === 'groups' ? 'ニュアンスの種類' : '強さ')).trim();
+  const mapLowLabelJa = String(parsed?.mapLowLabelJa || '').trim();
+  const mapHighLabelJa = String(parsed?.mapHighLabelJa || '').trim();
   const resolvedCategory = normalizeAtlasCategory(
     cleanCategory || parsed?.category,
     `${cleanTarget} ${cleanTopic} ${terms.join(' ')}`
@@ -774,14 +788,20 @@ export async function generateNuanceEntries(
       if (!term || unique.has(key)) return null;
       unique.add(key);
       const intensityLevel = normalizeNuanceIntensity(entry.intensityLevel, entry.intensity);
+      const intensityMin = normalizeIntensityBound(entry.intensityMin, intensityLevel);
+      const intensityMax = normalizeIntensityBound(entry.intensityMax, intensityLevel);
       return {
-        promptVersion: 5,
+        promptVersion: 6,
         language: String(language || 'English').trim() || 'English',
         sourceQueryJa: cleanTarget,
         sourceQueries: cleanTarget ? [cleanTarget] : [],
         queryMode,
         category: reusedClassification.category,
         topic: resolvedTopic,
+        mapMode,
+        mapAxisJa,
+        mapLowLabelJa,
+        mapHighLabelJa,
         term,
         lemma: String(entry.lemma || term).trim(),
         pronunciation: String(entry.pronunciationIpa || '').trim(),
@@ -795,6 +815,8 @@ export async function generateNuanceEntries(
         nuanceTypeJa: String(entry.nuanceTypeJa || '').trim(),
         register: String(entry.register || '').trim(),
         intensityLevel,
+        intensityMin: Math.min(intensityMin, intensityMax),
+        intensityMax: Math.max(intensityMin, intensityMax),
         intensity: `★${intensityLevel}`,
         emotionalToneJa: String(entry.emotionalToneJa || '').trim(),
         useCasesJa: normalizeStringList(entry.useCasesJa, 6),

@@ -865,7 +865,7 @@ function expressionEntryToRecord(entry, existing = null) {
   const now = new Date().toISOString();
   const id = entry.id || existing?.id || generateId();
   const data = {
-    promptVersion: 5,
+    promptVersion: 6,
     language: 'English',
     sourceQueryJa: '',
     sourceQueries: [],
@@ -889,7 +889,13 @@ function expressionEntryToRecord(entry, existing = null) {
     nuanceJa: '',
     nuanceTypeJa: '',
     register: '',
+    mapMode: 'scale',
+    mapAxisJa: '強さ',
+    mapLowLabelJa: '控えめ',
+    mapHighLabelJa: '強い',
     intensityLevel: null,
+    intensityMin: null,
+    intensityMax: null,
     intensity: '',
     emotionalToneJa: '',
     useCasesJa: [],
