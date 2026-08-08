@@ -257,8 +257,8 @@ function pickResponseSchema(actionType, body) {
         },
         entries: {
           type: 'ARRAY',
-          description: 'Three to five distinct expressions for the requested topic.',
-          minItems: 3,
+          description: 'Four to five distinct expressions for the requested topic, each with equally deep treatment.',
+          minItems: 4,
           maxItems: 5,
           items: {
             type: 'OBJECT',
@@ -280,7 +280,7 @@ function pickResponseSchema(actionType, body) {
               },
               nuanceJa: {
                 type: 'STRING',
-                description: 'A deep Japanese explanation of viewpoint, psychology, intensity, boundaries, and real usage. Do not repeat coreMeaningJa.',
+                description: 'A deep connected Japanese explanation of sense shifts, viewpoint, agency, psychology, intensity, social distance, register, grammatical surroundings, implications, and the boundary between natural and unnatural usage. Do not repeat coreMeaningJa.',
               },
               nuanceTypeJa: { type: 'STRING' },
               register: { type: 'STRING' },
@@ -305,6 +305,9 @@ function pickResponseSchema(actionType, body) {
               collocations: stringArray('Common short collocations in the target language.'),
               examples: {
                 type: 'ARRAY',
+                description: 'Three or four distinct natural examples that differ in situation, grammar, collocation, and communicative purpose.',
+                minItems: 3,
+                maxItems: 4,
                 items: {
                   type: 'OBJECT',
                   properties: {
@@ -317,6 +320,9 @@ function pickResponseSchema(actionType, body) {
               },
               comparisons: {
                 type: 'ARRAY',
+                description: 'Three to five concrete contrasts explaining decisive differences in viewpoint, implication, grammar, strength, or register.',
+                minItems: 3,
+                maxItems: 5,
                 items: {
                   type: 'OBJECT',
                   properties: {
@@ -669,40 +675,56 @@ function hasCompleteNuanceResponse(text) {
   const terms = entries
     .map(entry => String(entry?.term || '').trim().toLocaleLowerCase())
     .filter(Boolean);
+  const exampleSources = entries.flatMap(entry => (
+    Array.isArray(entry?.examples) ? entry.examples : []
+  )).map(example => String(example?.source || example?.english || '').trim().toLocaleLowerCase())
+    .filter(Boolean);
   return Boolean(validMap)
-    && entries.length >= 3
+    && entries.length >= 4
     && entries.length <= 5
-    && new Set(terms).size >= 3
+    && new Set(terms).size >= 4
+    && exampleSources.length === new Set(exampleSources).size
     && entries.every(entry => {
+      const intensityLevel = Number(entry?.intensityLevel);
       const intensityMin = Number(entry?.intensityMin);
       const intensityMax = Number(entry?.intensityMax);
-      const depthText = [
-        entry?.etymologyJa,
-        entry?.coreImageJa,
-        entry?.coreMeaningJa,
-        entry?.nuanceJa,
-      ].map(value => String(value || '').trim()).join('');
+      const etymologyJa = String(entry?.etymologyJa || '').trim();
+      const coreImageJa = String(entry?.coreImageJa || '').trim();
+      const coreMeaningJa = String(entry?.coreMeaningJa || '').trim();
+      const nuanceJa = String(entry?.nuanceJa || '').trim();
+      const depthText = `${etymologyJa}${coreImageJa}${coreMeaningJa}${nuanceJa}`;
       return Boolean(
         String(entry?.term || '').trim()
         && String(entry?.lemma || '').trim()
         && String(entry?.pronunciationIpa || entry?.ipa || '').trim()
-        && String(entry?.coreMeaningJa || '').trim()
-        && String(entry?.nuanceJa || '').trim()
+        && Number.isInteger(intensityLevel)
+        && intensityLevel >= 1
+        && intensityLevel <= 5
         && Number.isInteger(intensityMin)
         && intensityMin >= 1
         && intensityMin <= 5
         && Number.isInteger(intensityMax)
-        && intensityMax >= intensityMin
-        && intensityMax <= 5
+        && intensityMin === intensityLevel
+        && intensityMax === intensityLevel
         && (mapMode !== 'groups' || String(entry?.nuanceTypeJa || '').trim())
-        && depthText.length >= 220
+        && (etymologyJa.length === 0 || etymologyJa.length >= 60)
+        && coreImageJa.length >= 100
+        && coreMeaningJa.length >= 120
+        && nuanceJa.length >= 180
+        && depthText.length >= 500
         && Array.isArray(entry?.useCasesJa)
-        && entry.useCasesJa.some(value => String(value || '').trim())
+        && entry.useCasesJa.filter(value => String(value || '').trim()).length >= 2
         && Array.isArray(entry?.examples)
         && entry.examples.filter(example => (
           String(example?.source || example?.english || '').trim()
           && String(example?.translation || example?.japanese || '').trim()
-        )).length >= 2
+          && String(example?.noteJa || '').trim()
+        )).length >= 3
+        && Array.isArray(entry?.comparisons)
+        && entry.comparisons.filter(comparison => (
+          String(comparison?.term || '').trim()
+          && String(comparison?.differenceJa || '').trim()
+        )).length >= 3
       );
     });
 }
@@ -1048,7 +1070,7 @@ The previous response was incomplete. Return all three distinct translation vari
           parts: [{
             text: `${String(body.systemText || '')}
 
-The previous response was incomplete or too shallow. Return three to five distinct expressions with every required field. Choose one honest mapMode for the set: scale only when one named continuum is meaningful, otherwise groups. Always provide mapAxisJa and valid intensityMin/intensityMax values; scale also requires useful low/high endpoint labels, while groups requires a reusable nuanceTypeJa for every entry. For each expression, make etymologyJa, coreImageJa, coreMeaningJa, and nuanceJa substantial, distinct, and connected enough to build a usable mental model; do not pad them with paraphrases. The user does not need to provide a usage situation: infer several realistic situations for each expression and explain them in useCasesJa. Never ask the user to make the theme or words more specific when a reasonable interpretation is possible.`,
+The previous response was incomplete or too shallow. Return four to five distinct expressions with every required field and equally deep treatment. Choose one honest mapMode for the set: scale only when one named continuum is meaningful, otherwise groups. Always provide mapAxisJa. Assign one definite integer star level to every scale entry and set intensityLevel, intensityMin, and intensityMax to that same value; never return a range. Scale also requires useful low/high endpoint labels, while groups requires a reusable nuanceTypeJa for every entry. For each expression, make etymologyJa, coreImageJa, coreMeaningJa, and especially nuanceJa substantial, distinct, and connected enough to build a usable mental model; explain sense shifts, viewpoint, agency, implications, grammar, register, and natural-use boundaries rather than padding with paraphrases. Include at least three globally unique examples with usage notes and at least three concrete comparisons per expression. The user does not need to provide a usage situation: infer several realistic situations for each expression and explain them in useCasesJa. Never ask the user to make the theme or words more specific when a reasonable interpretation is possible.`,
           }],
         };
       }

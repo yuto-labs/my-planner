@@ -567,14 +567,6 @@ function normalizeNuanceIntensity(value, fallback = '') {
   return match ? Number(match[0]) : 3;
 }
 
-function normalizeIntensityBound(value, fallback = null) {
-  if (value === null || value === undefined || value === '') return fallback;
-  const numeric = Number(value);
-  return Number.isFinite(numeric) && numeric >= 1 && numeric <= 5
-    ? Math.round(numeric)
-    : fallback;
-}
-
 export async function answerEnglishLearningQuestion(questionJa, options = {}) {
   const question = String(questionJa || '').trim();
   if (!question) throw new Error('英語についての疑問を入力してください。');
@@ -721,24 +713,25 @@ export async function generateNuanceEntries(
     'Always answer when at least a category, topic, or expression is supplied. For a broad or ambiguous request, choose the most useful interpretation and make that interpretation clear instead of asking for more detail.',
     'Prefer an existing category/topic from existingTaxonomy when it is semantically equivalent; otherwise create a clear, reusable label. Never use vague labels such as その他, 一般, 英語表現, 表現の違い, or the category name itself.',
     'Topic must be a compact Japanese noun phrase, usually 2 to 14 characters. Never write a full sentence or a label ending in 表現, 言い方, 場面, 〜を表す表現, or 〜するとき.',
-    'Create 3 to 5 genuinely useful expressions for the requested semantic topic, unless seed terms are supplied; always include every supplied seed term.',
-    'Choose mapMode for the whole set. Use scale only when every expression can be compared on one genuinely meaningful continuum. In that case provide a concise theme-specific mapAxisJa plus low and high endpoint labels, and give each expression intensityMin and intensityMax from 1 to 5; use a range when context can materially shift its position.',
+    'Create 4 to 5 genuinely useful expressions for the requested semantic topic, unless more seed terms are supplied; always include every supplied seed term. Never return only three expressions.',
+    'Choose mapMode for the whole set. Use scale only when every expression can be compared on one genuinely meaningful continuum. In that case provide a concise theme-specific mapAxisJa plus low and high endpoint labels, and assign each expression exactly one integer star level from 1 to 5. Set intensityLevel, intensityMin, and intensityMax to that same integer; never return a range such as 1-2 or 3-4.',
     'Use groups when forcing the expressions onto one continuum would mislead the learner. In groups mode, mapAxisJa should name the organizing principle and nuanceTypeJa must be a concise reusable group label. Do not invent a strength ranking merely to fill the map.',
-    'For scale mode, intensityLevel is the representative midpoint from 1 to 5. For groups mode it may be 3 for schema compatibility, but it will not be shown. In both modes nuanceTypeJa must explain a qualitative type rather than repeat a number.',
+    'For scale mode, intensityLevel is one definite position from 1 to 5, chosen by comparing the expressions within this exact set on mapAxisJa. For groups mode it may be 3 for schema compatibility, but it will not be shown. In both modes nuanceTypeJa must explain a qualitative type rather than repeat a number.',
     'Depth matters more than the number of headings. For every expression, write substantial connected Japanese explanations that let the learner form a usable mental model rather than a list of dictionary glosses.',
-    'Keep etymologyJa, coreImageJa, coreMeaningJa, and nuanceJa distinct: etymologyJa explains the verified historical path; coreImageJa develops the physical or conceptual image and shows what remains in modern senses; coreMeaningJa explains how the major senses branch from that image; nuanceJa explains the speaker psychology, viewpoint, intensity, and boundaries that determine real usage.',
-    'Give each of those fields enough substance to stand on its own. Do not fill several fields with paraphrases of the same sentence, generic advice, or one-line placeholders. Prefer fewer well-chosen expressions over shallow coverage.',
+    'Keep etymologyJa, coreImageJa, coreMeaningJa, and nuanceJa distinct: etymologyJa explains the verified historical path; coreImageJa develops the physical or conceptual image and shows what remains across modern senses; coreMeaningJa traces how the major senses and parts of speech branch from that image; nuanceJa gives a deep connected explanation of speaker psychology, viewpoint, agency, intentionality, emotional temperature, intensity, social distance, register, and the boundary between natural and unnatural usage.',
+    'In nuanceJa, explain how the meaning changes with the object, complement, grammatical pattern, or situation whenever the expression has multiple important senses. Identify what the speaker foregrounds, implies, softens, intensifies, accepts, resists, or leaves unsaid. Give concrete selection criteria a learner can actually use, rather than merely listing Japanese translations.',
+    'Give each explanation field enough substance to stand on its own. Do not fill several fields with paraphrases of the same sentence, generic advice, or one-line placeholders. All four or five expressions must receive equally deep treatment; never trade explanation quality for count.',
     'For every expression, include pronunciationIpa in standard IPA. Give the most useful General American pronunciation; include a second form only when it materially helps learners.',
     'Etymology must distinguish verified historical origin from a learning mnemonic. Never invent a root or confidently state a disputed origin. When uncertain, explicitly say that the origin is uncertain or leave etymologyJa empty.',
-    'Return exactly two natural example sentences for every expression, each with a faithful Japanese translation and a short usage note.',
+    'Return at least three natural example sentences for every expression, each with a faithful Japanese translation and a short usage note. The examples must be genuinely different in situation, grammar, collocation, and communicative purpose; never reuse or lightly rephrase an example anywhere in the set.',
     'Do not treat different parts of speech as interchangeable. Explicitly explain grammatical differences such as adjective versus noun.',
     'Add grammarNotes only when useful: part of speech; countability; irregular plural; irregular past/past participle; meaning-dependent countability such as work/works or experience/experiences; and example forms. Do not pad regular forms with obvious explanations.',
     'When a form is irregular or countability is easy to confuse, use that form naturally in at least one example.',
     'Avoid generic statements such as "context matters". State what situation, relationship, intensity, or attitude makes each expression natural.',
-    'Keep comparisons concrete and compare only expressions in the returned set when possible.',
+    'Return at least three concrete comparisons for every expression. Compare expressions in the returned set when possible, and explain the decisive difference in viewpoint, implication, grammar, strength, or register instead of giving interchangeable dictionary glosses.',
     'Do not invent quotations, statistics, citations, or unsupported claims.',
     'Return no greeting, preface, conclusion, Markdown, or prose outside the JSON object.',
-    'Use this exact JSON shape: {"category":"日本語の大分類","topic":"日本語の具体的テーマ","mapMode":"scale or groups","mapAxisJa":"比較軸または分類軸","mapLowLabelJa":"scaleの弱い側。groupsなら空欄","mapHighLabelJa":"scaleの強い側。groupsなら空欄","entries":[{"term":"English expression","lemma":"dictionary headword","pronunciationIpa":"/General American IPA/","aliases":["inflected or alternate form"],"senseId":"short semantic sense key","partOfSpeech":"品詞","etymologyJa":"語源の説明","coreImageJa":"原義から分かる根源的なイメージ","coreMeaningJa":"中心的な意味","nuanceJa":"深いニュアンス","nuanceTypeJa":"短いニュアンス分類","intensityMin":1,"intensityMax":2,"intensityLevel":2,"register":"使用域","emotionalToneJa":"感情の温度","useCasesJa":["具体的な場面"],"collocations":["自然な組み合わせ"],"examples":[{"source":"English sentence","translation":"日本語訳","noteJa":"使い方"}],"comparisons":[{"term":"similar expression","differenceJa":"決定的な違い"}],"cautionsJa":["注意点"],"grammarNotes":{"partOfSpeech":"品詞","countability":"可算性。不要なら空欄","plural":"複数形。特記事項がなければ空欄","past":"過去形。特記事項がなければ空欄","pastParticiple":"過去分詞。特記事項がなければ空欄","usageNotes":["意味で可算性が変わる等"],"exampleForms":["重要な活用形"]}}]}',
+    'Use this exact JSON shape: {"category":"日本語の大分類","topic":"日本語の具体的テーマ","mapMode":"scale or groups","mapAxisJa":"比較軸または分類軸","mapLowLabelJa":"scaleの弱い側。groupsなら空欄","mapHighLabelJa":"scaleの強い側。groupsなら空欄","entries":[{"term":"English expression","lemma":"dictionary headword","pronunciationIpa":"/General American IPA/","aliases":["inflected or alternate form"],"senseId":"short semantic sense key","partOfSpeech":"品詞","etymologyJa":"語源の説明","coreImageJa":"原義から分かる根源的なイメージ","coreMeaningJa":"中心的な意味","nuanceJa":"意味の変化と選択基準まで含む深いニュアンス","nuanceTypeJa":"短いニュアンス分類","intensityMin":2,"intensityMax":2,"intensityLevel":2,"register":"使用域","emotionalToneJa":"感情の温度","useCasesJa":["具体的な場面A","具体的な場面B"],"collocations":["自然な組み合わせ"],"examples":[{"source":"English sentence","translation":"日本語訳","noteJa":"使い方"}],"comparisons":[{"term":"similar expression","differenceJa":"決定的な違い"}],"cautionsJa":["注意点"],"grammarNotes":{"partOfSpeech":"品詞","countability":"可算性。不要なら空欄","plural":"複数形。特記事項がなければ空欄","past":"過去形。特記事項がなければ空欄","pastParticiple":"過去分詞。特記事項がなければ空欄","usageNotes":["意味で可算性が変わる等"],"exampleForms":["重要な活用形"]}}]}',
   ].join(' ');
   const user = JSON.stringify({
     language: String(language || 'English').trim() || 'English',
@@ -749,14 +742,14 @@ export async function generateNuanceEntries(
     seedTerms: terms,
     existingTaxonomy: (Array.isArray(existingTaxonomy) ? existingTaxonomy : []).slice(0, 40),
     allowedCategories: NUANCE_ATLAS_CATEGORIES,
-    requestedEntryCount: terms.length ? Math.max(terms.length, 3) : 4,
+    requestedEntryCount: terms.length ? Math.max(terms.length, 4) : 4,
   });
 
   const raw = await callAPI(
     QUALITY_MODEL,
     system,
     user,
-    8000,
+    12000,
     'json',
     'nuance_generate',
     options
@@ -788,10 +781,8 @@ export async function generateNuanceEntries(
       if (!term || unique.has(key)) return null;
       unique.add(key);
       const intensityLevel = normalizeNuanceIntensity(entry.intensityLevel, entry.intensity);
-      const intensityMin = normalizeIntensityBound(entry.intensityMin, intensityLevel);
-      const intensityMax = normalizeIntensityBound(entry.intensityMax, intensityLevel);
       return {
-        promptVersion: 6,
+        promptVersion: 7,
         language: String(language || 'English').trim() || 'English',
         sourceQueryJa: cleanTarget,
         sourceQueries: cleanTarget ? [cleanTarget] : [],
@@ -815,8 +806,8 @@ export async function generateNuanceEntries(
         nuanceTypeJa: String(entry.nuanceTypeJa || '').trim(),
         register: String(entry.register || '').trim(),
         intensityLevel,
-        intensityMin: Math.min(intensityMin, intensityMax),
-        intensityMax: Math.max(intensityMin, intensityMax),
+        intensityMin: intensityLevel,
+        intensityMax: intensityLevel,
         intensity: `★${intensityLevel}`,
         emotionalToneJa: String(entry.emotionalToneJa || '').trim(),
         useCasesJa: normalizeStringList(entry.useCasesJa, 6),
@@ -828,14 +819,14 @@ export async function generateNuanceEntries(
             noteJa: String(example?.noteJa || '').trim(),
           }))
           .filter(example => example.source && example.translation)
-          .slice(0, 2),
+          .slice(0, 4),
         comparisons: (Array.isArray(entry.comparisons) ? entry.comparisons : [])
           .map(comparison => ({
             term: String(comparison?.term || '').trim(),
             differenceJa: String(comparison?.differenceJa || '').trim(),
           }))
           .filter(comparison => comparison.term && comparison.differenceJa)
-          .slice(0, 6),
+          .slice(0, 5),
         cautionsJa: normalizeStringList(entry.cautionsJa, 6),
         grammarNotes: {
           partOfSpeech: String(entry.grammarNotes?.partOfSpeech || entry.partOfSpeech || '').trim(),

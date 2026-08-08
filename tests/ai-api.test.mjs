@@ -83,16 +83,23 @@ test('accepts nuance output using the schema field names', () => {
     term,
     lemma: term,
     pronunciationIpa: '/test/',
+    intensityLevel: 2,
     intensityMin: 2,
-    intensityMax: 3,
-    etymologyJa: `語源の説明。${'歴史的な成り立ちを確認して説明します。'.repeat(3)}`,
-    coreImageJa: `根源的なイメージ。${'物理的な感覚と現代の意味の接続を説明します。'.repeat(3)}`,
-    coreMeaningJa: `中心的な意味。${'主要な意味がどのように枝分かれするかを説明します。'.repeat(3)}`,
-    nuanceJa: `具体的なニュアンス。${'話者の視点や強さと使用範囲を具体的に説明します。'.repeat(3)}`,
-    useCasesJa: ['自然な使用場面'],
+    intensityMax: 2,
+    etymologyJa: `語源の説明。${'歴史的な成り立ちを確認して説明します。'.repeat(4)}`,
+    coreImageJa: `根源的なイメージ。${'物理的な感覚と現代の意味の接続を説明します。'.repeat(5)}`,
+    coreMeaningJa: `中心的な意味。${'主要な意味がどのように枝分かれするかを説明します。'.repeat(5)}`,
+    nuanceJa: `具体的なニュアンス。${'話者の視点、主体性、強さ、含意、使用域と自然な境界を具体的に説明します。'.repeat(7)}`,
+    useCasesJa: ['自然な使用場面', '別の関係性での使用場面'],
     examples: [
-      { source: `${term} example one.`, translation: '例文一' },
-      { source: `${term} example two.`, translation: '例文二' },
+      { source: `${term} example one.`, translation: '例文一', noteJa: '場面一' },
+      { source: `${term} example two.`, translation: '例文二', noteJa: '場面二' },
+      { source: `${term} example three.`, translation: '例文三', noteJa: '場面三' },
+    ],
+    comparisons: [
+      { term: `${term}-a`, differenceJa: '視点の違いを説明します。' },
+      { term: `${term}-b`, differenceJa: '強さの違いを説明します。' },
+      { term: `${term}-c`, differenceJa: '使用域の違いを説明します。' },
     ],
   });
   const response = {
@@ -102,9 +109,20 @@ test('accepts nuance output using the schema field names', () => {
     mapAxisJa: '安心感の強さ',
     mapLowLabelJa: 'ほっとする',
     mapHighLabelJa: '深く安心する',
-    entries: [makeEntry('relief'), makeEntry('reassurance'), makeEntry('comfort')],
+    entries: [makeEntry('relief'), makeEntry('reassurance'), makeEntry('comfort'), makeEntry('ease')],
   };
   assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(response)), true);
+
+  const rangedStars = JSON.parse(JSON.stringify(response));
+  rangedStars.entries[0].intensityMin = 1;
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(rangedStars)), false);
+
+  const onlyThreeExpressions = { ...response, entries: response.entries.slice(0, 3) };
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(onlyThreeExpressions)), false);
+
+  const duplicateExample = JSON.parse(JSON.stringify(response));
+  duplicateExample.entries[1].examples[0].source = duplicateExample.entries[0].examples[0].source;
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(duplicateExample)), false);
 });
 
 test('keeps legacy nuance field names readable during validation', () => {
@@ -112,16 +130,23 @@ test('keeps legacy nuance field names readable during validation', () => {
     term,
     lemma: term,
     ipa: '/test/',
+    intensityLevel: 2,
     intensityMin: 2,
-    intensityMax: 3,
-    etymologyJa: `語源の説明。${'歴史的な成り立ちを確認して説明します。'.repeat(3)}`,
-    coreImageJa: `根源的なイメージ。${'物理的な感覚と現代の意味の接続を説明します。'.repeat(3)}`,
-    coreMeaningJa: `中心的な意味。${'主要な意味がどのように枝分かれするかを説明します。'.repeat(3)}`,
-    nuanceJa: `具体的なニュアンス。${'話者の視点や強さと使用範囲を具体的に説明します。'.repeat(3)}`,
-    useCasesJa: ['自然な使用場面'],
+    intensityMax: 2,
+    etymologyJa: `語源の説明。${'歴史的な成り立ちを確認して説明します。'.repeat(4)}`,
+    coreImageJa: `根源的なイメージ。${'物理的な感覚と現代の意味の接続を説明します。'.repeat(5)}`,
+    coreMeaningJa: `中心的な意味。${'主要な意味がどのように枝分かれするかを説明します。'.repeat(5)}`,
+    nuanceJa: `具体的なニュアンス。${'話者の視点、主体性、強さ、含意、使用域と自然な境界を具体的に説明します。'.repeat(7)}`,
+    useCasesJa: ['自然な使用場面', '別の関係性での使用場面'],
     examples: [
-      { english: `${term} example one.`, japanese: '例文一' },
-      { english: `${term} example two.`, japanese: '例文二' },
+      { english: `${term} example one.`, japanese: '例文一', noteJa: '場面一' },
+      { english: `${term} example two.`, japanese: '例文二', noteJa: '場面二' },
+      { english: `${term} example three.`, japanese: '例文三', noteJa: '場面三' },
+    ],
+    comparisons: [
+      { term: `${term}-a`, differenceJa: '視点の違いを説明します。' },
+      { term: `${term}-b`, differenceJa: '強さの違いを説明します。' },
+      { term: `${term}-c`, differenceJa: '使用域の違いを説明します。' },
     ],
   });
   const response = {
@@ -131,7 +156,7 @@ test('keeps legacy nuance field names readable during validation', () => {
     mapAxisJa: '安心感の強さ',
     mapLowLabelJa: 'ほっとする',
     mapHighLabelJa: '深く安心する',
-    entries: [makeEntry('relief'), makeEntry('reassurance'), makeEntry('comfort')],
+    entries: [makeEntry('relief'), makeEntry('reassurance'), makeEntry('comfort'), makeEntry('ease')],
   };
   assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(response)), true);
 });
@@ -163,16 +188,23 @@ test('accepts a grouped nuance map without forcing a strength ranking', () => {
     lemma: term,
     pronunciationIpa: '/test/',
     nuanceTypeJa: group,
+    intensityLevel: 3,
     intensityMin: 3,
     intensityMax: 3,
     etymologyJa: '語源から現代の形に至る経路と、その変化の理由を具体的に説明します。'.repeat(4),
     coreImageJa: '物理的な動きと話者の視点を結びつけ、意味の核となる像を具体的に説明します。'.repeat(4),
     coreMeaningJa: '中心的な意味から各用法がどう枝分かれするかを、境界も含めて説明します。'.repeat(4),
-    nuanceJa: '場面、心理、距離感、使用域の違いを比較し、自然に選べる基準を説明します。'.repeat(4),
-    useCasesJa: ['自然な使用場面'],
+    nuanceJa: '場面、心理、主体性、含意、距離感、使用域の違いを比較し、自然に選べる境界と判断基準を説明します。'.repeat(6),
+    useCasesJa: ['自然な使用場面', '別の関係性での使用場面'],
     examples: [
-      { source: `${term} example one.`, translation: '例文一' },
-      { source: `${term} example two.`, translation: '例文二' },
+      { source: `${term} example one.`, translation: '例文一', noteJa: '場面一' },
+      { source: `${term} example two.`, translation: '例文二', noteJa: '場面二' },
+      { source: `${term} example three.`, translation: '例文三', noteJa: '場面三' },
+    ],
+    comparisons: [
+      { term: `${term}-a`, differenceJa: '視点の違いを説明します。' },
+      { term: `${term}-b`, differenceJa: '強さの違いを説明します。' },
+      { term: `${term}-c`, differenceJa: '使用域の違いを説明します。' },
     ],
   });
   const response = {
@@ -186,6 +218,7 @@ test('accepts a grouped nuance map without forcing a strength ranking', () => {
       makeEntry('look', '意図して視線を向ける'),
       makeEntry('see', '自然に視界へ入る'),
       makeEntry('watch', '動きを継続して見る'),
+      makeEntry('observe', '注意深く変化を捉える'),
     ],
   };
   assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(response)), true);

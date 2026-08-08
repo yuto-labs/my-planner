@@ -2808,6 +2808,7 @@ function getNuanceMapMode(entry) {
 
 function getIntensityRange(entry) {
   const fallback = getIntensityLevel(entry);
+  if (fallback) return { min: fallback, max: fallback };
   const rawMin = Number(entry?.intensityMin);
   const rawMax = Number(entry?.intensityMax);
   const min = Number.isFinite(rawMin) && rawMin >= 1 && rawMin <= 5
