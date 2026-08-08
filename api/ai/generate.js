@@ -708,8 +708,8 @@ function hasCompleteNuanceResponse(text) {
         && intensityMax === intensityLevel
         && (mapMode !== 'groups' || String(entry?.nuanceTypeJa || '').trim())
         && (etymologyJa.length === 0 || etymologyJa.length >= 20)
-        && coreImageJa.length >= 50
-        && coreMeaningJa.length >= 60
+        && coreImageJa.length >= 20
+        && coreMeaningJa.length >= 20
         && nuanceJa.length >= 100
         && depthText.length >= 300
         && Array.isArray(entry?.useCasesJa)

@@ -119,6 +119,16 @@ test('accepts nuance output using the schema field names', () => {
   };
   assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(response)), true);
 
+  const conciseButCompleteCore = JSON.parse(JSON.stringify(response));
+  conciseButCompleteCore.entries.forEach(entry => {
+    entry.coreImageJa = '物理的な核の像と、現代の意味へのつながりを説明します。';
+    entry.coreMeaningJa = '中心から主要な意味が枝分かれする流れを説明します。';
+  });
+  assert.equal(
+    hasCompleteStructuredResponse('nuance_generate', JSON.stringify(conciseButCompleteCore)),
+    true
+  );
+
   const rangedStars = JSON.parse(JSON.stringify(response));
   rangedStars.entries[0].intensityMin = 1;
   assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(rangedStars)), false);
