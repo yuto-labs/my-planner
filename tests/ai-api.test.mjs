@@ -78,10 +78,13 @@ test('accepts a knowledge primary concept that is not duplicated in concepts', (
     concepts: [],
     answer: {
       directAnswer: [{ text, conceptKey: 'rayleigh-scattering' }],
+      keyPoints: ['短い波長ほど強く散乱される', '散乱光が空の広い方向から届く', '夕方は通過距離が長くなる'],
       sections: [{ heading: '説明', paragraphs: [[{ text: '補足', conceptKey: 'rayleigh-scattering' }]] }],
     },
   };
   assert.equal(hasCompleteStructuredResponse('knowledge_answer', JSON.stringify(response)), true);
+  delete response.answer.keyPoints;
+  assert.equal(hasCompleteStructuredResponse('knowledge_answer', JSON.stringify(response)), false);
 });
 
 test('accepts nuance output using the schema field names', () => {

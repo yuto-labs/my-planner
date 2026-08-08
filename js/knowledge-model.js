@@ -158,6 +158,10 @@ export function normalizeKnowledgeAnswer(raw, question = '') {
     geography: normalizeGeography(raw?.geography),
     answer: {
       directAnswer: normalizeKnowledgeSegments(raw?.answer?.directAnswer),
+      keyPoints: (Array.isArray(raw?.answer?.keyPoints) ? raw.answer.keyPoints : [])
+        .map(cleanKnowledgeText)
+        .filter(Boolean)
+        .slice(0, 5),
       sections,
       cautions: (Array.isArray(raw?.answer?.cautions) ? raw.answer.cautions : [])
         .map(cleanKnowledgeText)
@@ -179,6 +183,7 @@ export function getKnowledgeTimelineBucket(entry) {
 export function knowledgeAnswerText(entry) {
   return [
     ...(entry?.answer?.directAnswer || []).map(segment => segment.text),
+    ...(entry?.answer?.keyPoints || []),
     ...(entry?.answer?.sections || []).flatMap(section => [
       section.heading || '',
       ...(section.paragraphs || []).flatMap(paragraph => paragraph.map(segment => segment.text)),

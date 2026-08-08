@@ -582,6 +582,13 @@ function pickResponseSchema(actionType, body) {
           type: 'OBJECT',
           properties: {
             directAnswer: { type: 'ARRAY', items: segment },
+            keyPoints: {
+              type: 'ARRAY',
+              minItems: 3,
+              maxItems: 5,
+              items: { type: 'STRING' },
+              description: 'Three to five concise takeaways grounded in the answer.',
+            },
             sections: {
               type: 'ARRAY',
               minItems: 1,
@@ -601,7 +608,7 @@ function pickResponseSchema(actionType, body) {
             },
             cautions: stringArray('Only genuine uncertainty, disputed points, or important caveats.'),
           },
-          required: ['directAnswer', 'sections', 'cautions'],
+          required: ['directAnswer', 'keyPoints', 'sections', 'cautions'],
         },
       },
       required: ['title', 'classification', 'primaryConcept', 'concepts', 'facets', 'timeline', 'geography', 'answer'],
@@ -791,6 +798,7 @@ function hasCompleteKnowledgeResponse(text) {
   const parsed = parseStructuredResponse(text);
   const sections = Array.isArray(parsed?.answer?.sections) ? parsed.answer.sections : [];
   const direct = Array.isArray(parsed?.answer?.directAnswer) ? parsed.answer.directAnswer : [];
+  const keyPoints = Array.isArray(parsed?.answer?.keyPoints) ? parsed.answer.keyPoints : [];
   const concepts = Array.isArray(parsed?.concepts) ? parsed.concepts : [];
   const conceptKeys = new Set(concepts.map(concept => String(concept?.key || '').trim()).filter(Boolean));
   const primaryKey = String(parsed?.primaryConcept?.key || '').trim();
@@ -821,6 +829,8 @@ function hasCompleteKnowledgeResponse(text) {
     && availableConceptKeys.size
     && referencedKeys.every(key => availableConceptKeys.has(key))
     && direct.length
+    && keyPoints.length >= 3
+    && keyPoints.every(point => String(point || '').trim().length >= 4)
     && sections.length
     // Keep the server-side contract aligned with the client-side persistence
     // validator. Otherwise a response can look complete here, then fail only
@@ -1145,7 +1155,7 @@ The previous response was incomplete. Answer the learner's exact question direct
           parts: [{
             text: `${String(body.systemText || '')}
 
-The previous response was incomplete or contained formatting noise. Return one complete, self-contained Japanese learning entry. The explanatory body must contain at least 1200 Japanese characters and use natural paragraphs with only content-specific headings. Do not output Markdown, HTML, **, __, or code fences. Put emphasis only in the marks arrays. Never ask the user to clarify when a reasonable interpretation is possible.`,
+The previous response was incomplete or contained formatting noise. Return one complete, self-contained Japanese learning entry. Include 3-5 concise keyPoints. The explanatory body must contain at least 1200 Japanese characters and use natural paragraphs with only content-specific headings. Do not output Markdown, HTML, **, __, or code fences. Put emphasis only in the marks arrays. Never ask the user to clarify when a reasonable interpretation is possible.`,
           }],
         };
       }

@@ -41,6 +41,7 @@ function rawAnswer(overrides = {}) {
     },
     answer: {
       directAnswer: [{ text: '**空が青いのは**、短い波長の光が強く散乱されるためです。', marks: ['strong'], conceptKey: '' }],
+      keyPoints: ['短い波長ほど強く散乱される', '青い光が空の広い方向から目に届く', '夕方は光が通る距離が長くなる'],
       sections: [
         { heading: '光が大気を通るとき', paragraphs: [[{ text: paragraph.repeat(12), marks: ['highlight-blue'], conceptKey: 'rayleigh-scattering' }]] },
       ],
@@ -54,6 +55,15 @@ test('normalizes structured answers without leaking Markdown', () => {
   const entry = normalizeKnowledgeAnswer(rawAnswer(), 'なぜ空は青いの？');
   assert.equal(entry.answer.directAnswer[0].text.includes('**'), false);
   assert.equal(entry.answer.directAnswer[0].marks[0], 'strong');
+  assert.equal(entry.answer.keyPoints.length, 3);
+  assert.equal(validateKnowledgeEntry(entry).valid, true);
+});
+
+test('keeps legacy knowledge answers valid without generated key points', () => {
+  const raw = rawAnswer();
+  delete raw.answer.keyPoints;
+  const entry = normalizeKnowledgeAnswer(raw, 'なぜ空は青いの？');
+  assert.deepEqual(entry.answer.keyPoints, []);
   assert.equal(validateKnowledgeEntry(entry).valid, true);
 });
 

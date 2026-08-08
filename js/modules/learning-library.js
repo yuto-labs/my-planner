@@ -465,6 +465,8 @@ export function initLearningDetail(container) {
   const countryLabels = (entry.geography?.countryCodes || []).map(getLearningCountryLabel);
   const relatedConcepts = (entry.concepts || []).filter(concept => concept.key !== entry.primaryConcept?.key);
   const facets = Object.values(entry.facets || {}).flat().filter(Boolean);
+  const sections = entry.answer?.sections || [];
+  const keyPoints = entry.answer?.keyPoints || [];
 
   container.innerHTML = `
     <article class="learning-detail">
@@ -484,10 +486,24 @@ export function initLearningDetail(container) {
 
       <div class="learning-answer">
         <div class="learning-direct-answer">
+          <span class="learning-answer-kicker">結論</span>
           ${renderSegments(entry.answer?.directAnswer, conceptIndex, entry.id)}
         </div>
-        ${(entry.answer?.sections || []).map(section => `
-          <section class="learning-answer-section">
+        ${keyPoints.length ? `
+          <section class="learning-key-points" aria-labelledby="learning-key-points-title">
+            <h3 id="learning-key-points-title">要点</h3>
+            <ul>${keyPoints.map(point => `<li>${esc(point)}</li>`).join('')}</ul>
+          </section>
+        ` : ''}
+        ${sections.filter(section => section.heading).length > 1 ? `
+          <nav class="learning-section-nav" aria-label="回答内の見出し">
+            ${sections.map((section, index) => section.heading ? `
+              <button type="button" data-learning-section="learning-section-${index}">${esc(section.heading)}</button>
+            ` : '').join('')}
+          </nav>
+        ` : ''}
+        ${sections.map((section, index) => `
+          <section class="learning-answer-section" id="learning-section-${index}">
             ${section.heading ? `<h3>${esc(section.heading)}</h3>` : ''}
             ${(section.paragraphs || []).map(paragraph => `
               <p>${renderSegments(paragraph, conceptIndex, entry.id)}</p>
@@ -496,6 +512,7 @@ export function initLearningDetail(container) {
         `).join('')}
         ${(entry.answer?.cautions || []).length ? `
           <aside class="learning-cautions">
+            <strong>注意・例外</strong>
             ${(entry.answer.cautions || []).map(caution => `<p>${esc(caution)}</p>`).join('')}
           </aside>
         ` : ''}
@@ -543,6 +560,13 @@ export function initLearningDetail(container) {
       },
       entry.id
     ));
+  });
+  container.querySelectorAll('[data-learning-section]').forEach(button => {
+    button.addEventListener('click', () => {
+      const target = container.querySelector(`#${button.dataset.learningSection}`);
+      const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      target?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+    });
   });
 }
 
