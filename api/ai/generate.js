@@ -412,14 +412,14 @@ function pickResponseSchema(actionType, body) {
               },
               overallNuanceJa: {
                 type: 'STRING',
-                description: 'A Japanese explanation of the overall impression and suitable situation.',
+                description: 'A content-specific Japanese explanation that cites the source situation and actual wording choices, then explains their impression, emphasis, register, and suitable situations.',
               },
               register: { type: 'STRING' },
               vocabularyNotes: {
                 type: 'ARRAY',
-                description: 'One to three genuinely useful vocabulary or construction notes without repetition.',
-                minItems: 1,
-                maxItems: 3,
+                description: 'Three to five substantial notes on vocabulary, collocations, grammar, tense/aspect, clause connection, emphasis, or information structure that materially shape this translation.',
+                minItems: 3,
+                maxItems: 5,
                 items: {
                   type: 'OBJECT',
                   properties: {
@@ -435,8 +435,9 @@ function pickResponseSchema(actionType, body) {
               },
               comparisons: {
                 type: 'ARRAY',
-                description: 'Zero to two concrete comparisons that clarify a meaningful wording choice.',
-                maxItems: 2,
+                description: 'Two to four concrete comparisons with plausible alternatives, explaining how each replacement would change this exact sentence.',
+                minItems: 2,
+                maxItems: 4,
                 items: {
                   type: 'OBJECT',
                   properties: {
@@ -645,7 +646,13 @@ function hasCompleteTranslationResponse(text) {
       && String(variant?.overallNuanceJa || '').trim()
       && String(variant?.register || '').trim()
       && Array.isArray(variant?.vocabularyNotes)
-      && variant.vocabularyNotes.some(note => String(note?.expression || '').trim())
+      && variant.vocabularyNotes.filter(note => String(note?.expression || '').trim()).length >= 3
+      && Array.isArray(variant?.comparisons)
+      && variant.comparisons.filter(comparison => (
+        String(comparison?.expression || '').trim()
+        && String(comparison?.alternative || '').trim()
+        && String(comparison?.differenceJa || '').trim()
+      )).length >= 2
     ));
 }
 
@@ -1032,7 +1039,7 @@ export default async function handler(req, res) {
           parts: [{
             text: `${String(body.systemText || '')}
 
-The previous response was incomplete. Return all three distinct translation variants even when the Japanese is short, fragmentary, colloquial, or ambiguous. Never ask the user to make the Japanese more specific. State reasonable interpretations and assumptions in overallNuanceJa.`,
+The previous response was incomplete. Return all three distinct translation variants even when the Japanese is short, fragmentary, colloquial, or ambiguous. Never ask the user to make the Japanese more specific. For every variant, make overallNuanceJa specific to the source content and actual English wording; include three to five substantial vocabulary or construction notes and two to four sentence-specific comparisons. State reasonable interpretations and assumptions in overallNuanceJa.`,
           }],
         };
       }

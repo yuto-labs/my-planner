@@ -215,13 +215,21 @@ test('rejects shallow translation variants before they can be saved', () => {
   assert.equal(hasCompleteStructuredResponse('translation_variants', JSON.stringify(response)), false);
 });
 
-test('accepts translation vocabulary notes using the documented expression field', () => {
+test('accepts detailed translation variants with expanded notes and comparisons', () => {
   const makeVariant = (translation, japanese) => ({
     translation,
     backTranslationJa: japanese,
-    overallNuanceJa: '文脈に合わせた説明',
+    overallNuanceJa: '元の出来事と話者の視点に触れながら、実際に選んだ語句と構文が強調や距離感をどう変えるかを説明します。',
     register: 'neutral',
-    vocabularyNotes: [{ expression: translation, lemma: translation }],
+    vocabularyNotes: [
+      { expression: `${translation} phrase`, lemma: translation },
+      { expression: `${translation} tense`, lemma: translation },
+      { expression: `${translation} clause`, lemma: translation },
+    ],
+    comparisons: [
+      { expression: translation, alternative: `${translation} alternative`, differenceJa: 'この文での焦点が変わります。' },
+      { expression: `${translation} phrase`, alternative: `${translation} phrase two`, differenceJa: 'この文での距離感が変わります。' },
+    ],
   });
   const response = { variants: [
     makeVariant('One', '一'),
@@ -229,4 +237,21 @@ test('accepts translation vocabulary notes using the documented expression field
     makeVariant('Three', '三'),
   ] };
   assert.equal(hasCompleteStructuredResponse('translation_variants', JSON.stringify(response)), true);
+});
+
+test('rejects translation variants with too few notes or comparisons', () => {
+  const makeVariant = (translation, japanese) => ({
+    translation,
+    backTranslationJa: japanese,
+    overallNuanceJa: '内容に即した説明です。',
+    register: 'neutral',
+    vocabularyNotes: [{ expression: translation, lemma: translation }],
+    comparisons: [],
+  });
+  const response = { variants: [
+    makeVariant('One', '一'),
+    makeVariant('Two', '二'),
+    makeVariant('Three', '三'),
+  ] };
+  assert.equal(hasCompleteStructuredResponse('translation_variants', JSON.stringify(response)), false);
 });

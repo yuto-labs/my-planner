@@ -886,9 +886,10 @@ export async function generateTranslationVariants(
     'For ambiguous wording, choose reasonable interpretations for the three variants and clearly identify each assumption in overallNuanceJa. Keep uncertainty visible instead of returning an empty translation.',
     'Do not invent a person, relationship, event, time, place, emotion, or intention that the user did not supply.',
     'When the Japanese is ambiguous, keep alternatives conditional and explain the ambiguity in Japanese instead of silently choosing one interpretation.',
-    'For every variant, provide: the English translation, a Japanese back-translation that preserves the English implications, a focused one- or two-sentence explanation of its overall impression and suitable register, and 1 to 3 genuinely useful notes on important vocabulary or constructions.',
-    'Avoid repeating the same explanation across variants. Include only comparisons that reveal a meaningful choice; use zero to two comparisons per variant and return an empty comparisons array when no comparison would help.',
-    'Each vocabulary note must explain the expression or construction, its historical etymology when reliably known, its physical/root core image, and its deep nuance in this sentence.',
+    'For every variant, overallNuanceJa must be a content-specific Japanese explanation, normally three to five connected sentences. Refer explicitly to what is happening in the source, the speaker viewpoint or causal flow, and at least two actual wording or construction choices in that English variant. Explain how those choices shape emphasis, distance, emotion, rhythm, and suitable register. Never write a reusable stock comment that could be pasted under an unrelated sentence, such as merely saying that the wording is natural, casual, clear, vivid, or suitable for conversation.',
+    'For every variant, provide three to five genuinely useful vocabulary or construction notes. Cover the choices that carry the sentence meaning: important lexical items, collocations, tense/aspect, clause connection, emphasis, or information structure. Do not count trivial function words unless their use is genuinely instructive.',
+    'Avoid repeating the same explanation across variants. Provide two to four concrete comparisons per variant, choosing plausible alternatives a learner might actually consider. Each comparison must explain how replacing the used wording would alter this sentence, not give a generic dictionary contrast.',
+    'Each vocabulary note must explain the expression or construction, its historical etymology when reliably known, its physical/root core image, and its deep nuance specifically in this sentence. Connect the explanation back to the source content instead of discussing the item in isolation.',
     'Never invent an etymology. If the origin is uncertain or not relevant to a construction, leave etymologyJa empty and explain only the grammatical core image or function.',
     'Each comparison must name the expression used, a plausible alternative, and the decisive difference in nuance or usage.',
     'backTranslationJa must reveal any shift in implication rather than merely repeat the original source.',
@@ -914,7 +915,7 @@ export async function generateTranslationVariants(
     QUALITY_MODEL,
     system,
     user,
-    7200,
+    9000,
     'json',
     'translation_variants',
     options
@@ -953,7 +954,7 @@ export async function generateTranslationVariants(
             nuanceJa: String(note?.nuanceJa || '').trim(),
           }))
           .filter(note => note.expression && (note.etymologyJa || note.coreImageJa || note.nuanceJa))
-          .slice(0, 3),
+          .slice(0, 5),
         comparisons: (Array.isArray(item?.comparisons) ? item.comparisons : [])
           .map(comparison => ({
             expression: String(comparison?.expression || '').trim(),
@@ -961,7 +962,7 @@ export async function generateTranslationVariants(
             differenceJa: String(comparison?.differenceJa || '').trim(),
           }))
           .filter(comparison => comparison.expression && comparison.alternative && comparison.differenceJa)
-          .slice(0, 2),
+          .slice(0, 4),
         useCasesJa: normalizeStringList(item?.useCasesJa, 5),
         cautionsJa: normalizeStringList(item?.cautionsJa, 5),
       };
@@ -981,7 +982,7 @@ export async function generateTranslationVariants(
     throw new Error('3種類の英訳を揃えられませんでした。もう一度お試しください。');
   }
   return {
-    promptVersion: 4,
+    promptVersion: 5,
     language: 'English',
     sourceTextJa: source,
     contextJa: context,
