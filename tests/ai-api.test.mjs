@@ -6,7 +6,12 @@ const {
   pickFallbackModel,
   pickModel,
   validateRequestBody,
+  maxDuration,
 } = await import('../api/ai/generate.js');
+
+test('allows long-form AI generation to use the Vercel Fluid Compute window', () => {
+  assert.equal(maxDuration, 300);
+});
 
 test('routes fast and quality work to separate default model pools', () => {
   const previousFast = process.env.GEMINI_MODEL_FAST;

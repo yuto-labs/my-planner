@@ -21,7 +21,9 @@ export { NUANCE_ATLAS_CATEGORIES };
 
 const SERVER_STATUS_URL = '/api/ai/status';
 const SERVER_GENERATE_URL = '/api/ai/generate';
-const AI_REQUEST_TIMEOUT_MS = 65_000;
+// Long-form Atlas and Knowledge responses can legitimately take over a minute.
+// Keep this just below the server function budget while preserving cancellation.
+const AI_REQUEST_TIMEOUT_MS = 290_000;
 
 const FAST_MODEL = 'fast';
 const QUALITY_MODEL = 'quality';

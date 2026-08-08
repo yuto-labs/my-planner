@@ -821,16 +821,20 @@ function hasCompleteStructuredResponse(actionType, text) {
   return true;
 }
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const RETRYABLE_GEMINI_STATUSES = new Set([500, 502, 503, 504]);
 const FALLBACK_GEMINI_STATUSES = new Set([404, 429, ...RETRYABLE_GEMINI_STATUSES]);
+const GEMINI_REQUEST_TIMEOUT_MS = 120_000;
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 async function requestGeminiOnce(key, model, payload, timeoutMs = 50_000) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), Math.min(Math.max(timeoutMs, 1_000), 48_000));
+  const timeoutId = setTimeout(
+    () => controller.abort(),
+    Math.min(Math.max(timeoutMs, 1_000), GEMINI_REQUEST_TIMEOUT_MS)
+  );
   try {
     const upstream = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
@@ -876,7 +880,7 @@ async function requestGeminiResilient(key, model, fallbackModel, payload, timeou
   // compatible stable fallback before returning the failure to the client.
   const remainingMs = timeoutMs - (Date.now() - startedAt);
   if (remainingMs < 8_000) return { ...first, model };
-  const fallback = await requestGemini(key, fallbackModel, payload, Math.min(remainingMs, 30_000));
+  const fallback = await requestGemini(key, fallbackModel, payload, Math.min(remainingMs, 90_000));
   return { ...fallback, model: fallbackModel };
 }
 
@@ -902,8 +906,8 @@ async function fetchWithTimeout(url, options, timeoutMs) {
 
 const DEFAULT_SUPABASE_URL = 'https://nhgbvlovptelaqcurobv.supabase.co';
 const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5oZ2J2bG92cHRlbGFxY3Vyb2J2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMTY2NzcsImV4cCI6MjA5NjU5MjY3N30.Vgsy9--B3d5FoxoHpvjC00OPPzE2WUwzP8GV2LE4-p4';
-const HANDLER_BUDGET_MS = 55_000;
-const NETWORK_SAFETY_MS = 2_000;
+const HANDLER_BUDGET_MS = 285_000;
+const NETWORK_SAFETY_MS = 5_000;
 
 function getBearerToken(req) {
   const header = req.headers.authorization || req.headers.Authorization || '';
@@ -1003,7 +1007,7 @@ export default async function handler(req, res) {
   try {
     let { upstream, data, model: activeModel } = await requestGeminiResilient(
       key, model, fallbackModel, payload,
-      Math.min(48_000, remainingTimeMs(NETWORK_SAFETY_MS))
+      Math.min(GEMINI_REQUEST_TIMEOUT_MS, remainingTimeMs(NETWORK_SAFETY_MS))
     );
     if (!upstream.ok && upstream.status === 400 && payload.generationConfig.responseSchema) {
       // Some Gemini model revisions reject deeply nested response schemas even
@@ -1014,7 +1018,10 @@ export default async function handler(req, res) {
         generationConfig: { ...payload.generationConfig },
       };
       delete payload.generationConfig.responseSchema;
-      const schemaFallbackTimeMs = Math.min(48_000, remainingTimeMs(NETWORK_SAFETY_MS));
+      const schemaFallbackTimeMs = Math.min(
+        GEMINI_REQUEST_TIMEOUT_MS,
+        remainingTimeMs(NETWORK_SAFETY_MS)
+      );
       if (schemaFallbackTimeMs < 8_000) {
         res.status(504).json({ error: 'AI request timed out before a safe retry could start.' });
         return;
@@ -1039,7 +1046,10 @@ export default async function handler(req, res) {
     if (shouldRetry) {
       // Preserve room for Vercel to send a useful response and for the client
       // to receive it. A retry is only valuable when it has real time to run.
-      const retryTimeoutMs = Math.min(48_000, remainingTimeMs(NETWORK_SAFETY_MS));
+      const retryTimeoutMs = Math.min(
+        GEMINI_REQUEST_TIMEOUT_MS,
+        remainingTimeMs(NETWORK_SAFETY_MS)
+      );
       if (retryTimeoutMs < 10_000) {
         res.status(502).json({
           error: 'AIの回答を最後まで整えられませんでした。もう一度お試しください。',
