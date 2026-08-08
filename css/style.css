@@ -12417,3 +12417,70 @@ button.atlas-nuance-map-row:focus-visible {
   .learning-generation-spinner { animation-duration: 1.8s; }
   .learning-card { transition: none; }
 }
+
+/* Memo library: compact scanning without changing stored block content. */
+.kn-memo-card { padding-block: 9px; }
+.kn-memo-card-top { align-items: center; margin-bottom: 3px; }
+.kn-memo-title {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.kn-memo-preview {
+  max-height: 1.5em;
+  margin-bottom: 5px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.kn-memo-preview-line { display: flex; flex-wrap: nowrap; overflow: hidden; }
+.kn-memo-preview-text {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.kn-memo-footer .kn-tag-list {
+  min-width: 0;
+  overflow: hidden;
+  flex-wrap: nowrap;
+}
+.kn-delete-action {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 24%, transparent);
+}
+.kn-delete-action:hover,
+.kn-delete-action:focus-visible { background: color-mix(in srgb, var(--danger) 15%, transparent); }
+
+/* Blocks keep drag-and-drop through long press; the old visual grip is intentionally absent. */
+.kn-block { padding-left: 0; }
+.kn-block-drag-handle { display: none !important; }
+.kn-block--dragging {
+  opacity: .62;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
+}
+
+/* A calmer, editorial Atlas input surface. */
+.atlas-generator-page { max-width: 720px; }
+.atlas-generator-header {
+  padding: 4px 0 18px;
+  border-bottom-color: color-mix(in srgb, var(--primary) 20%, var(--border));
+}
+.atlas-generator-header h1 { font-weight: 650; letter-spacing: 0; }
+.atlas-generator-form {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  padding-top: 18px;
+}
+.atlas-generator-form label {
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--bg-card) 92%, var(--primary) 8%);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+}
+.atlas-generator-form input,
+.atlas-generator-form select,
+.atlas-generator-form textarea { background: var(--bg-input); }
+.atlas-generator-actions { padding: 0 !important; background: transparent !important; border: 0 !important; }

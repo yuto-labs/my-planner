@@ -6,7 +6,7 @@ import {
   getKnowledgeMemos, getKnowledgeMemoById,
   addKnowledgeMemo, updateKnowledgeMemo, deleteKnowledgeMemo,
   getTermExplanation, setTermExplanation, isAiAvailable,
-  scheduleFirstReview, getReviewEntry, getReviewSchedule,
+  scheduleFirstReview, getReviewEntry,
   rateReview, previewReviewIntervals, setReviewStage,
   setMemoReviewEnabled, isMemoReviewEnabled,
   MASTERY_STAGE, REVIEW_DISABLED_STAGE, STAGE_INTERVALS,
@@ -409,8 +409,6 @@ function renderList() {
     return bTime - aTime;
   });
   const allTags = [...new Set(memos.flatMap(m => m.tags || []))].sort();
-  const aiAvailable = isAiAvailable();
-  const reviewSchedule = getReviewSchedule();
   if (search) pruneMemoSearchIndex(memos);
   else memoSearchIndex.clear();
 
@@ -421,10 +419,11 @@ function renderList() {
     return matchSearch && matchTag;
   });
 
-  const visibleMemos = filtered.slice(0, listState.visibleCount);
+  const orderedMemos = [...filtered].sort((a, b) => Number(Boolean(b.starred)) - Number(Boolean(a.starred)));
+  const visibleMemos = orderedMemos.slice(0, listState.visibleCount);
   const visibleTotal = visibleMemos.length;
-  const visibleStarred = [];
-  const visibleRegular = visibleMemos;
+  const visibleStarred = visibleMemos.filter(memo => memo.starred);
+  const visibleRegular = visibleMemos.filter(memo => !memo.starred);
 
   container.innerHTML = `
     <div class="kn-list-page">
@@ -453,14 +452,6 @@ function renderList() {
         </button>
       </div>
 
-      ${aiAvailable ? `
-        <!-- AI input shortcut -->
-        <button class="kn-ai-input-btn" id="kn-ai-input-btn">
-          <span class="kn-ai-input-btn-main">✨ AI整理</span>
-          <span class="kn-ai-input-btn-sub">テキストを貼り付けてブロック形式に整形</span>
-        </button>
-      ` : ''}
-
       <!-- Tag filters -->
       ${allTags.length ? `
         <div class="kn-tag-filters">
@@ -475,10 +466,10 @@ function renderList() {
       <div class="kn-memo-list">
         ${visibleStarred.length ? `
           <div class="kn-list-section-label">⭐ ピン留め</div>
-          ${visibleStarred.map(memo => renderMemoCard(memo, reviewSchedule)).join('')}
+          ${visibleStarred.map(renderMemoCard).join('')}
           ${visibleRegular.length ? '<div class="kn-list-section-label kn-list-section-label--gap">すべてのメモ</div>' : ''}
         ` : filtered.length ? '<div class="kn-list-section-label">すべてのメモ</div>' : ''}
-        ${visibleRegular.map(memo => renderMemoCard(memo, reviewSchedule)).join('')}
+        ${visibleRegular.map(renderMemoCard).join('')}
         ${visibleTotal < filtered.length ? `
           <button class="kn-load-more-btn" id="kn-load-more" type="button">
             さらに表示
@@ -527,9 +518,6 @@ function renderList() {
     searchTimer = setTimeout(applySearch, 120);
   });
 
-  // Wire AI input sheet
-  container.querySelector('#kn-ai-input-btn')?.addEventListener('click', () => openAIInputSheet());
-
   // Wire graph navigation
   container.querySelector('#kn-graph-btn')?.addEventListener('click', () => nav('knowledge-graph'));
 
@@ -577,32 +565,10 @@ function renderList() {
   });
 }
 
-function renderMemoCard(m, reviewSchedule) {
-  const preview = renderMemoCardPreview(m.blocks || []);
+function renderMemoCard(m) {
+  const preview = renderMemoCardPreview(m.blocks || [], 1);
   const dateStr = formatDate(m.updatedAt || m.createdAt, 'short');
   const tags    = m.tags || [];
-
-  // Spaced-repetition review badge (nextReview ベースで判定)
-  const entry = reviewSchedule?.[m.id] || null;
-  const todayForBadge = new Date().toISOString().slice(0, 10);
-  let reviewBadge = '';
-  if (entry?.stage === REVIEW_DISABLED_STAGE) {
-    reviewBadge = '<span class="kn-review-badge kn-review-badge--off">復習なし</span>';
-  } else if (entry?.stage >= MASTERY_STAGE) {
-    reviewBadge = '<span class="kn-review-badge kn-review-badge--done">🎓 習得済み</span>';
-  } else if (!entry?.lastReview) {
-    const ageMs = Date.now() - new Date(m.createdAt || 0).getTime();
-    if (ageMs > 86400000) {
-      reviewBadge = '<span class="kn-review-badge kn-review-badge--new">未確認</span>';
-    }
-  } else if (entry.nextReview <= todayForBadge) {
-    const days = daysSince(entry.lastReview);
-    if (days >= 14) {
-      reviewBadge = `<span class="kn-review-badge kn-review-badge--urgent">要復習 (${days}日)</span>`;
-    } else {
-      reviewBadge = `<span class="kn-review-badge kn-review-badge--warn">復習 (${days}日)</span>`;
-    }
-  }
 
   return `
     <div class="kn-memo-card" data-memo-id="${esc(m.id)}" role="group" tabindex="0"
@@ -610,7 +576,6 @@ function renderMemoCard(m, reviewSchedule) {
       <div class="kn-memo-card-top">
         <div class="kn-memo-heading">
           <span class="kn-memo-title">${esc(m.title || '無題のメモ')}</span>
-          ${reviewBadge ? `<div class="kn-review-row">${reviewBadge}</div>` : ''}
         </div>
         ${m.pendingAI ? '<span class="kn-pending-badge">🤖 AI処理待ち</span>' : ''}
         <button class="kn-star-btn${m.starred ? ' starred' : ''}" data-star-id="${esc(m.id)}" aria-label="${m.starred ? 'スター解除' : 'スター'}">
@@ -717,6 +682,14 @@ function pruneMemoSearchIndex(memos) {
 // ============================================================
 // AI INPUT SHEET
 // ============================================================
+
+export function openKnowledgeAiOrganizer() {
+  if (!isAiAvailable()) {
+    toast('AI整理を使うにはログインとAI設定が必要です', 'error');
+    return;
+  }
+  openAIInputSheet();
+}
 
 function openAIInputSheet() {
   document.querySelector('.kn-ai-sheet')?.remove();
@@ -1274,7 +1247,7 @@ function renderViewMode(container) {
             : '<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z"/></svg>'}
         </button>
         <button class="btn btn-ghost btn-sm" id="kn-edit-btn">✏️ 編集</button>
-        <button class="btn btn-icon" id="kn-delete-btn" style="color:var(--danger)" aria-label="削除">
+        <button class="btn btn-icon kn-delete-action" id="kn-delete-btn" aria-label="このメモを削除" title="削除">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
         </button>
       </div>
@@ -1871,9 +1844,6 @@ function renderBlockEdit(block, idx, listNumber = 0) {
     ? (block.collapsed ?? !(block.children?.length))
     : false;
   const insertRow = renderBlockInsertRow(block.id);
-  const dragHandle = `
-    <button type="button" class="kn-block-drag-handle" data-drag-block-id="${esc(block.id)}"
-      title="掴んで移動" aria-label="ブロックを掴んで移動">⠿</button>`;
   const controls = `
     <div class="kn-block-controls">
       <button type="button" class="kn-block-move" data-block-action="up" data-block-id="${esc(block.id)}" title="上へ" aria-label="上へ移動">↑</button>
@@ -1887,7 +1857,6 @@ function renderBlockEdit(block, idx, listNumber = 0) {
       <div class="kn-block kn-block--divider${block.id === activeEditorBlockId ? ' kn-block--active' : ''}"
         data-block-id="${esc(block.id)}" tabindex="0" role="separator"
         aria-label="区切り線。選択後、ブロック操作から移動または削除できます">
-        ${dragHandle}
         <hr class="kn-view-divider">
         ${controls}
       </div>
@@ -1898,7 +1867,6 @@ function renderBlockEdit(block, idx, listNumber = 0) {
     return `
       <div class="kn-block kn-block--image${block.id === activeEditorBlockId ? ' kn-block--active' : ''}"
         data-block-id="${esc(block.id)}" tabindex="0">
-        ${dragHandle}
         <div class="kn-edit-image media-frame media-frame--loading">
           <img data-media-path="${esc(block.path || '')}" data-media-view="1"
             data-media-caption="${esc(block.caption || '')}" tabindex="0" role="button"
@@ -1914,7 +1882,6 @@ function renderBlockEdit(block, idx, listNumber = 0) {
   if (block.type === 'math') {
     return `
       <div class="kn-block kn-block--math${block.id === activeEditorBlockId ? ' kn-block--active' : ''}" data-block-id="${esc(block.id)}">
-        ${dragHandle}
         <div class="kn-block-math-label">∑ KaTeX</div>
         <textarea class="kn-block-math-input kn-block-focusable" data-block-id="${esc(block.id)}"
           placeholder="数式を入力 (例: E=mc^2, \frac{a}{b})">${esc(block.text)}</textarea>
@@ -1928,7 +1895,6 @@ function renderBlockEdit(block, idx, listNumber = 0) {
     const table = normalizeTableData(block);
     return `
       <div class="kn-block kn-block--table${block.id === activeEditorBlockId ? ' kn-block--active' : ''}" data-block-id="${esc(block.id)}" tabindex="0">
-        ${dragHandle}
         <div class="kn-table-scroll"><table class="kn-edit-table"><thead><tr>${table.headers.map((cell, col) => `<th><input class="kn-table-input" data-table-header data-block-id="${esc(block.id)}" data-table-col="${col}" value="${esc(cell)}" aria-label="表の見出し ${col + 1}"></th>`).join('')}</tr></thead><tbody>${table.rows.map((row, rowIndex) => `<tr>${row.map((cell, col) => `<td><input class="kn-table-input" data-table-cell data-block-id="${esc(block.id)}" data-table-row="${rowIndex}" data-table-col="${col}" value="${esc(cell)}" aria-label="表の${rowIndex + 1}行${col + 1}列"></td>`).join('')}</tr>`).join('')}</tbody></table></div>
         <div class="kn-table-actions" aria-label="表の編集"><button type="button" data-table-action="add-row" data-block-id="${esc(block.id)}">行を追加</button><button type="button" data-table-action="remove-row" data-block-id="${esc(block.id)}" ${table.rows.length <= 1 ? 'disabled' : ''}>行を削除</button><button type="button" data-table-action="add-column" data-block-id="${esc(block.id)}">列を追加</button><button type="button" data-table-action="remove-column" data-block-id="${esc(block.id)}" ${table.headers.length <= 2 ? 'disabled' : ''}>列を削除</button></div>
         ${controls}
@@ -1958,7 +1924,6 @@ function renderBlockEdit(block, idx, listNumber = 0) {
 
   return `
     <div class="kn-block ${typeClass}${block.id === activeEditorBlockId ? ' kn-block--active' : ''}" data-block-id="${esc(block.id)}">
-      ${dragHandle}
       ${prefix}
       <div class="kn-block-text kn-block-focusable" contenteditable="true"
         data-block-id="${esc(block.id)}"
@@ -2162,11 +2127,17 @@ function wireBlocksEdit(container) {
 
 function wireBlockDrag(container, wrap) {
   let dragState = null;
+  let holdTimer = null;
+  const clearHoldTimer = () => {
+    clearTimeout(holdTimer);
+    holdTimer = null;
+  };
   const clearIndicators = () => {
     wrap.querySelectorAll('.kn-block--drop-before, .kn-block--drop-after, .kn-block--drop-inside')
       .forEach(el => el.classList.remove('kn-block--drop-before', 'kn-block--drop-after', 'kn-block--drop-inside'));
   };
   const finishDrag = (cancelled = false) => {
+    clearHoldTimer();
     if (!dragState) return;
     const state = dragState;
     dragState = null;
@@ -2194,9 +2165,10 @@ function wireBlockDrag(container, wrap) {
   };
 
   wrap.addEventListener('pointerdown', e => {
-    const handle = e.target.closest('[data-drag-block-id]');
-    if (!handle || (e.pointerType === 'mouse' && e.button !== 0)) return;
-    const blockId = handle.dataset.dragBlockId;
+    if (e.target.closest('button, select, input, textarea, a, [data-media-view]')) return;
+    const blockEl = e.target.closest('.kn-block[data-block-id]');
+    if (!blockEl || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    const blockId = blockEl.dataset.blockId;
     const movingBlock = findBlockInAllBlocks(edState.blocks, blockId);
     if (!movingBlock) return;
     dragState = {
@@ -2208,19 +2180,28 @@ function wireBlockDrag(container, wrap) {
       targetId: null,
       placement: null,
       blockedIds: collectBlockIds(movingBlock),
+      blockEl,
     };
     activeEditorBlockId = blockId;
-    handle.setPointerCapture?.(e.pointerId);
+    holdTimer = setTimeout(() => {
+      if (!dragState || dragState.pointerId !== e.pointerId) return;
+      dragState.dragging = true;
+      document.body.classList.add('kn-block-drag-active');
+      blockEl.classList.add('kn-block--dragging');
+      blockEl.setPointerCapture?.(e.pointerId);
+      navigator.vibrate?.(12);
+    }, e.pointerType === 'mouse' ? 280 : 380);
   });
 
   wrap.addEventListener('pointermove', e => {
     if (!dragState || dragState.pointerId !== e.pointerId) return;
     const distance = Math.hypot(e.clientX - dragState.startX, e.clientY - dragState.startY);
-    if (!dragState.dragging && distance < 6) return;
     if (!dragState.dragging) {
-      dragState.dragging = true;
-      document.body.classList.add('kn-block-drag-active');
-      wrap.querySelector(`[data-block-id="${dragState.blockId}"]`)?.classList.add('kn-block--dragging');
+      if (distance > 8) {
+        clearHoldTimer();
+        dragState = null;
+      }
+      return;
     }
     e.preventDefault();
     clearIndicators();
@@ -2253,9 +2234,10 @@ function wireBlockDrag(container, wrap) {
   wrap.addEventListener('pointercancel', () => finishDrag(true));
 
   wrap.addEventListener('keydown', e => {
-    const handle = e.target.closest('[data-drag-block-id]');
-    if (!handle) return;
-    const blockId = handle.dataset.dragBlockId;
+    if (!e.altKey) return;
+    const blockEl = e.target.closest('.kn-block[data-block-id]');
+    if (!blockEl) return;
+    const blockId = blockEl.dataset.blockId;
     const action = {
       ArrowUp: 'up',
       ArrowDown: 'down',
@@ -2272,7 +2254,7 @@ function wireBlockDrag(container, wrap) {
     if (!moveBlock(blockId, action)) return;
     activeEditorBlockId = blockId;
     rerenderBlocks(container);
-    requestAnimationFrame(() => container.querySelector(`[data-drag-block-id="${blockId}"]`)?.focus());
+    requestAnimationFrame(() => container.querySelector(`[data-block-id="${blockId}"]`)?.focus());
   });
 }
 

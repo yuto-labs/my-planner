@@ -67,6 +67,7 @@ let state = {
   detailTrail: [],
   libraryScrollTop: 0,
   collapsedDetailSections: new Set(),
+  openNativeDetailSections: new Set(),
   morphologyType: 'all',
   usageType: 'all',
   libraryMode: 'expressions',
@@ -102,7 +103,6 @@ export function initExpressionAtlas(container) {
     searchTimer: null,
     detailTrail: [],
     libraryScrollTop: 0,
-    collapsedDetailSections: new Set(),
   };
   state.speechHandler = event => handleSpeakClick(event);
   container.addEventListener('click', state.speechHandler);
@@ -858,7 +858,6 @@ function renderMorphologyLibrary() {
       <header class="atlas-hero atlas-morphology-hero">
         <div>
           <p>接頭辞・接尾辞・語根から、単語の意味がどう組み立てられたかをたどります。</p>
-          <small>内蔵コア v${ETYMOLOGY_CORE_STATS.version} · ${ETYMOLOGY_CORE_STATS.total} entries</small>
         </div>
       </header>
       ${renderModeSwitch()}
@@ -968,7 +967,6 @@ function renderMorphologyDetail() {
           <p>${esc(entry.quickSummaryJa)}</p>
           <div class="atlas-detail-badges">
             <span>${esc(entry.origin.language)}</span>
-            <span>${entry.confidence === 'reviewed' ? 'REVIEWED CORE' : 'REFERENCE CORE'}</span>
           </div>
         </div>
       </header>
@@ -2286,19 +2284,14 @@ function sameWordThemeSection(entry, matches) {
 }
 
 function renderGenerator() {
-  const entries = getExpressionEntries();
-  const topics = unique(entries.map(entry => entry.topic).filter(Boolean));
   const input = state.generatorInput;
   state.container.innerHTML = `
     <section class="atlas-page atlas-generator-page">
       <header class="atlas-generator-header">
-        <button class="atlas-back-inline" id="atlas-generator-back" type="button">
-          <span aria-hidden="true">←</span> NUANCE ATLASへ戻る
-        </button>
         <div>
-          <div class="atlas-kicker">AI DRAFT</div>
-          <h1>表現セットを作る</h1>
-          <p>日本語の意味でも英単語でも、AIが比較する表現と分類を整理します。分類は保存前に修正できます。</p>
+          <div class="atlas-kicker">LANGUAGE WORKSHOP</div>
+          <h1>表現を深掘りする</h1>
+          <p>知りたい意味や英語表現を起点に、近い表現との違いまで一つのセットにまとめます。分類は内容から自動で整理されます。</p>
         </div>
       </header>
 
@@ -2313,21 +2306,6 @@ function renderGenerator() {
           <span>知りたい意味・表現 <small>必須</small></span>
           <input id="atlas-learning-target" required placeholder="例: 視点 / 遠慮する / bother / look forward to" value="${esc(input.learningTarget)}">
           <small class="atlas-field-help" id="atlas-query-mode-hint">${renderAtlasQueryModeHint(input.learningTarget)}</small>
-        </label>
-        <label>
-          <span>カテゴリ <small>任意・AI判定</small></span>
-          <select id="atlas-category">
-            <option value="">AIにおまかせ</option>
-            ${NUANCE_ATLAS_CATEGORIES.map(value => `
-              <option value="${esc(value)}" ${input.category === value ? 'selected' : ''}>${esc(value)}</option>
-            `).join('')}
-          </select>
-          <small class="atlas-field-help">カテゴリは大分類、テーマは「喜び」「やわらかい断り」など具体的な意味です。</small>
-        </label>
-        <label>
-          <span>テーマ <small>任意・AI判定</small></span>
-          <input id="atlas-topic" list="atlas-topic-list" placeholder="例: 喜び（空欄ならAI判定）" value="${esc(input.topic)}">
-          <datalist id="atlas-topic-list">${topics.map(value => `<option value="${esc(value)}">`).join('')}</datalist>
         </label>
         <label class="atlas-generator-wide">
           <span>含めたい表現 <small>任意</small></span>
@@ -2385,10 +2363,7 @@ function renderGenerator() {
     </section>
   `;
 
-  state.container.querySelector('#atlas-generator-back')?.addEventListener('click', () => {
-    backFromExpressionAtlas();
-  });
-  ['atlas-language', 'atlas-learning-target', 'atlas-category', 'atlas-topic', 'atlas-seed-terms'].forEach(id => {
+  ['atlas-language', 'atlas-learning-target', 'atlas-seed-terms'].forEach(id => {
     state.container.querySelector(`#${id}`)?.addEventListener('input', () => {
       syncGeneratorInput();
       updateAtlasQueryModeHint();
@@ -2468,7 +2443,7 @@ async function handleGenerate(event) {
     return;
   }
   syncGeneratorInput();
-  const { language, learningTarget, category, topic, seedTerms } = state.generatorInput;
+  const { language, learningTarget, seedTerms } = state.generatorInput;
   if (!String(learningTarget || '').trim()) {
     toast('知りたい意味・表現を入力してください', 'error');
     return;
@@ -2482,13 +2457,13 @@ async function handleGenerate(event) {
     const drafts = await generateNuanceEntries({
       language,
       learningTarget,
-      category,
-      topic,
+      category: '',
+      topic: '',
       seedTerms,
       existingTaxonomy: taxonomy,
     }, { signal: state.controller.signal });
-    state.generatorInput.category = drafts[0]?.category || category;
-    state.generatorInput.topic = drafts[0]?.topic || topic;
+    state.generatorInput.category = drafts[0]?.category || '';
+    state.generatorInput.topic = drafts[0]?.topic || '';
     state.category = state.generatorInput.category;
     state.topic = state.generatorInput.topic;
     state.drafts = drafts;
@@ -2507,22 +2482,11 @@ function syncGeneratorInput() {
   const next = {
     language: state.container.querySelector('#atlas-language')?.value || state.generatorInput.language || 'English',
     learningTarget: state.container.querySelector('#atlas-learning-target')?.value.trim() || '',
-    category: state.container.querySelector('#atlas-category')?.value.trim() || '',
-    topic: state.container.querySelector('#atlas-topic')?.value.trim() || '',
+    category: '',
+    topic: '',
     seedTerms: state.container.querySelector('#atlas-seed-terms')?.value || '',
   };
   state.generatorInput = next;
-  if (state.drafts.length && (next.category || next.topic)) {
-    state.drafts = state.drafts.map(entry => applyManualClassification(
-      entry,
-      next.category || entry.category,
-      next.topic || entry.topic
-    ));
-    const classification = state.container.querySelector('.atlas-ai-classification');
-    if (classification) {
-      classification.innerHTML = `AI分類: <strong>${esc(state.drafts[0].category)}</strong> <span aria-hidden="true">›</span> <strong>${esc(state.drafts[0].topic)}</strong>`;
-    }
-  }
 }
 
 function updateDraftSelectionUi() {
@@ -2646,6 +2610,15 @@ function wireCollapsibleDetailSections() {
       if (expanded) state.collapsedDetailSections.add(sectionKey);
       else state.collapsedDetailSections.delete(sectionKey);
       apply(!expanded);
+    });
+  });
+  state.container?.querySelectorAll('details.atlas-translation-expandable').forEach((details, index) => {
+    const summary = details.querySelector(':scope > summary');
+    const sectionKey = `${detailKey}:native:${index}:${summary?.textContent?.trim() || 'section'}`;
+    details.open = state.openNativeDetailSections.has(sectionKey);
+    details.addEventListener('toggle', () => {
+      if (details.open) state.openNativeDetailSections.add(sectionKey);
+      else state.openNativeDetailSections.delete(sectionKey);
     });
   });
 }

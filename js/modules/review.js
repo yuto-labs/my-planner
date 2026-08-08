@@ -9,34 +9,45 @@ import { renderBlocksView } from './knowledge.js';
 import { esc, fmtDays } from '../utils.js';
 
 const nav = (view) => window.AppNav?.navigate(view);
+let reviewSession = null;
 
 export function initReview(container) {
   const todayStr = new Date().toISOString().slice(0, 10);
-  const dueEntries = getReviewsForDate(todayStr);
-  const queue = dueEntries.map(e => getKnowledgeMemoById(e.memoId)).filter(Boolean);
+  if (!reviewSession || reviewSession.date !== todayStr) {
+    reviewSession = {
+      date: todayStr,
+      queueIds: getReviewsForDate(todayStr).map(entry => entry.memoId),
+      idx: 0,
+      revealed: false,
+    };
+  }
+  const queue = reviewSession.queueIds.map(getKnowledgeMemoById).filter(Boolean);
+  reviewSession.idx = Math.min(reviewSession.idx, queue.length);
 
-  let idx = 0;
-  let revealed = false;
+  const exitReview = () => {
+    reviewSession = null;
+    nav('home');
+  };
 
   function render() {
     if (queue.length === 0) {
       renderEmpty();
       return;
     }
-    if (idx >= queue.length) {
+    if (reviewSession.idx >= queue.length) {
       renderDone();
       return;
     }
-    if (revealed) renderBack(queue[idx]);
-    else renderFront(queue[idx]);
+    if (reviewSession.revealed) renderBack(queue[reviewSession.idx]);
+    else renderFront(queue[reviewSession.idx]);
   }
 
   function header() {
-    const pct = Math.round((idx / queue.length) * 100);
+    const pct = Math.round((reviewSession.idx / queue.length) * 100);
     return `
       <div class="rv-header">
         <button class="btn btn-ghost btn-sm" id="rv-exit">← 終了</button>
-        <span class="rv-count">${idx + 1} / ${queue.length}</span>
+        <span class="rv-count">${reviewSession.idx + 1} / ${queue.length}</span>
       </div>
       <div class="rv-progress-track"><div class="rv-progress-fill" style="width:${pct}%"></div></div>
     `;
@@ -50,7 +61,7 @@ export function initReview(container) {
         <div class="rv-done-sub">また明日続けましょう</div>
         <button class="btn btn-primary" id="rv-exit">ホームに戻る</button>
       </div>`;
-    container.querySelector('#rv-exit')?.addEventListener('click', () => nav('home'));
+    container.querySelector('#rv-exit')?.addEventListener('click', exitReview);
   }
 
   function renderDone() {
@@ -61,7 +72,7 @@ export function initReview(container) {
         <div class="rv-done-sub">${queue.length}件のカードを復習しました</div>
         <button class="btn btn-primary" id="rv-exit">ホームに戻る</button>
       </div>`;
-    container.querySelector('#rv-exit')?.addEventListener('click', () => nav('home'));
+    container.querySelector('#rv-exit')?.addEventListener('click', exitReview);
   }
 
   function renderFront(memo) {
@@ -80,9 +91,9 @@ export function initReview(container) {
           <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M7 10l5 5 5-5z"/></svg>
         </button>
       </div>`;
-    container.querySelector('#rv-exit')?.addEventListener('click', () => nav('home'));
+    container.querySelector('#rv-exit')?.addEventListener('click', exitReview);
     container.querySelector('#rv-reveal')?.addEventListener('click', () => {
-      revealed = true;
+      reviewSession.revealed = true;
       render();
     });
   }
@@ -119,13 +130,13 @@ export function initReview(container) {
         </div>
       </div>`;
 
-    container.querySelector('#rv-exit')?.addEventListener('click', () => nav('home'));
+    container.querySelector('#rv-exit')?.addEventListener('click', exitReview);
     container.querySelectorAll('.rv-btn[data-r]').forEach(btn => {
       btn.addEventListener('click', () => {
         addReviewLog(memo.id, memo.tags);
         rateReview(memo.id, btn.dataset.r);
-        idx++;
-        revealed = false;
+        reviewSession.idx++;
+        reviewSession.revealed = false;
         render();
       });
     });
