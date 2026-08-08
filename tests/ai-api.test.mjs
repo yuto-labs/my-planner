@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 const {
   hasCompleteStructuredResponse,
+  normalizeStructuredResponse,
   pickFallbackModel,
   pickModel,
   validateRequestBody,
@@ -121,6 +122,8 @@ test('accepts nuance output using the schema field names', () => {
   const rangedStars = JSON.parse(JSON.stringify(response));
   rangedStars.entries[0].intensityMin = 1;
   assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(rangedStars)), false);
+  const normalizedStars = normalizeStructuredResponse('nuance_generate', JSON.stringify(rangedStars));
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', normalizedStars), true);
 
   const onlyThreeExpressions = { ...response, entries: response.entries.slice(0, 3) };
   assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(onlyThreeExpressions)), false);

@@ -707,11 +707,11 @@ function hasCompleteNuanceResponse(text) {
         && intensityMin === intensityLevel
         && intensityMax === intensityLevel
         && (mapMode !== 'groups' || String(entry?.nuanceTypeJa || '').trim())
-        && (etymologyJa.length === 0 || etymologyJa.length >= 60)
-        && coreImageJa.length >= 100
-        && coreMeaningJa.length >= 120
-        && nuanceJa.length >= 180
-        && depthText.length >= 500
+        && (etymologyJa.length === 0 || etymologyJa.length >= 20)
+        && coreImageJa.length >= 50
+        && coreMeaningJa.length >= 60
+        && nuanceJa.length >= 100
+        && depthText.length >= 300
         && Array.isArray(entry?.useCasesJa)
         && entry.useCasesJa.filter(value => String(value || '').trim()).length >= 2
         && Array.isArray(entry?.examples)
@@ -727,6 +727,50 @@ function hasCompleteNuanceResponse(text) {
         )).length >= 3
       );
     });
+}
+
+function normalizeStructuredResponse(actionType, text) {
+  if (actionType !== 'nuance_generate') return text;
+  const parsed = parseStructuredResponse(text);
+  if (!parsed || !Array.isArray(parsed.entries)) return text;
+  parsed.entries = parsed.entries.map(entry => {
+    const rawLevel = Number(entry?.intensityLevel);
+    const fallbackLevel = Number(entry?.intensityMin ?? entry?.intensityMax);
+    const level = Number.isFinite(rawLevel) && rawLevel >= 1 && rawLevel <= 5
+      ? Math.round(rawLevel)
+      : (Number.isFinite(fallbackLevel) && fallbackLevel >= 1 && fallbackLevel <= 5
+        ? Math.round(fallbackLevel)
+        : 3);
+    return {
+      ...entry,
+      intensityLevel: level,
+      intensityMin: level,
+      intensityMax: level,
+      intensity: `★${level}`,
+    };
+  });
+  return JSON.stringify(parsed);
+}
+
+function logStructuredValidationFailure(actionType, text, stage) {
+  if (actionType !== 'nuance_generate') return;
+  const parsed = parseStructuredResponse(text);
+  const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
+  console.warn('[ai] structured response incomplete', {
+    actionType,
+    stage,
+    mapMode: String(parsed?.mapMode || ''),
+    entryCount: entries.length,
+    entries: entries.map(entry => ({
+      etymology: String(entry?.etymologyJa || '').trim().length,
+      coreImage: String(entry?.coreImageJa || '').trim().length,
+      coreMeaning: String(entry?.coreMeaningJa || '').trim().length,
+      nuance: String(entry?.nuanceJa || '').trim().length,
+      useCases: Array.isArray(entry?.useCasesJa) ? entry.useCasesJa.length : 0,
+      examples: Array.isArray(entry?.examples) ? entry.examples.length : 0,
+      comparisons: Array.isArray(entry?.comparisons) ? entry.comparisons.length : 0,
+    })),
+  });
 }
 
 function hasCompleteEnglishQuestionResponse(text) {
@@ -1037,9 +1081,12 @@ export default async function handler(req, res) {
       return;
     }
 
-    let text = extractText(data);
+    let text = normalizeStructuredResponse(body.actionType, extractText(data));
     const incompleteStructured = responseFormat === 'json'
       && !hasCompleteStructuredResponse(body.actionType, text);
+    if (incompleteStructured) {
+      logStructuredValidationFailure(body.actionType, text, 'initial');
+    }
     // These actions have action-specific recovery instructions below. They
     // used to be excluded here, making that recovery path unreachable.
     const shouldRetry = !text || incompleteStructured;
@@ -1111,10 +1158,11 @@ The previous response was incomplete or contained formatting noise. Return one c
         res.status(upstream.status).json({ error: msg });
         return;
       }
-      text = extractText(data);
+      text = normalizeStructuredResponse(body.actionType, extractText(data));
       if (responseFormat === 'json' && !hasCompleteStructuredResponse(body.actionType, text)) {
+        logStructuredValidationFailure(body.actionType, text, 'retry');
         res.status(502).json({
-          error: 'AIの回答形式を検証できませんでした。内容は保存されていません。もう一度お試しください。',
+          error: 'AIの回答が必要な項目を満たしませんでした。入力内容は失われていません。もう一度お試しください。',
         });
         return;
       }
@@ -1139,4 +1187,10 @@ The previous response was incomplete or contained formatting noise. Return one c
   }
 }
 
-export { hasCompleteStructuredResponse, pickFallbackModel, pickModel, validateRequestBody };
+export {
+  hasCompleteStructuredResponse,
+  normalizeStructuredResponse,
+  pickFallbackModel,
+  pickModel,
+  validateRequestBody,
+};
