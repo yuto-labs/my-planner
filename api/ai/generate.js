@@ -656,10 +656,14 @@ function hasCompleteTranslationResponse(text) {
     && variants.every(variant => (
       String(variant?.translation || '').trim()
       && String(variant?.backTranslationJa || '').trim()
-      && String(variant?.overallNuanceJa || '').trim()
+      && String(variant?.overallNuanceJa || '').trim().length >= 40
       && String(variant?.register || '').trim()
       && Array.isArray(variant?.vocabularyNotes)
-      && variant.vocabularyNotes.filter(note => String(note?.expression || '').trim()).length >= 3
+      && variant.vocabularyNotes.filter(note => (
+        String(note?.expression || '').trim()
+        && String(note?.lemma || '').trim()
+        && `${String(note?.coreImageJa || '').trim()}${String(note?.nuanceJa || '').trim()}`.length >= 20
+      )).length >= 3
       && Array.isArray(variant?.comparisons)
       && variant.comparisons.filter(comparison => (
         String(comparison?.expression || '').trim()
@@ -740,31 +744,127 @@ function hasCompleteNuanceResponse(text) {
 }
 
 function normalizeStructuredResponse(actionType, text) {
-  if (actionType !== 'nuance_generate') return text;
   const parsed = parseStructuredResponse(text);
-  if (!parsed || !Array.isArray(parsed.entries)) return text;
-  parsed.entries = parsed.entries.map(entry => {
-    const rawLevel = Number(entry?.intensityLevel);
-    const fallbackLevel = Number(entry?.intensityMin ?? entry?.intensityMax);
-    const level = Number.isFinite(rawLevel) && rawLevel >= 1 && rawLevel <= 5
-      ? Math.round(rawLevel)
-      : (Number.isFinite(fallbackLevel) && fallbackLevel >= 1 && fallbackLevel <= 5
-        ? Math.round(fallbackLevel)
-        : 3);
-    return {
-      ...entry,
-      intensityLevel: level,
-      intensityMin: level,
-      intensityMax: level,
-      intensity: `★${level}`,
-    };
-  });
+  if (!parsed) return text;
+  if (actionType === 'nuance_generate' && Array.isArray(parsed.entries)) {
+    parsed.entries = parsed.entries.map(entry => {
+      const rawLevel = Number(entry?.intensityLevel);
+      const fallbackLevel = Number(entry?.intensityMin ?? entry?.intensityMax);
+      const level = Number.isFinite(rawLevel) && rawLevel >= 1 && rawLevel <= 5
+        ? Math.round(rawLevel)
+        : (Number.isFinite(fallbackLevel) && fallbackLevel >= 1 && fallbackLevel <= 5
+          ? Math.round(fallbackLevel)
+          : 3);
+      return {
+        ...entry,
+        intensityLevel: level,
+        intensityMin: level,
+        intensityMax: level,
+        intensity: `★${level}`,
+      };
+    });
+  }
+  if (actionType === 'knowledge_answer' && parsed.answer) {
+    const conceptKeys = new Set([
+      parsed?.primaryConcept?.key,
+      ...(Array.isArray(parsed?.concepts) ? parsed.concepts.map(concept => concept?.key) : []),
+    ].map(value => String(value || '').trim()).filter(Boolean));
+    const cleanText = value => String(value || '')
+      .replace(/(\*\*|__|```|<\/?[a-z][^>]*>)/gi, '')
+      .trim();
+    const cleanSegment = segment => ({
+      ...segment,
+      text: cleanText(segment?.text),
+      conceptKey: conceptKeys.has(String(segment?.conceptKey || '').trim())
+        ? String(segment.conceptKey).trim()
+        : '',
+    });
+    parsed.answer.directAnswer = (Array.isArray(parsed.answer.directAnswer)
+      ? parsed.answer.directAnswer
+      : []).map(cleanSegment);
+    parsed.answer.keyPoints = (Array.isArray(parsed.answer.keyPoints)
+      ? parsed.answer.keyPoints
+      : []).map(cleanText).filter(Boolean);
+    parsed.answer.sections = (Array.isArray(parsed.answer.sections)
+      ? parsed.answer.sections
+      : []).map(section => ({
+      ...section,
+      heading: cleanText(section?.heading),
+      paragraphs: (Array.isArray(section?.paragraphs) ? section.paragraphs : [])
+        .map(paragraph => (Array.isArray(paragraph) ? paragraph.map(cleanSegment) : [])),
+    }));
+    parsed.answer.cautions = (Array.isArray(parsed.answer.cautions)
+      ? parsed.answer.cautions
+      : []).map(cleanText).filter(Boolean);
+  }
   return JSON.stringify(parsed);
 }
 
 function logStructuredValidationFailure(actionType, text, stage) {
-  if (actionType !== 'nuance_generate') return;
   const parsed = parseStructuredResponse(text);
+  if (!parsed) {
+    console.warn('[ai] structured response incomplete', { actionType, stage, parseable: false });
+    return;
+  }
+  if (actionType === 'knowledge_answer') {
+    const sections = Array.isArray(parsed?.answer?.sections) ? parsed.answer.sections : [];
+    const direct = Array.isArray(parsed?.answer?.directAnswer) ? parsed.answer.directAnswer : [];
+    const keyPoints = Array.isArray(parsed?.answer?.keyPoints) ? parsed.answer.keyPoints : [];
+    console.warn('[ai] structured response incomplete', {
+      actionType,
+      stage,
+      directChars: direct.map(item => String(item?.text || '')).join('').length,
+      keyPoints: keyPoints.length,
+      keyPointChars: keyPoints.map(String).join('').length,
+      sections: sections.length,
+      paragraphs: sections.reduce((sum, section) => sum + (Array.isArray(section?.paragraphs) ? section.paragraphs.length : 0), 0),
+      bodyChars: sections.flatMap(section => section?.paragraphs || [])
+        .flatMap(paragraph => paragraph || []).map(item => String(item?.text || '')).join('').length,
+      concepts: Array.isArray(parsed?.concepts) ? parsed.concepts.length : 0,
+    });
+    return;
+  }
+  if (actionType === 'translation_variants') {
+    const variants = Array.isArray(parsed?.variants) ? parsed.variants : [];
+    console.warn('[ai] structured response incomplete', {
+      actionType,
+      stage,
+      variants: variants.map(variant => ({
+        translationChars: String(variant?.translation || '').trim().length,
+        nuanceChars: String(variant?.overallNuanceJa || '').trim().length,
+        notes: Array.isArray(variant?.vocabularyNotes) ? variant.vocabularyNotes.length : 0,
+        comparisons: Array.isArray(variant?.comparisons) ? variant.comparisons.length : 0,
+      })),
+    });
+    return;
+  }
+  if (actionType === 'english_question') {
+    console.warn('[ai] structured response incomplete', {
+      actionType,
+      stage,
+      shortAnswerChars: String(parsed?.shortAnswerJa || '').trim().length,
+      intuitionChars: String(parsed?.intuitionJa || '').trim().length,
+      explanationChars: String(parsed?.explanationJa || '').trim().length,
+      examples: Array.isArray(parsed?.examples) ? parsed.examples.length : 0,
+    });
+    return;
+  }
+  if (actionType === 'memo_format') {
+    console.warn('[ai] structured response incomplete', {
+      actionType,
+      stage,
+      titleChars: String(parsed?.title || '').trim().length,
+      blocks: Array.isArray(parsed?.blocks) ? parsed.blocks.length : 0,
+      nonEmptyBlocks: Array.isArray(parsed?.blocks)
+        ? parsed.blocks.filter(block => block?.type === 'divider' || String(block?.text || '').trim()).length
+        : 0,
+    });
+    return;
+  }
+  if (actionType !== 'nuance_generate') {
+    console.warn('[ai] structured response incomplete', { actionType, stage, parseable: true });
+    return;
+  }
   const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
   console.warn('[ai] structured response incomplete', {
     actionType,
@@ -822,6 +922,7 @@ function hasCompleteKnowledgeResponse(text) {
   ].map(segment => String(segment?.conceptKey || '').trim()).filter(Boolean);
   const bodyText = [
     ...direct.map(segment => segment?.text || ''),
+    ...keyPoints,
     ...sections.flatMap(section => (
       Array.isArray(section?.paragraphs)
         ? section.paragraphs.flatMap(paragraph => (
@@ -879,6 +980,12 @@ function hasCompleteStructuredResponse(actionType, text) {
       && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(item?.startTime)
       && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(item?.endTime)
       && item.startTime < item.endTime
+    )));
+  }
+  if (actionType === 'memo_format') {
+    const blocks = Array.isArray(parsed.blocks) ? parsed.blocks : [];
+    return Boolean(String(parsed.title || '').trim() && blocks.some(block => (
+      block?.type === 'divider' || String(block?.text || '').trim()
     )));
   }
   return true;
@@ -1165,6 +1272,15 @@ The previous response was incomplete. Answer the learner's exact question direct
             text: `${String(body.systemText || '')}
 
 The previous response was incomplete or contained formatting noise. Return one complete, self-contained Japanese learning entry. Include 3-5 concise keyPoints. The explanatory body must contain at least 1200 Japanese characters and use natural paragraphs with only content-specific headings. Do not output Markdown, HTML, **, __, or code fences. Put emphasis only in the marks arrays. Never ask the user to clarify when a reasonable interpretation is possible.`,
+          }],
+        };
+      }
+      if (body.actionType === 'memo_format') {
+        retryPayload.systemInstruction = {
+          parts: [{
+            text: `${String(body.systemText || '')}
+
+The previous response was incomplete. Return a grounded title and at least one non-empty memo block. Preserve every important name, number, qualification, heading, list item, and original fact. Never replace the memo with a generic summary or an empty structure.`,
           }],
         };
       }

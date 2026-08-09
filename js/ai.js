@@ -611,7 +611,7 @@ export async function answerEnglishLearningQuestion(questionJa, options = {}) {
     cautionsJa: normalizeStringList(parsed.cautionsJa, 5),
     suggestedCategory: String(parsed.suggestedCategory || 'usage').trim(),
   };
-  if (!answer.shortAnswerJa || !answer.explanationJa || examples.length < 2) {
+  if (!answer.shortAnswerJa || !answer.intuitionJa || !answer.explanationJa || examples.length < 2) {
     throw new Error('学習用の回答を十分に作れませんでした。もう一度お試しください。');
   }
   return answer;
@@ -974,8 +974,13 @@ export async function generateTranslationVariants(
     category,
     String(context || source).replace(/\s+/g, ' ').slice(0, 24)
   );
-  if (!category || variants.length !== 3) {
-    throw new Error('3種類の英訳を揃えられませんでした。もう一度お試しください。');
+  const variantsAreComplete = variants.every(variant => (
+    variant.overallNuanceJa.length >= 40
+    && variant.vocabularyNotes.length >= 3
+    && variant.comparisons.length >= 2
+  ));
+  if (!category || variants.length !== 3 || !variantsAreComplete) {
+    throw new Error('3種類の英訳と解説を十分に揃えられませんでした。もう一度お試しください。');
   }
   return {
     promptVersion: 5,

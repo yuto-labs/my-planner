@@ -83,6 +83,19 @@ test('accepts a knowledge primary concept that is not duplicated in concepts', (
     },
   };
   assert.equal(hasCompleteStructuredResponse('knowledge_answer', JSON.stringify(response)), true);
+  const noisyResponse = JSON.parse(JSON.stringify(response));
+  noisyResponse.answer.directAnswer[0].text = `**${text}**`;
+  noisyResponse.answer.directAnswer[0].conceptKey = 'missing-concept';
+  const normalized = normalizeStructuredResponse('knowledge_answer', JSON.stringify(noisyResponse));
+  const normalizedResponse = JSON.parse(normalized);
+  assert.equal(normalizedResponse.answer.directAnswer[0].text.includes('**'), false);
+  assert.equal(normalizedResponse.answer.directAnswer[0].conceptKey, '');
+  assert.equal(hasCompleteStructuredResponse('knowledge_answer', normalized), true);
+  const balancedResponse = JSON.parse(JSON.stringify(response));
+  balancedResponse.answer.directAnswer[0].text = 'あ'.repeat(780);
+  balancedResponse.answer.keyPoints = ['い'.repeat(30), 'う'.repeat(30), 'え'.repeat(30)];
+  balancedResponse.answer.sections[0].paragraphs[0][0].text = 'お'.repeat(30);
+  assert.equal(hasCompleteStructuredResponse('knowledge_answer', JSON.stringify(balancedResponse)), true);
   delete response.answer.keyPoints;
   assert.equal(hasCompleteStructuredResponse('knowledge_answer', JSON.stringify(response)), false);
 });
@@ -288,9 +301,9 @@ test('accepts detailed translation variants with expanded notes and comparisons'
     overallNuanceJa: '元の出来事と話者の視点に触れながら、実際に選んだ語句と構文が強調や距離感をどう変えるかを説明します。',
     register: 'neutral',
     vocabularyNotes: [
-      { expression: `${translation} phrase`, lemma: translation },
-      { expression: `${translation} tense`, lemma: translation },
-      { expression: `${translation} clause`, lemma: translation },
+      { expression: `${translation} phrase`, lemma: translation, coreImageJa: '語句が持つ核の像を説明します。', nuanceJa: 'この文で生まれる焦点を説明します。' },
+      { expression: `${translation} tense`, lemma: translation, coreImageJa: '時制が作る時間の見方を説明します。', nuanceJa: 'この文での時間的な含意を説明します。' },
+      { expression: `${translation} clause`, lemma: translation, coreImageJa: '節同士を結ぶ関係を説明します。', nuanceJa: 'この文での情報の流れを説明します。' },
     ],
     comparisons: [
       { expression: translation, alternative: `${translation} alternative`, differenceJa: 'この文での焦点が変わります。' },
@@ -303,6 +316,44 @@ test('accepts detailed translation variants with expanded notes and comparisons'
     makeVariant('Three', '三'),
   ] };
   assert.equal(hasCompleteStructuredResponse('translation_variants', JSON.stringify(response)), true);
+});
+
+test('rejects translation notes that only contain labels', () => {
+  const makeVariant = translation => ({
+    translation,
+    backTranslationJa: '逆翻訳です。',
+    overallNuanceJa: '元の内容と実際の語句に触れながら、この訳が生む焦点、距離感、使用域を具体的に説明します。',
+    register: 'neutral',
+    vocabularyNotes: [1, 2, 3].map(index => ({ expression: `${translation}-${index}`, lemma: translation })),
+    comparisons: [1, 2].map(index => ({ expression: translation, alternative: `${translation}-${index}`, differenceJa: '焦点が変わります。' })),
+  });
+  const response = { variants: ['One', 'Two', 'Three'].map(makeVariant) };
+  assert.equal(hasCompleteStructuredResponse('translation_variants', JSON.stringify(response)), false);
+});
+
+test('requires every core part of an English learning answer', () => {
+  const complete = {
+    shortAnswerJa: 'この二つは、話者がどこへ意識を向けるかが異なります。',
+    intuitionJa: '一方は点を、もう一方は範囲の内側を捉えるイメージです。',
+    explanationJa: '前置詞が示す関係を、場所だけでなく時間や抽象的な状況にも広げて考えると違いが見えます。後続する名詞との関係と、話者が境界をどう捉えるかを確認すると自然に選べます。',
+    examples: [
+      { english: 'Example one.', japanese: '例文一。', noteJa: '使い方一。' },
+      { english: 'Example two.', japanese: '例文二。', noteJa: '使い方二。' },
+    ],
+  };
+  assert.equal(hasCompleteStructuredResponse('english_question', JSON.stringify(complete)), true);
+  assert.equal(hasCompleteStructuredResponse('english_question', JSON.stringify({ ...complete, explanationJa: '' })), false);
+});
+
+test('rejects an empty memo-format response before it reaches the editor', () => {
+  assert.equal(hasCompleteStructuredResponse('memo_format', JSON.stringify({
+    title: '整理済みメモ',
+    blocks: [{ type: 'paragraph', text: '残すべき本文です。' }],
+    tags: [],
+  })), true);
+  assert.equal(hasCompleteStructuredResponse('memo_format', JSON.stringify({
+    title: '整理済みメモ', blocks: [], tags: [],
+  })), false);
 });
 
 test('rejects translation variants with too few notes or comparisons', () => {
