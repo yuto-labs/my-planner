@@ -843,6 +843,37 @@ function expressionEntryKey(entry) {
   ].join('|');
 }
 
+function normalizedExpressionSourceQueries(entry) {
+  return new Set([
+    entry?.sourceQueryJa,
+    ...(Array.isArray(entry?.sourceQueries) ? entry.sourceQueries : []),
+  ].map(value => String(value || '')
+    .normalize('NFKC')
+    .trim()
+    .toLocaleLowerCase())
+    .filter(Boolean));
+}
+
+function isRepeatedExpressionQuery(existing, incoming) {
+  const existingLemma = String(existing?.lemma || existing?.term || '')
+    .normalize('NFKC').trim().toLocaleLowerCase();
+  const incomingLemma = String(incoming?.lemma || incoming?.term || '')
+    .normalize('NFKC').trim().toLocaleLowerCase();
+  if (!existingLemma || existingLemma !== incomingLemma) return false;
+
+  const existingLanguage = String(existing?.language || 'English').trim().toLocaleLowerCase();
+  const incomingLanguage = String(incoming?.language || 'English').trim().toLocaleLowerCase();
+  if (existingLanguage !== incomingLanguage) return false;
+
+  const existingPart = String(existing?.partOfSpeech || '').normalize('NFKC').trim().toLocaleLowerCase();
+  const incomingPart = String(incoming?.partOfSpeech || '').normalize('NFKC').trim().toLocaleLowerCase();
+  if (existingPart && incomingPart && existingPart !== incomingPart) return false;
+
+  const existingQueries = normalizedExpressionSourceQueries(existing);
+  const incomingQueries = normalizedExpressionSourceQueries(incoming);
+  return [...incomingQueries].some(query => existingQueries.has(query));
+}
+
 function stableAtlasJson(value) {
   if (Array.isArray(value)) return `[${value.map(stableAtlasJson).join(',')}]`;
   if (value && typeof value === 'object') {
@@ -1222,7 +1253,8 @@ export function addExpressionEntries(entries) {
   const saved = [];
   (Array.isArray(entries) ? entries : []).forEach(entry => {
     if (!String(entry?.term || '').trim()) return;
-    const existing = byKey.get(expressionEntryKey(entry));
+    const existing = byKey.get(expressionEntryKey(entry))
+      || [...byKey.values()].find(candidate => isRepeatedExpressionQuery(candidate, entry));
     const merged = existing
       ? {
         ...existing,
@@ -1238,6 +1270,7 @@ export function addExpressionEntries(entries) {
         personalNote: existing.personalNote || entry.personalNote || '',
       }
       : { ...entry, id: entry.id || generateId() };
+    if (existing) byKey.delete(expressionEntryKey(existing));
     byKey.set(expressionEntryKey(merged), merged);
     saved.push(merged);
   });

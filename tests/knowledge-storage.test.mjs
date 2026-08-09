@@ -119,6 +119,48 @@ test('atlas updates preserve every Japanese and English source query as a search
   assert.deepEqual(saved.sourceQueries.sort(), ['bother', '面倒'].sort());
 });
 
+test('repeated Atlas queries reuse an entry despite classification and sense-id drift', () => {
+  const [first] = addExpressionEntries([{
+    term: 'nudge',
+    lemma: 'nudge',
+    partOfSpeech: 'verb',
+    category: 'Action',
+    topic: 'Gentle movement',
+    senseId: 'small-push',
+    sourceQueryJa: 'nudge',
+    sourceQueries: ['nudge'],
+    coreMeaningJa: 'A',
+  }]);
+  const [second] = addExpressionEntries([{
+    term: 'nudge',
+    lemma: 'nudge',
+    partOfSpeech: 'verb',
+    category: 'Communication',
+    topic: 'Gentle prompting',
+    senseId: 'prompt-gently',
+    sourceQueryJa: 'nudge',
+    sourceQueries: ['nudge'],
+    coreMeaningJa: 'B',
+  }]);
+
+  assert.equal(second.id, first.id);
+  assert.equal(getExpressionEntries().filter(entry => entry.lemma === 'nudge').length, 1);
+  assert.equal(getExpressionEntries().find(entry => entry.id === first.id)?.coreMeaningJa, 'B');
+});
+
+test('repeated Atlas queries keep genuinely different parts of speech separate', () => {
+  addExpressionEntries([{
+    term: 'draft', lemma: 'draft', partOfSpeech: 'noun', category: 'Writing', topic: 'Draft',
+    senseId: 'preliminary-text', sourceQueryJa: 'draft', sourceQueries: ['draft'],
+  }]);
+  addExpressionEntries([{
+    term: 'draft', lemma: 'draft', partOfSpeech: 'verb', category: 'Writing', topic: 'Draft',
+    senseId: 'write-preliminary', sourceQueryJa: 'draft', sourceQueries: ['draft'],
+  }]);
+
+  assert.equal(getExpressionEntries().filter(entry => entry.lemma === 'draft').length, 2);
+});
+
 test('atlas preserves legacy collocations and new Japanese meanings together', () => {
   const [saved] = addExpressionEntries([{
     term: 'monitor',
