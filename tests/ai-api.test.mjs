@@ -170,6 +170,13 @@ test('accepts nuance output using the schema field names', () => {
     true
   );
 
+  const compactCoreMeaning = JSON.parse(JSON.stringify(productionSizedExplanation));
+  compactCoreMeaning.entries[0].coreMeaningJa = 'm'.repeat(11);
+  assert.equal(
+    hasCompleteStructuredResponse('nuance_generate', JSON.stringify(compactCoreMeaning)),
+    true
+  );
+
   const rangedStars = JSON.parse(JSON.stringify(response));
   rangedStars.entries[0].intensityMin = 1;
   assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(rangedStars)), false);

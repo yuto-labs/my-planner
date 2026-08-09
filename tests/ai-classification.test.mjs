@@ -10,6 +10,12 @@ test('detects a direct English word or phrasal verb as an anchor expression', ()
   assert.equal(detectAtlasQueryMode('bother の違い'), 'japanese_concept');
 });
 
+test('keeps phrasal verbs, inflected forms, plurals, and likely typos in English seed mode', () => {
+  ['drift off', 'drifted off', 'observations', 'drfit off'].forEach(value => {
+    assert.equal(detectAtlasQueryMode(value), 'english_seed');
+  });
+});
+
 test('reuses a theme when its saved representative terms contain the English query', () => {
   const result = reuseEquivalentAtlasTopic(
     [{

@@ -732,7 +732,7 @@ function hasCompleteNuanceResponse(text) {
         && (mapMode !== 'groups' || String(entry?.nuanceTypeJa || '').trim())
         && (etymologyJa.length === 0 || etymologyJa.length >= 20)
         && coreImageJa.length >= 20
-        && coreMeaningJa.length >= 20
+        && coreMeaningJa.length >= 10
         && nuanceJa.length >= 70
         // Gemini often explains a compact concept well in fewer characters.
         // Keep the per-field requirements and examples as the quality floor,
