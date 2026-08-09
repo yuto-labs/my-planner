@@ -132,6 +132,18 @@ test('accepts nuance output using the schema field names', () => {
     true
   );
 
+  const conciseWithoutPadding = JSON.parse(JSON.stringify(response));
+  conciseWithoutPadding.entries.forEach(entry => {
+    entry.etymologyJa = '語'.repeat(58);
+    entry.coreImageJa = '像'.repeat(48);
+    entry.coreMeaningJa = '核'.repeat(42);
+    entry.nuanceJa = '深'.repeat(133);
+  });
+  assert.equal(
+    hasCompleteStructuredResponse('nuance_generate', JSON.stringify(conciseWithoutPadding)),
+    true
+  );
+
   const rangedStars = JSON.parse(JSON.stringify(response));
   rangedStars.entries[0].intensityMin = 1;
   assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(rangedStars)), false);

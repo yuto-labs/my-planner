@@ -718,7 +718,10 @@ function hasCompleteNuanceResponse(text) {
         && coreImageJa.length >= 20
         && coreMeaningJa.length >= 20
         && nuanceJa.length >= 100
-        && depthText.length >= 300
+        // Each explanation field already has its own depth requirement. Keep
+        // this aggregate guard only for genuinely thin responses, rather than
+        // rejecting complete entries that explain the ideas concisely.
+        && depthText.length >= 240
         && Array.isArray(entry?.useCasesJa)
         && entry.useCasesJa.filter(value => String(value || '').trim()).length >= 2
         && Array.isArray(entry?.examples)
@@ -773,6 +776,12 @@ function logStructuredValidationFailure(actionType, text, stage) {
       coreImage: String(entry?.coreImageJa || '').trim().length,
       coreMeaning: String(entry?.coreMeaningJa || '').trim().length,
       nuance: String(entry?.nuanceJa || '').trim().length,
+      totalDepth: [
+        entry?.etymologyJa,
+        entry?.coreImageJa,
+        entry?.coreMeaningJa,
+        entry?.nuanceJa,
+      ].map(value => String(value || '').trim()).join('').length,
       useCases: Array.isArray(entry?.useCasesJa) ? entry.useCasesJa.length : 0,
       examples: Array.isArray(entry?.examples) ? entry.examples.length : 0,
       comparisons: Array.isArray(entry?.comparisons) ? entry.comparisons.length : 0,
