@@ -157,6 +157,19 @@ test('accepts nuance output using the schema field names', () => {
     true
   );
 
+  const productionSizedExplanation = JSON.parse(JSON.stringify(response));
+  productionSizedExplanation.entries.forEach(entry => {
+    entry.etymologyJa = 'e'.repeat(36);
+    entry.coreImageJa = 'i'.repeat(24);
+    entry.coreMeaningJa = 'm'.repeat(27);
+    entry.nuanceJa = 'n'.repeat(99);
+    entry.comparisons = entry.comparisons.slice(0, 2);
+  });
+  assert.equal(
+    hasCompleteStructuredResponse('nuance_generate', JSON.stringify(productionSizedExplanation)),
+    true
+  );
+
   const rangedStars = JSON.parse(JSON.stringify(response));
   rangedStars.entries[0].intensityMin = 1;
   assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(rangedStars)), false);

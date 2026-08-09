@@ -721,11 +721,11 @@ function hasCompleteNuanceResponse(text) {
         && (etymologyJa.length === 0 || etymologyJa.length >= 20)
         && coreImageJa.length >= 20
         && coreMeaningJa.length >= 20
-        && nuanceJa.length >= 100
-        // Each explanation field already has its own depth requirement. Keep
-        // this aggregate guard only for genuinely thin responses, rather than
-        // rejecting complete entries that explain the ideas concisely.
-        && depthText.length >= 240
+        && nuanceJa.length >= 70
+        // Gemini often explains a compact concept well in fewer characters.
+        // Keep the per-field requirements and examples as the quality floor,
+        // but do not discard a useful four-part explanation over padding.
+        && depthText.length >= 170
         && Array.isArray(entry?.useCasesJa)
         && entry.useCasesJa.filter(value => String(value || '').trim()).length >= 2
         && Array.isArray(entry?.examples)
@@ -738,7 +738,7 @@ function hasCompleteNuanceResponse(text) {
         && entry.comparisons.filter(comparison => (
           String(comparison?.term || '').trim()
           && String(comparison?.differenceJa || '').trim()
-        )).length >= 3
+        )).length >= 2
       );
     });
 }
