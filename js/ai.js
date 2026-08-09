@@ -719,7 +719,7 @@ export async function generateNuanceEntries(
     'Always answer when at least a category, topic, or expression is supplied. For a broad or ambiguous request, choose the most useful interpretation and make that interpretation clear instead of asking for more detail.',
     'Prefer an existing category/topic from existingTaxonomy when it is semantically equivalent; otherwise create a clear, reusable label. Never use vague labels such as その他, 一般, 英語表現, 表現の違い, or the category name itself.',
     'Topic must be a compact Japanese noun phrase, usually 2 to 14 characters. Never write a full sentence or a label ending in 表現, 言い方, 場面, 〜を表す表現, or 〜するとき.',
-    'Create 4 to 5 genuinely useful expressions for the requested semantic topic, unless more seed terms are supplied; always include every supplied seed term. Never return only three expressions.',
+    'Create 3 to 5 genuinely useful expressions for the requested semantic topic, unless more seed terms are supplied; always include every supplied seed term. Prefer three complete, meaningfully distinct expressions to padding the set with weak or repetitive entries.',
     'Choose mapMode for the whole set. Use scale only when every expression can be compared on one genuinely meaningful continuum. In that case provide a concise theme-specific mapAxisJa plus low and high endpoint labels, and assign each expression exactly one integer star level from 1 to 5. Set intensityLevel, intensityMin, and intensityMax to that same integer; never return a range such as 1-2 or 3-4.',
     'Use groups when forcing the expressions onto one continuum would mislead the learner. In groups mode, mapAxisJa should name the organizing principle and nuanceTypeJa must be a concise reusable group label. Do not invent a strength ranking merely to fill the map.',
     'For scale mode, intensityLevel is one definite position from 1 to 5, chosen by comparing the expressions within this exact set on mapAxisJa. For groups mode it may be 3 for schema compatibility, but it will not be shown. In both modes nuanceTypeJa must explain a qualitative type rather than repeat a number.',
@@ -749,7 +749,7 @@ export async function generateNuanceEntries(
     seedTerms: terms,
     existingTaxonomy: (Array.isArray(existingTaxonomy) ? existingTaxonomy : []).slice(0, 40),
     allowedCategories: NUANCE_ATLAS_CATEGORIES,
-    requestedEntryCount: terms.length ? Math.max(terms.length, 4) : 4,
+    requestedEntryCount: terms.length ? Math.max(terms.length, 3) : 4,
   });
 
   const raw = await callAPI(

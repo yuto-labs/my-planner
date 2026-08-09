@@ -98,7 +98,6 @@ export function initExpressionAtlas(container) {
   state = {
     ...state,
     container,
-    controller: null,
     noteTimer: null,
     searchTimer: null,
     detailTrail: [],
@@ -112,14 +111,11 @@ export function initExpressionAtlas(container) {
     persistOpenTranslationNote();
     clearTimeout(state.noteTimer);
     clearTimeout(state.searchTimer);
-    state.controller?.abort();
     window.speechSynthesis?.cancel?.();
     state.speechText = '';
-    state.container?.removeEventListener('click', state.speechHandler);
+    container.removeEventListener('click', state.speechHandler);
     state.speechHandler = null;
-    state.controller = null;
-    state.generating = false;
-    state.container = null;
+    if (state.container === container) state.container = null;
   };
 }
 
@@ -169,6 +165,20 @@ function handleSpeakClick(event) {
 
 export function hasActiveExpressionAtlasWork() {
   return state.generating;
+}
+
+function renderIfMounted() {
+  if (state.container?.isConnected) render();
+
+function markGeneratorBusy(formSelector, message) {
+  const form = state.container?.querySelector(formSelector);
+  if (!form) return;
+  form.setAttribute('aria-busy', 'true');
+  const submit = form.querySelector('button[type="submit"]');
+  if (!submit) return;
+  submit.disabled = true;
+  submit.textContent = message;
+}
 }
 
 export function backFromExpressionAtlas() {
@@ -1334,7 +1344,7 @@ async function answerEnglishQuestion(question) {
   } finally {
     state.generating = false;
     state.controller = null;
-    render();
+    renderIfMounted();
   }
 }
 
@@ -1708,7 +1718,7 @@ async function handleTranslationGenerate(event) {
   const taxonomy = collectAtlasTaxonomy();
   state.generating = true;
   state.controller = new AbortController();
-  renderTranslationGenerator();
+  markGeneratorBusy('#atlas-translation-form', '\u82f1\u8a33\u3092\u4f5c\u6210\u4e2d\u2026');
   try {
     const generated = await generateTranslationVariants({
       ...state.translationInput,
@@ -1727,7 +1737,7 @@ async function handleTranslationGenerate(event) {
   } finally {
     state.generating = false;
     state.controller = null;
-    render();
+    renderIfMounted();
   }
 }
 
@@ -2451,7 +2461,7 @@ async function handleGenerate(event) {
 
   state.generating = true;
   state.controller = new AbortController();
-  renderGenerator();
+  markGeneratorBusy('#atlas-generator-form', '\u8868\u73fe\u30bb\u30c3\u30c8\u3092\u4f5c\u6210\u4e2d\u2026');
   try {
     const drafts = await generateNuanceEntries({
       language,
@@ -2463,16 +2473,40 @@ async function handleGenerate(event) {
     }, { signal: state.controller.signal });
     state.generatorInput.category = drafts[0]?.category || '';
     state.generatorInput.topic = drafts[0]?.topic || '';
-    state.category = state.generatorInput.category;
-    state.topic = state.generatorInput.topic;
     state.drafts = drafts;
     state.selectedDrafts = new Set(drafts.map((_, index) => index));
+    const saved = addExpressionEntries(drafts);
+    if (!saved.length) throw new Error('\u751f\u6210\u7d50\u679c\u3092\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f\u3002\u5165\u529b\u5185\u5bb9\u306f\u753b\u9762\u306b\u6b8b\u3057\u3066\u3044\u307e\u3059\u3002');
+
+    const questionId = state.questionConversionId;
+    if (questionId) {
+      const question = getEnglishQuestions().find(item => item.id === questionId);
+      if (question) {
+        const previousIds = Array.isArray(question.atlasEntryIds) ? question.atlasEntryIds : [];
+        updateEnglishQuestion(questionId, {
+          atlasEntryIds: [...new Set([...previousIds, ...saved.map(entry => entry.id)])],
+        });
+      }
+    }
+    state.category = saved[0].category;
+    state.topic = saved[0].topic;
+    state.screen = 'library';
+    state.drafts = [];
+    state.selectedDrafts = new Set();
+    state.questionConversionId = '';
+    if (questionId) {
+      state.questionId = questionId;
+      state.libraryMode = 'questions';
+      toast(`${saved.length}\u4ef6\u3092Atlas\u3078\u4fdd\u5b58\u3057\u3001\u8cea\u554f\u306b\u95a2\u9023\u4ed8\u3051\u307e\u3057\u305f`, 'success');
+    } else {
+      toast(`${saved.length}\u4ef6\u306e\u8868\u73fe\u3092\u81ea\u52d5\u4fdd\u5b58\u3057\u307e\u3057\u305f`, 'success');
+    }
   } catch (error) {
     if (error?.name !== 'AbortError') toast(error?.message || '表現セットを作成できませんでした', 'error');
   } finally {
     state.generating = false;
     state.controller = null;
-    render();
+    renderIfMounted();
   }
 }
 

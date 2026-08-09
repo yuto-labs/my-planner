@@ -184,11 +184,20 @@ test('accepts nuance output using the schema field names', () => {
   assert.equal(hasCompleteStructuredResponse('nuance_generate', normalizedStars), true);
 
   const onlyThreeExpressions = { ...response, entries: response.entries.slice(0, 3) };
-  assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(onlyThreeExpressions)), false);
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(onlyThreeExpressions)), true);
+  const onlyTwoExpressions = { ...response, entries: response.entries.slice(0, 2) };
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(onlyTwoExpressions)), false);
 
   const duplicateExample = JSON.parse(JSON.stringify(response));
   duplicateExample.entries[1].examples[0].source = duplicateExample.entries[0].examples[0].source;
-  assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(duplicateExample)), false);
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(duplicateExample)), true);
+
+  const groupsWithoutLabels = JSON.parse(JSON.stringify(response));
+  groupsWithoutLabels.mapMode = 'groups';
+  groupsWithoutLabels.entries.forEach(entry => { delete entry.nuanceTypeJa; });
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(groupsWithoutLabels)), false);
+  const normalizedGroups = normalizeStructuredResponse('nuance_generate', JSON.stringify(groupsWithoutLabels));
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', normalizedGroups), true);
 });
 
 test('keeps legacy nuance field names readable during validation', () => {

@@ -29,7 +29,6 @@ import { initKnowledgeGraph } from './modules/knowledge-graph.js';
 import {
   initExpressionAtlas,
   backFromExpressionAtlas,
-  hasActiveExpressionAtlasWork,
 } from './modules/expression-atlas.js';
 import { initAnalytics } from './modules/analytics.js';
 import {
@@ -127,7 +126,6 @@ function hasUnsavedDraft() {
   }
 
   if (currentView === 'knowledge-detail' && hasUnsavedKnowledgeChanges()) return true;
-  if (currentView === 'expression-atlas' && hasActiveExpressionAtlasWork()) return true;
   if ((currentView === 'knowledge' || currentView === 'learning-detail') && hasActiveKnowledgeWork()) return true;
 
   if (currentView === 'calendar' && (hasOpenModal() || hasOpenDatePicker() || hasOpenCalendarSheet())) {

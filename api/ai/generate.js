@@ -257,8 +257,8 @@ function pickResponseSchema(actionType, body) {
         },
         entries: {
           type: 'ARRAY',
-          description: 'Four to five distinct expressions for the requested topic, each with equally deep treatment.',
-          minItems: 4,
+          description: 'Three to five distinct expressions for the requested topic, each with equally deep treatment. Prefer fewer complete entries to padded or repetitive ones.',
+          minItems: 3,
           maxItems: 5,
           items: {
             type: 'OBJECT',
@@ -698,15 +698,10 @@ function hasCompleteNuanceResponse(text) {
   const terms = entries
     .map(entry => String(entry?.term || '').trim().toLocaleLowerCase())
     .filter(Boolean);
-  const exampleSources = entries.flatMap(entry => (
-    Array.isArray(entry?.examples) ? entry.examples : []
-  )).map(example => String(example?.source || example?.english || '').trim().toLocaleLowerCase())
-    .filter(Boolean);
   return Boolean(validMap)
-    && entries.length >= 4
+    && entries.length >= 3
     && entries.length <= 5
-    && new Set(terms).size >= 4
-    && exampleSources.length === new Set(exampleSources).size
+    && new Set(terms).size >= 3
     && entries.every(entry => {
       const intensityLevel = Number(entry?.intensityLevel);
       const intensityMin = Number(entry?.intensityMin);
@@ -767,8 +762,16 @@ function normalizeStructuredResponse(actionType, text) {
         : (Number.isFinite(fallbackLevel) && fallbackLevel >= 1 && fallbackLevel <= 5
           ? Math.round(fallbackLevel)
           : 3);
+      const nuanceTypeJa = String(entry?.nuanceTypeJa || '').trim()
+        || (String(parsed?.mapMode || '').trim() === 'groups'
+          ? (String(entry?.coreMeaningJa || entry?.coreImageJa || entry?.term || '')
+            .trim()
+            .split(/[。！？\n]/)[0]
+            .slice(0, 18) || 'その他')
+          : '');
       return {
         ...entry,
+        nuanceTypeJa,
         intensityLevel: level,
         intensityMin: level,
         intensityMax: level,
@@ -1265,7 +1268,7 @@ The previous response was incomplete. Return all three distinct translation vari
           parts: [{
             text: `${String(body.systemText || '')}
 
-The previous response was incomplete or too shallow. Return four to five distinct expressions with every required field and equally deep treatment. Choose one honest mapMode for the set: scale only when one named continuum is meaningful, otherwise groups. Always provide mapAxisJa. Assign one definite integer star level to every scale entry and set intensityLevel, intensityMin, and intensityMax to that same value; never return a range. Scale also requires useful low/high endpoint labels, while groups requires a reusable nuanceTypeJa for every entry. For each expression, make etymologyJa, coreImageJa, coreMeaningJa, and especially nuanceJa substantial, distinct, and connected enough to build a usable mental model; explain sense shifts, viewpoint, agency, implications, grammar, register, and natural-use boundaries rather than padding with paraphrases. Include at least three globally unique examples with usage notes and at least three concrete comparisons per expression. The user does not need to provide a usage situation: infer several realistic situations for each expression and explain them in useCasesJa. Never ask the user to make the theme or words more specific when a reasonable interpretation is possible.`,
+The previous response was incomplete or too shallow. Return three to five distinct expressions with every required field and equally deep treatment. Prefer three complete entries to padding the set. Choose one honest mapMode for the set: scale only when one named continuum is meaningful, otherwise groups. Always provide mapAxisJa. Assign one definite integer star level to every scale entry and set intensityLevel, intensityMin, and intensityMax to that same value; never return a range. Scale also requires useful low/high endpoint labels, while groups should provide a reusable nuanceTypeJa for every entry. For each expression, make etymologyJa, coreImageJa, coreMeaningJa, and especially nuanceJa substantial, distinct, and connected enough to build a usable mental model; explain sense shifts, viewpoint, agency, implications, grammar, register, and natural-use boundaries rather than padding with paraphrases. Include at least three distinct examples with usage notes and at least three concrete comparisons per expression. The user does not need to provide a usage situation: infer several realistic situations for each expression and explain them in useCasesJa. Never ask the user to make the theme or words more specific when a reasonable interpretation is possible.`,
           }],
         };
       }
