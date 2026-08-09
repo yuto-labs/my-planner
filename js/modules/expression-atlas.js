@@ -2171,7 +2171,7 @@ function renderDetail() {
       ${grammarNotesSection(entry.grammarNotes)}
       ${relatedEtymologySection(entry)}
       ${detailSection('感情の温度', entry.emotionalToneJa)}
-      ${chipSection('よく一緒に使う語', entry.collocations)}
+      ${collocationsSection(entry.collocations, buildExpressionIndex(getExpressionEntries()))}
       ${listSection('注意点', entry.cautionsJa, 'atlas-note-list--warning')}
 
       <section class="atlas-detail-section">
@@ -2902,12 +2902,29 @@ function listSection(title, items, className = '') {
   `;
 }
 
-function chipSection(title, items) {
+function normalizeCollocationItem(item) {
+  if (typeof item === 'string') {
+    return { expression: item.trim(), translationJa: '' };
+  }
+  return {
+    expression: String(item?.expression || item?.text || '').trim(),
+    translationJa: String(item?.translationJa || item?.meaningJa || '').trim(),
+  };
+}
+
+function collocationsSection(items, expressionIndex = buildExpressionIndex(getExpressionEntries())) {
   if (!Array.isArray(items) || !items.length) return '';
+  const collocations = items.map(normalizeCollocationItem).filter(item => item.expression);
+  if (!collocations.length) return '';
   return `
     <section class="atlas-detail-section">
-      <h2>${esc(title)}</h2>
-      <div class="atlas-chip-list">${items.map(item => `<span>${esc(item)}</span>`).join('')}</div>
+      <h2>よく一緒に使う語</h2>
+      <div class="atlas-collocation-list">${collocations.map(item => `
+        <span class="atlas-collocation-item">
+          ${linkedExpressionTerm(item.expression, expressionIndex)}
+          ${item.translationJa ? `<span>${esc(item.translationJa)}</span>` : ''}
+        </span>
+      `).join('')}</div>
     </section>
   `;
 }
@@ -3034,7 +3051,10 @@ function searchableText(entry) {
     entry.topic,
     ...(entry.topicAliases || []),
     ...(entry.useCasesJa || []),
-    ...(entry.collocations || []),
+    ...(entry.collocations || []).flatMap(item => {
+      const collocation = normalizeCollocationItem(item);
+      return [collocation.expression, collocation.translationJa];
+    }),
     ...(entry.cautionsJa || []),
     ...(entry.examples || []).flatMap(example => [example.source, example.translation, example.noteJa]),
     ...(entry.comparisons || []).flatMap(comparison => [comparison.term, comparison.differenceJa]),

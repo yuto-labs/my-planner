@@ -119,6 +119,26 @@ test('atlas updates preserve every Japanese and English source query as a search
   assert.deepEqual(saved.sourceQueries.sort(), ['bother', '面倒'].sort());
 });
 
+test('atlas preserves legacy collocations and new Japanese meanings together', () => {
+  const [saved] = addExpressionEntries([{
+    term: 'monitor',
+    lemma: 'monitor',
+    category: '行動・状態',
+    topic: '監視',
+    senseId: 'observe-continuously',
+    collocations: [
+      'monitor closely',
+      { expression: 'monitor progress', translationJa: '進捗を継続的に確認する' },
+    ],
+  }]);
+
+  assert.deepEqual(saved.collocations, [
+    'monitor closely',
+    { expression: 'monitor progress', translationJa: '進捗を継続的に確認する' },
+  ]);
+  assert.deepEqual(getExpressionEntries().find(entry => entry.id === saved.id)?.collocations, saved.collocations);
+});
+
 test('learning deletion is recoverable from trash', () => {
   addLearningEntry(entry('learning-1', '空の色'));
   assert.equal(deleteLearningEntry('learning-1'), true);

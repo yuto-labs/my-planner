@@ -732,11 +732,12 @@ export async function generateNuanceEntries(
     'Do not treat different parts of speech as interchangeable. Explicitly explain grammatical differences such as adjective versus noun.',
     'Add grammarNotes only when useful: part of speech; countability; irregular plural; irregular past/past participle; meaning-dependent countability such as work/works or experience/experiences; and example forms. Do not pad regular forms with obvious explanations.',
     'When a form is irregular or countability is easy to confuse, use that form naturally in at least one example.',
+    'For collocations, return the English combination together with a short natural Japanese meaning for that exact combination. Translate the combination in context, not as isolated dictionary words.',
     'Avoid generic statements such as "context matters". State what situation, relationship, intensity, or attitude makes each expression natural.',
     'Return at least three concrete comparisons for every expression. Compare expressions in the returned set when possible, and explain the decisive difference in viewpoint, implication, grammar, strength, or register instead of giving interchangeable dictionary glosses.',
     'Do not invent quotations, statistics, citations, or unsupported claims.',
     'Return no greeting, preface, conclusion, Markdown, or prose outside the JSON object.',
-    'Use this exact JSON shape: {"category":"日本語の大分類","topic":"日本語の具体的テーマ","mapMode":"scale or groups","mapAxisJa":"比較軸または分類軸","mapLowLabelJa":"scaleの弱い側。groupsなら空欄","mapHighLabelJa":"scaleの強い側。groupsなら空欄","entries":[{"term":"English expression","lemma":"dictionary headword","pronunciationIpa":"/General American IPA/","aliases":["inflected or alternate form"],"senseId":"short semantic sense key","partOfSpeech":"品詞","etymologyJa":"語源の説明","coreImageJa":"原義から分かる根源的なイメージ","coreMeaningJa":"中心的な意味","nuanceJa":"意味の変化と選択基準まで含む深いニュアンス","nuanceTypeJa":"短いニュアンス分類","intensityMin":2,"intensityMax":2,"intensityLevel":2,"register":"使用域","emotionalToneJa":"感情の温度","useCasesJa":["具体的な場面A","具体的な場面B"],"collocations":["自然な組み合わせ"],"examples":[{"source":"English sentence","translation":"日本語訳","noteJa":"使い方"}],"comparisons":[{"term":"similar expression","differenceJa":"決定的な違い"}],"cautionsJa":["注意点"],"grammarNotes":{"partOfSpeech":"品詞","countability":"可算性。不要なら空欄","plural":"複数形。特記事項がなければ空欄","past":"過去形。特記事項がなければ空欄","pastParticiple":"過去分詞。特記事項がなければ空欄","usageNotes":["意味で可算性が変わる等"],"exampleForms":["重要な活用形"]}}]}',
+    'Use this exact JSON shape: {"category":"日本語の大分類","topic":"日本語の具体的テーマ","mapMode":"scale or groups","mapAxisJa":"比較軸または分類軸","mapLowLabelJa":"scaleの弱い側。groupsなら空欄","mapHighLabelJa":"scaleの強い側。groupsなら空欄","entries":[{"term":"English expression","lemma":"dictionary headword","pronunciationIpa":"/General American IPA/","aliases":["inflected or alternate form"],"senseId":"short semantic sense key","partOfSpeech":"品詞","etymologyJa":"語源の説明","coreImageJa":"原義から分かる根源的なイメージ","coreMeaningJa":"中心的な意味","nuanceJa":"意味の変化と選択基準まで含む深いニュアンス","nuanceTypeJa":"短いニュアンス分類","intensityMin":2,"intensityMax":2,"intensityLevel":2,"register":"使用域","emotionalToneJa":"感情の温度","useCasesJa":["具体的な場面A","具体的な場面B"],"collocations":[{"expression":"natural English combination","translationJa":"組み合わせとして自然な日本語訳"}],"examples":[{"source":"English sentence","translation":"日本語訳","noteJa":"使い方"}],"comparisons":[{"term":"similar expression","differenceJa":"決定的な違い"}],"cautionsJa":["注意点"],"grammarNotes":{"partOfSpeech":"品詞","countability":"可算性。不要なら空欄","plural":"複数形。特記事項がなければ空欄","past":"過去形。特記事項がなければ空欄","pastParticiple":"過去分詞。特記事項がなければ空欄","usageNotes":["意味で可算性が変わる等"],"exampleForms":["重要な活用形"]}}]}',
   ].join(' ');
   const user = JSON.stringify({
     language: String(language || 'English').trim() || 'English',
@@ -816,7 +817,7 @@ export async function generateNuanceEntries(
         intensity: `★${intensityLevel}`,
         emotionalToneJa: String(entry.emotionalToneJa || '').trim(),
         useCasesJa: normalizeStringList(entry.useCasesJa, 6),
-        collocations: normalizeStringList(entry.collocations, 8),
+        collocations: normalizeCollocations(entry.collocations, 8),
         examples: (Array.isArray(entry.examples) ? entry.examples : [])
           .map(example => ({
             source: String(example?.source || '').trim(),
@@ -1000,6 +1001,24 @@ export async function generateTranslationVariants(
 function normalizeStringList(value, maxItems) {
   return (Array.isArray(value) ? value : [])
     .map(item => String(item || '').trim())
+    .filter(Boolean)
+    .slice(0, maxItems);
+}
+
+function normalizeCollocations(value, maxItems) {
+  return (Array.isArray(value) ? value : [])
+    .map(item => {
+      if (typeof item === 'string') {
+        const expression = item.trim();
+        return expression ? { expression, translationJa: '' } : null;
+      }
+      const expression = String(item?.expression || item?.text || '').trim();
+      if (!expression) return null;
+      return {
+        expression,
+        translationJa: String(item?.translationJa || item?.meaningJa || '').trim(),
+      };
+    })
     .filter(Boolean)
     .slice(0, maxItems);
 }

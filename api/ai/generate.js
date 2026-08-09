@@ -302,7 +302,19 @@ function pickResponseSchema(actionType, body) {
               intensity: { type: 'STRING' },
               emotionalToneJa: { type: 'STRING' },
               useCasesJa: stringArray('Concrete situations where this expression is natural.'),
-              collocations: stringArray('Common short collocations in the target language.'),
+              collocations: {
+                type: 'ARRAY',
+                description: 'Common short collocations with a natural context-appropriate Japanese meaning.',
+                maxItems: 8,
+                items: {
+                  type: 'OBJECT',
+                  properties: {
+                    expression: { type: 'STRING' },
+                    translationJa: { type: 'STRING' },
+                  },
+                  required: ['expression', 'translationJa'],
+                },
+              },
               examples: {
                 type: 'ARRAY',
                 description: 'Three or four distinct natural examples that differ in situation, grammar, collocation, and communicative purpose.',
