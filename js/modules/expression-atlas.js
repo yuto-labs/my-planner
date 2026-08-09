@@ -1406,7 +1406,6 @@ function renderTranslationCard(set) {
     <button class="atlas-entry-card atlas-translation-card" type="button" data-translation-id="${esc(set.id)}">
       <span class="atlas-entry-topline">
         <strong lang="ja">${esc(set.sourceTextJa)}</strong>
-        <span>JA → EN</span>
       </span>
       <span class="atlas-entry-path">${esc(set.category)} › ${esc(set.topic)}</span>
     </button>
