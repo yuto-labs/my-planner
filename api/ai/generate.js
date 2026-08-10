@@ -784,6 +784,39 @@ function normalizeStructuredResponse(actionType, text) {
         intensityMin: level,
         intensityMax: level,
         intensity: `★${level}`,
+        examples: (Array.isArray(entry?.examples) ? entry.examples : []).map(example => ({
+          ...example,
+          source: String(
+            example?.source
+            || example?.english
+            || example?.sentence
+            || example?.text
+            || ''
+          ).trim(),
+          translation: String(
+            example?.translation
+            || example?.japanese
+            || example?.translationJa
+            || example?.meaningJa
+            || ''
+          ).trim(),
+          noteJa: String(
+            example?.noteJa
+            || example?.note
+            || example?.usageNoteJa
+            || ''
+          ).trim(),
+        })),
+        comparisons: (Array.isArray(entry?.comparisons) ? entry.comparisons : []).map(comparison => ({
+          ...comparison,
+          term: String(comparison?.term || comparison?.expression || '').trim(),
+          differenceJa: String(
+            comparison?.differenceJa
+            || comparison?.difference
+            || comparison?.nuanceJa
+            || ''
+          ).trim(),
+        })),
       };
     });
     const completeEntries = normalizedEntries.filter(entry => isCompleteNuanceEntry(entry, parsed.mapMode));

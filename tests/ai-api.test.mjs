@@ -150,6 +150,20 @@ test('accepts nuance output using the schema field names', () => {
     true
   );
 
+  const examplesWithEquivalentKeys = structuredClone(response);
+  examplesWithEquivalentKeys.entries.forEach(entry => {
+    entry.examples = entry.examples.map(example => ({
+      sentence: example.source,
+      translationJa: example.translation,
+      usageNoteJa: example.noteJa,
+    }));
+  });
+  const normalizedEquivalentKeys = normalizeStructuredResponse(
+    'nuance_generate',
+    JSON.stringify(examplesWithEquivalentKeys)
+  );
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', normalizedEquivalentKeys), true);
+
   const conciseButCompleteCore = JSON.parse(JSON.stringify(response));
   conciseButCompleteCore.entries.forEach(entry => {
     entry.coreImageJa = '物理的な核の像と、現代の意味へのつながりを説明します。';
