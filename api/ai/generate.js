@@ -604,7 +604,7 @@ function pickResponseSchema(actionType, body) {
             sections: {
               type: 'ARRAY',
               minItems: 1,
-              maxItems: 4,
+              maxItems: 5,
               items: {
                 type: 'OBJECT',
                 properties: {
@@ -1352,7 +1352,7 @@ The previous response was incomplete. Answer the learner's exact question direct
           parts: [{
             text: `${String(body.systemText || '')}
 
-The previous response was incomplete or contained formatting noise. Return one complete, self-contained Japanese learning entry. Include 3-5 concise keyPoints. The explanatory body must contain at least 1200 Japanese characters and use natural paragraphs with only content-specific headings. Do not output Markdown, HTML, **, __, or code fences. Put emphasis only in the marks arrays. Never ask the user to clarify when a reasonable interpretation is possible.`,
+The previous response was incomplete or contained formatting noise. Return one complete, self-contained Japanese learning entry. Include 3-5 concise keyPoints. The explanatory body must contain at least 1200 Japanese characters and use natural paragraphs with only content-specific headings. Keep one primary explanatory lens and add only secondary viewpoints that materially deepen, challenge, qualify, or apply it. Do not expose generic framework labels, force unrelated disciplines into the answer, turn analogies into factual identities, or use theatrical and grandiose wording. Do not output Markdown, HTML, **, __, or code fences. Put emphasis only in the marks arrays. Never ask the user to clarify when a reasonable interpretation is possible.`,
           }],
         };
       }

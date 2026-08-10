@@ -102,6 +102,12 @@ test('accepts a knowledge primary concept that is not duplicated in concepts', (
   balancedResponse.answer.keyPoints = ['い'.repeat(30), 'う'.repeat(30), 'え'.repeat(30)];
   balancedResponse.answer.sections[0].paragraphs[0][0].text = 'お'.repeat(30);
   assert.equal(hasCompleteStructuredResponse('knowledge_answer', JSON.stringify(balancedResponse)), true);
+  const multiLensResponse = JSON.parse(JSON.stringify(response));
+  multiLensResponse.answer.sections = Array.from({ length: 5 }, (_, index) => ({
+    heading: `subject-specific-${index + 1}`,
+    paragraphs: [[{ text: 'detail'.repeat(40), conceptKey: 'rayleigh-scattering' }]],
+  }));
+  assert.equal(hasCompleteStructuredResponse('knowledge_answer', JSON.stringify(multiLensResponse)), true);
   delete response.answer.keyPoints;
   assert.equal(hasCompleteStructuredResponse('knowledge_answer', JSON.stringify(response)), false);
 });
