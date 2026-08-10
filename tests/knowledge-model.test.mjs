@@ -7,6 +7,7 @@ import {
   buildKnowledgeConceptIndex,
   findKnowledgeConceptMatches,
   findDuplicateKnowledgeEntries,
+  hasDistinctKnowledgeQuestion,
   getKnowledgeTimelineBucket,
 } from '../js/knowledge-model.js';
 import { getLearningCountryCodes } from '../js/data/learning-geography.js';
@@ -50,6 +51,12 @@ function rawAnswer(overrides = {}) {
     ...overrides,
   };
 }
+
+test('hides an original question that merely repeats its generated title', () => {
+  assert.equal(hasDistinctKnowledgeQuestion('血が赤い理由', '血が赤い理由って何？'), false);
+  assert.equal(hasDistinctKnowledgeQuestion('血液の色を決める仕組み', 'なぜ静脈は青く見えるの？'), true);
+  assert.equal(hasDistinctKnowledgeQuestion('空が青い理由', '空が青い理由'), false);
+});
 
 test('normalizes structured answers without leaking Markdown', () => {
   const entry = normalizeKnowledgeAnswer(rawAnswer(), 'なぜ空は青いの？');

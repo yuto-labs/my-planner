@@ -12,6 +12,7 @@ import {
   buildKnowledgeConceptIndex,
   findKnowledgeConceptMatches,
   findDuplicateKnowledgeEntries,
+  hasDistinctKnowledgeQuestion,
   knowledgeAnswerText,
   getKnowledgeTimelineBucket,
 } from '../knowledge-model.js';
@@ -265,12 +266,10 @@ function renderEntryCard(entry) {
   const classification = getLearningClassificationLabel(entry.classification) || '未分類';
   const preview = (entry.answer?.directAnswer || []).map(segment => segment.text).join('');
   const title = entry.title || entry.originalQuestion;
-  const showQuestion = entry.originalQuestion && entry.originalQuestion !== title;
   return `
     <button class="learning-card" type="button" data-learning-id="${esc(entry.id)}">
       <span class="learning-card-path">${esc(classification)}</span>
       <strong class="learning-card-title">${esc(title)}</strong>
-      ${showQuestion ? `<span class="learning-card-question">${esc(entry.originalQuestion)}</span>` : ''}
       ${preview ? `<span class="learning-card-preview">${esc(preview)}</span>` : ''}
       <span class="learning-card-foot">
         <span>関連概念 ${(entry.concepts || []).length}</span>
@@ -467,6 +466,10 @@ export function initLearningDetail(container) {
   const facets = Object.values(entry.facets || {}).flat().filter(Boolean);
   const sections = entry.answer?.sections || [];
   const keyPoints = entry.answer?.keyPoints || [];
+  const showOriginalQuestion = hasDistinctKnowledgeQuestion(
+    entry.title || entry.originalQuestion,
+    entry.originalQuestion
+  );
 
   container.innerHTML = `
     <article class="learning-detail">
@@ -476,7 +479,7 @@ export function initLearningDetail(container) {
           <h2 id="learning-detail-title">${esc(entry.title || entry.originalQuestion)}</h2>
           <button class="btn-icon learning-title-edit" id="learning-title-edit" type="button" aria-label="タイトルを変更" title="タイトルを変更">✎</button>
         </div>
-        <p class="learning-original-question">${esc(entry.originalQuestion)}</p>
+        ${showOriginalQuestion ? `<p class="learning-original-question"><span>元の質問</span>${esc(entry.originalQuestion)}</p>` : ''}
         <div class="learning-context-chips">
           ${timelineLabel ? `<span>${esc(timelineLabel)}</span>` : ''}
           ${regionLabels.map(label => `<span>${esc(label)}</span>`).join('')}

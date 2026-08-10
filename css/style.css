@@ -12315,9 +12315,17 @@ button.atlas-nuance-map-row:focus-visible {
   font-weight: 600;
 }
 .learning-original-question {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
   margin-top: 9px;
   color: var(--text-muted);
   font-size: 12px;
+}
+.learning-original-question span {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+  font-size: 9px;
 }
 .learning-context-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
 .learning-context-chips span { padding: 3px 7px; border-radius: 999px; background: var(--bg-hover); color: var(--text-dim); font-size: 10px; }

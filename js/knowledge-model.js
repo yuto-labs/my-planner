@@ -19,6 +19,22 @@ export function normalizeKnowledgeKey(value) {
     .replace(/^-+|-+$/g, '');
 }
 
+export function hasDistinctKnowledgeQuestion(title, question) {
+  const titleKey = normalizeKnowledgeKey(title).replace(/-/g, '');
+  const questionKey = normalizeKnowledgeKey(question).replace(/-/g, '');
+  if (!questionKey || questionKey === titleKey) return false;
+  if (!titleKey) return true;
+
+  const shorter = Math.min(titleKey.length, questionKey.length);
+  const longer = Math.max(titleKey.length, questionKey.length);
+  const substantiallyOverlapping = (
+    shorter >= 4
+    && (titleKey.includes(questionKey) || questionKey.includes(titleKey))
+    && shorter / longer >= 0.55
+  );
+  return !substantiallyOverlapping;
+}
+
 export function cleanKnowledgeText(value) {
   return String(value || '')
     .replace(MARKDOWN_NOISE, '')
