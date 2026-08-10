@@ -718,7 +718,6 @@ function isCompleteNuanceEntry(entry, mapMode) {
     && entry.examples.filter(example => (
       String(example?.source || example?.english || '').trim()
       && String(example?.translation || example?.japanese || '').trim()
-      && String(example?.noteJa || '').trim()
     )).length >= 3
     && Array.isArray(entry?.comparisons)
     && entry.comparisons.filter(comparison => (
@@ -922,7 +921,18 @@ function logStructuredValidationFailure(actionType, text, stage) {
       ].map(value => String(value || '').trim()).join('').length,
       useCases: Array.isArray(entry?.useCasesJa) ? entry.useCasesJa.length : 0,
       examples: Array.isArray(entry?.examples) ? entry.examples.length : 0,
+      completeExamples: Array.isArray(entry?.examples) ? entry.examples.filter(example => (
+        String(example?.source || example?.english || '').trim()
+        && String(example?.translation || example?.japanese || '').trim()
+      )).length : 0,
+      exampleNotes: Array.isArray(entry?.examples) ? entry.examples.filter(example => (
+        String(example?.noteJa || '').trim()
+      )).length : 0,
       comparisons: Array.isArray(entry?.comparisons) ? entry.comparisons.length : 0,
+      completeComparisons: Array.isArray(entry?.comparisons) ? entry.comparisons.filter(comparison => (
+        String(comparison?.term || '').trim()
+        && String(comparison?.differenceJa || '').trim()
+      )).length : 0,
     })),
   });
 }
