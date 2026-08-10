@@ -87,6 +87,8 @@ let state = {
     category: '',
     topic: '',
     seedTerms: '',
+    expansionMode: false,
+    existingExpressions: [],
   },
   translationInput: {
     sourceTextJa: '',
@@ -387,6 +389,8 @@ function wireLibraryShell() {
       category: state.category || '',
       topic: state.topic || '',
       seedTerms: '',
+      expansionMode: false,
+      existingExpressions: [],
     };
     render();
   });
@@ -1438,6 +1442,8 @@ function openQuestionAtlasConversion(question) {
     category: '',
     topic: '',
     seedTerms: relatedTerms.slice(0, 8).join(', '),
+    expansionMode: false,
+    existingExpressions: [],
   };
   render();
   scrollMainToTop();
@@ -1878,6 +1884,8 @@ function wireLibraryContent() {
       category: state.category || '',
       topic: state.topic || '',
       seedTerms: '',
+      expansionMode: false,
+      existingExpressions: [],
     };
     render();
   });
@@ -1895,6 +1903,35 @@ function wireLibraryContent() {
       render();
       scrollMainToTop();
     });
+  });
+  state.container.querySelector('[data-atlas-expand-topic]')?.addEventListener('click', () => {
+    const topicEntries = getExpressionEntries().filter(entry => (
+      entry.category === state.category && entry.topic === state.topic
+    ));
+    state.screen = 'generate';
+    state.drafts = [];
+    state.selectedDrafts = new Set();
+    state.generatorInput = {
+      language: 'English',
+      learningTarget: state.topic,
+      category: state.category,
+      topic: state.topic,
+      seedTerms: '',
+      expansionMode: true,
+      existingExpressions: topicEntries.map(entry => ({
+        term: entry.term,
+        lemma: entry.lemma,
+        aliases: entry.aliases || [],
+        nuanceTypeJa: entry.nuanceTypeJa || '',
+        intensityLevel: entry.intensityLevel || null,
+        mapMode: entry.mapMode || '',
+        mapAxisJa: entry.mapAxisJa || '',
+        mapLowLabelJa: entry.mapLowLabelJa || '',
+        mapHighLabelJa: entry.mapHighLabelJa || '',
+      })),
+    };
+    render();
+    scrollMainToTop();
   });
   state.container.querySelectorAll('[data-atlas-entry]').forEach(card => {
     card.addEventListener('click', () => {
@@ -1992,6 +2029,12 @@ function renderLibraryContent({ level, entries, categories, topics, allEntries, 
     `;
   }
   return `
+    <div class="atlas-topic-actions">
+      <button class="btn btn-secondary btn-sm" type="button" data-atlas-expand-topic>
+        <span aria-hidden="true">＋</span> 別の表現を追加
+      </button>
+      <span>既存の${entries.length}語を除いて、このテーマを広げます。</span>
+    </div>
     ${state.topic && !state.search ? renderNuanceMap(entries) : ''}
     <div class="atlas-entry-grid">${entries.map(renderEntryCard).join('')}</div>
   `;
@@ -2294,6 +2337,7 @@ function sameWordThemeSection(entry, matches) {
 
 function renderGenerator() {
   const input = state.generatorInput;
+  const expansionTerms = (input.existingExpressions || []).map(item => item.term).filter(Boolean);
   state.container.innerHTML = `
     <section class="atlas-page atlas-generator-page">
       <header class="atlas-generator-header">
@@ -2304,6 +2348,14 @@ function renderGenerator() {
         </div>
       </header>
 
+      ${input.expansionMode ? `
+        <div class="atlas-expansion-context">
+          <strong>${esc(input.category)} › ${esc(input.topic)}</strong>
+          <span>既存の${expansionTerms.length}語を除き、まだ扱っていない意味や使用領域を探します。</span>
+          <small>${esc(expansionTerms.join(' · '))}</small>
+        </div>
+      ` : ''}
+
       <form class="atlas-generator-form" id="atlas-generator-form">
         <label>
           <span>言語</span>
@@ -2313,19 +2365,19 @@ function renderGenerator() {
         </label>
         <label class="atlas-generator-wide">
           <span>知りたい意味・表現 <small>必須</small></span>
-          <input id="atlas-learning-target" required placeholder="例: 視点 / 遠慮する / bother / look forward to" value="${esc(input.learningTarget)}">
+          <input id="atlas-learning-target" required placeholder="例: 視点 / 遠慮する / bother / look forward to" value="${esc(input.learningTarget)}" ${input.expansionMode ? 'readonly' : ''}>
           <small class="atlas-field-help" id="atlas-query-mode-hint">${renderAtlasQueryModeHint(input.learningTarget)}</small>
         </label>
         <label class="atlas-generator-wide">
-          <span>含めたい表現 <small>任意</small></span>
+          <span>${input.expansionMode ? '追加で含めたい表現' : '含めたい表現'} <small>任意</small></span>
           <textarea id="atlas-seed-terms" rows="3" placeholder="happy, pleasure, delighted&#10;空欄ならAIが代表的な表現を選びます">${esc(input.seedTerms)}</textarea>
         </label>
         <div class="atlas-generator-wide atlas-generator-actions">
           <button class="btn btn-primary" id="atlas-generate-btn" type="submit" ${state.generating ? 'disabled' : ''}>
-            ${state.generating ? '<span class="atlas-spinner" aria-hidden="true"></span> 作成中…' : '表現セットを作成'}
+            ${state.generating ? '<span class="atlas-spinner" aria-hidden="true"></span> 作成中…' : (input.expansionMode ? '新しい表現を追加' : '表現セットを作成')}
           </button>
           ${state.generating ? '<button class="btn btn-secondary" id="atlas-cancel-generate" type="button">キャンセル</button>' : ''}
-          <p>既存の語と重なった場合は、新しい説明で安全に更新されます。</p>
+          <p>${input.expansionMode ? '既存語は除外し、有用な追加候補だけを保存します。' : '既存の語と重なった場合は、新しい説明で安全に更新されます。'}</p>
         </div>
       </form>
 
@@ -2452,7 +2504,7 @@ async function handleGenerate(event) {
     return;
   }
   syncGeneratorInput();
-  const { language, learningTarget, seedTerms } = state.generatorInput;
+  const { language, learningTarget, seedTerms, expansionMode, existingExpressions } = state.generatorInput;
   if (!String(learningTarget || '').trim()) {
     toast('知りたい意味・表現を入力してください', 'error');
     return;
@@ -2466,9 +2518,10 @@ async function handleGenerate(event) {
     const drafts = await generateNuanceEntries({
       language,
       learningTarget,
-      category: '',
-      topic: '',
+      category: expansionMode ? state.generatorInput.category : '',
+      topic: expansionMode ? state.generatorInput.topic : '',
       seedTerms,
+      existingExpressions: expansionMode ? existingExpressions : [],
       existingTaxonomy: taxonomy,
     }, { signal: state.controller.signal });
     state.generatorInput.category = drafts[0]?.category || '';
@@ -2515,9 +2568,11 @@ function syncGeneratorInput() {
   const next = {
     language: state.container.querySelector('#atlas-language')?.value || state.generatorInput.language || 'English',
     learningTarget: state.container.querySelector('#atlas-learning-target')?.value.trim() || '',
-    category: '',
-    topic: '',
+    category: state.generatorInput.expansionMode ? state.generatorInput.category : '',
+    topic: state.generatorInput.expansionMode ? state.generatorInput.topic : '',
     seedTerms: state.container.querySelector('#atlas-seed-terms')?.value || '',
+    expansionMode: Boolean(state.generatorInput.expansionMode),
+    existingExpressions: state.generatorInput.existingExpressions || [],
   };
   state.generatorInput = next;
 }

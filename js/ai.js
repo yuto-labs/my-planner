@@ -15,6 +15,7 @@ import {
   normalizeAtlasCategory,
   normalizeAtlasTopic,
   isValidAtlasTopic,
+  expressionLookupKeys,
 } from './atlas-model.js';
 
 export { NUANCE_ATLAS_CATEGORIES };
@@ -697,6 +698,7 @@ export async function generateNuanceEntries(
     category = '',
     topic = '',
     seedTerms = [],
+    existingExpressions = [],
     existingTaxonomy = [],
   } = {},
   options = {}
@@ -718,6 +720,22 @@ export async function generateNuanceEntries(
   ].map(term => term.toLocaleLowerCase()))]
     .map(key => ([anchorTerm, ...suppliedTerms].find(term => term.toLocaleLowerCase() === key) || key))
     .slice(0, 6);
+  const knownExpressions = (Array.isArray(existingExpressions) ? existingExpressions : [])
+    .map(entry => ({
+      term: String(entry?.term || '').trim(),
+      lemma: String(entry?.lemma || '').trim(),
+      aliases: normalizeStringList(entry?.aliases, 12),
+      nuanceTypeJa: String(entry?.nuanceTypeJa || '').trim(),
+      intensityLevel: Number(entry?.intensityLevel) || null,
+      mapMode: String(entry?.mapMode || '').trim(),
+      mapAxisJa: String(entry?.mapAxisJa || '').trim(),
+      mapLowLabelJa: String(entry?.mapLowLabelJa || '').trim(),
+      mapHighLabelJa: String(entry?.mapHighLabelJa || '').trim(),
+    }))
+    .filter(entry => entry.term)
+    .slice(0, 24);
+  const expansionMode = knownExpressions.length > 0;
+  const excludedKeys = new Set(knownExpressions.flatMap(expressionLookupKeys));
   if (!cleanTarget && !cleanCategory && !cleanTopic && !terms.length) {
     throw new Error('知りたい意味・表現を入力してください。');
   }
@@ -736,7 +754,10 @@ export async function generateNuanceEntries(
     'Always answer when at least a category, topic, or expression is supplied. For a broad or ambiguous request, choose the most useful interpretation and make that interpretation clear instead of asking for more detail.',
     'Prefer an existing category/topic from existingTaxonomy when it is semantically equivalent; otherwise create a clear, reusable label. Never use vague labels such as その他, 一般, 英語表現, 表現の違い, or the category name itself.',
     'Topic must be a compact Japanese noun phrase, usually 2 to 14 characters. Never write a full sentence or a label ending in 表現, 言い方, 場面, 〜を表す表現, or 〜するとき.',
-    'Normally create five genuinely useful expressions for the requested semantic topic. Use six when all six add a meaningful contrast, and use four when a fifth would be repetitive. Return only three as a last resort when adding another entry would reduce depth or accuracy. Always include every supplied seed term.',
+    'Normally create five genuinely useful expressions for the requested semantic topic. Use six when all six add a meaningful contrast, and use four when a fifth would be repetitive. Return only three as a last resort when adding another entry would reduce depth or accuracy. Always include every supplied seed term unless it is already listed in existingExpressions.',
+    expansionMode
+      ? 'This request expands an existing topic. Never return an expression whose term, lemma, inflected form, spelling variant, or phrasal-verb equivalent already appears in existingExpressions. Explore uncovered senses, domains, registers, grammatical roles, and usage boundaries instead of rewriting existing entries. Keep the existing category, topic, map mode, comparison axis, and endpoint labels compatible. Do not pad the result with near-duplicates merely to reach a count.'
+      : 'This request creates or extends a normal expression set. Choose the most useful central contrasts for the learner.',
     'Choose mapMode for the whole set. Use scale only when every expression can be compared on one genuinely meaningful continuum. In that case provide a concise theme-specific mapAxisJa plus low and high endpoint labels, and assign each expression exactly one integer star level from 1 to 5. Set intensityLevel, intensityMin, and intensityMax to that same integer; never return a range such as 1-2 or 3-4.',
     'Use groups when forcing the expressions onto one continuum would mislead the learner. In groups mode, mapAxisJa should name the organizing principle and nuanceTypeJa must be a concise reusable group label. Do not invent a strength ranking merely to fill the map.',
     'For scale mode, intensityLevel is one definite position from 1 to 5, chosen by comparing the expressions within this exact set on mapAxisJa. For groups mode it may be 3 for schema compatibility, but it will not be shown. In both modes nuanceTypeJa must explain a qualitative type rather than repeat a number.',
@@ -764,6 +785,8 @@ export async function generateNuanceEntries(
     category: cleanCategory,
     topic: cleanTopic,
     seedTerms: terms,
+    expansionMode,
+    existingExpressions: knownExpressions,
     existingTaxonomy: (Array.isArray(existingTaxonomy) ? existingTaxonomy : []).slice(0, 40),
     allowedCategories: NUANCE_ATLAS_CATEGORIES,
     requestedEntryCount: terms.length ? Math.max(terms.length, 5) : 5,
@@ -867,10 +890,14 @@ export async function generateNuanceEntries(
       };
     })
     .filter(Boolean)
+    .filter(entry => !expansionMode || !expressionLookupKeys(entry)
+      .some(key => excludedKeys.has(key)))
     .slice(0, 12);
 
   if (!entries.length) {
-    throw new Error('表現データを作成できませんでした。少し時間を置いて、もう一度お試しください。');
+    throw new Error(expansionMode
+      ? 'このテーマで新しく追加できる表現が見つかりませんでした。既存の表現は変更していません。'
+      : '表現データを作成できませんでした。少し時間を置いて、もう一度お試しください。');
   }
   return entries;
 }

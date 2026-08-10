@@ -7537,6 +7537,35 @@ kbd {
   font-size: 17px;
   font-weight: 900;
 }
+.atlas-topic-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 10px;
+}
+.atlas-topic-actions > span {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.atlas-expansion-context {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-left: 3px solid var(--primary);
+  background: var(--bg-hover);
+}
+.atlas-expansion-context strong { font-size: 13px; }
+.atlas-expansion-context span,
+.atlas-expansion-context small {
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.atlas-expansion-context small {
+  overflow-wrap: anywhere;
+  font-size: 10px;
+}
 .atlas-nuance-map {
   margin-bottom: 12px;
   overflow: hidden;
