@@ -24,6 +24,7 @@ const SERVER_GENERATE_URL = '/api/ai/generate';
 // Long-form Atlas and Knowledge responses can legitimately take over a minute.
 // Keep this just below the server function budget while preserving cancellation.
 const AI_REQUEST_TIMEOUT_MS = 290_000;
+const AUTH_SESSION_TIMEOUT_MS = 12_000;
 
 const FAST_MODEL = 'fast';
 const QUALITY_MODEL = 'quality';
@@ -75,7 +76,23 @@ async function callServerAI(
   actionType = 'ai_request',
   { signal } = {}
 ) {
-  const session = await getSession();
+  const readSession = async () => {
+    let timeoutId;
+    try {
+      return await Promise.race([
+        getSession(),
+        new Promise((_, reject) => {
+          timeoutId = setTimeout(
+            () => reject(new Error('ログイン情報の確認に時間がかかりすぎました。通信状態を確認して、もう一度お試しください。')),
+            AUTH_SESSION_TIMEOUT_MS
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  };
+  const session = await readSession();
   const token = session?.access_token || '';
   const requestUserId = session?.user?.id || getActiveUserId();
   if (!token) {
@@ -132,7 +149,7 @@ async function callServerAI(
   const data = await res.json();
   const text = data.text ?? '';
   if (!String(text).trim()) throw new Error('AIの応答が空でした。少し時間を置いてもう一度お試しください。');
-  const currentSession = await getSession();
+  const currentSession = await readSession();
   const currentUserId = currentSession?.user?.id || getActiveUserId();
   if (!requestUserId || currentUserId !== requestUserId) {
     throw new Error('アカウントが切り替わったため、回答は保存していません。元のアカウントで再試行してください。');

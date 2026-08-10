@@ -169,6 +169,7 @@ export function hasActiveExpressionAtlasWork() {
 
 function renderIfMounted() {
   if (state.container?.isConnected) render();
+}
 
 function markGeneratorBusy(formSelector, message) {
   const form = state.container?.querySelector(formSelector);
@@ -178,7 +179,6 @@ function markGeneratorBusy(formSelector, message) {
   if (!submit) return;
   submit.disabled = true;
   submit.textContent = message;
-}
 }
 
 export function backFromExpressionAtlas() {
@@ -1718,8 +1718,8 @@ async function handleTranslationGenerate(event) {
   const taxonomy = collectAtlasTaxonomy();
   state.generating = true;
   state.controller = new AbortController();
-  markGeneratorBusy('#atlas-translation-form', '\u82f1\u8a33\u3092\u4f5c\u6210\u4e2d\u2026');
   try {
+    markGeneratorBusy('#atlas-translation-form', '\u82f1\u8a33\u3092\u4f5c\u6210\u4e2d\u2026');
     const generated = await generateTranslationVariants({
       ...state.translationInput,
       existingTaxonomy: taxonomy,
@@ -2461,8 +2461,8 @@ async function handleGenerate(event) {
 
   state.generating = true;
   state.controller = new AbortController();
-  markGeneratorBusy('#atlas-generator-form', '\u8868\u73fe\u30bb\u30c3\u30c8\u3092\u4f5c\u6210\u4e2d\u2026');
   try {
+    markGeneratorBusy('#atlas-generator-form', '\u8868\u73fe\u30bb\u30c3\u30c8\u3092\u4f5c\u6210\u4e2d\u2026');
     const drafts = await generateNuanceEntries({
       language,
       learningTarget,
