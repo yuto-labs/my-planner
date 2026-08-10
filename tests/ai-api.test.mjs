@@ -50,6 +50,12 @@ test('caps AI output tokens per action', () => {
     responseFormat: 'json',
   });
   assert.equal(body.maxTokens, 400);
+  const nuanceBody = validateRequestBody({
+    actionType: 'nuance_generate',
+    maxTokens: 100000,
+    responseFormat: 'json',
+  });
+  assert.equal(nuanceBody.maxTokens, 14000);
 });
 
 test('rejects malformed structured output', () => {
@@ -188,6 +194,14 @@ test('accepts nuance output using the schema field names', () => {
   const onlyTwoExpressions = { ...response, entries: response.entries.slice(0, 2) };
   assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(onlyTwoExpressions)), false);
 
+  const sixExpressions = {
+    ...response,
+    entries: [...response.entries, makeEntry('calm'), makeEntry('solace')],
+  };
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(sixExpressions)), true);
+  const sevenExpressions = { ...sixExpressions, entries: [...sixExpressions.entries, makeEntry('peace')] };
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(sevenExpressions)), false);
+
   const duplicateExample = JSON.parse(JSON.stringify(response));
   duplicateExample.entries[1].examples[0].source = duplicateExample.entries[0].examples[0].source;
   assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(duplicateExample)), true);
@@ -198,6 +212,28 @@ test('accepts nuance output using the schema field names', () => {
   assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(groupsWithoutLabels)), false);
   const normalizedGroups = normalizeStructuredResponse('nuance_generate', JSON.stringify(groupsWithoutLabels));
   assert.equal(hasCompleteStructuredResponse('nuance_generate', normalizedGroups), true);
+
+  const missingAuxiliaryFields = JSON.parse(JSON.stringify(response));
+  missingAuxiliaryFields.mapMode = '';
+  missingAuxiliaryFields.mapAxisJa = '';
+  missingAuxiliaryFields.entries[0].pronunciationIpa = '';
+  missingAuxiliaryFields.entries[0].etymologyJa = '語源不詳';
+  const normalizedAuxiliary = normalizeStructuredResponse(
+    'nuance_generate',
+    JSON.stringify(missingAuxiliaryFields)
+  );
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', normalizedAuxiliary), true);
+
+  const oneIncompleteOfFive = {
+    ...response,
+    entries: [...response.entries, makeEntry('tranquility')],
+  };
+  oneIncompleteOfFive.entries[4].nuanceJa = '短すぎる説明';
+  const salvaged = normalizeStructuredResponse('nuance_generate', JSON.stringify(oneIncompleteOfFive));
+  const salvagedParsed = JSON.parse(salvaged);
+  assert.equal(salvagedParsed.entries.length, 4);
+  assert.equal(salvagedParsed.discardedEntryCount, 1);
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', salvaged), true);
 });
 
 test('keeps legacy nuance field names readable during validation', () => {

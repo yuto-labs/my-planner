@@ -17,7 +17,7 @@ const ACTION_LIMITS = Object.freeze({
   memo_format: 2400,
   english_question: 2600,
   knowledge_answer: 12000,
-  nuance_generate: 12000,
+  nuance_generate: 14000,
   translation_variants: 9000,
   memo_summary: 700,
   goal_split: 2200,
@@ -257,9 +257,9 @@ function pickResponseSchema(actionType, body) {
         },
         entries: {
           type: 'ARRAY',
-          description: 'Three to five distinct expressions for the requested topic, each with equally deep treatment. Prefer fewer complete entries to padded or repetitive ones.',
+          description: 'Usually five, and up to six, distinct expressions with equally deep treatment. Four is the normal minimum; three is allowed only when adding more would be repetitive or shallow.',
           minItems: 3,
-          maxItems: 5,
+          maxItems: 6,
           items: {
             type: 'OBJECT',
             properties: {
@@ -685,6 +685,49 @@ function hasCompleteTranslationResponse(text) {
     ));
 }
 
+function isCompleteNuanceEntry(entry, mapMode) {
+  const intensityLevel = Number(entry?.intensityLevel);
+  const intensityMin = Number(entry?.intensityMin);
+  const intensityMax = Number(entry?.intensityMax);
+  const etymologyJa = String(entry?.etymologyJa || '').trim();
+  const coreImageJa = String(entry?.coreImageJa || '').trim();
+  const coreMeaningJa = String(entry?.coreMeaningJa || '').trim();
+  const nuanceJa = String(entry?.nuanceJa || '').trim();
+  const depthText = `${etymologyJa}${coreImageJa}${coreMeaningJa}${nuanceJa}`;
+  return Boolean(
+    String(entry?.term || '').trim()
+    && String(entry?.lemma || '').trim()
+    && Number.isInteger(intensityLevel)
+    && intensityLevel >= 1
+    && intensityLevel <= 5
+    && Number.isInteger(intensityMin)
+    && intensityMin >= 1
+    && intensityMin <= 5
+    && Number.isInteger(intensityMax)
+    && intensityMin === intensityLevel
+    && intensityMax === intensityLevel
+    && (mapMode !== 'groups' || String(entry?.nuanceTypeJa || '').trim())
+    && (etymologyJa.length === 0 || etymologyJa.length >= 20)
+    && coreImageJa.length >= 20
+    && coreMeaningJa.length >= 10
+    && nuanceJa.length >= 70
+    && depthText.length >= 170
+    && Array.isArray(entry?.useCasesJa)
+    && entry.useCasesJa.filter(value => String(value || '').trim()).length >= 2
+    && Array.isArray(entry?.examples)
+    && entry.examples.filter(example => (
+      String(example?.source || example?.english || '').trim()
+      && String(example?.translation || example?.japanese || '').trim()
+      && String(example?.noteJa || '').trim()
+    )).length >= 3
+    && Array.isArray(entry?.comparisons)
+    && entry.comparisons.filter(comparison => (
+      String(comparison?.term || '').trim()
+      && String(comparison?.differenceJa || '').trim()
+    )).length >= 2
+  );
+}
+
 function hasCompleteNuanceResponse(text) {
   const parsed = parseStructuredResponse(text);
   const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
@@ -700,61 +743,24 @@ function hasCompleteNuanceResponse(text) {
     .filter(Boolean);
   return Boolean(validMap)
     && entries.length >= 3
-    && entries.length <= 5
+    && entries.length <= 6
     && new Set(terms).size >= 3
-    && entries.every(entry => {
-      const intensityLevel = Number(entry?.intensityLevel);
-      const intensityMin = Number(entry?.intensityMin);
-      const intensityMax = Number(entry?.intensityMax);
-      const etymologyJa = String(entry?.etymologyJa || '').trim();
-      const coreImageJa = String(entry?.coreImageJa || '').trim();
-      const coreMeaningJa = String(entry?.coreMeaningJa || '').trim();
-      const nuanceJa = String(entry?.nuanceJa || '').trim();
-      const depthText = `${etymologyJa}${coreImageJa}${coreMeaningJa}${nuanceJa}`;
-      return Boolean(
-        String(entry?.term || '').trim()
-        && String(entry?.lemma || '').trim()
-        && String(entry?.pronunciationIpa || entry?.ipa || '').trim()
-        && Number.isInteger(intensityLevel)
-        && intensityLevel >= 1
-        && intensityLevel <= 5
-        && Number.isInteger(intensityMin)
-        && intensityMin >= 1
-        && intensityMin <= 5
-        && Number.isInteger(intensityMax)
-        && intensityMin === intensityLevel
-        && intensityMax === intensityLevel
-        && (mapMode !== 'groups' || String(entry?.nuanceTypeJa || '').trim())
-        && (etymologyJa.length === 0 || etymologyJa.length >= 20)
-        && coreImageJa.length >= 20
-        && coreMeaningJa.length >= 10
-        && nuanceJa.length >= 70
-        // Gemini often explains a compact concept well in fewer characters.
-        // Keep the per-field requirements and examples as the quality floor,
-        // but do not discard a useful four-part explanation over padding.
-        && depthText.length >= 170
-        && Array.isArray(entry?.useCasesJa)
-        && entry.useCasesJa.filter(value => String(value || '').trim()).length >= 2
-        && Array.isArray(entry?.examples)
-        && entry.examples.filter(example => (
-          String(example?.source || example?.english || '').trim()
-          && String(example?.translation || example?.japanese || '').trim()
-          && String(example?.noteJa || '').trim()
-        )).length >= 3
-        && Array.isArray(entry?.comparisons)
-        && entry.comparisons.filter(comparison => (
-          String(comparison?.term || '').trim()
-          && String(comparison?.differenceJa || '').trim()
-        )).length >= 2
-      );
-    });
+    && entries.every(entry => isCompleteNuanceEntry(entry, mapMode));
 }
 
 function normalizeStructuredResponse(actionType, text) {
   const parsed = parseStructuredResponse(text);
   if (!parsed) return text;
   if (actionType === 'nuance_generate' && Array.isArray(parsed.entries)) {
-    parsed.entries = parsed.entries.map(entry => {
+    const requestedMapMode = String(parsed?.mapMode || '').trim();
+    parsed.mapMode = requestedMapMode === 'scale' ? 'scale' : 'groups';
+    parsed.mapAxisJa = String(parsed?.mapAxisJa || '').trim()
+      || (parsed.mapMode === 'groups' ? '\u30cb\u30e5\u30a2\u30f3\u30b9\u306e\u7a2e\u985e' : '\u6bd4\u8f03\u8ef8');
+    if (parsed.mapMode === 'scale') {
+      parsed.mapLowLabelJa = String(parsed?.mapLowLabelJa || '').trim() || '\u4f4e\u3044';
+      parsed.mapHighLabelJa = String(parsed?.mapHighLabelJa || '').trim() || '\u9ad8\u3044';
+    }
+    const normalizedEntries = parsed.entries.map(entry => {
       const rawLevel = Number(entry?.intensityLevel);
       const fallbackLevel = Number(entry?.intensityMin ?? entry?.intensityMax);
       const level = Number.isFinite(rawLevel) && rawLevel >= 1 && rawLevel <= 5
@@ -771,6 +777,9 @@ function normalizeStructuredResponse(actionType, text) {
           : '');
       return {
         ...entry,
+        etymologyJa: String(entry?.etymologyJa || '').trim().length >= 20
+          ? String(entry.etymologyJa).trim()
+          : '',
         nuanceTypeJa,
         intensityLevel: level,
         intensityMin: level,
@@ -778,6 +787,11 @@ function normalizeStructuredResponse(actionType, text) {
         intensity: `★${level}`,
       };
     });
+    const completeEntries = normalizedEntries.filter(entry => isCompleteNuanceEntry(entry, parsed.mapMode));
+    parsed.discardedEntryCount = completeEntries.length >= 3
+      ? normalizedEntries.length - completeEntries.length
+      : 0;
+    parsed.entries = completeEntries.length >= 3 ? completeEntries : normalizedEntries;
   }
   if (actionType === 'knowledge_answer' && parsed.answer) {
     const conceptKeys = new Set([
@@ -885,8 +899,17 @@ function logStructuredValidationFailure(actionType, text, stage) {
     actionType,
     stage,
     mapMode: String(parsed?.mapMode || ''),
+    mapAxisChars: String(parsed?.mapAxisJa || '').trim().length,
+    mapLowLabelChars: String(parsed?.mapLowLabelJa || '').trim().length,
+    mapHighLabelChars: String(parsed?.mapHighLabelJa || '').trim().length,
     entryCount: entries.length,
+    discardedEntryCount: Number(parsed?.discardedEntryCount || 0),
     entries: entries.map(entry => ({
+      term: String(entry?.term || '').trim().slice(0, 40),
+      lemma: String(entry?.lemma || '').trim().length,
+      pronunciation: String(entry?.pronunciationIpa || entry?.ipa || '').trim().length,
+      nuanceType: String(entry?.nuanceTypeJa || '').trim().length,
+      intensityLevel: Number(entry?.intensityLevel),
       etymology: String(entry?.etymologyJa || '').trim().length,
       coreImage: String(entry?.coreImageJa || '').trim().length,
       coreMeaning: String(entry?.coreMeaningJa || '').trim().length,
@@ -1268,7 +1291,7 @@ The previous response was incomplete. Return all three distinct translation vari
           parts: [{
             text: `${String(body.systemText || '')}
 
-The previous response was incomplete or too shallow. Return three to five distinct expressions with every required field and equally deep treatment. Prefer three complete entries to padding the set. Choose one honest mapMode for the set: scale only when one named continuum is meaningful, otherwise groups. Always provide mapAxisJa. Assign one definite integer star level to every scale entry and set intensityLevel, intensityMin, and intensityMax to that same value; never return a range. Scale also requires useful low/high endpoint labels, while groups should provide a reusable nuanceTypeJa for every entry. For each expression, make etymologyJa, coreImageJa, coreMeaningJa, and especially nuanceJa substantial, distinct, and connected enough to build a usable mental model; explain sense shifts, viewpoint, agency, implications, grammar, register, and natural-use boundaries rather than padding with paraphrases. Include at least three distinct examples with usage notes and at least three concrete comparisons per expression. The user does not need to provide a usage situation: infer several realistic situations for each expression and explain them in useCasesJa. Never ask the user to make the theme or words more specific when a reasonable interpretation is possible.`,
+The previous response was incomplete or too shallow. Normally return five complete expressions, use six when all six are genuinely useful, and return four when a fifth would be repetitive. Return three only as a last resort when adding another entry would reduce depth or accuracy. Every returned expression must receive equally deep treatment. Choose one honest mapMode for the set: scale only when one named continuum is meaningful, otherwise groups. Always provide mapAxisJa. Assign one definite integer star level to every scale entry and set intensityLevel, intensityMin, and intensityMax to that same value; never return a range. Scale also requires useful low/high endpoint labels, while groups should provide a reusable nuanceTypeJa for every entry. For each expression, make etymologyJa, coreImageJa, coreMeaningJa, and especially nuanceJa substantial, distinct, and connected enough to build a usable mental model; explain sense shifts, viewpoint, agency, implications, grammar, register, and natural-use boundaries rather than padding with paraphrases. Include at least three distinct examples with usage notes and at least three concrete comparisons per expression. The user does not need to provide a usage situation: infer several realistic situations for each expression and explain them in useCasesJa. Never ask the user to make the theme or words more specific when a reasonable interpretation is possible.`,
           }],
         };
       }
