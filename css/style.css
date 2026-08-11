@@ -9296,6 +9296,7 @@ button.atlas-nuance-map-row:focus-visible {
   padding-block: 6px;
 }
 .kn-edit-image {
+  position: relative;
   width: 100%;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -9318,6 +9319,45 @@ button.atlas-nuance-map-row:focus-visible {
   padding: 9px 11px;
   font: inherit;
   font-size: 13px;
+}
+.kn-image-remove {
+  position: absolute;
+  z-index: 3;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--bg-card) 88%, transparent);
+  color: var(--text-dim);
+  cursor: pointer;
+  opacity: 0.72;
+  backdrop-filter: blur(7px);
+  transition: opacity 140ms ease, color 140ms ease, background 140ms ease;
+}
+.kn-image-remove:hover,
+.kn-image-remove:focus-visible {
+  background: var(--bg-card);
+  color: var(--danger);
+  opacity: 1;
+}
+.kn-image-remove:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.kn-image-remove svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@media (hover: none) {
+  .kn-image-remove { opacity: 0.9; }
 }
 
 .event-photo-heading,
@@ -10091,6 +10131,14 @@ button.atlas-nuance-map-row:focus-visible {
 .atlas-sense-body { padding: 0 12px 12px; }
 .atlas-sense-body .atlas-detail-section { padding: 12px 0 0; border-bottom: 0; }
 .atlas-sense-body .atlas-detail-section h2 { font-size: 11px; }
+
+.atlas-usage-pattern-list { display: grid; gap: 10px; }
+.atlas-usage-pattern { padding: 11px 12px; border: 1px solid var(--border-light); border-radius: 7px; background: var(--bg-soft); }
+.atlas-usage-pattern > .atlas-audio-line > strong { color: var(--primary-dark); font-size: 13px; }
+.atlas-usage-pattern > p { margin: 5px 0 0; line-height: 1.6; }
+.atlas-usage-pattern .atlas-note-list { margin: 7px 0 0; }
+.atlas-pattern-example { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-light); }
+.atlas-pattern-example small, .atlas-pattern-note { display: block; margin-top: 3px; color: var(--text-dim); line-height: 1.5; }
 
 .atlas-detail-section.is-collapsed { padding-bottom: 10px; }
 

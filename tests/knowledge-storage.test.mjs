@@ -196,7 +196,7 @@ test('same headword in one topic merges without requiring identical sense ids or
   assert.deepEqual(saved.senses.map(sense => sense.partOfSpeech).sort(), ['noun', 'verb']);
 });
 
-test('near-identical sense ids enrich one sense while distinct meanings remain separate', () => {
+test('overlapping sense-id words do not collapse distinct meanings', () => {
   addExpressionEntries([{
     term: 'range', lemma: 'range', partOfSpeech: 'noun', category: '状態・性質', topic: '分布と範囲',
     senseId: 'extent-span', sourceQueryJa: '範囲', coreMeaningJa: '広がりの端から端までの範囲',
@@ -211,9 +211,46 @@ test('near-identical sense ids enrich one sense while distinct meanings remain s
   }]);
 
   const [saved] = getExpressionEntries().filter(entry => entry.lemma === 'range');
-  assert.equal(saved.senses.length, 2);
+  assert.equal(saved.senses.length, 3);
+  assert.ok(saved.senses.some(sense => sense.senseId === 'extent-span'));
   assert.ok(saved.senses.some(sense => sense.senseId === 'value-extent'));
   assert.ok(saved.senses.some(sense => sense.senseId === 'line-of-items'));
+});
+
+test('an exact sense id enriches the existing explanation without creating another toggle', () => {
+  addExpressionEntries([{
+    term: 'range', lemma: 'range', partOfSpeech: 'noun', category: 'Quantity', topic: 'Extent',
+    senseId: 'extent-between-limits', coreMeaningJa: 'extent between limits',
+    nuanceJa: 'first'.repeat(40), usagePatterns: [{ pattern: 'a range of + noun', meaningJa: '幅広い名詞', examples: [] }],
+  }]);
+  addExpressionEntries([{
+    term: 'range', lemma: 'range', partOfSpeech: 'noun', category: 'Quantity', topic: 'Extent',
+    senseId: 'extent-between-limits', coreMeaningJa: 'the span between lower and upper limits',
+    nuanceJa: 'second'.repeat(60), usagePatterns: [{ pattern: 'range from A to B', meaningJa: 'AからBに及ぶ', examples: [] }],
+  }]);
+
+  const [saved] = getExpressionEntries().filter(entry => entry.lemma === 'range');
+  assert.equal(saved.senses.length, 1);
+  assert.equal(saved.senses[0].nuanceJa, 'second'.repeat(60));
+  assert.equal(saved.senses[0].usagePatterns.length, 2);
+});
+
+test('sense-specific classifications remain available inside one headword', () => {
+  addExpressionEntries([{
+    term: 'range', lemma: 'range', partOfSpeech: 'noun', category: '状態・性質', topic: '範囲',
+    senseId: 'extent-between-limits', coreMeaningJa: '範囲や幅',
+  }]);
+  addExpressionEntries([{
+    term: 'range', lemma: 'range', partOfSpeech: 'verb', category: '行動・変化', topic: '整列',
+    senseId: 'arrange-in-line', coreMeaningJa: '一列に並べる',
+  }]);
+
+  const [saved] = getExpressionEntries().filter(entry => entry.lemma === 'range');
+  assert.equal(saved.senses.length, 2);
+  assert.deepEqual(saved.senses.map(sense => `${sense.category}|${sense.topic}`).sort(), [
+    '状態・性質|範囲',
+    '行動・変化|整列',
+  ].sort());
 });
 
 test('pre-existing duplicate headword records render as one complete card', () => {

@@ -430,6 +430,29 @@ test('accepts one complete Atlas sense instead of discarding a useful headword e
   assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(response)), true);
 });
 
+test('accepts multiple complete meanings for one Atlas headword', () => {
+  const makeSense = (partOfSpeech, senseId, meaning) => ({
+    term: 'range', lemma: 'range', partOfSpeech, senseId,
+    intensityLevel: 3, intensityMin: 3, intensityMax: 3,
+    coreImageJa: '境界と広がりの関係を、具体的な空間像から丁寧に説明します。'.repeat(3),
+    coreMeaningJa: meaning.repeat(3),
+    nuanceJa: '対象、構文、話者の視点によって生じる意味の違いと、自然に選べる境界を説明します。'.repeat(5),
+    nuanceTypeJa: meaning,
+    useCasesJa: ['数値や範囲について説明する場面', '配置や広がりについて説明する場面'],
+    examples: [1, 2, 3].map(index => ({ source: `Range example ${senseId} ${index}.`, translation: `例文${index}`, noteJa: `用法${index}` })),
+    comparisons: [1, 2, 3].map(index => ({ term: `comparison-${senseId}-${index}`, differenceJa: `意味と構文の違い${index}` })),
+  });
+  const response = {
+    category: '状態・性質', topic: '範囲', mapMode: 'groups', mapAxisJa: '意味の枝分かれ',
+    mapLowLabelJa: '', mapHighLabelJa: '',
+    entries: [
+      makeSense('noun', 'extent-between-limits', '境界の間にある範囲'),
+      makeSense('verb', 'vary-between-limits', '下限から上限まで変化する'),
+    ],
+  };
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(response)), true);
+});
+
 test('accepts detailed translation variants with expanded notes and comparisons', () => {
   const makeVariant = (translation, japanese) => ({
     translation,

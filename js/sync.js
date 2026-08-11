@@ -19,6 +19,7 @@ import {
   trashToRow, rowToTrash,
   schedItemToRow, rowToSchedItem,
 } from './migrate.js';
+import { mergeAtlasSenseArrays as mergeSharedAtlasSenseArrays } from './atlas-senses.js';
 
 // ---- localStorage キーマップ ----
 const LS_KEYS = {
@@ -888,35 +889,6 @@ function mergeAtlasList(left, right) {
     });
 }
 
-function atlasSenseKey(sense = {}) {
-  const part = String(sense.partOfSpeech || '').normalize('NFKC').trim().toLocaleLowerCase();
-  const id = String(sense.senseId || '').normalize('NFKC').trim().toLocaleLowerCase();
-  const meaning = String(sense.coreMeaningJa || '').normalize('NFKC').trim().toLocaleLowerCase();
-  return `${part}|${id || meaning}`;
-}
-
-function mergeAtlasSenseArrays(preferred, secondary) {
-  const byKey = new Map();
-  (Array.isArray(secondary) ? secondary : []).forEach(sense => {
-    byKey.set(atlasSenseKey(sense), sense);
-  });
-  (Array.isArray(preferred) ? preferred : []).forEach(sense => {
-    const key = atlasSenseKey(sense);
-    const previous = byKey.get(key);
-    byKey.set(key, previous ? {
-      ...previous,
-      ...sense,
-      useCasesJa: mergeAtlasList(previous.useCasesJa, sense.useCasesJa),
-      collocations: mergeAtlasList(previous.collocations, sense.collocations),
-      examples: mergeAtlasList(previous.examples, sense.examples),
-      comparisons: mergeAtlasList(previous.comparisons, sense.comparisons),
-      cautionsJa: mergeAtlasList(previous.cautionsJa, sense.cautionsJa),
-      sourceQueries: mergeAtlasList(previous.sourceQueries, sense.sourceQueries),
-    } : sense);
-  });
-  return [...byKey.values()];
-}
-
 function mergeAtlasRecord(local, remote) {
   const localAtlas = atlasRecordData(local);
   const remoteAtlas = atlasRecordData(remote);
@@ -950,7 +922,7 @@ function mergeAtlasRecord(local, remote) {
   if (localAtlas.block.type === 'expression-atlas-data') {
     const otherData = contentData === localAtlas.data ? remoteAtlas.data : localAtlas.data;
     if (Array.isArray(contentData.senses) || Array.isArray(otherData.senses)) {
-      mergedData.senses = mergeAtlasSenseArrays(contentData.senses, otherData.senses);
+      mergedData.senses = mergeSharedAtlasSenseArrays(contentData.senses, otherData.senses);
     }
     mergedData.sourceQueries = mergeAtlasList(contentData.sourceQueries, otherData.sourceQueries);
     mergedData.aliases = mergeAtlasList(contentData.aliases, otherData.aliases);

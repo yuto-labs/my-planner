@@ -1871,6 +1871,10 @@ function renderBlockEdit(block, idx, listNumber = 0) {
           <img data-media-path="${esc(block.path || '')}" data-media-view="1"
             data-media-caption="${esc(block.caption || '')}" tabindex="0" role="button"
             aria-label="メモの写真を拡大表示" alt="${esc(block.alt || block.caption || 'メモの写真')}">
+          <button type="button" class="kn-image-remove" data-image-remove-id="${esc(block.id)}"
+            aria-label="この写真を削除" title="写真を削除">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"/></svg>
+          </button>
           <input class="kn-image-caption" data-image-caption-id="${esc(block.id)}"
             value="${esc(block.caption || '')}" placeholder="写真の説明（任意）">
         </div>
@@ -1954,10 +1958,12 @@ function wireBlocksEdit(container) {
   if (!wrap) return;
   if (wrap.dataset.wired === '1') {
     renderMathPreviews(container);
+    hydratePlannerImages(wrap);
     return;
   }
   wrap.dataset.wired = '1';
   wireBlockDrag(container, wrap);
+  wireEditorImageLongPress(container, wrap);
   hydratePlannerImages(wrap);
   wirePlannerImageViewer(wrap);
 
@@ -2080,6 +2086,12 @@ function wireBlocksEdit(container) {
     const tableAction = e.target.closest('[data-table-action]');
     if (tableAction) {
       changeTableShape(tableAction.dataset.blockId, tableAction.dataset.tableAction, container);
+      return;
+    }
+
+    const imageRemove = e.target.closest('[data-image-remove-id]');
+    if (imageRemove) {
+      removeEditorImageBlock(imageRemove.dataset.imageRemoveId, container);
       return;
     }
 
@@ -2256,6 +2268,60 @@ function wireBlockDrag(container, wrap) {
     rerenderBlocks(container);
     requestAnimationFrame(() => container.querySelector(`[data-block-id="${blockId}"]`)?.focus());
   });
+}
+
+function wireEditorImageLongPress(container, wrap) {
+  let press = null;
+  let suppressClickUntil = 0;
+  const clear = () => {
+    if (press?.timer) clearTimeout(press.timer);
+    press = null;
+  };
+
+  wrap.addEventListener('click', event => {
+    if (Date.now() > suppressClickUntil || !event.target.closest('[data-media-view]')) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, true);
+
+  wrap.addEventListener('pointerdown', event => {
+    const image = event.target.closest('.kn-block--image [data-media-view]');
+    if (!image || (event.pointerType === 'mouse' && event.button !== 0)) return;
+    const blockId = image.closest('.kn-block[data-block-id]')?.dataset.blockId;
+    if (!blockId) return;
+    clear();
+    press = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      timer: setTimeout(() => {
+        suppressClickUntil = Date.now() + 700;
+        navigator.vibrate?.(12);
+        clear();
+        removeEditorImageBlock(blockId, container);
+      }, 560),
+    };
+  });
+  wrap.addEventListener('pointermove', event => {
+    if (!press || press.pointerId !== event.pointerId) return;
+    if (Math.hypot(event.clientX - press.startX, event.clientY - press.startY) > 9) clear();
+  });
+  wrap.addEventListener('pointerup', clear);
+  wrap.addEventListener('pointercancel', clear);
+}
+
+function removeEditorImageBlock(blockId, container) {
+  const block = findBlockInAllBlocks(edState.blocks, blockId);
+  if (!block || block.type !== 'image') return false;
+  if (!window.confirm('この写真をメモから削除しますか？')) return false;
+  recordEditorHistory(container);
+  if (block.path) pendingImageDeletes.add(block.path);
+  removeBlockById(blockId);
+  if (!edState.blocks.length) edState.blocks.push(defaultBlock());
+  activeEditorBlockId = edState.blocks[0]?.id || null;
+  rerenderBlocks(container);
+  toast('写真をメモから外しました。保存後に確定します', 'info');
+  return true;
 }
 
 function resolveBlockDropPlacement(targetEl, clientX, clientY) {

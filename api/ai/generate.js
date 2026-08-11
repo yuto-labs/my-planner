@@ -315,6 +315,33 @@ function pickResponseSchema(actionType, body) {
                   required: ['expression', 'translationJa'],
                 },
               },
+              usagePatterns: {
+                type: 'ARRAY',
+                description: 'Three to six genuinely useful grammar patterns or fixed constructions for this exact sense. Leave empty when the expression has no notable pattern.',
+                maxItems: 6,
+                items: {
+                  type: 'OBJECT',
+                  properties: {
+                    pattern: { type: 'STRING' },
+                    meaningJa: { type: 'STRING' },
+                    situationsJa: stringArray('Short situations where this construction is natural.'),
+                    examples: {
+                      type: 'ARRAY',
+                      maxItems: 2,
+                      items: {
+                        type: 'OBJECT',
+                        properties: {
+                          source: { type: 'STRING' },
+                          translation: { type: 'STRING' },
+                        },
+                        required: ['source', 'translation'],
+                      },
+                    },
+                    noteJa: { type: 'STRING' },
+                  },
+                  required: ['pattern', 'meaningJa', 'situationsJa', 'examples', 'noteJa'],
+                },
+              },
               examples: {
                 type: 'ARRAY',
                 description: 'Three or four distinct natural examples that differ in situation, grammar, collocation, and communicative purpose.',
@@ -737,13 +764,15 @@ function hasCompleteNuanceResponse(text) {
       String(parsed?.mapLowLabelJa || '').trim()
       && String(parsed?.mapHighLabelJa || '').trim()
     ));
-  const terms = entries
-    .map(entry => String(entry?.term || '').trim().toLocaleLowerCase())
-    .filter(Boolean);
+  const senseKeys = entries.map(entry => [
+    String(entry?.term || '').trim().toLocaleLowerCase(),
+    String(entry?.partOfSpeech || '').trim().toLocaleLowerCase(),
+    String(entry?.senseId || entry?.coreMeaningJa || '').trim().toLocaleLowerCase(),
+  ].join('|')).filter(key => !key.startsWith('|'));
   return Boolean(validMap)
     && entries.length >= 1
     && entries.length <= 6
-    && new Set(terms).size === entries.length
+    && new Set(senseKeys).size === entries.length
     && entries.every(entry => isCompleteNuanceEntry(entry, mapMode));
 }
 
@@ -797,6 +826,19 @@ function normalizeStructuredResponse(actionType, text) {
         intensityMax: level,
         intensity: `★${level}`,
         useCasesJa: normalizeTextList(entry?.useCasesJa || entry?.useCases || entry?.situations),
+        usagePatterns: (Array.isArray(entry?.usagePatterns) ? entry.usagePatterns : [])
+          .map(pattern => ({
+            pattern: String(pattern?.pattern || pattern?.construction || '').trim(),
+            meaningJa: String(pattern?.meaningJa || pattern?.translationJa || '').trim(),
+            situationsJa: normalizeTextList(pattern?.situationsJa || pattern?.situations || pattern?.useCasesJa),
+            examples: (Array.isArray(pattern?.examples) ? pattern.examples : []).map(example => ({
+              source: String(example?.source || example?.english || example?.sentence || '').trim(),
+              translation: String(example?.translation || example?.japanese || example?.translationJa || '').trim(),
+            })).filter(example => example.source && example.translation).slice(0, 2),
+            noteJa: String(pattern?.noteJa || pattern?.note || pattern?.cautionJa || '').trim(),
+          }))
+          .filter(pattern => pattern.pattern && pattern.meaningJa)
+          .slice(0, 6),
         examples: (Array.isArray(entry?.examples) ? entry.examples : []).map(example => ({
           ...example,
           source: String(

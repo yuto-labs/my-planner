@@ -100,18 +100,36 @@ export async function hydratePlannerImages(root) {
   const images = [...(root?.querySelectorAll?.('img[data-media-path]') || [])];
   await Promise.all(images.map(async image => {
     const path = image.dataset.mediaPath;
-    if (!path || image.dataset.mediaLoaded === '1') return;
+    if (!path || image.dataset.mediaLoaded === '1' || image.dataset.mediaLoaded === 'loading') return;
+    image.dataset.mediaLoaded = 'loading';
     const url = await resolvePlannerImageUrl(path, {
       persistent: image.dataset.mediaPersist === '1',
     });
     if (!image.isConnected) return;
     if (!url) {
+      image.dataset.mediaLoaded = 'error';
+      image.closest('.media-frame')?.classList.remove('media-frame--loading');
       image.closest('.media-frame')?.classList.add('media-frame--error');
       return;
     }
+
+    const frame = image.closest('.media-frame');
+    const finish = () => {
+      image.dataset.mediaLoaded = '1';
+      frame?.classList.remove('media-frame--loading', 'media-frame--error');
+    };
+    const fail = () => {
+      image.dataset.mediaLoaded = 'error';
+      frame?.classList.remove('media-frame--loading');
+      frame?.classList.add('media-frame--error');
+    };
+    image.addEventListener('load', finish, { once: true });
+    image.addEventListener('error', fail, { once: true });
     image.src = url;
-    image.dataset.mediaLoaded = '1';
-    image.closest('.media-frame')?.classList.remove('media-frame--loading');
+    if (image.complete) {
+      if (image.naturalWidth > 0) finish();
+      else fail();
+    }
   }));
 }
 
@@ -195,9 +213,9 @@ export async function openPlannerImageViewer({
   const resolvedSrc = useExistingBlob
     ? src
     : path
-      ? await resolvePlannerImageUrl(path, {
+      ? (await resolvePlannerImageUrl(path, {
           persistent: trigger?.dataset?.mediaPersist === '1',
-        })
+        })) || src
       : src;
   if (closed) return;
   if (!resolvedSrc) {

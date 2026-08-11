@@ -186,3 +186,33 @@ test('concurrent Atlas sense additions survive synchronization', () => {
   assert.deepEqual(data.sourceQueries.sort(), ['range', '範囲'].sort());
   assert.equal(result.pushCandidates.length, 1);
 });
+
+test('Atlas sync keeps distinct same-POS meanings even when sense ids share a word', () => {
+  const record = (sense, updatedAt) => ({
+    id: 'range-entry',
+    title: 'range',
+    summary: sense.coreMeaningJa,
+    tags: ['__expression_atlas__'],
+    blocks: [{
+      id: 'range-block',
+      type: 'expression-atlas-data',
+      data: {
+        term: 'range', lemma: 'range', senses: [sense], aliases: [], sourceQueries: [],
+        fieldUpdatedAt: { answer: updatedAt, classification: updatedAt, personalNote: updatedAt },
+      },
+    }],
+    updatedAt,
+  });
+  const local = record(
+    { senseId: 'value-range', partOfSpeech: 'noun', coreMeaningJa: '数値の下限から上限までの幅' },
+    '2026-08-11T10:10:00.000Z'
+  );
+  const remote = record(
+    { senseId: 'mountain-range', partOfSpeech: 'noun', coreMeaningJa: '連なって続く山々のまとまり' },
+    '2026-08-11T10:05:00.000Z'
+  );
+
+  const data = mergeAtlasRecordsForSync([local], [remote]).items[0].blocks[0].data;
+  assert.equal(data.senses.length, 2);
+  assert.deepEqual(data.senses.map(sense => sense.senseId).sort(), ['mountain-range', 'value-range']);
+});

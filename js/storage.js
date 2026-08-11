@@ -4,6 +4,12 @@
 
 import { generateId } from './utils.js';
 import { normalizePartOfSpeech, withStableClassification } from './atlas-model.js';
+import {
+  atlasSenseFromEntry,
+  mergeAtlasList,
+  mergeAtlasSenseArrays,
+  sameAtlasSense,
+} from './atlas-senses.js';
 
 const KEY = {
   EVENTS:    'mp_events',
@@ -849,134 +855,13 @@ function expressionHeadwordKey(entry) {
   ].join('|');
 }
 
-const EXPRESSION_SENSE_FIELDS = [
-  'senseId', 'partOfSpeech', 'coreMeaningJa', 'nuanceJa', 'nuanceTypeJa', 'register',
-  'emotionalToneJa', 'useCasesJa', 'collocations', 'examples', 'comparisons',
-  'cautionsJa', 'grammarNotes',
-];
-
-function expressionSenseFromEntry(entry = {}) {
-  const sense = Object.fromEntries(EXPRESSION_SENSE_FIELDS.map(field => [field, entry[field]]));
-  sense.partOfSpeech = normalizePartOfSpeech(sense.partOfSpeech);
-  if (sense.grammarNotes && typeof sense.grammarNotes === 'object') {
-    sense.grammarNotes = {
-      ...sense.grammarNotes,
-      partOfSpeech: normalizePartOfSpeech(sense.grammarNotes.partOfSpeech || sense.partOfSpeech),
-    };
-  }
-  return sense;
-}
-
-function normalizeSenseValue(value) {
-  return String(value || '').normalize('NFKC').trim().toLocaleLowerCase();
-}
-
-function senseTokenOverlap(left, right) {
-  const tokens = value => new Set(normalizeSenseValue(value).split(/[^a-z0-9]+/).filter(token => token.length > 2));
-  const leftTokens = tokens(left);
-  const rightTokens = tokens(right);
-  return [...leftTokens].some(token => rightTokens.has(token));
-}
-
-function textBigramSimilarity(left, right) {
-  const normalize = value => normalizeSenseValue(value).replace(/[\s\p{P}\p{S}]/gu, '');
-  const bigrams = value => {
-    const text = normalize(value);
-    if (text.length < 2) return new Set(text ? [text] : []);
-    return new Set(Array.from({ length: text.length - 1 }, (_, index) => text.slice(index, index + 2)));
-  };
-  const a = bigrams(left);
-  const b = bigrams(right);
-  if (!a.size || !b.size) return 0;
-  const shared = [...a].filter(value => b.has(value)).length;
-  return (2 * shared) / (a.size + b.size);
-}
-
-function senseQueries(sense = {}) {
-  return normalizedExpressionSourceQueries(sense);
-}
-
 function expressionSenses(entry = {}) {
   const stored = Array.isArray(entry.senses) ? entry.senses.filter(Boolean) : [];
-  return stored.length ? stored.map(sense => ({ ...sense, ...expressionSenseFromEntry(sense) })) : [
-    {
-      ...expressionSenseFromEntry(entry),
-      sourceQueryJa: entry.sourceQueryJa || '',
-      sourceQueries: entry.sourceQueries || [],
-    },
-  ];
-}
-
-function sameExpressionSense(existing, incoming) {
-  const existingPart = normalizePartOfSpeech(existing?.partOfSpeech);
-  const incomingPart = normalizePartOfSpeech(incoming?.partOfSpeech);
-  if (existingPart && incomingPart && existingPart !== incomingPart) return false;
-
-  const existingId = normalizeSenseValue(existing?.senseId);
-  const incomingId = normalizeSenseValue(incoming?.senseId);
-  if (existingId && incomingId && existingId === incomingId) return true;
-  if (existingId && incomingId && senseTokenOverlap(existingId, incomingId)) return true;
-
-  const existingMeaning = normalizeSenseValue(existing?.coreMeaningJa);
-  const incomingMeaning = normalizeSenseValue(incoming?.coreMeaningJa);
-  if (existingMeaning && incomingMeaning && (
-    existingMeaning === incomingMeaning
-    || textBigramSimilarity(existingMeaning, incomingMeaning) >= 0.58
-  )) return true;
-
-  // A repeated query alone does not prove that two senses are identical. It is
-  // only a legacy fallback when neither response supplied a usable sense key.
-  if (!existingId && !incomingId) {
-    const existingQueries = senseQueries(existing);
-    const incomingQueries = senseQueries(incoming);
-    return [...incomingQueries].some(query => existingQueries.has(query));
-  }
-  return false;
+  return stored.length ? stored.map(atlasSenseFromEntry) : [atlasSenseFromEntry(entry)];
 }
 
 function mergeUniqueArray(existing, incoming) {
-  const values = [...(Array.isArray(existing) ? existing : []), ...(Array.isArray(incoming) ? incoming : [])];
-  const seen = new Set();
-  return values.filter(value => {
-    const key = stableAtlasJson(value);
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-function mergeExpressionSense(existing = {}, incoming = {}) {
-  const merged = { ...existing };
-  EXPRESSION_SENSE_FIELDS.forEach(field => {
-    if (field === 'partOfSpeech') {
-      merged.partOfSpeech = normalizePartOfSpeech(incoming.partOfSpeech || existing.partOfSpeech);
-    } else if (field === 'grammarNotes') {
-      merged.grammarNotes = {
-        ...(existing.grammarNotes || {}),
-        ...(incoming.grammarNotes || {}),
-        usageNotes: mergeUniqueArray(existing.grammarNotes?.usageNotes, incoming.grammarNotes?.usageNotes),
-        exampleForms: mergeUniqueArray(existing.grammarNotes?.exampleForms, incoming.grammarNotes?.exampleForms),
-        partOfSpeech: normalizePartOfSpeech(
-          incoming.grammarNotes?.partOfSpeech
-          || incoming.partOfSpeech
-          || existing.grammarNotes?.partOfSpeech
-          || existing.partOfSpeech
-        ),
-      };
-    } else if (Array.isArray(existing[field]) || Array.isArray(incoming[field])) {
-      merged[field] = mergeUniqueArray(existing[field], incoming[field]);
-    } else if (String(incoming[field] || '').trim()) {
-      const previous = String(existing[field] || '').trim();
-      const next = String(incoming[field] || '').trim();
-      merged[field] = next.length >= previous.length ? incoming[field] : existing[field];
-    }
-  });
-  merged.sourceQueryJa = existing.sourceQueryJa || incoming.sourceQueryJa || '';
-  merged.sourceQueries = mergeUniqueArray(
-    [...(existing.sourceQueries || []), existing.sourceQueryJa].filter(Boolean),
-    [...(incoming.sourceQueries || []), incoming.sourceQueryJa].filter(Boolean)
-  );
-  return merged;
+  return mergeAtlasList(existing, incoming);
 }
 
 function consolidateExpressionEntries(entries) {
@@ -1012,24 +897,14 @@ function consolidateExpressionEntries(entries) {
 function mergeExpressionEntry(existing, incoming) {
   const existingSenses = expressionSenses(existing);
   const incomingSenses = expressionSenses(incoming);
-  const senses = existingSenses.map(sense => ({ ...sense }));
-  let primaryWasUpdated = false;
+  const senses = mergeAtlasSenseArrays(existingSenses, incomingSenses);
+  const primaryWasUpdated = incomingSenses.some(sense => sameAtlasSense(existingSenses[0], sense));
 
-  incomingSenses.forEach(incomingSense => {
-    const index = senses.findIndex(existingSense => sameExpressionSense(existingSense, incomingSense));
-    if (index >= 0) {
-      senses[index] = mergeExpressionSense(senses[index], incomingSense);
-      if (index === 0) primaryWasUpdated = true;
-    } else {
-      senses.push(mergeExpressionSense({}, incomingSense));
-    }
-  });
-
-  const primary = senses[0] || expressionSenseFromEntry(existing);
+  const primary = senses[0] || atlasSenseFromEntry(existing);
   const content = primaryWasUpdated ? { ...existing, ...incoming } : { ...incoming, ...existing };
   return {
     ...content,
-    ...expressionSenseFromEntry(primary),
+    ...atlasSenseFromEntry(primary),
     id: existing.id,
     category: existing.category || incoming.category,
     topic: existing.topic || incoming.topic,
@@ -1097,7 +972,7 @@ function expressionEntryToRecord(entry, existing = null) {
   const now = new Date().toISOString();
   const id = entry.id || existing?.id || generateId();
   const data = {
-    promptVersion: 6,
+    promptVersion: 8,
     language: 'English',
     sourceQueryJa: '',
     sourceQueries: [],
@@ -1135,6 +1010,7 @@ function expressionEntryToRecord(entry, existing = null) {
     emotionalToneJa: '',
     useCasesJa: [],
     collocations: [],
+    usagePatterns: [],
     examples: [],
     comparisons: [],
     cautionsJa: [],

@@ -17,6 +17,7 @@ import {
   isValidAtlasTopic,
   expressionLookupKeys,
 } from './atlas-model.js';
+import { atlasSenseFromEntry, mergeAtlasSenseArrays } from './atlas-senses.js';
 
 export { NUANCE_ATLAS_CATEGORIES };
 
@@ -795,11 +796,13 @@ export async function generateNuanceEntries(
     'Return at least three natural example sentences for every expression, each with a faithful Japanese translation and a short usage note. The examples must be genuinely different in situation, grammar, collocation, and communicative purpose; never reuse or lightly rephrase an example anywhere in the set.',
     'Do not treat different parts of speech as interchangeable. Explicitly explain grammatical differences such as adjective versus noun.',
     'existingCatalog is the learner\'s saved dictionary. Check it before choosing entries. A headword is global across the Atlas, even when an earlier category or topic label differs. Never create a second card for an already saved lemma. If the requested English headword already exists, return that same lemma only when you can add a genuinely missing part of speech or sense; use a stable, meaning-specific senseId and explain the new distinction with exactly the same depth, examples, comparisons, grammar, and usage detail as a brand-new entry. The client will append that complete sense to the existing card rather than shortening the old explanation.',
+    'When one requested headword has several important parts of speech or genuinely distinct meanings, you may return more than one entries item with the same term and lemma. Give each item a different meaning-specific senseId and complete standalone detail. The client will group those items into one headword card with separate sense toggles.',
     'Different senses within the same part of speech must remain separate when their core images, argument patterns, domains, or implications differ. Reuse an existing senseId only for the same meaning. Never collapse two real senses merely because they came from the same user query.',
     'A new sense is not a paraphrase of an existing coreMeaningJa. Do not rename or rewrite an existing sense merely to satisfy the requested count. Prefer other useful comparison expressions when the catalog already covers the requested headword completely.',
     'Add grammarNotes only when useful: part of speech; countability; irregular plural; irregular past/past participle; meaning-dependent countability such as work/works or experience/experiences; and example forms. Do not pad regular forms with obvious explanations.',
     'When a form is irregular or countability is easy to confuse, use that form naturally in at least one example.',
     'For collocations, return the English combination together with a short natural Japanese meaning for that exact combination. Translate the combination in context, not as isolated dictionary words.',
+    'When this sense has characteristic constructions, add three to six usagePatterns. Each pattern must include the English construction, its Japanese function, concrete suitable situations, one or two distinct examples with translations, and a concise nuance or grammar caution. Leave usagePatterns empty rather than inventing patterns for an expression that has none.',
     'Avoid generic statements such as "context matters". State what situation, relationship, intensity, or attitude makes each expression natural.',
     'Return at least three concrete comparisons for every expression. Compare expressions in the returned set when possible, and explain the decisive difference in viewpoint, implication, grammar, strength, or register instead of giving interchangeable dictionary glosses.',
     'Do not invent quotations, statistics, citations, or unsupported claims.',
@@ -849,16 +852,13 @@ export async function generateNuanceEntries(
     : reuseEquivalentAtlasTopic(existingTaxonomy, resolvedCategory, proposedTopic, `${cleanTarget} ${terms.join(' ')}`);
   const resolvedTopic = reusedClassification.topic;
   const sourceEntries = Array.isArray(parsed?.entries) ? parsed.entries : [];
-  const unique = new Set();
   const entries = sourceEntries
     .map(entry => {
       const term = String(entry?.term || '').trim();
-      const key = term.toLocaleLowerCase();
-      if (!term || unique.has(key)) return null;
-      unique.add(key);
+      if (!term) return null;
       const intensityLevel = normalizeNuanceIntensity(entry.intensityLevel, entry.intensity);
       return {
-        promptVersion: 7,
+        promptVersion: 8,
         language: String(language || 'English').trim() || 'English',
         sourceQueryJa: cleanTarget,
         sourceQueries: cleanTarget ? [cleanTarget] : [],
@@ -888,6 +888,25 @@ export async function generateNuanceEntries(
         emotionalToneJa: String(entry.emotionalToneJa || '').trim(),
         useCasesJa: normalizeStringList(entry.useCasesJa, 6),
         collocations: normalizeCollocations(entry.collocations, 8),
+        usagePatterns: (Array.isArray(entry.usagePatterns) ? entry.usagePatterns : [])
+          .map(pattern => ({
+            pattern: String(pattern?.pattern || pattern?.construction || '').trim(),
+            meaningJa: String(pattern?.meaningJa || pattern?.translationJa || '').trim(),
+            situationsJa: normalizeStringList(
+              pattern?.situationsJa || pattern?.situations || pattern?.useCasesJa,
+              4
+            ),
+            examples: (Array.isArray(pattern?.examples) ? pattern.examples : [])
+              .map(example => ({
+                source: String(example?.source || example?.english || example?.sentence || '').trim(),
+                translation: String(example?.translation || example?.japanese || example?.translationJa || '').trim(),
+              }))
+              .filter(example => example.source && example.translation)
+              .slice(0, 2),
+            noteJa: String(pattern?.noteJa || pattern?.note || pattern?.cautionJa || '').trim(),
+          }))
+          .filter(pattern => pattern.pattern && pattern.meaningJa)
+          .slice(0, 6),
         examples: (Array.isArray(entry.examples) ? entry.examples : [])
           .map(example => ({
             source: String(example?.source || '').trim(),
@@ -928,7 +947,19 @@ export async function generateNuanceEntries(
       ? 'このテーマで新しく追加できる表現が見つかりませんでした。既存の表現は変更していません。'
       : '表現データを作成できませんでした。少し時間を置いて、もう一度お試しください。');
   }
-  return entries;
+  const grouped = new Map();
+  entries.forEach(entry => {
+    const key = `${entry.language}|${entry.lemma || entry.term}`.normalize('NFKC').toLocaleLowerCase();
+    const existing = grouped.get(key);
+    if (!existing) {
+      grouped.set(key, { ...entry, senses: [atlasSenseFromEntry(entry)] });
+      return;
+    }
+    existing.senses = mergeAtlasSenseArrays(existing.senses, [atlasSenseFromEntry(entry)]);
+    existing.aliases = [...new Set([...(existing.aliases || []), ...(entry.aliases || [])])];
+    existing.sourceQueries = [...new Set([...(existing.sourceQueries || []), ...(entry.sourceQueries || [])])];
+  });
+  return [...grouped.values()];
 }
 
 export async function generateTranslationVariants(

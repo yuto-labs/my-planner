@@ -75,6 +75,7 @@ let state = {
   libraryScrollTop: 0,
   collapsedDetailSections: new Set(),
   openNativeDetailSections: new Set(),
+  openSenseDetailSections: new Map(),
   morphologyType: 'all',
   usageType: 'all',
   libraryMode: 'expressions',
@@ -370,19 +371,50 @@ function getLibraryView() {
   const matchingEntries = query
     ? entries.filter(entry => searchableText(entry).includes(query))
     : entries;
-  const visibleEntries = matchingEntries.filter(entry => (
-    query || (
-      (!state.category || entry.category === state.category)
-      && (!state.topic || entry.topic === state.topic)
-    )
-  ));
-  const categories = unique(entries.map(entry => entry.category).filter(Boolean));
-  const topics = unique(entries
-    .filter(entry => !state.category || entry.category === state.category)
-    .map(entry => entry.topic)
+  const visibleEntries = matchingEntries
+    .map(entry => query ? entry : projectExpressionForPlacement(entry, state.category, state.topic))
+    .filter(Boolean);
+  const placements = entries.flatMap(expressionPlacements);
+  const categories = unique(placements.map(item => item.category).filter(Boolean));
+  const topics = unique(placements
+    .filter(item => !state.category || item.category === state.category)
+    .map(item => item.topic)
     .filter(Boolean));
   const level = query || state.topic ? 'entries' : state.category ? 'topics' : 'categories';
   return { entries, visibleEntries, categories, topics, level, unifiedResults };
+}
+
+function expressionPlacements(entry) {
+  const senses = Array.isArray(entry?.senses) && entry.senses.length ? entry.senses : [entry];
+  const placements = senses.map(sense => ({
+    sense,
+    category: sense.category || entry.category || '',
+    topic: sense.topic || entry.topic || '',
+  }));
+  const seen = new Set();
+  return placements.filter(item => {
+    const key = `${item.category}|${item.topic}|${item.sense?.senseId || item.sense?.coreMeaningJa || ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function projectExpressionForPlacement(entry, category = '', topic = '') {
+  const placement = expressionPlacements(entry).find(item => (
+    (!category || item.category === category) && (!topic || item.topic === topic)
+  ));
+  if (!placement) return null;
+  return {
+    ...entry,
+    ...placement.sense,
+    id: entry.id,
+    term: entry.term,
+    lemma: entry.lemma,
+    category: placement.category,
+    topic: placement.topic,
+    senses: entry.senses,
+  };
 }
 
 function wireLibraryShell() {
@@ -2003,8 +2035,11 @@ function renderLibraryContent({ level, entries, categories, topics, allEntries, 
   }
   if (level === 'categories') {
     return `${renderPersonalShelves(allEntries)}<div class="atlas-folder-grid">${categories.map(category => {
-      const count = allEntries.filter(entry => entry.category === category).length;
-      const topicCount = unique(allEntries.filter(entry => entry.category === category).map(entry => entry.topic)).length;
+      const categoryEntries = allEntries
+        .map(entry => projectExpressionForPlacement(entry, category, ''))
+        .filter(Boolean);
+      const count = categoryEntries.length;
+      const topicCount = unique(categoryEntries.map(entry => entry.topic)).length;
       return `
         <button class="atlas-folder-card" type="button" data-atlas-category="${esc(category)}">
           <span class="atlas-folder-mark" aria-hidden="true"></span>
@@ -2016,7 +2051,9 @@ function renderLibraryContent({ level, entries, categories, topics, allEntries, 
   }
   if (level === 'topics') {
     return `<div class="atlas-folder-grid">${topics.map(topic => {
-      const topicEntries = allEntries.filter(entry => entry.category === state.category && entry.topic === topic);
+      const topicEntries = allEntries
+        .map(entry => projectExpressionForPlacement(entry, state.category, topic))
+        .filter(Boolean);
       return `
         <button class="atlas-folder-card atlas-folder-card--topic" type="button" data-atlas-topic="${esc(topic)}">
           <span class="atlas-folder-mark" aria-hidden="true"></span>
@@ -2230,10 +2267,11 @@ function renderDetail() {
 
       ${classificationEditor(entry, 'expression')}
       ${etymologyCoreSection(hasMultipleSenses ? { ...entry, coreMeaningJa: '' } : entry)}
-      ${hasMultipleSenses ? expressionSensesSection(senses) : `
+      ${hasMultipleSenses ? expressionSensesSection(entry, senses) : `
         ${detailSection('深いニュアンス', entry.nuanceJa)}
         ${comparisonsSection(entry.comparisons, buildExpressionIndex(getExpressionEntries()))}
         ${listSection('自然に使われる場面', entry.useCasesJa)}
+        ${usagePatternsSection(entry.usagePatterns)}
         ${examplesSection(entry.examples)}
         ${grammarNotesSection(entry.grammarNotes)}
         ${detailSection('感情の温度', entry.emotionalToneJa)}
@@ -2730,8 +2768,20 @@ function wireCollapsibleDetailSections() {
     const sectionKey = `${detailKey}:native:${index}:${summary?.textContent?.trim() || 'section'}`;
     details.open = state.openNativeDetailSections.has(sectionKey);
     details.addEventListener('toggle', () => {
+      if (!details.isConnected) return;
       if (details.open) state.openNativeDetailSections.add(sectionKey);
       else state.openNativeDetailSections.delete(sectionKey);
+    });
+  });
+  state.container?.querySelectorAll('details.atlas-sense[data-atlas-sense-key]').forEach((details, index) => {
+    const sectionKey = details.dataset.atlasSenseKey;
+    const shouldOpen = state.openSenseDetailSections.has(sectionKey)
+      ? state.openSenseDetailSections.get(sectionKey)
+      : index === 0;
+    details.open = shouldOpen;
+    details.addEventListener('toggle', () => {
+      if (!details.isConnected) return;
+      state.openSenseDetailSections.set(sectionKey, details.open);
     });
   });
 }
@@ -2832,14 +2882,19 @@ function grammarNotesSection(notes) {
   `;
 }
 
-function expressionSensesSection(senses) {
+function expressionSensesSection(entry, senses) {
   const expressionIndex = buildExpressionIndex(getExpressionEntries());
   return `
     <section class="atlas-detail-section atlas-senses-section">
       <h2>意味・品詞別の解説</h2>
       <div class="atlas-sense-list">
-        ${senses.map((sense, index) => `
-          <details class="atlas-sense" ${index === 0 ? 'open' : ''}>
+        ${senses.map((sense, index) => {
+          const senseKey = `${entry.id}:${sense.senseId || sense.partOfSpeech || 'sense'}:${index}`;
+          const isOpen = state.openSenseDetailSections.has(senseKey)
+            ? state.openSenseDetailSections.get(senseKey)
+            : index === 0;
+          return `
+          <details class="atlas-sense" data-atlas-sense-key="${esc(senseKey)}" ${isOpen ? 'open' : ''}>
             <summary>
               <span>${esc(sense.partOfSpeech || `意味 ${index + 1}`)}</span>
               ${sense.coreMeaningJa ? `<strong>${esc(sense.coreMeaningJa)}</strong>` : ''}
@@ -2849,6 +2904,7 @@ function expressionSensesSection(senses) {
               ${detailSection('深いニュアンス', sense.nuanceJa)}
               ${comparisonsSection(sense.comparisons, expressionIndex)}
               ${listSection('自然に使われる場面', sense.useCasesJa)}
+              ${usagePatternsSection(sense.usagePatterns)}
               ${examplesSection(sense.examples)}
               ${grammarNotesSection(sense.grammarNotes)}
               ${detailSection('感情の温度', sense.emotionalToneJa)}
@@ -2856,7 +2912,8 @@ function expressionSensesSection(senses) {
               ${listSection('注意点', sense.cautionsJa, 'atlas-note-list--warning')}
             </div>
           </details>
-        `).join('')}
+        `;
+        }).join('')}
       </div>
     </section>
   `;
@@ -3067,6 +3124,34 @@ function collocationsSection(items, expressionIndex = buildExpressionIndex(getEx
           ${linkedExpressionTerm(item.expression, expressionIndex)}
           ${item.translationJa ? `<span>${esc(item.translationJa)}</span>` : ''}
         </span>
+      `).join('')}</div>
+    </section>
+  `;
+}
+
+function usagePatternsSection(items) {
+  const patterns = (Array.isArray(items) ? items : []).filter(item => (
+    String(item?.pattern || '').trim() && String(item?.meaningJa || '').trim()
+  ));
+  if (!patterns.length) return '';
+  return `
+    <section class="atlas-detail-section atlas-usage-patterns">
+      <h2>よく使う構文</h2>
+      <div class="atlas-usage-pattern-list">${patterns.map(item => `
+        <article class="atlas-usage-pattern">
+          <div class="atlas-audio-line"><strong lang="en">${esc(item.pattern)}</strong>${speakButton(item.pattern)}</div>
+          <p>${esc(item.meaningJa)}</p>
+          ${Array.isArray(item.situationsJa) && item.situationsJa.length
+            ? `<ul class="atlas-note-list">${item.situationsJa.map(value => `<li>${esc(value)}</li>`).join('')}</ul>`
+            : ''}
+          ${(Array.isArray(item.examples) ? item.examples : []).map(example => `
+            <div class="atlas-pattern-example">
+              <div class="atlas-audio-line"><span lang="en">${esc(example.source)}</span>${speakButton(example.source)}</div>
+              <small>${esc(example.translation)}</small>
+            </div>
+          `).join('')}
+          ${item.noteJa ? `<small class="atlas-pattern-note">${esc(item.noteJa)}</small>` : ''}
+        </article>
       `).join('')}</div>
     </section>
   `;
