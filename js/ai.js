@@ -706,6 +706,7 @@ export async function generateNuanceEntries(
     topic = '',
     seedTerms = [],
     existingExpressions = [],
+    referenceExpressions = [],
     existingTaxonomy = [],
   } = {},
   options = {}
@@ -742,6 +743,23 @@ export async function generateNuanceEntries(
     .filter(entry => entry.term)
     .slice(0, 24);
   const expansionMode = knownExpressions.length > 0;
+  const catalogExpressions = (Array.isArray(referenceExpressions) ? referenceExpressions : [])
+    .map(entry => ({
+      term: String(entry?.term || '').trim(),
+      lemma: String(entry?.lemma || '').trim(),
+      aliases: normalizeStringList(entry?.aliases, 8),
+      category: String(entry?.category || '').trim(),
+      topic: String(entry?.topic || '').trim(),
+      senses: (Array.isArray(entry?.senses) && entry.senses.length ? entry.senses : [entry])
+        .map(sense => ({
+          senseId: String(sense?.senseId || '').trim(),
+          partOfSpeech: String(sense?.partOfSpeech || '').trim(),
+          coreMeaningJa: String(sense?.coreMeaningJa || '').trim().slice(0, 180),
+        }))
+        .slice(0, 8),
+    }))
+    .filter(entry => entry.term)
+    .slice(0, 80);
   const excludedKeys = new Set(knownExpressions.flatMap(expressionLookupKeys));
   if (!cleanTarget && !cleanCategory && !cleanTopic && !terms.length) {
     throw new Error('知りたい意味・表現を入力してください。');
@@ -776,6 +794,8 @@ export async function generateNuanceEntries(
     'Etymology must distinguish verified historical origin from a learning mnemonic. Never invent a root or confidently state a disputed origin. When uncertain, explicitly say that the origin is uncertain or leave etymologyJa empty.',
     'Return at least three natural example sentences for every expression, each with a faithful Japanese translation and a short usage note. The examples must be genuinely different in situation, grammar, collocation, and communicative purpose; never reuse or lightly rephrase an example anywhere in the set.',
     'Do not treat different parts of speech as interchangeable. Explicitly explain grammatical differences such as adjective versus noun.',
+    'existingCatalog is the learner\'s saved dictionary. Check it before choosing entries. Never create a second copy of an already saved headword in the same semantic topic. If the requested English headword already exists, return that headword only when you can add a genuinely missing part of speech or sense; use a stable senseId and explain the new distinction fully so the client can merge it into the existing card.',
+    'A new sense is not a paraphrase of an existing coreMeaningJa. Do not rename or rewrite an existing sense merely to satisfy the requested count. Prefer other useful comparison expressions when the catalog already covers the requested headword completely.',
     'Add grammarNotes only when useful: part of speech; countability; irregular plural; irregular past/past participle; meaning-dependent countability such as work/works or experience/experiences; and example forms. Do not pad regular forms with obvious explanations.',
     'When a form is irregular or countability is easy to confuse, use that form naturally in at least one example.',
     'For collocations, return the English combination together with a short natural Japanese meaning for that exact combination. Translate the combination in context, not as isolated dictionary words.',
@@ -794,6 +814,7 @@ export async function generateNuanceEntries(
     seedTerms: terms,
     expansionMode,
     existingExpressions: knownExpressions,
+    existingCatalog: catalogExpressions,
     existingTaxonomy: (Array.isArray(existingTaxonomy) ? existingTaxonomy : []).slice(0, 40),
     allowedCategories: NUANCE_ATLAS_CATEGORIES,
     requestedEntryCount: terms.length ? Math.max(terms.length, 5) : 5,

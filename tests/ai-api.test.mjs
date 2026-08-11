@@ -170,6 +170,29 @@ test('accepts nuance output using the schema field names', () => {
   );
   assert.equal(hasCompleteStructuredResponse('nuance_generate', normalizedEquivalentKeys), true);
 
+  const explanationsWithEquivalentKeys = structuredClone(response);
+  explanationsWithEquivalentKeys.entries.forEach(entry => {
+    entry.expression = entry.term;
+    entry.headword = entry.lemma;
+    entry.etymology = entry.etymologyJa;
+    entry.coreImage = entry.coreImageJa;
+    entry.coreMeaning = entry.coreMeaningJa;
+    entry.nuance = entry.nuanceJa;
+    entry.useCases = entry.useCasesJa.map(text => ({ descriptionJa: text }));
+    delete entry.term;
+    delete entry.lemma;
+    delete entry.etymologyJa;
+    delete entry.coreImageJa;
+    delete entry.coreMeaningJa;
+    delete entry.nuanceJa;
+    delete entry.useCasesJa;
+  });
+  const normalizedEquivalentExplanations = normalizeStructuredResponse(
+    'nuance_generate',
+    JSON.stringify(explanationsWithEquivalentKeys)
+  );
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', normalizedEquivalentExplanations), true);
+
   const conciseButCompleteCore = JSON.parse(JSON.stringify(response));
   conciseButCompleteCore.entries.forEach(entry => {
     entry.coreImageJa = '物理的な核の像と、現代の意味へのつながりを説明します。';

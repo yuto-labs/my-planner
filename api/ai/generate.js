@@ -774,16 +774,29 @@ function normalizeStructuredResponse(actionType, text) {
             .split(/[。！？\n]/)[0]
             .slice(0, 18) || 'その他')
           : '');
+      const normalizeTextList = value => (Array.isArray(value) ? value : [])
+        .map(item => String(
+          typeof item === 'string'
+            ? item
+            : (item?.text || item?.descriptionJa || item?.description || item?.labelJa || '')
+        ).trim())
+        .filter(Boolean);
       return {
         ...entry,
-        etymologyJa: String(entry?.etymologyJa || '').trim().length >= 20
-          ? String(entry.etymologyJa).trim()
+        term: String(entry?.term || entry?.expression || entry?.word || '').trim(),
+        lemma: String(entry?.lemma || entry?.headword || entry?.baseForm || entry?.term || '').trim(),
+        etymologyJa: String(entry?.etymologyJa || entry?.etymology || '').trim().length >= 20
+          ? String(entry?.etymologyJa || entry?.etymology).trim()
           : '',
+        coreImageJa: String(entry?.coreImageJa || entry?.coreImage || '').trim(),
+        coreMeaningJa: String(entry?.coreMeaningJa || entry?.coreMeaning || entry?.meaningJa || '').trim(),
+        nuanceJa: String(entry?.nuanceJa || entry?.nuance || entry?.explanationJa || '').trim(),
         nuanceTypeJa,
         intensityLevel: level,
         intensityMin: level,
         intensityMax: level,
         intensity: `★${level}`,
+        useCasesJa: normalizeTextList(entry?.useCasesJa || entry?.useCases || entry?.situations),
         examples: (Array.isArray(entry?.examples) ? entry.examples : []).map(example => ({
           ...example,
           source: String(

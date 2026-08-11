@@ -20,6 +20,7 @@ const {
   getTrashItems,
   importBackup,
   restoreTrashItem,
+  saveExpressionEntries,
 } = await import('../js/storage.js');
 
 function entry(id, title, updatedAt = '2026-07-27T10:00:00.000Z') {
@@ -148,7 +149,7 @@ test('repeated Atlas queries reuse an entry despite classification and sense-id 
   assert.equal(getExpressionEntries().find(entry => entry.id === first.id)?.coreMeaningJa, 'B');
 });
 
-test('repeated Atlas queries keep genuinely different parts of speech separate', () => {
+test('repeated Atlas queries keep different parts of speech as senses of one headword', () => {
   addExpressionEntries([{
     term: 'draft', lemma: 'draft', partOfSpeech: 'noun', category: 'Writing', topic: 'Draft',
     senseId: 'preliminary-text', sourceQueryJa: 'draft', sourceQueries: ['draft'],
@@ -158,7 +159,59 @@ test('repeated Atlas queries keep genuinely different parts of speech separate',
     senseId: 'write-preliminary', sourceQueryJa: 'draft', sourceQueries: ['draft'],
   }]);
 
-  assert.equal(getExpressionEntries().filter(entry => entry.lemma === 'draft').length, 2);
+  const matches = getExpressionEntries().filter(entry => entry.lemma === 'draft');
+  assert.equal(matches.length, 1);
+  assert.deepEqual(matches[0].senses.map(sense => sense.partOfSpeech).sort(), ['noun', 'verb']);
+});
+
+test('same headword in one topic merges without requiring identical sense ids or queries', () => {
+  const [first] = addExpressionEntries([{
+    term: 'range', lemma: 'range', partOfSpeech: 'noun', category: '状態・性質', topic: '分布と範囲',
+    senseId: 'extent', sourceQueryJa: '分散', coreMeaningJa: '値が広がる範囲',
+  }]);
+  const [second] = addExpressionEntries([{
+    term: 'range', lemma: 'range', partOfSpeech: 'verb', category: '状態・性質', topic: '分布と範囲',
+    senseId: 'vary-between', sourceQueryJa: 'range', coreMeaningJa: '一定の範囲にわたる',
+  }]);
+
+  assert.equal(second.id, first.id);
+  const [saved] = getExpressionEntries().filter(entry => entry.lemma === 'range');
+  assert.equal(saved.senses.length, 2);
+  assert.deepEqual(saved.senses.map(sense => sense.partOfSpeech).sort(), ['noun', 'verb']);
+});
+
+test('near-identical sense ids enrich one sense while distinct meanings remain separate', () => {
+  addExpressionEntries([{
+    term: 'range', lemma: 'range', partOfSpeech: 'noun', category: '状態・性質', topic: '分布と範囲',
+    senseId: 'extent-span', sourceQueryJa: '範囲', coreMeaningJa: '広がりの端から端までの範囲',
+  }]);
+  addExpressionEntries([{
+    term: 'range', lemma: 'range', partOfSpeech: 'noun', category: '状態・性質', topic: '分布と範囲',
+    senseId: 'value-extent', sourceQueryJa: '値の範囲', coreMeaningJa: '値が広がっている範囲',
+  }]);
+  addExpressionEntries([{
+    term: 'range', lemma: 'range', partOfSpeech: 'noun', category: '状態・性質', topic: '分布と範囲',
+    senseId: 'line-of-items', sourceQueryJa: '並び', coreMeaningJa: '物が一列に並んだもの',
+  }]);
+
+  const [saved] = getExpressionEntries().filter(entry => entry.lemma === 'range');
+  assert.equal(saved.senses.length, 2);
+  assert.ok(saved.senses.some(sense => sense.senseId === 'value-extent'));
+  assert.ok(saved.senses.some(sense => sense.senseId === 'line-of-items'));
+});
+
+test('a new save never silently removes pre-existing duplicate record ids', () => {
+  saveExpressionEntries([
+    { id: 'legacy-a', term: 'range', lemma: 'range', category: '状態・性質', topic: '分布と範囲', senseId: 'extent' },
+    { id: 'legacy-b', term: 'range', lemma: 'range', category: '状態・性質', topic: '分布と範囲', senseId: 'row' },
+  ]);
+  addExpressionEntries([{
+    term: 'spread', lemma: 'spread', category: '状態・性質', topic: '分布と範囲', senseId: 'distribution',
+  }]);
+
+  const ids = getExpressionEntries().map(entry => entry.id);
+  assert.ok(ids.includes('legacy-a'));
+  assert.ok(ids.includes('legacy-b'));
 });
 
 test('atlas preserves legacy collocations and new Japanese meanings together', () => {

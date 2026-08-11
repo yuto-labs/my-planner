@@ -7,7 +7,7 @@ globalThis.localStorage = {
   removeItem() {},
 };
 
-const { mergeFreshLocalCollection, mergeLearningRecordsForSync } = await import('../js/sync.js');
+const { mergeAtlasRecordsForSync, mergeFreshLocalCollection, mergeLearningRecordsForSync } = await import('../js/sync.js');
 
 function record({ title, answer, titleAt, answerAt, updatedAt }) {
   const data = {
@@ -148,4 +148,41 @@ test('three-way merges tag edits without clearing remote tags', () => {
     ['work', 'old', 'remote']
   );
   assert.deepEqual(merged, ['new', 'remote', 'work']);
+});
+
+test('concurrent Atlas sense additions survive synchronization', () => {
+  const atlasRecord = (sense, answerAt, updatedAt) => ({
+    id: 'range-entry',
+    title: 'range',
+    summary: sense.coreMeaningJa,
+    tags: ['__expression_atlas__'],
+    blocks: [{
+      id: 'range-block',
+      type: 'expression-atlas-data',
+      data: {
+        term: 'range', lemma: 'range', category: '状態・性質', topic: '分布と範囲',
+        senses: [sense],
+        sourceQueries: [sense.sourceQueryJa],
+        aliases: [],
+        fieldUpdatedAt: { answer: answerAt, classification: answerAt, personalNote: answerAt },
+      },
+    }],
+    updatedAt,
+  });
+  const local = atlasRecord(
+    { senseId: 'vary-between', partOfSpeech: 'verb', coreMeaningJa: '一定の範囲にわたる', sourceQueryJa: 'range' },
+    '2026-08-11T10:10:00.000Z',
+    '2026-08-11T10:10:00.000Z'
+  );
+  const remote = atlasRecord(
+    { senseId: 'extent', partOfSpeech: 'noun', coreMeaningJa: '端から端までの範囲', sourceQueryJa: '範囲' },
+    '2026-08-11T10:05:00.000Z',
+    '2026-08-11T10:05:00.000Z'
+  );
+
+  const result = mergeAtlasRecordsForSync([local], [remote]);
+  const data = result.items[0].blocks[0].data;
+  assert.deepEqual(data.senses.map(sense => sense.partOfSpeech).sort(), ['noun', 'verb']);
+  assert.deepEqual(data.sourceQueries.sort(), ['range', '範囲'].sort());
+  assert.equal(result.pushCandidates.length, 1);
 });

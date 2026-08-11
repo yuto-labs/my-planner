@@ -877,6 +877,46 @@ function atlasRecordData(record) {
     : null;
 }
 
+function mergeAtlasList(left, right) {
+  const seen = new Set();
+  return [...(Array.isArray(left) ? left : []), ...(Array.isArray(right) ? right : [])]
+    .filter(value => {
+      const key = stableSyncJson(value);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function atlasSenseKey(sense = {}) {
+  const part = String(sense.partOfSpeech || '').normalize('NFKC').trim().toLocaleLowerCase();
+  const id = String(sense.senseId || '').normalize('NFKC').trim().toLocaleLowerCase();
+  const meaning = String(sense.coreMeaningJa || '').normalize('NFKC').trim().toLocaleLowerCase();
+  return `${part}|${id || meaning}`;
+}
+
+function mergeAtlasSenseArrays(preferred, secondary) {
+  const byKey = new Map();
+  (Array.isArray(secondary) ? secondary : []).forEach(sense => {
+    byKey.set(atlasSenseKey(sense), sense);
+  });
+  (Array.isArray(preferred) ? preferred : []).forEach(sense => {
+    const key = atlasSenseKey(sense);
+    const previous = byKey.get(key);
+    byKey.set(key, previous ? {
+      ...previous,
+      ...sense,
+      useCasesJa: mergeAtlasList(previous.useCasesJa, sense.useCasesJa),
+      collocations: mergeAtlasList(previous.collocations, sense.collocations),
+      examples: mergeAtlasList(previous.examples, sense.examples),
+      comparisons: mergeAtlasList(previous.comparisons, sense.comparisons),
+      cautionsJa: mergeAtlasList(previous.cautionsJa, sense.cautionsJa),
+      sourceQueries: mergeAtlasList(previous.sourceQueries, sense.sourceQueries),
+    } : sense);
+  });
+  return [...byKey.values()];
+}
+
 function mergeAtlasRecord(local, remote) {
   const localAtlas = atlasRecordData(local);
   const remoteAtlas = atlasRecordData(remote);
@@ -907,6 +947,14 @@ function mergeAtlasRecord(local, remote) {
       personalNote: noteData.fieldUpdatedAt?.personalNote || '',
     },
   };
+  if (localAtlas.block.type === 'expression-atlas-data') {
+    const otherData = contentData === localAtlas.data ? remoteAtlas.data : localAtlas.data;
+    if (Array.isArray(contentData.senses) || Array.isArray(otherData.senses)) {
+      mergedData.senses = mergeAtlasSenseArrays(contentData.senses, otherData.senses);
+    }
+    mergedData.sourceQueries = mergeAtlasList(contentData.sourceQueries, otherData.sourceQueries);
+    mergedData.aliases = mergeAtlasList(contentData.aliases, otherData.aliases);
+  }
   if (stableSyncJson(mergedData) === stableSyncJson(remoteAtlas.data)) return remote;
   const mergedBlock = newerRecord.blocks?.find(item => item?.type === localAtlas.block.type);
   return {
@@ -916,7 +964,7 @@ function mergeAtlasRecord(local, remote) {
   };
 }
 
-function mergeAtlasRecordsForSync(local, remote) {
+export function mergeAtlasRecordsForSync(local, remote) {
   const localById = new Map((local || []).filter(item => item?.id).map(item => [item.id, item]));
   const pushCandidates = [];
   const items = (remote || []).map(remoteItem => {

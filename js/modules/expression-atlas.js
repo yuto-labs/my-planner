@@ -2042,6 +2042,10 @@ function renderLibraryContent({ level, entries, categories, topics, allEntries, 
 
 function renderEntryCard(entry) {
   const intensityLevel = getIntensityLevel(entry);
+  const partsOfSpeech = unique((entry.senses || [])
+    .map(sense => sense?.partOfSpeech)
+    .filter(Boolean));
+  const partOfSpeechLabel = partsOfSpeech.length ? partsOfSpeech.join(' / ') : entry.partOfSpeech;
   const intensityLabel = getNuanceMapMode(entry) === 'groups'
     ? ''
     : (intensityLevel ? intensityStars(intensityLevel) : String(entry.intensity || '').trim());
@@ -2049,7 +2053,7 @@ function renderEntryCard(entry) {
     <button class="atlas-entry-card" type="button" data-atlas-entry="${esc(entry.id)}">
       <span class="atlas-entry-topline">
         <strong>${esc(entry.term)}</strong>
-        ${entry.partOfSpeech ? `<span>${esc(entry.partOfSpeech)}</span>` : ''}
+        ${partOfSpeechLabel ? `<span>${esc(partOfSpeechLabel)}</span>` : ''}
       </span>
       <span class="atlas-entry-meaning">${esc(entry.coreMeaningJa || entry.nuanceJa || '説明を追加してください')}</span>
       ${intensityLabel || entry.nuanceTypeJa ? `
@@ -2169,6 +2173,10 @@ function renderDetail() {
   const intensityLevel = getIntensityLevel(entry);
   const sameWordElsewhere = findSameWordInOtherThemes(entry);
   const previousDetail = state.detailTrail.at(-1);
+  const senses = Array.isArray(entry.senses) ? entry.senses.filter(Boolean) : [];
+  const hasMultipleSenses = senses.length > 1;
+  const partOfSpeechLabel = unique(senses.map(sense => sense?.partOfSpeech).filter(Boolean)).join(' / ')
+    || entry.partOfSpeech;
 
   state.container.innerHTML = `
     <article class="atlas-page atlas-detail-page">
@@ -2195,7 +2203,7 @@ function renderDetail() {
           ${entry.pronunciation ? `<p class="atlas-pronunciation" lang="en">${esc(entry.pronunciation)}</p>` : ''}
           ${entry.sourceQueryJa ? `<p class="atlas-source-query">最初に調べたこと: ${esc(entry.sourceQueryJa)}</p>` : ''}
           <div class="atlas-detail-badges">
-            ${entry.partOfSpeech ? `<span>${esc(entry.partOfSpeech)}</span>` : ''}
+            ${partOfSpeechLabel ? `<span>${esc(partOfSpeechLabel)}</span>` : ''}
             ${entry.register ? `<span>${esc(entry.register)}</span>` : ''}
             ${getNuanceMapMode(entry) !== 'groups' && intensityLevel
               ? `<span aria-label="強さ5段階中${intensityLevel}">強さ ${intensityStars(intensityLevel)}</span>`
@@ -2214,17 +2222,19 @@ function renderDetail() {
       </header>
 
       ${classificationEditor(entry, 'expression')}
-      ${etymologyCoreSection(entry)}
-      ${detailSection('深いニュアンス', entry.nuanceJa)}
-      ${comparisonsSection(entry.comparisons, buildExpressionIndex(getExpressionEntries()))}
+      ${etymologyCoreSection(hasMultipleSenses ? { ...entry, coreMeaningJa: '' } : entry)}
+      ${hasMultipleSenses ? expressionSensesSection(senses) : `
+        ${detailSection('深いニュアンス', entry.nuanceJa)}
+        ${comparisonsSection(entry.comparisons, buildExpressionIndex(getExpressionEntries()))}
+        ${listSection('自然に使われる場面', entry.useCasesJa)}
+        ${examplesSection(entry.examples)}
+        ${grammarNotesSection(entry.grammarNotes)}
+        ${detailSection('感情の温度', entry.emotionalToneJa)}
+        ${collocationsSection(entry.collocations, buildExpressionIndex(getExpressionEntries()))}
+        ${listSection('注意点', entry.cautionsJa, 'atlas-note-list--warning')}
+      `}
       ${sameWordElsewhere.length ? sameWordThemeSection(entry, sameWordElsewhere) : ''}
-      ${listSection('自然に使われる場面', entry.useCasesJa)}
-      ${examplesSection(entry.examples)}
-      ${grammarNotesSection(entry.grammarNotes)}
       ${relatedEtymologySection(entry)}
-      ${detailSection('感情の温度', entry.emotionalToneJa)}
-      ${collocationsSection(entry.collocations, buildExpressionIndex(getExpressionEntries()))}
-      ${listSection('注意点', entry.cautionsJa, 'atlas-note-list--warning')}
 
       <section class="atlas-detail-section">
         <h2>自分のメモ</h2>
@@ -2510,6 +2520,12 @@ async function handleGenerate(event) {
     return;
   }
   const taxonomy = collectAtlasTaxonomy();
+  const allExpressions = getExpressionEntries();
+  const exactReferences = findExpressionMatches(learningTarget, allExpressions);
+  const referenceExpressions = [
+    ...exactReferences,
+    ...allExpressions.filter(entry => !exactReferences.some(match => match.id === entry.id)),
+  ];
 
   state.generating = true;
   state.controller = new AbortController();
@@ -2522,6 +2538,7 @@ async function handleGenerate(event) {
       topic: expansionMode ? state.generatorInput.topic : '',
       seedTerms,
       existingExpressions: expansionMode ? existingExpressions : [],
+      referenceExpressions,
       existingTaxonomy: taxonomy,
     }, { signal: state.controller.signal });
     state.generatorInput.category = drafts[0]?.category || '';
@@ -2672,6 +2689,7 @@ function wireCollapsibleDetailSections() {
   const detail = getCurrentDetailState();
   const detailKey = `${detail?.kind || 'atlas'}:${detail?.id || 'root'}`;
   state.container?.querySelectorAll('.atlas-detail-section').forEach((section, index) => {
+    if (section.closest('.atlas-sense-body')) return;
     const heading = section.querySelector(':scope > h2');
     if (!heading || section.classList.contains('atlas-same-word-section')) return;
     const sectionKey = `${detailKey}:${index}:${heading.textContent.trim()}`;
@@ -2803,6 +2821,36 @@ function grammarNotesSection(notes) {
       ${rows.length ? `<dl class="atlas-grammar-grid">${rows.map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl>` : ''}
       ${forms.length ? `<div class="atlas-chip-list">${forms.map(form => `<span lang="en">${esc(form)}</span>`).join('')}</div>` : ''}
       ${usageNotes.length ? `<ul class="atlas-note-list">${usageNotes.map(note => `<li>${esc(note)}</li>`).join('')}</ul>` : ''}
+    </section>
+  `;
+}
+
+function expressionSensesSection(senses) {
+  const expressionIndex = buildExpressionIndex(getExpressionEntries());
+  return `
+    <section class="atlas-detail-section atlas-senses-section">
+      <h2>意味・品詞別の解説</h2>
+      <div class="atlas-sense-list">
+        ${senses.map((sense, index) => `
+          <details class="atlas-sense" ${index === 0 ? 'open' : ''}>
+            <summary>
+              <span>${esc(sense.partOfSpeech || `意味 ${index + 1}`)}</span>
+              ${sense.coreMeaningJa ? `<strong>${esc(sense.coreMeaningJa)}</strong>` : ''}
+            </summary>
+            <div class="atlas-sense-body">
+              ${detailSection('中心的な意味', sense.coreMeaningJa)}
+              ${detailSection('深いニュアンス', sense.nuanceJa)}
+              ${comparisonsSection(sense.comparisons, expressionIndex)}
+              ${listSection('自然に使われる場面', sense.useCasesJa)}
+              ${examplesSection(sense.examples)}
+              ${grammarNotesSection(sense.grammarNotes)}
+              ${detailSection('感情の温度', sense.emotionalToneJa)}
+              ${collocationsSection(sense.collocations, expressionIndex)}
+              ${listSection('注意点', sense.cautionsJa, 'atlas-note-list--warning')}
+            </div>
+          </details>
+        `).join('')}
+      </div>
     </section>
   `;
 }
@@ -3118,6 +3166,29 @@ function comparisonsSection(comparisons, expressionIndex = buildExpressionIndex(
 }
 
 function searchableText(entry) {
+  const senseText = (entry.senses || []).flatMap(sense => [
+    sense.senseId,
+    sense.partOfSpeech,
+    sense.coreMeaningJa,
+    sense.nuanceJa,
+    sense.nuanceTypeJa,
+    sense.register,
+    sense.emotionalToneJa,
+    ...(sense.useCasesJa || []),
+    ...(sense.collocations || []).flatMap(item => {
+      const collocation = normalizeCollocationItem(item);
+      return [collocation.expression, collocation.translationJa];
+    }),
+    ...(sense.examples || []).flatMap(example => [example.source, example.translation, example.noteJa]),
+    ...(sense.comparisons || []).flatMap(comparison => [comparison.term, comparison.differenceJa]),
+    ...(sense.cautionsJa || []),
+    sense.grammarNotes?.countability,
+    sense.grammarNotes?.plural,
+    sense.grammarNotes?.past,
+    sense.grammarNotes?.pastParticiple,
+    ...(sense.grammarNotes?.usageNotes || []),
+    ...(sense.grammarNotes?.exampleForms || []),
+  ]);
   return normalize([
     entry.term,
     entry.lemma,
@@ -3153,6 +3224,7 @@ function searchableText(entry) {
     ...(entry.grammarNotes?.usageNotes || []),
     ...(entry.grammarNotes?.exampleForms || []),
     entry.personalNote,
+    ...senseText,
   ].filter(Boolean).join(' '));
 }
 

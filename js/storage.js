@@ -839,8 +839,153 @@ function expressionEntryKey(entry) {
     String(stable.categoryId || stable.category || '').trim().toLocaleLowerCase(),
     String(stable.topicId || stable.topic || '').trim().toLocaleLowerCase(),
     String(stable.lemma || stable.term || '').trim().toLocaleLowerCase(),
-    String(stable.senseId || '').trim().toLocaleLowerCase(),
   ].join('|');
+}
+
+const EXPRESSION_SENSE_FIELDS = [
+  'senseId', 'partOfSpeech', 'coreMeaningJa', 'nuanceJa', 'nuanceTypeJa', 'register',
+  'emotionalToneJa', 'useCasesJa', 'collocations', 'examples', 'comparisons',
+  'cautionsJa', 'grammarNotes',
+];
+
+function expressionSenseFromEntry(entry = {}) {
+  return Object.fromEntries(EXPRESSION_SENSE_FIELDS.map(field => [field, entry[field]]));
+}
+
+function normalizeSenseValue(value) {
+  return String(value || '').normalize('NFKC').trim().toLocaleLowerCase();
+}
+
+function senseTokenOverlap(left, right) {
+  const tokens = value => new Set(normalizeSenseValue(value).split(/[^a-z0-9]+/).filter(token => token.length > 2));
+  const leftTokens = tokens(left);
+  const rightTokens = tokens(right);
+  return [...leftTokens].some(token => rightTokens.has(token));
+}
+
+function textBigramSimilarity(left, right) {
+  const normalize = value => normalizeSenseValue(value).replace(/[\s\p{P}\p{S}]/gu, '');
+  const bigrams = value => {
+    const text = normalize(value);
+    if (text.length < 2) return new Set(text ? [text] : []);
+    return new Set(Array.from({ length: text.length - 1 }, (_, index) => text.slice(index, index + 2)));
+  };
+  const a = bigrams(left);
+  const b = bigrams(right);
+  if (!a.size || !b.size) return 0;
+  const shared = [...a].filter(value => b.has(value)).length;
+  return (2 * shared) / (a.size + b.size);
+}
+
+function senseQueries(sense = {}) {
+  return normalizedExpressionSourceQueries(sense);
+}
+
+function expressionSenses(entry = {}) {
+  const stored = Array.isArray(entry.senses) ? entry.senses.filter(Boolean) : [];
+  return stored.length ? stored : [
+    {
+      ...expressionSenseFromEntry(entry),
+      sourceQueryJa: entry.sourceQueryJa || '',
+      sourceQueries: entry.sourceQueries || [],
+    },
+  ];
+}
+
+function sameExpressionSense(existing, incoming) {
+  const existingPart = normalizeSenseValue(existing?.partOfSpeech);
+  const incomingPart = normalizeSenseValue(incoming?.partOfSpeech);
+  if (existingPart && incomingPart && existingPart !== incomingPart) return false;
+
+  const existingId = normalizeSenseValue(existing?.senseId);
+  const incomingId = normalizeSenseValue(incoming?.senseId);
+  if (existingId && incomingId && existingId === incomingId) return true;
+  if (existingId && incomingId && senseTokenOverlap(existingId, incomingId)) return true;
+
+  const existingQueries = senseQueries(existing);
+  const incomingQueries = senseQueries(incoming);
+  if ([...incomingQueries].some(query => existingQueries.has(query))) return true;
+
+  const existingMeaning = normalizeSenseValue(existing?.coreMeaningJa);
+  const incomingMeaning = normalizeSenseValue(incoming?.coreMeaningJa);
+  return Boolean(existingMeaning && incomingMeaning && (
+    existingMeaning === incomingMeaning
+    || textBigramSimilarity(existingMeaning, incomingMeaning) >= 0.58
+  ));
+}
+
+function mergeUniqueArray(existing, incoming) {
+  const values = [...(Array.isArray(existing) ? existing : []), ...(Array.isArray(incoming) ? incoming : [])];
+  const seen = new Set();
+  return values.filter(value => {
+    const key = stableAtlasJson(value);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function mergeExpressionSense(existing = {}, incoming = {}) {
+  const merged = { ...existing };
+  EXPRESSION_SENSE_FIELDS.forEach(field => {
+    if (field === 'grammarNotes') {
+      merged.grammarNotes = {
+        ...(existing.grammarNotes || {}),
+        ...(incoming.grammarNotes || {}),
+        usageNotes: mergeUniqueArray(existing.grammarNotes?.usageNotes, incoming.grammarNotes?.usageNotes),
+        exampleForms: mergeUniqueArray(existing.grammarNotes?.exampleForms, incoming.grammarNotes?.exampleForms),
+      };
+    } else if (Array.isArray(existing[field]) || Array.isArray(incoming[field])) {
+      merged[field] = mergeUniqueArray(existing[field], incoming[field]);
+    } else if (String(incoming[field] || '').trim()) {
+      merged[field] = incoming[field];
+    }
+  });
+  merged.sourceQueryJa = existing.sourceQueryJa || incoming.sourceQueryJa || '';
+  merged.sourceQueries = mergeUniqueArray(
+    [...(existing.sourceQueries || []), existing.sourceQueryJa].filter(Boolean),
+    [...(incoming.sourceQueries || []), incoming.sourceQueryJa].filter(Boolean)
+  );
+  return merged;
+}
+
+function mergeExpressionEntry(existing, incoming) {
+  const existingSenses = expressionSenses(existing);
+  const incomingSenses = expressionSenses(incoming);
+  const senses = existingSenses.map(sense => ({ ...sense }));
+  let primaryWasUpdated = false;
+
+  incomingSenses.forEach(incomingSense => {
+    const index = senses.findIndex(existingSense => sameExpressionSense(existingSense, incomingSense));
+    if (index >= 0) {
+      senses[index] = mergeExpressionSense(senses[index], incomingSense);
+      if (index === 0) primaryWasUpdated = true;
+    } else {
+      senses.push(mergeExpressionSense({}, incomingSense));
+    }
+  });
+
+  const primary = senses[0] || expressionSenseFromEntry(existing);
+  const content = primaryWasUpdated ? { ...existing, ...incoming } : { ...incoming, ...existing };
+  return {
+    ...content,
+    ...expressionSenseFromEntry(primary),
+    id: existing.id,
+    category: existing.category || incoming.category,
+    topic: existing.topic || incoming.topic,
+    categoryId: existing.categoryId || incoming.categoryId,
+    topicId: existing.topicId || incoming.topicId,
+    categoryAliases: mergeUniqueArray(existing.categoryAliases, incoming.categoryAliases),
+    topicAliases: mergeUniqueArray(existing.topicAliases, incoming.topicAliases),
+    aliases: mergeUniqueArray(existing.aliases, incoming.aliases),
+    senses,
+    sourceQueryJa: existing.sourceQueryJa || incoming.sourceQueryJa || '',
+    sourceQueries: mergeUniqueArray(
+      [...(existing.sourceQueries || []), existing.sourceQueryJa].filter(Boolean),
+      [...(incoming.sourceQueries || []), incoming.sourceQueryJa].filter(Boolean)
+    ),
+    personalNote: existing.personalNote || incoming.personalNote || '',
+  };
 }
 
 function normalizedExpressionSourceQueries(entry) {
@@ -864,10 +1009,6 @@ function isRepeatedExpressionQuery(existing, incoming) {
   const existingLanguage = String(existing?.language || 'English').trim().toLocaleLowerCase();
   const incomingLanguage = String(incoming?.language || 'English').trim().toLocaleLowerCase();
   if (existingLanguage !== incomingLanguage) return false;
-
-  const existingPart = String(existing?.partOfSpeech || '').normalize('NFKC').trim().toLocaleLowerCase();
-  const incomingPart = String(incoming?.partOfSpeech || '').normalize('NFKC').trim().toLocaleLowerCase();
-  if (existingPart && incomingPart && existingPart !== incomingPart) return false;
 
   const existingQueries = normalizedExpressionSourceQueries(existing);
   const incomingQueries = normalizedExpressionSourceQueries(incoming);
@@ -914,6 +1055,7 @@ function expressionEntryToRecord(entry, existing = null) {
     aliases: [],
     senseId: '',
     partOfSpeech: '',
+    senses: [],
     etymologyJa: '',
     coreImageJa: '',
     coreMeaningJa: '',
@@ -1249,32 +1391,26 @@ export function saveExpressionEntries(entries) {
 
 export function addExpressionEntries(entries) {
   const current = getExpressionEntries();
-  const byKey = new Map(current.map(entry => [expressionEntryKey(entry), entry]));
   const saved = [];
   (Array.isArray(entries) ? entries : []).forEach(entry => {
     if (!String(entry?.term || '').trim()) return;
-    const existing = byKey.get(expressionEntryKey(entry))
-      || [...byKey.values()].find(candidate => isRepeatedExpressionQuery(candidate, entry));
-    const merged = existing
-      ? {
-        ...existing,
-        ...entry,
-        id: existing.id,
-        sourceQueryJa: existing.sourceQueryJa || entry.sourceQueryJa || '',
-        sourceQueries: [...new Set([
-          ...(existing.sourceQueries || []),
-          existing.sourceQueryJa,
-          ...(entry.sourceQueries || []),
-          entry.sourceQueryJa,
-        ].map(value => String(value || '').trim()).filter(Boolean))],
-        personalNote: existing.personalNote || entry.personalNote || '',
-      }
+    const existing = current.find(candidate => expressionEntryKey(candidate) === expressionEntryKey(entry))
+      || current.find(candidate => isRepeatedExpressionQuery(candidate, entry));
+    const mergedContent = existing
+      ? mergeExpressionEntry(existing, entry)
       : { ...entry, id: entry.id || generateId() };
-    if (existing) byKey.delete(expressionEntryKey(existing));
-    byKey.set(expressionEntryKey(merged), merged);
+    const merged = {
+      ...mergedContent,
+      fieldUpdatedAt: {
+        ...(mergedContent.fieldUpdatedAt || {}),
+        answer: new Date().toISOString(),
+      },
+    };
+    if (existing) current[current.findIndex(candidate => candidate.id === existing.id)] = merged;
+    else current.push(merged);
     saved.push(merged);
   });
-  return saveExpressionEntries([...byKey.values()]) ? saved : [];
+  return saveExpressionEntries(current) ? saved : [];
 }
 
 export function updateExpressionEntry(id, updates) {

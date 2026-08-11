@@ -10065,6 +10065,32 @@ button.atlas-nuance-map-row:focus-visible {
 .atlas-section-toggle[aria-expanded="false"] span { transform: rotate(-90deg); }
 
 .atlas-detail-section > [data-atlas-collapsible-content][hidden] { display: none !important; }
+.atlas-sense-list { display: grid; gap: 8px; }
+.atlas-sense {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+}
+.atlas-sense > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+.atlas-sense > summary::-webkit-details-marker { display: none; }
+.atlas-sense > summary > span {
+  flex: 0 0 auto;
+  color: var(--primary-dark);
+  font-size: 11px;
+  font-weight: 600;
+}
+.atlas-sense > summary > strong { font-size: 12px; font-weight: 500; line-height: 1.5; }
+.atlas-sense-body { padding: 0 12px 12px; }
+.atlas-sense-body .atlas-detail-section { padding: 12px 0 0; border-bottom: 0; }
+.atlas-sense-body .atlas-detail-section h2 { font-size: 11px; }
 
 .atlas-detail-section.is-collapsed { padding-bottom: 10px; }
 
