@@ -164,6 +164,22 @@ test('repeated Atlas queries keep different parts of speech as senses of one hea
   assert.deepEqual(matches[0].senses.map(sense => sense.partOfSpeech).sort(), ['noun', 'verb']);
 });
 
+test('Japanese and English part-of-speech labels normalize without duplicating a sense', () => {
+  addExpressionEntries([{
+    term: 'range', lemma: 'range', partOfSpeech: '動詞', category: '動作', topic: '整列',
+    senseId: 'stand-in-line', coreMeaningJa: '一列に並ぶ', nuanceJa: 'deep'.repeat(40),
+  }]);
+  addExpressionEntries([{
+    term: 'range', lemma: 'range', partOfSpeech: 'verb', category: 'Action', topic: 'Alignment',
+    senseId: 'stand-in-line', coreMeaningJa: '一列に並ぶ', nuanceJa: 'deep'.repeat(30),
+  }]);
+
+  const [saved] = getExpressionEntries().filter(entry => entry.lemma === 'range');
+  assert.equal(saved.senses.length, 1);
+  assert.equal(saved.senses[0].partOfSpeech, 'verb');
+  assert.equal(saved.partOfSpeech, 'verb');
+});
+
 test('same headword in one topic merges without requiring identical sense ids or queries', () => {
   const [first] = addExpressionEntries([{
     term: 'range', lemma: 'range', partOfSpeech: 'noun', category: '状態・性質', topic: '分布と範囲',

@@ -23,6 +23,46 @@ const FUNCTION_WORDS = new Set([
   'what', 'when', 'where', 'which', 'who', 'why', 'will', 'with', 'you', 'your', 'yours',
 ]);
 
+const PART_OF_SPEECH_ALIASES = [
+  [/^(?:transitive verb|vt\.?|他動詞)$/i, 'transitive verb'],
+  [/^(?:intransitive verb|vi\.?|自動詞)$/i, 'intransitive verb'],
+  [/^(?:phrasal verb|句動詞)$/i, 'phrasal verb'],
+  [/^(?:modal verb|法助動詞)$/i, 'modal verb'],
+  [/^(?:auxiliary verb|助動詞)$/i, 'auxiliary verb'],
+  [/^(?:countable noun|可算名詞)$/i, 'countable noun'],
+  [/^(?:uncountable noun|不可算名詞)$/i, 'uncountable noun'],
+  [/^(?:proper noun|固有名詞)$/i, 'proper noun'],
+  [/^(?:noun|n\.?|名詞)$/i, 'noun'],
+  [/^(?:verb|v\.?|動詞)$/i, 'verb'],
+  [/^(?:adjective|adj\.?|形容詞)$/i, 'adjective'],
+  [/^(?:adverb|adv\.?|副詞)$/i, 'adverb'],
+  [/^(?:preposition|prep\.?|前置詞)$/i, 'preposition'],
+  [/^(?:conjunction|conj\.?|接続詞)$/i, 'conjunction'],
+  [/^(?:pronoun|代名詞)$/i, 'pronoun'],
+  [/^(?:determiner|限定詞)$/i, 'determiner'],
+  [/^(?:interjection|間投詞|感動詞)$/i, 'interjection'],
+  [/^(?:idiom|熟語|慣用句)$/i, 'idiom'],
+];
+
+export function normalizePartOfSpeech(value) {
+  const raw = String(value || '').normalize('NFKC').trim();
+  if (!raw) return '';
+  if (raw.includes('他動詞')) return 'transitive verb';
+  if (raw.includes('自動詞')) return 'intransitive verb';
+  if (raw.includes('句動詞')) return 'phrasal verb';
+  if (raw.includes('不可算名詞')) return 'uncountable noun';
+  if (raw.includes('可算名詞')) return 'countable noun';
+  const exact = PART_OF_SPEECH_ALIASES.find(([pattern]) => pattern.test(raw));
+  if (exact) return exact[1];
+
+  const compact = raw.replace(/[（）()]/g, ' ').replace(/\s+/g, ' ').trim();
+  const contained = PART_OF_SPEECH_ALIASES.find(([pattern]) => (
+    compact.split(/[・,/]/).some(part => pattern.test(part.trim()))
+  ));
+  if (contained) return contained[1];
+  return /^[\x20-\x7E]+$/.test(raw) ? raw.toLocaleLowerCase() : 'other';
+}
+
 // Categories are intentionally fixed and semantic. Work, study, and daily
 // life remain searchable usage contexts instead of competing taxonomies.
 export const NUANCE_ATLAS_CATEGORIES = Object.freeze([

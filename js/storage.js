@@ -3,7 +3,7 @@
 // ============================================================
 
 import { generateId } from './utils.js';
-import { withStableClassification } from './atlas-model.js';
+import { normalizePartOfSpeech, withStableClassification } from './atlas-model.js';
 
 const KEY = {
   EVENTS:    'mp_events',
@@ -856,7 +856,15 @@ const EXPRESSION_SENSE_FIELDS = [
 ];
 
 function expressionSenseFromEntry(entry = {}) {
-  return Object.fromEntries(EXPRESSION_SENSE_FIELDS.map(field => [field, entry[field]]));
+  const sense = Object.fromEntries(EXPRESSION_SENSE_FIELDS.map(field => [field, entry[field]]));
+  sense.partOfSpeech = normalizePartOfSpeech(sense.partOfSpeech);
+  if (sense.grammarNotes && typeof sense.grammarNotes === 'object') {
+    sense.grammarNotes = {
+      ...sense.grammarNotes,
+      partOfSpeech: normalizePartOfSpeech(sense.grammarNotes.partOfSpeech || sense.partOfSpeech),
+    };
+  }
+  return sense;
 }
 
 function normalizeSenseValue(value) {
@@ -890,7 +898,7 @@ function senseQueries(sense = {}) {
 
 function expressionSenses(entry = {}) {
   const stored = Array.isArray(entry.senses) ? entry.senses.filter(Boolean) : [];
-  return stored.length ? stored : [
+  return stored.length ? stored.map(sense => ({ ...sense, ...expressionSenseFromEntry(sense) })) : [
     {
       ...expressionSenseFromEntry(entry),
       sourceQueryJa: entry.sourceQueryJa || '',
@@ -900,8 +908,8 @@ function expressionSenses(entry = {}) {
 }
 
 function sameExpressionSense(existing, incoming) {
-  const existingPart = normalizeSenseValue(existing?.partOfSpeech);
-  const incomingPart = normalizeSenseValue(incoming?.partOfSpeech);
+  const existingPart = normalizePartOfSpeech(existing?.partOfSpeech);
+  const incomingPart = normalizePartOfSpeech(incoming?.partOfSpeech);
   if (existingPart && incomingPart && existingPart !== incomingPart) return false;
 
   const existingId = normalizeSenseValue(existing?.senseId);
@@ -940,12 +948,20 @@ function mergeUniqueArray(existing, incoming) {
 function mergeExpressionSense(existing = {}, incoming = {}) {
   const merged = { ...existing };
   EXPRESSION_SENSE_FIELDS.forEach(field => {
-    if (field === 'grammarNotes') {
+    if (field === 'partOfSpeech') {
+      merged.partOfSpeech = normalizePartOfSpeech(incoming.partOfSpeech || existing.partOfSpeech);
+    } else if (field === 'grammarNotes') {
       merged.grammarNotes = {
         ...(existing.grammarNotes || {}),
         ...(incoming.grammarNotes || {}),
         usageNotes: mergeUniqueArray(existing.grammarNotes?.usageNotes, incoming.grammarNotes?.usageNotes),
         exampleForms: mergeUniqueArray(existing.grammarNotes?.exampleForms, incoming.grammarNotes?.exampleForms),
+        partOfSpeech: normalizePartOfSpeech(
+          incoming.grammarNotes?.partOfSpeech
+          || incoming.partOfSpeech
+          || existing.grammarNotes?.partOfSpeech
+          || existing.partOfSpeech
+        ),
       };
     } else if (Array.isArray(existing[field]) || Array.isArray(incoming[field])) {
       merged[field] = mergeUniqueArray(existing[field], incoming[field]);
@@ -1134,6 +1150,12 @@ function expressionEntryToRecord(entry, existing = null) {
     etymologyLinks: [],
     personalNote: '',
     ...withStableClassification(entry),
+  };
+  data.partOfSpeech = normalizePartOfSpeech(data.partOfSpeech);
+  data.senses = expressionSenses(data);
+  data.grammarNotes = {
+    ...(data.grammarNotes || {}),
+    partOfSpeech: normalizePartOfSpeech(data.grammarNotes?.partOfSpeech || data.partOfSpeech),
   };
   delete data.id;
   delete data.starred;
