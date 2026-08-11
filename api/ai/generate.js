@@ -741,9 +741,9 @@ function hasCompleteNuanceResponse(text) {
     .map(entry => String(entry?.term || '').trim().toLocaleLowerCase())
     .filter(Boolean);
   return Boolean(validMap)
-    && entries.length >= 3
+    && entries.length >= 1
     && entries.length <= 6
-    && new Set(terms).size >= 3
+    && new Set(terms).size === entries.length
     && entries.every(entry => isCompleteNuanceEntry(entry, mapMode));
 }
 
@@ -833,10 +833,10 @@ function normalizeStructuredResponse(actionType, text) {
       };
     });
     const completeEntries = normalizedEntries.filter(entry => isCompleteNuanceEntry(entry, parsed.mapMode));
-    parsed.discardedEntryCount = completeEntries.length >= 3
+    parsed.discardedEntryCount = completeEntries.length >= 1
       ? normalizedEntries.length - completeEntries.length
       : 0;
-    parsed.entries = completeEntries.length >= 3 ? completeEntries : normalizedEntries;
+    parsed.entries = completeEntries.length >= 1 ? completeEntries : normalizedEntries;
   }
   if (actionType === 'knowledge_answer' && parsed.answer) {
     const conceptKeys = new Set([

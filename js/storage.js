@@ -842,6 +842,13 @@ function expressionEntryKey(entry) {
   ].join('|');
 }
 
+function expressionHeadwordKey(entry) {
+  return [
+    String(entry?.language || 'English').trim().toLocaleLowerCase(),
+    String(entry?.lemma || entry?.term || '').normalize('NFKC').trim().toLocaleLowerCase(),
+  ].join('|');
+}
+
 const EXPRESSION_SENSE_FIELDS = [
   'senseId', 'partOfSpeech', 'coreMeaningJa', 'nuanceJa', 'nuanceTypeJa', 'register',
   'emotionalToneJa', 'useCasesJa', 'collocations', 'examples', 'comparisons',
@@ -902,16 +909,21 @@ function sameExpressionSense(existing, incoming) {
   if (existingId && incomingId && existingId === incomingId) return true;
   if (existingId && incomingId && senseTokenOverlap(existingId, incomingId)) return true;
 
-  const existingQueries = senseQueries(existing);
-  const incomingQueries = senseQueries(incoming);
-  if ([...incomingQueries].some(query => existingQueries.has(query))) return true;
-
   const existingMeaning = normalizeSenseValue(existing?.coreMeaningJa);
   const incomingMeaning = normalizeSenseValue(incoming?.coreMeaningJa);
-  return Boolean(existingMeaning && incomingMeaning && (
+  if (existingMeaning && incomingMeaning && (
     existingMeaning === incomingMeaning
     || textBigramSimilarity(existingMeaning, incomingMeaning) >= 0.58
-  ));
+  )) return true;
+
+  // A repeated query alone does not prove that two senses are identical. It is
+  // only a legacy fallback when neither response supplied a usable sense key.
+  if (!existingId && !incomingId) {
+    const existingQueries = senseQueries(existing);
+    const incomingQueries = senseQueries(incoming);
+    return [...incomingQueries].some(query => existingQueries.has(query));
+  }
+  return false;
 }
 
 function mergeUniqueArray(existing, incoming) {
@@ -938,7 +950,9 @@ function mergeExpressionSense(existing = {}, incoming = {}) {
     } else if (Array.isArray(existing[field]) || Array.isArray(incoming[field])) {
       merged[field] = mergeUniqueArray(existing[field], incoming[field]);
     } else if (String(incoming[field] || '').trim()) {
-      merged[field] = incoming[field];
+      const previous = String(existing[field] || '').trim();
+      const next = String(incoming[field] || '').trim();
+      merged[field] = next.length >= previous.length ? incoming[field] : existing[field];
     }
   });
   merged.sourceQueryJa = existing.sourceQueryJa || incoming.sourceQueryJa || '';
@@ -947,6 +961,36 @@ function mergeExpressionSense(existing = {}, incoming = {}) {
     [...(incoming.sourceQueries || []), incoming.sourceQueryJa].filter(Boolean)
   );
   return merged;
+}
+
+function consolidateExpressionEntries(entries) {
+  const groups = new Map();
+  (Array.isArray(entries) ? entries : [])
+    .filter(entry => entry && !entry.mergedInto)
+    .forEach(entry => {
+      const key = expressionHeadwordKey(entry);
+      if (!key.endsWith('|')) {
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(entry);
+      }
+    });
+
+  return [...groups.values()].map(group => {
+    const ordered = [...group].sort((left, right) => (
+      String(left.createdAt || '').localeCompare(String(right.createdAt || ''))
+      || String(left.id || '').localeCompare(String(right.id || ''))
+    ));
+    const canonical = ordered.shift();
+    const merged = ordered.reduce((result, entry) => mergeExpressionEntry(result, entry), canonical);
+    return {
+      ...merged,
+      id: canonical.id,
+      mergedEntryIds: [...new Set([
+        ...(canonical.mergedEntryIds || []),
+        ...ordered.flatMap(entry => [entry.id, ...(entry.mergedEntryIds || [])]),
+      ].filter(id => id && id !== canonical.id))],
+    };
+  });
 }
 
 function mergeExpressionEntry(existing, incoming) {
@@ -1056,6 +1100,8 @@ function expressionEntryToRecord(entry, existing = null) {
     senseId: '',
     partOfSpeech: '',
     senses: [],
+    mergedInto: '',
+    mergedEntryIds: [],
     etymologyJa: '',
     coreImageJa: '',
     coreMeaningJa: '',
@@ -1366,24 +1412,64 @@ export function saveAppMediaPreferences(updates = {}) {
   return data;
 }
 
-export function getExpressionEntries() {
+function getRawExpressionEntries() {
   return getAllKnowledgeRecords()
     .filter(isNuanceRecord)
     .map(expressionRecordToEntry)
-    .filter(Boolean)
+    .filter(Boolean);
+}
+
+export function getExpressionEntries() {
+  return consolidateExpressionEntries(getRawExpressionEntries())
     .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
 }
 
 export function saveExpressionEntries(entries) {
-  const preservedRecords = getAllKnowledgeRecords().filter(record => !isNuanceRecord(record));
+  const allRecords = getAllKnowledgeRecords();
+  const redirects = new Map();
+  (Array.isArray(entries) ? entries : []).forEach(entry => {
+    (Array.isArray(entry?.mergedEntryIds) ? entry.mergedEntryIds : [])
+      .filter(id => id && id !== entry.id)
+      .forEach(id => redirects.set(id, entry.id));
+  });
+  const preservedRecords = allRecords.filter(record => !isNuanceRecord(record)).map(record => {
+    const questionBlock = record.blocks?.find(block => block?.type === ENGLISH_QUESTION_BLOCK_TYPE);
+    if (!questionBlock || !Array.isArray(questionBlock.data?.atlasEntryIds)) return record;
+    const atlasEntryIds = [...new Set(questionBlock.data.atlasEntryIds.map(id => redirects.get(id) || id))];
+    if (stableAtlasJson(atlasEntryIds) === stableAtlasJson(questionBlock.data.atlasEntryIds)) return record;
+    return {
+      ...record,
+      blocks: record.blocks.map(block => block === questionBlock
+        ? { ...block, data: { ...block.data, atlasEntryIds } }
+        : block),
+    };
+  });
   const existingById = new Map(
-    getAllKnowledgeRecords()
+    allRecords
       .filter(isNuanceRecord)
       .map(record => [record.id, record])
   );
-  const records = (Array.isArray(entries) ? entries : [])
+  const primaryRecords = (Array.isArray(entries) ? entries : [])
     .filter(entry => entry && String(entry.term || '').trim())
     .map(entry => expressionEntryToRecord(entry, existingById.get(entry.id)));
+  const redirectRecords = [...redirects.entries()].map(([id, mergedInto]) => {
+    const existingRecord = existingById.get(id);
+    const existingEntry = expressionRecordToEntry(existingRecord) || { id, term: mergedInto, lemma: mergedInto };
+    return expressionEntryToRecord({
+      ...existingEntry,
+      id,
+      mergedInto,
+      fieldUpdatedAt: {
+        ...(existingEntry.fieldUpdatedAt || {}),
+        answer: new Date().toISOString(),
+      },
+    }, existingRecord);
+  });
+  const retainedRedirects = [...existingById.values()].filter(record => {
+    const entry = expressionRecordToEntry(record);
+    return entry?.mergedInto && !redirects.has(record.id) && !primaryRecords.some(item => item.id === record.id);
+  });
+  const records = [...primaryRecords, ...redirectRecords, ...retainedRedirects];
   if (!save(KNOWLEDGE_KEY, [...preservedRecords, ...records])) return false;
   _notifySync('knowledge_memos');
   return true;
@@ -1394,7 +1480,8 @@ export function addExpressionEntries(entries) {
   const saved = [];
   (Array.isArray(entries) ? entries : []).forEach(entry => {
     if (!String(entry?.term || '').trim()) return;
-    const existing = current.find(candidate => expressionEntryKey(candidate) === expressionEntryKey(entry))
+    const existing = current.find(candidate => expressionHeadwordKey(candidate) === expressionHeadwordKey(entry))
+      || current.find(candidate => expressionEntryKey(candidate) === expressionEntryKey(entry))
       || current.find(candidate => isRepeatedExpressionQuery(candidate, entry));
     const mergedContent = existing
       ? mergeExpressionEntry(existing, entry)
@@ -1437,12 +1524,16 @@ export function deleteExpressionEntry(id) {
   const allRecords = getAllKnowledgeRecords();
   const target = allRecords.find(record => record.id === id && isExpressionAtlasRecord(record));
   if (!target) return false;
+  const linkedRedirectIds = allRecords
+    .filter(record => isExpressionAtlasRecord(record))
+    .filter(record => expressionRecordToEntry(record)?.mergedInto === id)
+    .map(record => record.id);
   if (!addTrashItem({
     entityType: 'atlas',
     payload: target,
     title: target.title || 'NUANCE ATLAS',
   })) return false;
-  if (!save(KNOWLEDGE_KEY, allRecords.filter(record => record.id !== id))) return false;
+  if (!save(KNOWLEDGE_KEY, allRecords.filter(record => record.id !== id && !linkedRedirectIds.includes(record.id)))) return false;
   _notifyDelete({ table: 'knowledge_memos', id });
   return true;
 }

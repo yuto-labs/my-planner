@@ -244,7 +244,7 @@ test('accepts nuance output using the schema field names', () => {
   const onlyThreeExpressions = { ...response, entries: response.entries.slice(0, 3) };
   assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(onlyThreeExpressions)), true);
   const onlyTwoExpressions = { ...response, entries: response.entries.slice(0, 2) };
-  assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(onlyTwoExpressions)), false);
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(onlyTwoExpressions)), true);
 
   const sixExpressions = {
     ...response,
@@ -409,6 +409,25 @@ test('rejects shallow translation variants before they can be saved', () => {
     ],
   };
   assert.equal(hasCompleteStructuredResponse('translation_variants', JSON.stringify(response)), false);
+});
+
+test('accepts one complete Atlas sense instead of discarding a useful headword expansion', () => {
+  const entry = {
+    term: 'range', lemma: 'range', partOfSpeech: 'noun', senseId: 'extent-between-limits',
+    intensityLevel: 3, intensityMin: 3, intensityMax: 3,
+    coreImageJa: 'core image '.repeat(8),
+    coreMeaningJa: 'core meaning '.repeat(5),
+    nuanceJa: 'deep connected nuance '.repeat(10),
+    nuanceTypeJa: '境界内の広がり',
+    useCasesJa: ['価格の幅を説明する場面', '能力や到達距離を示す場面'],
+    examples: [1, 2, 3].map(index => ({ source: `Example ${index}.`, translation: `例文${index}`, noteJa: `用法${index}` })),
+    comparisons: [1, 2, 3].map(index => ({ term: `word-${index}`, differenceJa: `違い${index}` })),
+  };
+  const response = {
+    category: '状態・性質', topic: '範囲', mapMode: 'groups', mapAxisJa: '広がりの捉え方',
+    mapLowLabelJa: '', mapHighLabelJa: '', entries: [entry],
+  };
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(response)), true);
 });
 
 test('accepts detailed translation variants with expanded notes and comparisons', () => {

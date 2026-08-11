@@ -120,7 +120,7 @@ test('atlas updates preserve every Japanese and English source query as a search
   assert.deepEqual(saved.sourceQueries.sort(), ['bother', '面倒'].sort());
 });
 
-test('repeated Atlas queries reuse an entry despite classification and sense-id drift', () => {
+test('repeated Atlas queries keep distinct same-POS senses despite classification drift', () => {
   const [first] = addExpressionEntries([{
     term: 'nudge',
     lemma: 'nudge',
@@ -146,7 +146,7 @@ test('repeated Atlas queries reuse an entry despite classification and sense-id 
 
   assert.equal(second.id, first.id);
   assert.equal(getExpressionEntries().filter(entry => entry.lemma === 'nudge').length, 1);
-  assert.equal(getExpressionEntries().find(entry => entry.id === first.id)?.coreMeaningJa, 'B');
+  assert.equal(getExpressionEntries().find(entry => entry.id === first.id)?.senses.length, 2);
 });
 
 test('repeated Atlas queries keep different parts of speech as senses of one headword', () => {
@@ -200,7 +200,7 @@ test('near-identical sense ids enrich one sense while distinct meanings remain s
   assert.ok(saved.senses.some(sense => sense.senseId === 'line-of-items'));
 });
 
-test('a new save never silently removes pre-existing duplicate record ids', () => {
+test('pre-existing duplicate headword records render as one complete card', () => {
   saveExpressionEntries([
     { id: 'legacy-a', term: 'range', lemma: 'range', category: '状態・性質', topic: '分布と範囲', senseId: 'extent' },
     { id: 'legacy-b', term: 'range', lemma: 'range', category: '状態・性質', topic: '分布と範囲', senseId: 'row' },
@@ -209,9 +209,42 @@ test('a new save never silently removes pre-existing duplicate record ids', () =
     term: 'spread', lemma: 'spread', category: '状態・性質', topic: '分布と範囲', senseId: 'distribution',
   }]);
 
-  const ids = getExpressionEntries().map(entry => entry.id);
-  assert.ok(ids.includes('legacy-a'));
-  assert.ok(ids.includes('legacy-b'));
+  const matches = getExpressionEntries().filter(entry => entry.lemma === 'range');
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0].senses.length, 2);
+  assert.deepEqual(matches[0].mergedEntryIds, ['legacy-b']);
+});
+
+test('same lemma merges globally even when category and topic both differ', () => {
+  const [first] = addExpressionEntries([{
+    term: 'range', lemma: 'range', partOfSpeech: 'verb', category: 'Action', topic: 'Alignment',
+    senseId: 'stand-in-line', coreMeaningJa: 'line up', nuanceJa: 'x'.repeat(120),
+  }]);
+  const [second] = addExpressionEntries([{
+    term: 'range', lemma: 'range', partOfSpeech: 'noun', category: 'Quantity', topic: 'Extent',
+    senseId: 'extent-between-limits', coreMeaningJa: 'extent between limits', nuanceJa: 'y'.repeat(140),
+  }]);
+
+  assert.equal(second.id, first.id);
+  const matches = getExpressionEntries().filter(entry => entry.lemma === 'range');
+  assert.equal(matches.length, 1);
+  assert.deepEqual(matches[0].senses.map(sense => sense.partOfSpeech).sort(), ['noun', 'verb']);
+  assert.equal(matches[0].senses.find(sense => sense.partOfSpeech === 'noun').nuanceJa.length, 140);
+});
+
+test('a shallower repeat cannot shorten an existing sense explanation', () => {
+  addExpressionEntries([{
+    term: 'range', lemma: 'range', partOfSpeech: 'noun', category: 'Quantity', topic: 'Extent',
+    senseId: 'extent-between-limits', coreMeaningJa: 'extent between limits', nuanceJa: 'deep'.repeat(50),
+  }]);
+  addExpressionEntries([{
+    term: 'range', lemma: 'range', partOfSpeech: 'noun', category: 'State', topic: 'Width',
+    senseId: 'extent-between-limits', coreMeaningJa: 'extent', nuanceJa: 'short',
+  }]);
+
+  const [saved] = getExpressionEntries().filter(entry => entry.lemma === 'range');
+  assert.equal(saved.senses.length, 1);
+  assert.equal(saved.senses[0].nuanceJa, 'deep'.repeat(50));
 });
 
 test('atlas preserves legacy collocations and new Japanese meanings together', () => {

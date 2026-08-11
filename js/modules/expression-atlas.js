@@ -22,7 +22,14 @@ import {
   detectAtlasQueryMode,
   generateTranslationVariants,
   NUANCE_ATLAS_CATEGORIES,
+  refreshAiRuntimeStatus,
 } from '../ai.js';
+
+async function ensureAtlasAiReady() {
+  if (isAiAvailable()) return true;
+  const runtime = await refreshAiRuntimeStatus({ force: true });
+  return runtime.configured === true;
+}
 import {
   buildExpressionIndex,
   collectStableTaxonomy,
@@ -1326,7 +1333,7 @@ async function handleEnglishQuestionSubmit(event) {
 }
 
 async function answerEnglishQuestion(question) {
-  if (!isAiAvailable()) {
+  if (!(await ensureAtlasAiReady())) {
     updateEnglishQuestion(question.id, { status: 'failed', errorMessage: 'AI設定またはログインが必要です' });
     toast('質問は保存しました。AI設定後に「回答を作る」で再試行できます。', 'info');
     render();
@@ -1712,7 +1719,7 @@ function showWordMatchPicker(token, entries) {
 async function handleTranslationGenerate(event) {
   event.preventDefault();
   if (state.generating) return;
-  if (!isAiAvailable()) {
+  if (!(await ensureAtlasAiReady())) {
     toast('AIを利用するにはログインとAI設定が必要です', 'error');
     return;
   }
@@ -2509,7 +2516,7 @@ function updateAtlasQueryModeHint() {
 async function handleGenerate(event) {
   event.preventDefault();
   if (state.generating) return;
-  if (!isAiAvailable()) {
+  if (!(await ensureAtlasAiReady())) {
     toast('AIを利用するにはログインとAI設定が必要です', 'error');
     return;
   }
