@@ -309,6 +309,49 @@ test('repeated Atlas queries keep different parts of speech as senses of one hea
   assert.deepEqual(matches[0].senses.map(sense => sense.partOfSpeech).sort(), ['noun', 'verb']);
 });
 
+test('a later range lookup enriches the saved verb and adds the noun to the same card', () => {
+  addExpressionEntriesWithReport([{
+    term: 'range', lemma: 'range', partOfSpeech: 'verb', senseId: 'arrange-in-line',
+    sourceQueryJa: '並ぶ', coreMeaningJa: '物や人が一列に並ぶ', nuanceJa: 'line'.repeat(40),
+    examples: [{ source: 'The hills range along the coast.', translation: '丘が海岸沿いに連なる。' }],
+    senseFingerprint: {
+      semanticDomain: 'spatial-arrangement', actionType: 'forming-a-line', physicality: 'physical',
+      argumentPatterns: ['range along'], typicalObjects: ['landform'],
+      implicationTags: ['continuous-arrangement'], registerTags: ['neutral'],
+    },
+  }]);
+
+  const report = addExpressionEntriesWithReport([{
+    term: 'range', lemma: 'range', partOfSpeech: 'verb', senseId: 'arrange-in-line',
+    sourceQueryJa: 'range', coreMeaningJa: '物や人が一列または一定の広がりをもって並ぶ',
+    nuanceJa: 'expanded-line'.repeat(40),
+    examples: [
+      { source: 'The hills range along the coast.', translation: '丘が海岸沿いに連なる。' },
+      { source: 'The books range from basic to advanced.', translation: '本は基礎から上級まで幅がある。' },
+    ],
+    senseFingerprint: {
+      semanticDomain: 'spatial-arrangement', actionType: 'forming-a-line', physicality: 'physical',
+      argumentPatterns: ['range along', 'range from A to B'], typicalObjects: ['landform'],
+      implicationTags: ['continuous-arrangement'], registerTags: ['neutral'],
+    },
+  }, {
+    term: 'range', lemma: 'range', partOfSpeech: 'noun', senseId: 'extent-between-limits',
+    sourceQueryJa: 'range', coreMeaningJa: '二つの限界の間に広がる範囲', nuanceJa: 'extent'.repeat(40),
+    examples: [{ source: 'The price range is wide.', translation: '価格帯は広い。' }],
+    senseFingerprint: {
+      semanticDomain: 'extent', actionType: 'bounded-span', physicality: 'abstract',
+      argumentPatterns: ['a range of', 'range between'], typicalObjects: ['value', 'choice'],
+      implicationTags: ['limits'], registerTags: ['neutral'],
+    },
+  }]);
+
+  const matches = getExpressionEntries().filter(entry => entry.lemma === 'range');
+  assert.equal(matches.length, 1);
+  assert.equal(report.enriched, 2);
+  assert.deepEqual(matches[0].senses.map(sense => sense.partOfSpeech).sort(), ['noun', 'verb']);
+  assert.equal(matches[0].senses.find(sense => sense.partOfSpeech === 'verb').examples.length, 2);
+});
+
 test('Japanese and English part-of-speech labels normalize without duplicating a sense', () => {
   addExpressionEntries([{
     term: 'range', lemma: 'range', partOfSpeech: '動詞', category: '動作', topic: '整列',
