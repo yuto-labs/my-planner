@@ -159,6 +159,24 @@ test('accepts nuance output using the schema field names', () => {
   isolatedEntry.entries = isolatedEntry.entries.slice(0, 1);
   assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(isolatedEntry)), false);
 
+  const richCollocationResponse = structuredClone(response);
+  richCollocationResponse.entries[0].collocations = [{
+    expression: 'a sense of relief',
+    translationJa: '安堵感',
+    usageNoteJa: '安堵を一つの感覚として述べるときに自然です。',
+    examples: [{
+      source: 'I felt a sense of relief.',
+      translation: '私は安堵感を覚えました。',
+      noteJa: '緊張が解けた感覚を表します。',
+    }],
+  }];
+  const normalizedRichCollocation = JSON.parse(normalizeStructuredResponse(
+    'nuance_generate',
+    JSON.stringify(richCollocationResponse)
+  ));
+  assert.equal(normalizedRichCollocation.entries[0].collocations[0].usageNoteJa, '安堵を一つの感覚として述べるときに自然です。');
+  assert.equal(normalizedRichCollocation.entries[0].collocations[0].examples[0].source, 'I felt a sense of relief.');
+
   const withFingerprint = structuredClone(response);
   withFingerprint.entries[0].senseFingerprint = {
     semanticDomain: 'emotion',

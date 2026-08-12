@@ -7687,7 +7687,7 @@ button.atlas-nuance-map-row:focus-visible {
   min-width: 0;
 }
 .atlas-collocation-heading > :first-child { min-width: 0; overflow-wrap: anywhere; }
-.atlas-collocation-heading > span:last-child {
+.atlas-collocation-translation {
   color: var(--text-dim);
   font-size: 12px;
   text-align: right;

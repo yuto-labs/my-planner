@@ -187,6 +187,44 @@ test('concurrent Atlas sense additions survive synchronization', () => {
   assert.equal(result.pushCandidates.length, 1);
 });
 
+test('concurrent collocation details merge into one phrase without losing either device', () => {
+  const record = (collocation, updatedAt) => ({
+    id: 'monitor-entry',
+    title: 'monitor',
+    summary: 'observe continuously',
+    tags: ['__expression_atlas__'],
+    blocks: [{
+      id: 'monitor-block',
+      type: 'expression-atlas-data',
+      data: {
+        term: 'monitor', lemma: 'monitor', aliases: [], sourceQueries: ['監視する'],
+        senses: [{
+          senseId: 'observe-continuously', partOfSpeech: 'verb',
+          coreMeaningJa: '変化を継続的に確認する', collocations: [collocation],
+        }],
+        fieldUpdatedAt: { answer: updatedAt, classification: updatedAt, personalNote: updatedAt },
+      },
+    }],
+    updatedAt,
+  });
+  const local = record({
+    expression: 'monitor progress', translationJa: '進捗を確認する',
+    usageNoteJa: '時間を追って変化を見るときに使います。',
+    examples: [{ source: 'We monitor progress weekly.', translation: '毎週進捗を確認します。', noteJa: '定期確認です。' }],
+  }, '2026-08-12T10:10:00.000Z');
+  const remote = record({
+    expression: 'monitor progress', translationJa: '進行状況を追う',
+    examples: [{ source: 'The team monitors progress closely.', translation: 'チームは進捗を注意深く確認します。', noteJa: 'closely が注意深さを加えます。' }],
+  }, '2026-08-12T10:05:00.000Z');
+
+  const result = mergeAtlasRecordsForSync([local], [remote]);
+  const collocations = result.items[0].blocks[0].data.senses[0].collocations;
+  assert.equal(collocations.length, 1);
+  assert.equal(collocations[0].examples.length, 2);
+  assert.equal(collocations[0].usageNoteJa, '時間を追って変化を見るときに使います。');
+  assert.equal(result.pushCandidates.length, 1);
+});
+
 test('Atlas sync keeps distinct same-POS meanings even when sense ids share a word', () => {
   const record = (sense, updatedAt) => ({
     id: 'range-entry',

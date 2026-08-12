@@ -3218,15 +3218,15 @@ function collocationsSection(items, expressionIndex = buildExpressionIndex(getEx
         const hasDetails = Boolean(item.usageNoteJa || item.examples.length);
         const heading = `
           <span class="atlas-collocation-heading">
-            ${linkedExpressionTerm(item.expression, expressionIndex)}
-            ${item.translationJa ? `<span>${esc(item.translationJa)}</span>` : ''}
+            <strong lang="en">${esc(item.expression)}</strong>
+            ${item.translationJa ? `<span class="atlas-collocation-translation">${esc(item.translationJa)}</span>` : ''}
           </span>`;
         if (!hasDetails) return `<div class="atlas-collocation-item">${heading}</div>`;
         return `
           <details class="atlas-collocation-item atlas-collocation-item--expandable">
             <summary>${heading}</summary>
             <div class="atlas-collocation-detail">
-              <div class="atlas-audio-line atlas-collocation-audio"><strong lang="en">${esc(item.expression)}</strong>${speakButton(item.expression)}</div>
+              <div class="atlas-audio-line atlas-collocation-audio">${linkedExpressionTerm(item.expression, expressionIndex)}${speakButton(item.expression)}</div>
               ${item.usageNoteJa ? `<p>${esc(item.usageNoteJa)}</p>` : ''}
               ${item.examples.map(example => `
                 <div class="atlas-collocation-example">
