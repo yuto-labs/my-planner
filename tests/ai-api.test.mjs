@@ -151,6 +151,14 @@ test('accepts nuance output using the schema field names', () => {
   };
   assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(response)), true);
 
+  const comparisonSet = structuredClone(response);
+  comparisonSet.entries.forEach(entry => { entry.comparisons = entry.comparisons.slice(0, 1); });
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(comparisonSet)), true);
+
+  const isolatedEntry = structuredClone(comparisonSet);
+  isolatedEntry.entries = isolatedEntry.entries.slice(0, 1);
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(isolatedEntry)), false);
+
   const withFingerprint = structuredClone(response);
   withFingerprint.entries[0].senseFingerprint = {
     semanticDomain: 'emotion',

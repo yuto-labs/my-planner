@@ -729,7 +729,7 @@ function hasCompleteTranslationResponse(text) {
     ));
 }
 
-function isCompleteNuanceEntry(entry, mapMode) {
+function isCompleteNuanceEntry(entry, mapMode, minimumComparisons = 2) {
   const intensityLevel = Number(entry?.intensityLevel);
   const intensityMin = Number(entry?.intensityMin);
   const intensityMax = Number(entry?.intensityMax);
@@ -767,7 +767,7 @@ function isCompleteNuanceEntry(entry, mapMode) {
     && entry.comparisons.filter(comparison => (
       String(comparison?.term || '').trim()
       && String(comparison?.differenceJa || '').trim()
-    )).length >= 2
+    )).length >= minimumComparisons
   );
 }
 
@@ -786,11 +786,14 @@ function hasCompleteNuanceResponse(text) {
     String(entry?.partOfSpeech || '').trim().toLocaleLowerCase(),
     String(entry?.senseId || entry?.coreMeaningJa || '').trim().toLocaleLowerCase(),
   ].join('|')).filter(key => !key.startsWith('|'));
+  // A full map already contrasts its expressions with one another. Keep
+  // isolated headword enrichment stricter than a complete comparison set.
+  const minimumComparisons = entries.length >= 4 ? 1 : 2;
   return Boolean(validMap)
     && entries.length >= 1
     && entries.length <= 6
     && new Set(senseKeys).size === entries.length
-    && entries.every(entry => isCompleteNuanceEntry(entry, mapMode));
+    && entries.every(entry => isCompleteNuanceEntry(entry, mapMode, minimumComparisons));
 }
 
 function nuanceResponseIncludesRequestedHeadword(text, userText) {
@@ -1018,7 +1021,10 @@ function normalizeStructuredResponse(actionType, text) {
       };
     });
     const deduplicatedEntries = mergedEntries.map(item => item.entry);
-    const completeEntries = deduplicatedEntries.filter(entry => isCompleteNuanceEntry(entry, parsed.mapMode));
+    const minimumComparisons = deduplicatedEntries.length >= 4 ? 1 : 2;
+    const completeEntries = deduplicatedEntries.filter(entry => (
+      isCompleteNuanceEntry(entry, parsed.mapMode, minimumComparisons)
+    ));
     parsed.discardedEntryCount = completeEntries.length >= 1
       ? deduplicatedEntries.length - completeEntries.length
       : 0;
