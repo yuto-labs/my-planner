@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 const {
   hasCompleteStructuredResponse,
+  hasRequiredNuanceEntryCount,
   hasSafeNuanceEnrichmentResponse,
   nuanceResponseIncludesRequestedHeadword,
   normalizeStructuredResponse,
@@ -347,6 +348,29 @@ test('requires a directly requested saved headword but not four related expressi
   assert.equal(nuanceResponseIncludesRequestedHeadword(JSON.stringify({
     entries: [{ term: 'scope', lemma: 'scope' }, { term: 'extent', lemma: 'extent' }],
   }), request), false);
+});
+
+test('keeps normal Atlas generation counts separate from saved-headword enrichment', () => {
+  const entries = count => Array.from({ length: count }, (_, index) => ({
+    term: `term-${index + 1}`,
+  }));
+  const normalRequest = JSON.stringify({
+    generationMode: 'normal_set',
+    existingCatalog: [{ term: 'similar', lemma: 'similar', isRequestedHeadword: false }],
+  });
+  assert.equal(hasRequiredNuanceEntryCount(JSON.stringify({ entries: entries(3) }), normalRequest), false);
+  assert.equal(hasRequiredNuanceEntryCount(JSON.stringify({ entries: entries(4) }), normalRequest), true);
+  assert.equal(hasRequiredNuanceEntryCount(JSON.stringify({
+    entries: entries(3),
+    discardedEntryCount: 1,
+  }), normalRequest), true);
+
+  const enrichmentRequest = JSON.stringify({
+    generationMode: 'saved_headword_enrichment',
+    existingCatalog: [{ term: 'range', lemma: 'range', isRequestedHeadword: true }],
+  });
+  assert.equal(hasRequiredNuanceEntryCount(JSON.stringify({ entries: entries(1) }), enrichmentRequest), true);
+  assert.equal(hasRequiredNuanceEntryCount(JSON.stringify({ entries: [] }), enrichmentRequest), false);
 });
 
 test('normalization merges duplicate generated senses before completeness validation', () => {

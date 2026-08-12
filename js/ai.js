@@ -797,6 +797,10 @@ export async function generateNuanceEntries(
     })
     .filter(entry => entry.term)
     .slice(0, 80);
+  const hasRequestedSavedHeadword = catalogExpressions.some(entry => entry.isRequestedHeadword);
+  const generationMode = hasRequestedSavedHeadword
+    ? 'saved_headword_enrichment'
+    : 'normal_set';
   const excludedKeys = new Set(knownExpressions.flatMap(expressionLookupKeys));
   if (!cleanTarget && !cleanCategory && !cleanTopic && !terms.length) {
     throw new Error('知りたい意味・表現を入力してください。');
@@ -820,7 +824,7 @@ export async function generateNuanceEntries(
     expansionMode
       ? 'This request expands an existing topic. Do not return expressions already in existingExpressions unless the user directly entered that headword in learningTarget or seedTerms. For a directly requested saved headword, return a complete enriched snapshot when useful coverage is missing. For all other expressions, explore uncovered senses, domains, registers, grammatical roles, and usage boundaries instead of rewriting existing entries. Keep the existing category, topic, map mode, comparison axis, and endpoint labels compatible. Do not pad the result with near-duplicates merely to reach a count.'
       : 'This request creates or extends a normal expression set. Choose the most useful central contrasts for the learner.',
-    'When the user directly requests a headword that already exists, that headword is mandatory and is the only count requirement. Return one excellent complete headword entry (or several entries only for genuinely distinct parts of speech or semantic branches). Related comparison expressions are optional and must be omitted when already saved or when adding them would reduce depth. Never invent four or five replacements merely to reach a quota.',
+    'Count rules depend strictly on generationMode. In normal_set mode, return five complete expressions normally, at least four complete expressions unless accuracy makes that impossible, and never reduce the count merely because a loosely similar expression exists in existingCatalog. In saved_headword_enrichment mode only, the directly requested saved headword is mandatory and is the only count requirement: return one excellent complete headword entry (or several entries only for genuinely distinct parts of speech or semantic branches). Related comparison expressions are optional in saved_headword_enrichment mode and must be omitted when already saved or when adding them would reduce depth. Never apply this one-entry exception to a new headword or a merely similar headword.',
     'Choose mapMode for the whole set. Use scale only when every expression can be compared on one genuinely meaningful continuum. In that case provide a concise theme-specific mapAxisJa plus low and high endpoint labels, and assign each expression exactly one integer star level from 1 to 5. Set intensityLevel, intensityMin, and intensityMax to that same integer; never return a range such as 1-2 or 3-4.',
     'Use groups when forcing the expressions onto one continuum would mislead the learner. In groups mode, mapAxisJa should name the organizing principle and nuanceTypeJa must be a concise reusable group label. Do not invent a strength ranking merely to fill the map.',
     'For scale mode, intensityLevel is one definite position from 1 to 5, chosen by comparing the expressions within this exact set on mapAxisJa. For groups mode it may be 3 for schema compatibility, but it will not be shown. In both modes nuanceTypeJa must explain a qualitative type rather than repeat a number.',
@@ -856,11 +860,12 @@ export async function generateNuanceEntries(
     topic: cleanTopic,
     seedTerms: terms,
     expansionMode,
+    generationMode,
     existingExpressions: knownExpressions,
     existingCatalog: catalogExpressions,
     existingTaxonomy: (Array.isArray(existingTaxonomy) ? existingTaxonomy : []).slice(0, 40),
     allowedCategories: NUANCE_ATLAS_CATEGORIES,
-    requestedEntryCount: catalogExpressions.some(entry => entry.isRequestedHeadword)
+    requestedEntryCount: hasRequestedSavedHeadword
       ? Math.max(1, requestedExpressionTerms.length)
       : (terms.length ? Math.max(terms.length, 5) : 5),
   });

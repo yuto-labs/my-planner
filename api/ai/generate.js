@@ -808,6 +808,21 @@ function nuanceResponseIncludesRequestedHeadword(text, userText) {
   return entries.some(entry => requestedKeys.has(normalize(entry?.lemma || entry?.term)));
 }
 
+function hasRequiredNuanceEntryCount(text, userText) {
+  const parsed = parseStructuredResponse(text);
+  let request = null;
+  try { request = JSON.parse(String(userText || '')); } catch {}
+  const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
+  if (request?.generationMode === 'saved_headword_enrichment') {
+    return entries.length >= 1;
+  }
+  // Normal generation should produce a useful comparison set. If the model
+  // attempted at least four but one malformed candidate was discarded, keep
+  // the three complete entries rather than rejecting the whole answer.
+  const discarded = Math.max(0, Number(parsed?.discardedEntryCount || 0));
+  return entries.length >= 4 || (entries.length >= 3 && discarded >= 1);
+}
+
 function hasSafeNuanceEnrichmentResponse(text, userText) {
   const parsed = parseStructuredResponse(text);
   let request = null;
@@ -1453,7 +1468,8 @@ export default async function handler(req, res) {
     const incompleteStructured = responseFormat === 'json'
       && (!hasCompleteStructuredResponse(body.actionType, text)
         || (body.actionType === 'nuance_generate'
-          && !nuanceResponseIncludesRequestedHeadword(text, body.userText)));
+          && (!nuanceResponseIncludesRequestedHeadword(text, body.userText)
+            || !hasRequiredNuanceEntryCount(text, body.userText))));
     if (incompleteStructured) {
       logStructuredValidationFailure(body.actionType, text, 'initial');
     }
@@ -1493,11 +1509,16 @@ The previous response was incomplete. Return all three distinct translation vari
         };
       }
       if (body.actionType === 'nuance_generate') {
+        let nuanceRequest = null;
+        try { nuanceRequest = JSON.parse(String(body.userText || '')); } catch {}
+        const savedHeadwordRetry = nuanceRequest?.generationMode === 'saved_headword_enrichment';
         retryPayload.systemInstruction = {
           parts: [{
             text: `${String(body.systemText || '')}
 
-The previous response was incomplete or too shallow. Normally return five complete expressions, use six when all six are genuinely useful, and return four when a fifth would be repetitive. Return three only as a last resort when adding another entry would reduce depth or accuracy. Every returned expression must receive equally deep treatment. Choose one honest mapMode for the set: scale only when one named continuum is meaningful, otherwise groups. Always provide mapAxisJa. Assign one definite integer star level to every scale entry and set intensityLevel, intensityMin, and intensityMax to that same value; never return a range. Scale also requires useful low/high endpoint labels, while groups should provide a reusable nuanceTypeJa for every entry. For each expression, make etymologyJa, coreImageJa, coreMeaningJa, and especially nuanceJa substantial, distinct, and connected enough to build a usable mental model; explain sense shifts, viewpoint, agency, implications, grammar, register, and natural-use boundaries rather than padding with paraphrases. Include at least three distinct examples with usage notes and at least three concrete comparisons per expression. The user does not need to provide a usage situation: infer several realistic situations for each expression and explain them in useCasesJa. Never ask the user to make the theme or words more specific when a reasonable interpretation is possible.`,
+The previous response was incomplete or too shallow. ${savedHeadwordRetry
+  ? 'This is saved_headword_enrichment mode. Return the directly requested saved headword as at least one complete, deeply enriched entry; related expressions are not required.'
+  : 'This is normal_set mode. Return five complete expressions normally and at least four complete expressions. A merely similar saved expression does not lower this minimum.'} Every returned expression must receive equally deep treatment. Choose one honest mapMode for the set: scale only when one named continuum is meaningful, otherwise groups. Always provide mapAxisJa. Assign one definite integer star level to every scale entry and set intensityLevel, intensityMin, and intensityMax to that same value; never return a range. Scale also requires useful low/high endpoint labels, while groups should provide a reusable nuanceTypeJa for every entry. For each expression, make etymologyJa, coreImageJa, coreMeaningJa, and especially nuanceJa substantial, distinct, and connected enough to build a usable mental model; explain sense shifts, viewpoint, agency, implications, grammar, register, and natural-use boundaries rather than padding with paraphrases. Include at least three distinct examples with usage notes and at least three concrete comparisons per expression. The user does not need to provide a usage situation: infer several realistic situations for each expression and explain them in useCasesJa. Never ask the user to make the theme or words more specific when a reasonable interpretation is possible.`,
           }],
         };
       }
@@ -1543,7 +1564,8 @@ The previous response was incomplete. Return a grounded title and at least one n
       if (responseFormat === 'json' && (
         (!hasCompleteStructuredResponse(body.actionType, text) && !safeNuanceEnrichment)
         || (body.actionType === 'nuance_generate'
-          && !nuanceResponseIncludesRequestedHeadword(text, body.userText))
+          && (!nuanceResponseIncludesRequestedHeadword(text, body.userText)
+            || !hasRequiredNuanceEntryCount(text, body.userText)))
       )) {
         logStructuredValidationFailure(body.actionType, text, 'retry');
         res.status(502).json({
@@ -1574,6 +1596,7 @@ The previous response was incomplete. Return a grounded title and at least one n
 
 export {
   hasCompleteStructuredResponse,
+  hasRequiredNuanceEntryCount,
   hasSafeNuanceEnrichmentResponse,
   nuanceResponseIncludesRequestedHeadword,
   normalizeStructuredResponse,
