@@ -793,6 +793,21 @@ function hasCompleteNuanceResponse(text) {
     && entries.every(entry => isCompleteNuanceEntry(entry, mapMode));
 }
 
+function nuanceResponseIncludesRequestedHeadword(text, userText) {
+  let request = null;
+  try { request = JSON.parse(String(userText || '')); } catch {}
+  const requested = (Array.isArray(request?.existingCatalog) ? request.existingCatalog : [])
+    .filter(item => item?.isRequestedHeadword);
+  if (!requested.length) return true;
+  const parsed = parseStructuredResponse(text);
+  const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
+  const normalize = value => String(value || '').normalize('NFKC').trim().toLocaleLowerCase();
+  const requestedKeys = new Set(requested.flatMap(item => (
+    [item?.lemma, item?.term, ...(Array.isArray(item?.aliases) ? item.aliases : [])].map(normalize)
+  )).filter(Boolean));
+  return entries.some(entry => requestedKeys.has(normalize(entry?.lemma || entry?.term)));
+}
+
 function hasSafeNuanceEnrichmentResponse(text, userText) {
   const parsed = parseStructuredResponse(text);
   let request = null;
@@ -929,11 +944,47 @@ function normalizeStructuredResponse(actionType, text) {
         })),
       };
     });
-    const completeEntries = normalizedEntries.filter(entry => isCompleteNuanceEntry(entry, parsed.mapMode));
+    const mergedEntries = [];
+    normalizedEntries.forEach(entry => {
+      const key = [entry.term, entry.partOfSpeech, entry.senseId || entry.coreMeaningJa]
+        .map(value => String(value || '').normalize('NFKC').trim().toLocaleLowerCase()).join('|');
+      const index = mergedEntries.findIndex(candidate => candidate.key === key);
+      if (index < 0) {
+        mergedEntries.push({ key, entry });
+        return;
+      }
+      const previous = mergedEntries[index].entry;
+      const richer = (left, right) => String(right || '').length > String(left || '').length ? right : left;
+      const uniqueObjects = (left, right) => {
+        const seen = new Set();
+        return [...(Array.isArray(left) ? left : []), ...(Array.isArray(right) ? right : [])]
+          .filter(item => {
+            const itemKey = JSON.stringify(item);
+            if (seen.has(itemKey)) return false;
+            seen.add(itemKey);
+            return true;
+          });
+      };
+      mergedEntries[index].entry = {
+        ...previous,
+        ...entry,
+        etymologyJa: richer(previous.etymologyJa, entry.etymologyJa),
+        coreImageJa: richer(previous.coreImageJa, entry.coreImageJa),
+        coreMeaningJa: richer(previous.coreMeaningJa, entry.coreMeaningJa),
+        nuanceJa: richer(previous.nuanceJa, entry.nuanceJa),
+        useCasesJa: uniqueObjects(previous.useCasesJa, entry.useCasesJa),
+        usagePatterns: uniqueObjects(previous.usagePatterns, entry.usagePatterns),
+        examples: uniqueObjects(previous.examples, entry.examples),
+        comparisons: uniqueObjects(previous.comparisons, entry.comparisons),
+        collocations: uniqueObjects(previous.collocations, entry.collocations),
+      };
+    });
+    const deduplicatedEntries = mergedEntries.map(item => item.entry);
+    const completeEntries = deduplicatedEntries.filter(entry => isCompleteNuanceEntry(entry, parsed.mapMode));
     parsed.discardedEntryCount = completeEntries.length >= 1
-      ? normalizedEntries.length - completeEntries.length
+      ? deduplicatedEntries.length - completeEntries.length
       : 0;
-    parsed.entries = completeEntries.length >= 1 ? completeEntries : normalizedEntries;
+    parsed.entries = completeEntries.length >= 1 ? completeEntries : deduplicatedEntries;
   }
   if (actionType === 'knowledge_answer' && parsed.answer) {
     const conceptKeys = new Set([
@@ -1400,7 +1451,9 @@ export default async function handler(req, res) {
 
     let text = normalizeStructuredResponse(body.actionType, extractText(data));
     const incompleteStructured = responseFormat === 'json'
-      && !hasCompleteStructuredResponse(body.actionType, text);
+      && (!hasCompleteStructuredResponse(body.actionType, text)
+        || (body.actionType === 'nuance_generate'
+          && !nuanceResponseIncludesRequestedHeadword(text, body.userText)));
     if (incompleteStructured) {
       logStructuredValidationFailure(body.actionType, text, 'initial');
     }
@@ -1487,9 +1540,11 @@ The previous response was incomplete. Return a grounded title and at least one n
       text = normalizeStructuredResponse(body.actionType, extractText(data));
       const safeNuanceEnrichment = body.actionType === 'nuance_generate'
         && hasSafeNuanceEnrichmentResponse(text, body.userText);
-      if (responseFormat === 'json'
-        && !hasCompleteStructuredResponse(body.actionType, text)
-        && !safeNuanceEnrichment) {
+      if (responseFormat === 'json' && (
+        (!hasCompleteStructuredResponse(body.actionType, text) && !safeNuanceEnrichment)
+        || (body.actionType === 'nuance_generate'
+          && !nuanceResponseIncludesRequestedHeadword(text, body.userText))
+      )) {
         logStructuredValidationFailure(body.actionType, text, 'retry');
         res.status(502).json({
           error: 'AIの回答が必要な項目を満たしませんでした。入力内容は失われていません。もう一度お試しください。',
@@ -1520,6 +1575,7 @@ The previous response was incomplete. Return a grounded title and at least one n
 export {
   hasCompleteStructuredResponse,
   hasSafeNuanceEnrichmentResponse,
+  nuanceResponseIncludesRequestedHeadword,
   normalizeStructuredResponse,
   pickFallbackModel,
   pickModel,

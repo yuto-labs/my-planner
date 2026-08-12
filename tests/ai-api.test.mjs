@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 const {
   hasCompleteStructuredResponse,
   hasSafeNuanceEnrichmentResponse,
+  nuanceResponseIncludesRequestedHeadword,
   normalizeStructuredResponse,
   pickFallbackModel,
   pickModel,
@@ -331,6 +332,53 @@ test('safely accepts a partial enrichment only for an exact saved sense id', () 
     }],
   });
   assert.equal(hasSafeNuanceEnrichmentResponse(unknownSense, request), false);
+});
+
+test('requires a directly requested saved headword but not four related expressions', () => {
+  const request = JSON.stringify({
+    existingCatalog: [{
+      term: 'range', lemma: 'range', isRequestedHeadword: true,
+      senses: [{ senseId: 'extent', partOfSpeech: 'noun' }],
+    }],
+  });
+  assert.equal(nuanceResponseIncludesRequestedHeadword(JSON.stringify({
+    entries: [{ term: 'range', lemma: 'range' }],
+  }), request), true);
+  assert.equal(nuanceResponseIncludesRequestedHeadword(JSON.stringify({
+    entries: [{ term: 'scope', lemma: 'scope' }, { term: 'extent', lemma: 'extent' }],
+  }), request), false);
+});
+
+test('normalization merges duplicate generated senses before completeness validation', () => {
+  const full = {
+    term: 'range', lemma: 'range', senseId: 'extent', partOfSpeech: 'noun',
+    intensityLevel: 3, intensityMin: 3, intensityMax: 3,
+    coreImageJa: '物事が二つの限界の間に連続して広がり、その内側に複数の値や候補が収まっている根源的なイメージを丁寧に説明します。',
+    coreMeaningJa: '値や選択肢などが一定の端から端まで含まれ、単独の一点ではなく幅を持ったまとまりとして捉えられる中心的な意味です。',
+    nuanceJa: '単なる一点ではなく、複数の値や可能性が二つの境界の間に広がっている見方を表します。何を範囲として捉えるか、境界が明示されるかによって自然な構文が変わります。また、選択肢の種類を示す場合と数値的な上下限を示す場合では、話者が注目する広がりの性質が異なることまで具体的に説明します。',
+    useCasesJa: ['価格帯について述べる場面', '選択肢の広がりを示す場面'],
+    examples: [
+      { source: 'The price range is wide.', translation: '価格帯は広い。', noteJa: '価格の幅' },
+      { source: 'We offer a range of choices.', translation: '幅広い選択肢を用意しています。', noteJa: '種類の広がり' },
+      { source: 'The values fall within this range.', translation: '値はこの範囲内に収まる。', noteJa: '境界内' },
+    ],
+    comparisons: [
+      { term: 'scope', differenceJa: '活動や責任が及ぶ領域を示しやすい点が異なります。' },
+      { term: 'extent', differenceJa: '広がりの程度そのものを客観的に捉えやすい点が異なります。' },
+    ],
+  };
+  const duplicate = structuredClone(full);
+  duplicate.examples = [
+    ...duplicate.examples,
+    { source: 'A fourth range example.', translation: '4つ目の例。', noteJa: '追加例' },
+  ];
+  const normalized = JSON.parse(normalizeStructuredResponse('nuance_generate', JSON.stringify({
+    category: '状態・性質', topic: '範囲', mapMode: 'groups', mapAxisJa: '意味の広がり',
+    entries: [full, duplicate],
+  })));
+  assert.equal(normalized.entries.length, 1);
+  assert.equal(normalized.entries[0].examples.length, 4);
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(normalized)), true);
 });
 
 test('keeps legacy nuance field names readable during validation', () => {
