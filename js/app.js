@@ -29,6 +29,7 @@ import { initKnowledgeGraph } from './modules/knowledge-graph.js';
 import {
   initExpressionAtlas,
   backFromExpressionAtlas,
+  shouldPreserveExpressionAtlasView,
 } from './modules/expression-atlas.js';
 import { initAnalytics } from './modules/analytics.js';
 import {
@@ -303,6 +304,7 @@ export function navigate(view, options = {}) {
 
 export function refreshCurrentView(options = {}) {
   if (!currentView) return;
+  if (currentView === 'expression-atlas' && shouldPreserveExpressionAtlasView()) return;
   if (isUserEditing()) {
     deferSyncWhileEditing();
     return;

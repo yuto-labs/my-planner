@@ -89,6 +89,8 @@ let state = {
   noteTimer: null,
   searchTimer: null,
   speechText: '',
+  speechRunId: 0,
+  speechUtterance: null,
   speechHandler: null,
   generatorInput: {
     language: 'English',
@@ -122,8 +124,7 @@ export function initExpressionAtlas(container) {
     persistOpenTranslationNote();
     clearTimeout(state.noteTimer);
     clearTimeout(state.searchTimer);
-    window.speechSynthesis?.cancel?.();
-    state.speechText = '';
+    stopAtlasSpeech();
     container.removeEventListener('click', state.speechHandler);
     state.speechHandler = null;
     if (state.container === container) state.container = null;
@@ -146,36 +147,87 @@ function handleSpeakClick(event) {
   }
   event.preventDefault();
   if (state.speechText === text) {
-    window.speechSynthesis.cancel();
-    state.speechText = '';
-    state.container.querySelectorAll('.atlas-speak-btn.is-speaking').forEach(item => item.classList.remove('is-speaking'));
+    stopAtlasSpeech();
     return;
   }
-  window.speechSynthesis.cancel();
+  stopAtlasSpeech();
   state.container.querySelectorAll('.atlas-speak-btn.is-speaking').forEach(item => item.classList.remove('is-speaking'));
-  const utterance = new SpeechSynthesisUtterance(text);
   const voices = window.speechSynthesis.getVoices?.() || [];
   const voice = voices.find(item => /samantha/i.test(item.name) && /^en/i.test(item.lang))
     || voices.find(item => /^en-US/i.test(item.lang))
     || voices.find(item => /^en/i.test(item.lang));
-  if (voice) utterance.voice = voice;
-  utterance.lang = voice?.lang || 'en-US';
-  utterance.rate = 0.88;
-  utterance.pitch = 1;
+  const chunks = splitAtlasSpeechText(text);
+  const runId = ++state.speechRunId;
   state.speechText = text;
   button.classList.add('is-speaking');
   const clear = () => {
-    if (state.speechText !== text) return;
+    if (state.speechRunId !== runId) return;
     state.speechText = '';
     button.classList.remove('is-speaking');
   };
-  utterance.onend = clear;
-  utterance.onerror = clear;
-  window.speechSynthesis.speak(utterance);
+  const play = index => {
+    if (state.speechRunId !== runId || index >= chunks.length) {
+      clear();
+      return;
+    }
+    const utterance = new SpeechSynthesisUtterance(chunks[index]);
+    state.speechUtterance = utterance;
+    if (voice) utterance.voice = voice;
+    utterance.lang = voice?.lang || 'en-US';
+    utterance.rate = 0.88;
+    utterance.pitch = 1;
+    utterance.onend = () => play(index + 1);
+    utterance.onerror = event => {
+      if (event?.error === 'canceled' || event?.error === 'interrupted') return;
+      clear();
+    };
+    window.speechSynthesis.speak(utterance);
+  };
+  play(0);
+}
+
+function stopAtlasSpeech() {
+  state.speechRunId += 1;
+  window.speechSynthesis?.cancel?.();
+  state.speechText = '';
+  state.speechUtterance = null;
+  state.container?.querySelectorAll('.atlas-speak-btn.is-speaking').forEach(item => item.classList.remove('is-speaking'));
+}
+
+export function splitAtlasSpeechText(text, maxLength = 180) {
+  const sentences = String(text || '').trim().match(/[^.!?;:\n]+[.!?;:]?|\n+/g) || [];
+  const chunks = [];
+  sentences.forEach(sentence => {
+    const value = sentence.trim();
+    if (!value) return;
+    if (value.length <= maxLength) {
+      chunks.push(value);
+      return;
+    }
+    const words = value.split(/\s+/);
+    let current = '';
+    words.forEach(word => {
+      const candidate = current ? `${current} ${word}` : word;
+      if (!current || candidate.length <= maxLength) current = candidate;
+      else {
+        chunks.push(current);
+        current = word;
+      }
+    });
+    if (current) chunks.push(current);
+  });
+  return chunks.length ? chunks : [String(text || '').trim()];
 }
 
 export function hasActiveExpressionAtlasWork() {
   return state.generating;
+}
+
+export function shouldPreserveExpressionAtlasView() {
+  return Boolean(state.container?.isConnected && (
+    state.speechText || state.entryId || state.translationId || state.questionId
+    || state.morphemeId || state.usageId
+  ));
 }
 
 function renderIfMounted() {

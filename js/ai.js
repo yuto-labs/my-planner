@@ -21,6 +21,68 @@ import { atlasSenseFromEntry, mergeAtlasSenseArrays } from './atlas-senses.js';
 
 export { NUANCE_ATLAS_CATEGORIES };
 
+const ATLAS_DETAILED_CATALOG_LIMIT = 24;
+
+function atlasSearchText(entry = {}) {
+  const senses = Array.isArray(entry?.senses) && entry.senses.length ? entry.senses : [entry];
+  return [entry?.term, entry?.lemma, ...(entry?.aliases || []), entry?.category, entry?.topic,
+    entry?.sourceQueryJa, ...(entry?.sourceQueries || []), ...senses.flatMap(sense => [
+      sense?.partOfSpeech, sense?.coreMeaningJa, sense?.coreImageJa, sense?.nuanceTypeJa,
+      sense?.senseFingerprint?.semanticDomain, sense?.senseFingerprint?.actionType,
+      ...(sense?.senseFingerprint?.argumentPatterns || []), ...(sense?.senseFingerprint?.typicalObjects || []),
+      ...(sense?.senseFingerprint?.implicationTags || []),
+      ...(sense?.comparisons || []).flatMap(item => [item?.term, item?.differenceJa]),
+    ])].filter(Boolean).join(' ').normalize('NFKC').toLocaleLowerCase();
+}
+
+function atlasQueryTokens(value) {
+  const normalized = String(value || '').normalize('NFKC').toLocaleLowerCase().trim();
+  if (!normalized) return [];
+  return [...new Set([normalized, ...(normalized.match(/[a-z]+(?:['’-][a-z]+)*/g) || []),
+    ...(normalized.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]{2,}/gu) || [])]
+    .filter(token => token.length > 1))];
+}
+
+export function buildAtlasCatalogContext(referenceExpressions = [], {
+  learningTarget = '', requestedExpressionTerms = [], category = '', topic = '',
+  detailedLimit = ATLAS_DETAILED_CATALOG_LIMIT,
+} = {}) {
+  const entries = (Array.isArray(referenceExpressions) ? referenceExpressions : [])
+    .filter(entry => String(entry?.term || '').trim());
+  const requestedKeys = new Set((Array.isArray(requestedExpressionTerms) ? requestedExpressionTerms : [])
+    .flatMap(term => expressionLookupKeys({ term, lemma: term, aliases: [] })));
+  const queryTokens = atlasQueryTokens([learningTarget, category, topic, ...requestedExpressionTerms].join(' '));
+  const normalizedCategory = String(category || '').normalize('NFKC').trim().toLocaleLowerCase();
+  const normalizedTopic = String(topic || '').normalize('NFKC').trim().toLocaleLowerCase();
+  const limit = Math.max(1, Number(detailedLimit) || ATLAS_DETAILED_CATALOG_LIMIT);
+
+  const scored = entries.map((entry, index) => {
+    const isRequestedHeadword = expressionLookupKeys(entry).some(key => requestedKeys.has(key));
+    const text = atlasSearchText(entry);
+    let score = isRequestedHeadword ? 100000 : 0;
+    if (normalizedTopic && String(entry?.topic || '').normalize('NFKC').trim().toLocaleLowerCase() === normalizedTopic) score += 500;
+    if (normalizedCategory && String(entry?.category || '').normalize('NFKC').trim().toLocaleLowerCase() === normalizedCategory) score += 180;
+    queryTokens.forEach(token => { if (text.includes(token)) score += 35; });
+    return { entry, index, score, isRequestedHeadword };
+  }).sort((left, right) => right.score - left.score || left.index - right.index);
+
+  const detailed = scored.slice(0, Math.min(entries.length, limit));
+  const headwordIndex = entries.map(entry => {
+    const senses = Array.isArray(entry?.senses) && entry.senses.length ? entry.senses : [entry];
+    return {
+      term: String(entry?.term || '').trim(),
+      lemma: String(entry?.lemma || entry?.term || '').trim(),
+      aliases: normalizeStringList(entry?.aliases, 4),
+      partsOfSpeech: [...new Set(senses.map(sense => String(sense?.partOfSpeech || '').trim()).filter(Boolean))].slice(0, 6),
+      meaningHintsJa: [...new Set(senses.map(sense => String(sense?.coreMeaningJa || '').trim().slice(0, 90)).filter(Boolean))].slice(0, 3),
+    };
+  });
+  return {
+    headwordIndex,
+    detailedEntries: detailed.map(item => ({ ...item.entry, isRequestedHeadword: item.isRequestedHeadword })),
+  };
+}
+
 const SERVER_STATUS_URL = '/api/ai/status';
 const SERVER_GENERATE_URL = '/api/ai/generate';
 // Long-form Atlas and Knowledge responses can legitimately take over a minute.
@@ -758,9 +820,15 @@ export async function generateNuanceEntries(
   ].filter(Boolean);
   const requestedExpressionKeys = new Set(requestedExpressionTerms
     .flatMap(term => expressionLookupKeys({ term, lemma: term, aliases: [] })));
-  const catalogExpressions = (Array.isArray(referenceExpressions) ? referenceExpressions : [])
+  const catalogContext = buildAtlasCatalogContext(referenceExpressions, {
+    learningTarget: cleanTarget,
+    requestedExpressionTerms,
+    category: cleanCategory,
+    topic: cleanTopic,
+  });
+  const catalogExpressions = catalogContext.detailedEntries
     .map(entry => {
-      const isRequestedHeadword = expressionLookupKeys(entry)
+      const isRequestedHeadword = entry.isRequestedHeadword === true || expressionLookupKeys(entry)
         .some(key => requestedExpressionKeys.has(key));
       return {
       term: String(entry?.term || '').trim(),
@@ -795,8 +863,7 @@ export async function generateNuanceEntries(
         .slice(0, 8),
       };
     })
-    .filter(entry => entry.term)
-    .slice(0, 80);
+    .filter(entry => entry.term);
   const hasRequestedSavedHeadword = catalogExpressions.some(entry => entry.isRequestedHeadword);
   const generationMode = hasRequestedSavedHeadword
     ? 'saved_headword_enrichment'
@@ -836,7 +903,7 @@ export async function generateNuanceEntries(
     'Etymology must distinguish verified historical origin from a learning mnemonic. Never invent a root or confidently state a disputed origin. When uncertain, explicitly say that the origin is uncertain or leave etymologyJa empty.',
     'Return at least three natural example sentences for every expression, each with a faithful Japanese translation and a short usage note. The examples must be genuinely different in situation, grammar, collocation, and communicative purpose; never reuse or lightly rephrase an example anywhere in the set.',
     'Do not treat different parts of speech as interchangeable. Explicitly explain grammatical differences such as adjective versus noun.',
-    'existingCatalog is the learner\'s saved dictionary. Check it before choosing entries. A headword is global across the Atlas, even when an earlier category or topic label differs. Never create a second card for an already saved lemma. When a requested English headword already exists, return a complete improved snapshot for that headword whenever there is a useful missing nuance, construction, example, comparison, part of speech, or dictionary-distinct sense. Include the useful existing coverage as well as the new coverage so the response remains independently complete; the client safely merges it without shortening the saved explanation.',
+    'existingHeadwordIndex is the complete lightweight inventory of the learner\'s saved dictionary. Use it to avoid returning an already saved lemma as a new comparison entry. existingCatalog contains the most relevant saved entries with richer sense detail. A headword is global across the Atlas, even when an earlier category or topic label differs. Never create a second card for an already saved lemma. When a requested English headword already exists, return a complete improved snapshot for that headword whenever there is a useful missing nuance, construction, example, comparison, part of speech, or dictionary-distinct sense. Include the useful existing coverage as well as the new coverage so the response remains independently complete; the client safely merges it without shortening the saved explanation.',
     'Use a broad pedagogical sense family, not one toggle per tiny translation difference. Variations caused by object choice, complement, construction, register, intensity, or a small contextual shift should normally share one senseId when a learner can understand them as branches of the same core image. Explain those branches together in coreMeaningJa and nuanceJa, and separate their practical use with usagePatterns, examples, collocations, and comparisons.',
     'Create another senseId within the same part of speech only for a dictionary-distinct semantic branch that cannot be taught clearly as a nearby extension of the same core image. A different part of speech remains separate. When several genuinely distinct branches are required, return one complete entries item per branch; otherwise prefer one rich, connected entry over many thin entries.',
     'For every entry, provide senseFingerprint as compact semantic evidence, not display prose. semanticDomain names the broad meaning area; actionType names the event or state; argumentPatterns gives canonical constructions; typicalObjects gives semantic object/complement classes; implicationTags records stable implications; registerTags records register; physicality must be physical, figurative, abstract, or mixed.',
@@ -862,6 +929,7 @@ export async function generateNuanceEntries(
     expansionMode,
     generationMode,
     existingExpressions: knownExpressions,
+    existingHeadwordIndex: catalogContext.headwordIndex,
     existingCatalog: catalogExpressions,
     existingTaxonomy: (Array.isArray(existingTaxonomy) ? existingTaxonomy : []).slice(0, 40),
     allowedCategories: NUANCE_ATLAS_CATEGORIES,
