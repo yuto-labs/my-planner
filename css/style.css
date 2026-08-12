@@ -9178,6 +9178,11 @@ button.atlas-nuance-map-row:focus-visible {
 [data-media-view] {
   cursor: zoom-in;
 }
+.kn-block--image [data-media-view] {
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
 [data-media-view]:focus-visible {
   outline: 3px solid var(--primary);
   outline-offset: -3px;
@@ -9205,6 +9210,8 @@ button.atlas-nuance-map-row:focus-visible {
   width: 100%;
   height: 100%;
   min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 .media-lightbox img {
   display: block;
@@ -9216,10 +9223,20 @@ button.atlas-nuance-map-row:focus-visible {
   opacity: 0;
   transform: scale(0.975);
   transition: opacity 160ms ease, transform 160ms ease;
+  touch-action: pinch-zoom;
 }
 .media-lightbox--open img {
   opacity: 1;
   transform: scale(1);
+}
+.media-lightbox--zoomed .media-lightbox-stage {
+  justify-content: flex-start;
+}
+.media-lightbox--zoomed img {
+  width: min(200%, 1600px);
+  max-width: none;
+  max-height: none;
+  cursor: zoom-out;
 }
 .media-lightbox-caption {
   max-width: min(760px, 100%);

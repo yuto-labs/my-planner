@@ -102,6 +102,10 @@ export async function hydratePlannerImages(root) {
     const path = image.dataset.mediaPath;
     if (!path || image.dataset.mediaLoaded === '1' || image.dataset.mediaLoaded === 'loading') return;
     image.dataset.mediaLoaded = 'loading';
+    const cached = urlCache.get(path);
+    if (cached?.expiresAt > Date.now() && cached.url) {
+      image.src = cached.url;
+    }
     const url = await resolvePlannerImageUrl(path, {
       persistent: image.dataset.mediaPersist === '1',
     });
@@ -204,19 +208,27 @@ export async function openPlannerImageViewer({
   viewer.addEventListener('click', event => {
     if (event.target === viewer || event.target.classList.contains('media-lightbox-stage')) close();
   });
+  image.addEventListener('click', event => {
+    event.stopPropagation();
+    viewer.classList.toggle('media-lightbox--zoomed');
+    image.setAttribute(
+      'aria-label',
+      viewer.classList.contains('media-lightbox--zoomed') ? '写真を画面内に戻す' : '写真を拡大する'
+    );
+  });
   document.addEventListener('keydown', onKeyDown);
   document.body.appendChild(viewer);
   document.body.style.overflow = 'hidden';
   closeButton.focus({ preventScroll: true });
 
-  const useExistingBlob = String(src || '').startsWith('blob:');
-  const resolvedSrc = useExistingBlob
-    ? src
-    : path
-      ? (await resolvePlannerImageUrl(path, {
-          persistent: trigger?.dataset?.mediaPersist === '1',
-        })) || src
-      : src;
+  // A hydrated image already has a valid signed/blob URL. Reusing it makes
+  // the viewer open immediately on mobile and avoids a second network lookup.
+  const visibleSrc = String(src || '').trim();
+  const resolvedSrc = visibleSrc || (path
+    ? await resolvePlannerImageUrl(path, {
+        persistent: trigger?.dataset?.mediaPersist === '1',
+      })
+    : '');
   if (closed) return;
   if (!resolvedSrc) {
     viewer.classList.remove('media-lightbox--loading');
@@ -233,6 +245,14 @@ export async function openPlannerImageViewer({
     viewer.classList.add('media-lightbox--error');
   }, { once: true });
   image.src = resolvedSrc;
+  image.setAttribute('role', 'button');
+  image.setAttribute('tabindex', '0');
+  image.setAttribute('aria-label', '写真を拡大する');
+  image.addEventListener('keydown', event => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    image.click();
+  });
   if (image.complete && image.naturalWidth > 0) {
     viewer.classList.remove('media-lightbox--loading');
     requestAnimationFrame(() => viewer.classList.add('media-lightbox--open'));

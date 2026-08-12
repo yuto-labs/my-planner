@@ -2308,6 +2308,14 @@ function wireEditorImageLongPress(container, wrap) {
   });
   wrap.addEventListener('pointerup', clear);
   wrap.addEventListener('pointercancel', clear);
+  wrap.addEventListener('contextmenu', event => {
+    const image = event.target.closest('.kn-block--image [data-media-view]');
+    if (!image) return;
+    event.preventDefault();
+    if (Date.now() <= suppressClickUntil) return;
+    const blockId = image.closest('.kn-block[data-block-id]')?.dataset.blockId;
+    if (blockId) removeEditorImageBlock(blockId, container);
+  });
 }
 
 function removeEditorImageBlock(blockId, container) {

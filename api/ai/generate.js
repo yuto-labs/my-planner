@@ -824,6 +824,28 @@ function hasRequiredNuanceEntryCount(text, userText, { allowPartialSalvage = fal
     || (allowPartialSalvage && entries.length >= 3 && discarded >= 1);
 }
 
+function mergeNuanceResponses(baseText, supplementText) {
+  const base = parseStructuredResponse(baseText);
+  const supplement = parseStructuredResponse(supplementText);
+  if (!base || !supplement) return supplementText || baseText;
+  return normalizeStructuredResponse('nuance_generate', JSON.stringify({
+    ...base,
+    ...supplement,
+    category: base.category || supplement.category,
+    topic: base.topic || supplement.topic,
+    mapMode: base.mapMode || supplement.mapMode,
+    mapAxisJa: base.mapAxisJa || supplement.mapAxisJa,
+    mapLowLabelJa: base.mapLowLabelJa || supplement.mapLowLabelJa,
+    mapHighLabelJa: base.mapHighLabelJa || supplement.mapHighLabelJa,
+    entries: [
+      ...(Array.isArray(base.entries) ? base.entries : []),
+      ...(Array.isArray(supplement.entries) ? supplement.entries : []),
+    ],
+    discardedEntryCount: Number(base.discardedEntryCount || 0)
+      + Number(supplement.discardedEntryCount || 0),
+  }));
+}
+
 function hasSafeNuanceEnrichmentResponse(text, userText) {
   const parsed = parseStructuredResponse(text);
   let request = null;
@@ -1421,7 +1443,11 @@ export default async function handler(req, res) {
     generationConfig,
   };
 
-  const responseSchema = responseFormat === 'json'
+  // The Atlas schema is intentionally rich and deeply nested. Some Gemini
+  // revisions reject that schema before generation and force an expensive
+  // second request. JSON mode plus the prompt contract and server validation
+  // is faster and still prevents malformed content from being saved.
+  const responseSchema = responseFormat === 'json' && body.actionType !== 'nuance_generate'
     ? pickResponseSchema(body.actionType, body)
     : null;
   if (responseSchema) payload.generationConfig.responseSchema = responseSchema;
@@ -1466,8 +1492,10 @@ export default async function handler(req, res) {
     }
 
     let text = normalizeStructuredResponse(body.actionType, extractText(data));
+    const safeInitialNuanceEnrichment = body.actionType === 'nuance_generate'
+      && hasSafeNuanceEnrichmentResponse(text, body.userText);
     const incompleteStructured = responseFormat === 'json'
-      && (!hasCompleteStructuredResponse(body.actionType, text)
+      && ((!hasCompleteStructuredResponse(body.actionType, text) && !safeInitialNuanceEnrichment)
         || (body.actionType === 'nuance_generate'
           && (!nuanceResponseIncludesRequestedHeadword(text, body.userText)
             || !hasRequiredNuanceEntryCount(text, body.userText))));
@@ -1513,15 +1541,47 @@ The previous response was incomplete. Return all three distinct translation vari
         let nuanceRequest = null;
         try { nuanceRequest = JSON.parse(String(body.userText || '')); } catch {}
         const savedHeadwordRetry = nuanceRequest?.generationMode === 'saved_headword_enrichment';
+        const retainedNuance = parseStructuredResponse(text);
+        const retainedEntries = Array.isArray(retainedNuance?.entries) ? retainedNuance.entries : [];
+        const canSupplement = !savedHeadwordRetry && retainedEntries.length > 0 && retainedEntries.length < 4;
+        const missingCount = canSupplement ? Math.max(1, 4 - retainedEntries.length) : 0;
+        const retainedTerms = retainedEntries
+          .map(entry => String(entry?.lemma || entry?.term || '').trim())
+          .filter(Boolean);
         retryPayload.systemInstruction = {
           parts: [{
             text: `${String(body.systemText || '')}
 
-The previous response was incomplete or too shallow. ${savedHeadwordRetry
+The previous response was incomplete or too shallow. ${canSupplement
+  ? `Keep the ${retainedEntries.length} complete entries already accepted by the application. Return exactly ${missingCount} additional complete expression${missingCount === 1 ? '' : 's'} only. Do not return these retained expressions again: ${retainedTerms.join(', ')}. The application will merge your supplement with them.`
+  : savedHeadwordRetry
   ? 'This is saved_headword_enrichment mode. Return the directly requested saved headword as at least one complete, deeply enriched entry; related expressions are not required.'
   : 'This is normal_set mode. Return five complete expressions normally and at least four complete expressions. A merely similar saved expression does not lower this minimum.'} Every returned expression must receive equally deep treatment. Choose one honest mapMode for the set: scale only when one named continuum is meaningful, otherwise groups. Always provide mapAxisJa. Assign one definite integer star level to every scale entry and set intensityLevel, intensityMin, and intensityMax to that same value; never return a range. Scale also requires useful low/high endpoint labels, while groups should provide a reusable nuanceTypeJa for every entry. For each expression, make etymologyJa, coreImageJa, coreMeaningJa, and especially nuanceJa substantial, distinct, and connected enough to build a usable mental model; explain sense shifts, viewpoint, agency, implications, grammar, register, and natural-use boundaries rather than padding with paraphrases. Include at least three distinct examples with usage notes and at least three concrete comparisons per expression. The user does not need to provide a usage situation: infer several realistic situations for each expression and explain them in useCasesJa. Never ask the user to make the theme or words more specific when a reasonable interpretation is possible.`,
           }],
         };
+        if (canSupplement) {
+          retryPayload.generationConfig.maxOutputTokens = Math.min(
+            retryPayload.generationConfig.maxOutputTokens,
+            Math.max(3200, missingCount * 3600)
+          );
+          retryPayload.contents = retryPayload.contents.map(content => ({
+            ...content,
+            parts: content.parts.map(part => {
+              let requestData = null;
+              try { requestData = JSON.parse(String(part?.text || '')); } catch {}
+              if (!requestData) return part;
+              return {
+                ...part,
+                text: JSON.stringify({
+                  ...requestData,
+                  requestedEntryCount: missingCount,
+                  supplementOnly: true,
+                  retainedTerms,
+                }),
+              };
+            }),
+          }));
+        }
       }
       if (body.actionType === 'english_question') {
         retryPayload.systemInstruction = {
@@ -1559,7 +1619,20 @@ The previous response was incomplete. Return a grounded title and at least one n
         res.status(upstream.status).json({ error: msg });
         return;
       }
-      text = normalizeStructuredResponse(body.actionType, extractText(data));
+      const retryText = normalizeStructuredResponse(body.actionType, extractText(data));
+      const originalNuance = body.actionType === 'nuance_generate'
+        ? parseStructuredResponse(text)
+        : null;
+      let retryNuanceRequest = null;
+      try { retryNuanceRequest = JSON.parse(String(body.userText || '')); } catch {}
+      const shouldMergeNuanceSupplement = body.actionType === 'nuance_generate'
+        && Array.isArray(originalNuance?.entries)
+        && originalNuance.entries.length > 0
+        && originalNuance.entries.length < 4
+        && retryNuanceRequest?.generationMode !== 'saved_headword_enrichment';
+      text = shouldMergeNuanceSupplement
+        ? mergeNuanceResponses(text, retryText)
+        : retryText;
       const safeNuanceEnrichment = body.actionType === 'nuance_generate'
         && hasSafeNuanceEnrichmentResponse(text, body.userText);
       if (responseFormat === 'json' && (
@@ -1603,6 +1676,7 @@ export {
   hasCompleteStructuredResponse,
   hasRequiredNuanceEntryCount,
   hasSafeNuanceEnrichmentResponse,
+  mergeNuanceResponses,
   nuanceResponseIncludesRequestedHeadword,
   normalizeStructuredResponse,
   pickFallbackModel,

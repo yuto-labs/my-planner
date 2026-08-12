@@ -5,6 +5,7 @@ const {
   hasCompleteStructuredResponse,
   hasRequiredNuanceEntryCount,
   hasSafeNuanceEnrichmentResponse,
+  mergeNuanceResponses,
   nuanceResponseIncludesRequestedHeadword,
   normalizeStructuredResponse,
   pickFallbackModel,
@@ -375,6 +376,34 @@ test('keeps normal Atlas generation counts separate from saved-headword enrichme
   });
   assert.equal(hasRequiredNuanceEntryCount(JSON.stringify({ entries: entries(1) }), enrichmentRequest), true);
   assert.equal(hasRequiredNuanceEntryCount(JSON.stringify({ entries: [] }), enrichmentRequest), false);
+});
+
+test('merges a focused Atlas supplement without losing complete retained entries', () => {
+  const makeComplete = term => ({
+    term, lemma: term, senseId: `${term}-sense`, partOfSpeech: 'noun',
+    intensityLevel: 3, intensityMin: 3, intensityMax: 3,
+    coreImageJa: '対象の中心像を具体的な形と関係から十分に説明し、現代の用法にも残る見方を丁寧につなげて示します。',
+    coreMeaningJa: '中心となる意味が、対象・状況・話者の視点によってどのように広がるのかを具体的に説明します。',
+    nuanceJa: '話者が何を前景化し、どのような含みや距離感を生むのか、自然な使用境界まで具体的に説明する十分な文章です。',
+    useCasesJa: ['具体的な場面A', '具体的な場面B'],
+    examples: [1, 2, 3].map(index => ({
+      source: `${term} example ${index}.`, translation: `${term}の例文${index}。`, noteJa: `使い方${index}`,
+    })),
+    comparisons: [1, 2].map(index => ({ term: `${term}-near-${index}`, differenceJa: `違い${index}を具体的に説明します。` })),
+  });
+  const base = JSON.stringify({
+    category: '状態・性質', topic: '重要性', mapMode: 'groups', mapAxisJa: '重要性の種類',
+    entries: ['important', 'significant', 'essential'].map(makeComplete),
+    discardedEntryCount: 1,
+  });
+  const supplement = JSON.stringify({
+    category: '状態・性質', topic: '重要性', mapMode: 'groups', mapAxisJa: '重要性の種類',
+    entries: [makeComplete('crucial')],
+  });
+  const merged = mergeNuanceResponses(base, supplement);
+  const parsed = JSON.parse(merged);
+  assert.deepEqual(parsed.entries.map(entry => entry.term), ['important', 'significant', 'essential', 'crucial']);
+  assert.equal(hasRequiredNuanceEntryCount(merged, JSON.stringify({ generationMode: 'normal_set' })), true);
 });
 
 test('normalization merges duplicate generated senses before completeness validation', () => {
