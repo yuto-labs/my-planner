@@ -808,7 +808,7 @@ function nuanceResponseIncludesRequestedHeadword(text, userText) {
   return entries.some(entry => requestedKeys.has(normalize(entry?.lemma || entry?.term)));
 }
 
-function hasRequiredNuanceEntryCount(text, userText) {
+function hasRequiredNuanceEntryCount(text, userText, { allowPartialSalvage = false } = {}) {
   const parsed = parseStructuredResponse(text);
   let request = null;
   try { request = JSON.parse(String(userText || '')); } catch {}
@@ -820,7 +820,8 @@ function hasRequiredNuanceEntryCount(text, userText) {
   // attempted at least four but one malformed candidate was discarded, keep
   // the three complete entries rather than rejecting the whole answer.
   const discarded = Math.max(0, Number(parsed?.discardedEntryCount || 0));
-  return entries.length >= 4 || (entries.length >= 3 && discarded >= 1);
+  return entries.length >= 4
+    || (allowPartialSalvage && entries.length >= 3 && discarded >= 1);
 }
 
 function hasSafeNuanceEnrichmentResponse(text, userText) {
@@ -1565,7 +1566,11 @@ The previous response was incomplete. Return a grounded title and at least one n
         (!hasCompleteStructuredResponse(body.actionType, text) && !safeNuanceEnrichment)
         || (body.actionType === 'nuance_generate'
           && (!nuanceResponseIncludesRequestedHeadword(text, body.userText)
-            || !hasRequiredNuanceEntryCount(text, body.userText)))
+            || !hasRequiredNuanceEntryCount(
+              text,
+              body.userText,
+              { allowPartialSalvage: true }
+            )))
       )) {
         logStructuredValidationFailure(body.actionType, text, 'retry');
         res.status(502).json({

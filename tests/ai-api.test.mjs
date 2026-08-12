@@ -363,7 +363,11 @@ test('keeps normal Atlas generation counts separate from saved-headword enrichme
   assert.equal(hasRequiredNuanceEntryCount(JSON.stringify({
     entries: entries(3),
     discardedEntryCount: 1,
-  }), normalRequest), true);
+  }), normalRequest), false);
+  assert.equal(hasRequiredNuanceEntryCount(JSON.stringify({
+    entries: entries(3),
+    discardedEntryCount: 1,
+  }), normalRequest, { allowPartialSalvage: true }), true);
 
   const enrichmentRequest = JSON.stringify({
     generationMode: 'saved_headword_enrichment',
