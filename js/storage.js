@@ -5,6 +5,7 @@
 import { generateId } from './utils.js';
 import { normalizePartOfSpeech, withStableClassification } from './atlas-model.js';
 import {
+  atlasSenseAddsLearningContent,
   atlasSenseFromEntry,
   mergeAtlasList,
   mergeAtlasSenseArrays,
@@ -972,7 +973,7 @@ function expressionEntryToRecord(entry, existing = null) {
   const now = new Date().toISOString();
   const id = entry.id || existing?.id || generateId();
   const data = {
-    promptVersion: 9,
+    promptVersion: 10,
     language: 'English',
     sourceQueryJa: '',
     sourceQueries: [],
@@ -1382,14 +1383,21 @@ export function saveExpressionEntries(entries) {
   return true;
 }
 
-export function addExpressionEntries(entries) {
+export function addExpressionEntriesWithReport(entries) {
   const current = getExpressionEntries();
   const saved = [];
+  const report = { created: 0, enriched: 0, alreadyCovered: 0 };
   (Array.isArray(entries) ? entries : []).forEach(entry => {
     if (!String(entry?.term || '').trim()) return;
     const existing = current.find(candidate => expressionHeadwordKey(candidate) === expressionHeadwordKey(entry))
       || current.find(candidate => expressionEntryKey(candidate) === expressionEntryKey(entry))
       || current.find(candidate => isRepeatedExpressionQuery(candidate, entry));
+    const existingSenses = existing ? expressionSenses(existing) : [];
+    const incomingSenses = expressionSenses(entry);
+    const addsLearningContent = !existing || incomingSenses.some(incomingSense => {
+      const matching = existingSenses.find(existingSense => sameAtlasSense(existingSense, incomingSense));
+      return !matching || atlasSenseAddsLearningContent(matching, incomingSense);
+    });
     const mergedContent = existing
       ? mergeExpressionEntry(existing, entry)
       : { ...entry, id: entry.id || generateId() };
@@ -1402,9 +1410,17 @@ export function addExpressionEntries(entries) {
     };
     if (existing) current[current.findIndex(candidate => candidate.id === existing.id)] = merged;
     else current.push(merged);
+    if (!existing) report.created += 1;
+    else if (addsLearningContent) report.enriched += 1;
+    else report.alreadyCovered += 1;
     saved.push(merged);
   });
-  return saveExpressionEntries(current) ? saved : [];
+  if (!saveExpressionEntries(current)) return { entries: [], created: 0, enriched: 0, alreadyCovered: 0 };
+  return { entries: saved, ...report };
+}
+
+export function addExpressionEntries(entries) {
+  return addExpressionEntriesWithReport(entries).entries;
 }
 
 export function updateExpressionEntry(id, updates) {

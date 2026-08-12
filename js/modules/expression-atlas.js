@@ -4,6 +4,7 @@
 
 import {
   addExpressionEntries,
+  addExpressionEntriesWithReport,
   addTranslationSet,
   addEnglishQuestion,
   deleteEnglishQuestion,
@@ -2590,7 +2591,8 @@ async function handleGenerate(event) {
     state.generatorInput.topic = drafts[0]?.topic || '';
     state.drafts = drafts;
     state.selectedDrafts = new Set(drafts.map((_, index) => index));
-    const saved = addExpressionEntries(drafts);
+    const saveReport = addExpressionEntriesWithReport(drafts);
+    const saved = saveReport.entries;
     if (!saved.length) throw new Error('\u751f\u6210\u7d50\u679c\u3092\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f\u3002\u5165\u529b\u5185\u5bb9\u306f\u753b\u9762\u306b\u6b8b\u3057\u3066\u3044\u307e\u3059\u3002');
 
     const questionId = state.questionConversionId;
@@ -2613,8 +2615,14 @@ async function handleGenerate(event) {
       state.questionId = questionId;
       state.libraryMode = 'questions';
       toast(`${saved.length}\u4ef6\u3092Atlas\u3078\u4fdd\u5b58\u3057\u3001\u8cea\u554f\u306b\u95a2\u9023\u4ed8\u3051\u307e\u3057\u305f`, 'success');
+    } else if (saveReport.enriched > 0 || saveReport.created > 0) {
+      const messages = [
+        saveReport.created ? `${saveReport.created}\u4ef6\u3092\u65b0\u898f\u4fdd\u5b58` : '',
+        saveReport.enriched ? `${saveReport.enriched}\u4ef6\u306e\u89e3\u8aac\u3092\u62e1\u5145` : '',
+      ].filter(Boolean);
+      toast(messages.join('\u30fb'), 'success');
     } else {
-      toast(`${saved.length}\u4ef6\u306e\u8868\u73fe\u3092\u81ea\u52d5\u4fdd\u5b58\u3057\u307e\u3057\u305f`, 'success');
+      toast('\u3053\u306e\u5185\u5bb9\u306f\u3059\u3067\u306b\u53ce\u9332\u6e08\u307f\u3067\u3059', 'info');
     }
   } catch (error) {
     if (error?.name !== 'AbortError') toast(error?.message || '表現セットを作成できませんでした', 'error');

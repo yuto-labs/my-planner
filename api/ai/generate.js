@@ -257,8 +257,8 @@ function pickResponseSchema(actionType, body) {
         },
         entries: {
           type: 'ARRAY',
-          description: 'Usually five, and up to six, distinct expressions with equally deep treatment. Four is the normal minimum; three is allowed only when adding more would be repetitive or shallow.',
-          minItems: 3,
+          description: 'Usually four to six distinct expressions. One complete entry is valid when enriching a specifically requested saved headword or returning the only useful missing sense.',
+          minItems: 1,
           maxItems: 6,
           items: {
             type: 'OBJECT',
@@ -791,6 +791,35 @@ function hasCompleteNuanceResponse(text) {
     && entries.length <= 6
     && new Set(senseKeys).size === entries.length
     && entries.every(entry => isCompleteNuanceEntry(entry, mapMode));
+}
+
+function hasSafeNuanceEnrichmentResponse(text, userText) {
+  const parsed = parseStructuredResponse(text);
+  let request = null;
+  try { request = JSON.parse(String(userText || '')); } catch {}
+  const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
+  const requestedCatalog = (Array.isArray(request?.existingCatalog) ? request.existingCatalog : [])
+    .filter(item => item?.isRequestedHeadword);
+  if (!entries.length || !requestedCatalog.length) return false;
+
+  return entries.every(entry => {
+    const lemma = String(entry?.lemma || entry?.term || '').normalize('NFKC').trim().toLocaleLowerCase();
+    const senseId = String(entry?.senseId || '').trim().toLocaleLowerCase();
+    const matchingHeadword = requestedCatalog.find(item => (
+      [item?.lemma, item?.term, ...(Array.isArray(item?.aliases) ? item.aliases : [])]
+        .map(value => String(value || '').normalize('NFKC').trim().toLocaleLowerCase())
+        .includes(lemma)
+    ));
+    const matchingSense = (Array.isArray(matchingHeadword?.senses) ? matchingHeadword.senses : [])
+      .some(sense => String(sense?.senseId || '').trim().toLocaleLowerCase() === senseId);
+    if (!matchingHeadword || !senseId || !matchingSense) return false;
+
+    const substantialText = [entry?.coreImageJa, entry?.coreMeaningJa, entry?.nuanceJa]
+      .some(value => String(value || '').trim().length >= 70);
+    const usefulLists = ['usagePatterns', 'examples', 'comparisons', 'collocations', 'useCasesJa']
+      .some(field => Array.isArray(entry?.[field]) && entry[field].length > 0);
+    return substantialText || usefulLists;
+  });
 }
 
 function normalizeStructuredResponse(actionType, text) {
@@ -1456,7 +1485,11 @@ The previous response was incomplete. Return a grounded title and at least one n
         return;
       }
       text = normalizeStructuredResponse(body.actionType, extractText(data));
-      if (responseFormat === 'json' && !hasCompleteStructuredResponse(body.actionType, text)) {
+      const safeNuanceEnrichment = body.actionType === 'nuance_generate'
+        && hasSafeNuanceEnrichmentResponse(text, body.userText);
+      if (responseFormat === 'json'
+        && !hasCompleteStructuredResponse(body.actionType, text)
+        && !safeNuanceEnrichment) {
         logStructuredValidationFailure(body.actionType, text, 'retry');
         res.status(502).json({
           error: 'AIの回答が必要な項目を満たしませんでした。入力内容は失われていません。もう一度お試しください。',
@@ -1486,6 +1519,7 @@ The previous response was incomplete. Return a grounded title and at least one n
 
 export {
   hasCompleteStructuredResponse,
+  hasSafeNuanceEnrichmentResponse,
   normalizeStructuredResponse,
   pickFallbackModel,
   pickModel,

@@ -10,6 +10,7 @@ globalThis.localStorage = {
 
 const {
   addExpressionEntries,
+  addExpressionEntriesWithReport,
   addLearningEntry,
   addTranslationSet,
   deleteLearningEntry,
@@ -245,6 +246,52 @@ test('a shared grammar pattern alone does not collapse different same-POS senses
 
   const [saved] = getExpressionEntries().filter(item => item.lemma === 'run');
   assert.equal(saved.senses.length, 2);
+});
+
+test('repeating fully covered Atlas content reports already covered instead of failing', () => {
+  const item = {
+    term: 'bother', lemma: 'bother', partOfSpeech: 'verb', senseId: 'cause-trouble',
+    coreMeaningJa: '人に手間や不快感を与える', nuanceJa: 'detail'.repeat(40),
+    examples: [{ source: 'Sorry to bother you.', translation: '邪魔をしてすみません。' }],
+    senseFingerprint: {
+      semanticDomain: 'inconvenience', actionType: 'cause-discomfort', physicality: 'abstract',
+      argumentPatterns: ['bother someone'], typicalObjects: ['person'],
+      implicationTags: ['inconvenience'], registerTags: ['neutral'],
+    },
+  };
+  const first = addExpressionEntriesWithReport([item]);
+  const repeated = addExpressionEntriesWithReport([item]);
+
+  assert.equal(first.created, 1);
+  assert.equal(repeated.entries.length, 1);
+  assert.equal(repeated.alreadyCovered, 1);
+  assert.equal(repeated.enriched, 0);
+});
+
+test('new examples enrich an existing broad sense without adding another sense toggle', () => {
+  const base = {
+    term: 'bother', lemma: 'bother', partOfSpeech: 'verb', senseId: 'cause-trouble',
+    coreMeaningJa: '人に手間や不快感を与える', nuanceJa: 'detail'.repeat(40),
+    examples: [{ source: 'Sorry to bother you.', translation: '邪魔をしてすみません。' }],
+    senseFingerprint: {
+      semanticDomain: 'inconvenience', actionType: 'cause-discomfort', physicality: 'abstract',
+      argumentPatterns: ['bother someone'], typicalObjects: ['person'],
+      implicationTags: ['inconvenience'], registerTags: ['neutral'],
+    },
+  };
+  addExpressionEntriesWithReport([base]);
+  const enriched = addExpressionEntriesWithReport([{
+    ...base,
+    examples: [
+      ...base.examples,
+      { source: "Don't bother calling.", translation: 'わざわざ電話しなくていい。' },
+    ],
+  }]);
+
+  assert.equal(enriched.enriched, 1);
+  const [saved] = getExpressionEntries().filter(item => item.lemma === 'bother');
+  assert.equal(saved.senses.length, 1);
+  assert.equal(saved.senses[0].examples.length, 2);
 });
 
 test('repeated Atlas queries keep different parts of speech as senses of one headword', () => {

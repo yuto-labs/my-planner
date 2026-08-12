@@ -26,6 +26,12 @@ function stableJson(value) {
   return JSON.stringify(value);
 }
 
+const SENSE_LEARNING_FIELDS = Object.freeze([
+  'pronunciation', 'etymologyJa', 'coreImageJa', 'coreMeaningJa', 'nuanceJa',
+  'register', 'emotionalToneJa', 'useCasesJa', 'collocations', 'usagePatterns',
+  'examples', 'comparisons', 'cautionsJa', 'grammarNotes', 'senseFingerprint',
+]);
+
 function bigramSimilarity(left, right) {
   const compact = value => normalized(value).replace(/[\s\p{P}\p{S}]/gu, '');
   const bigrams = value => {
@@ -222,6 +228,13 @@ export function mergeAtlasSense(existing = {}, incoming = {}) {
     [...(incoming.sourceQueries || []), incoming.sourceQueryJa].filter(Boolean)
   );
   return merged;
+}
+
+export function atlasSenseAddsLearningContent(existing = {}, incoming = {}) {
+  if (!existing || !Object.keys(existing).length) return true;
+  const merged = mergeAtlasSense(existing, incoming);
+  const project = sense => Object.fromEntries(SENSE_LEARNING_FIELDS.map(field => [field, sense?.[field]]));
+  return stableJson(project(merged)) !== stableJson(project(existing));
 }
 
 export function mergeAtlasSenseArrays(existing, incoming) {

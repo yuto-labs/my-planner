@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const { detectAtlasQueryMode, reuseEquivalentAtlasTopic } = await import('../js/ai.js');
+const {
+  detectAtlasQueryMode,
+  extractRequestedAtlasExpressions,
+  reuseEquivalentAtlasTopic,
+} = await import('../js/ai.js');
 
 test('detects a direct English word or phrasal verb as an anchor expression', () => {
   assert.equal(detectAtlasQueryMode('bother'), 'english_seed');
@@ -14,6 +18,11 @@ test('keeps phrasal verbs, inflected forms, plurals, and likely typos in English
   ['drift off', 'drifted off', 'observations', 'drfit off'].forEach(value => {
     assert.equal(detectAtlasQueryMode(value), 'english_seed');
   });
+});
+
+test('extracts a saved English headword from a Japanese enrichment request', () => {
+  assert.deepEqual(extractRequestedAtlasExpressions('rangeの別の意味も詳しく'), ['range']);
+  assert.deepEqual(extractRequestedAtlasExpressions('drift off の別の使い方'), ['drift off']);
 });
 
 test('reuses a theme when its saved representative terms contain the English query', () => {

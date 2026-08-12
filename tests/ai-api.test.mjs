@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 const {
   hasCompleteStructuredResponse,
+  hasSafeNuanceEnrichmentResponse,
   normalizeStructuredResponse,
   pickFallbackModel,
   pickModel,
@@ -303,6 +304,33 @@ test('accepts nuance output using the schema field names', () => {
   assert.equal(salvagedParsed.entries.length, 4);
   assert.equal(salvagedParsed.discardedEntryCount, 1);
   assert.equal(hasCompleteStructuredResponse('nuance_generate', salvaged), true);
+});
+
+test('safely accepts a partial enrichment only for an exact saved sense id', () => {
+  const request = JSON.stringify({
+    existingCatalog: [{
+      term: 'bother', lemma: 'bother', isRequestedHeadword: true,
+      senses: [{ senseId: 'cause-trouble', partOfSpeech: 'verb' }],
+    }],
+  });
+  const enrichment = JSON.stringify({
+    mapMode: 'groups', mapAxisJa: 'meaning family',
+    entries: [{
+      term: 'bother', lemma: 'bother', senseId: 'cause-trouble', partOfSpeech: 'verb',
+      usagePatterns: [{ pattern: 'bother doing', meaningJa: 'わざわざする' }],
+    }],
+  });
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', enrichment), false);
+  assert.equal(hasSafeNuanceEnrichmentResponse(enrichment, request), true);
+
+  const unknownSense = JSON.stringify({
+    mapMode: 'groups', mapAxisJa: 'meaning family',
+    entries: [{
+      term: 'bother', lemma: 'bother', senseId: 'unknown-new-sense', partOfSpeech: 'verb',
+      examples: [{ source: 'Example.', translation: '例。' }],
+    }],
+  });
+  assert.equal(hasSafeNuanceEnrichmentResponse(unknownSense, request), false);
 });
 
 test('keeps legacy nuance field names readable during validation', () => {

@@ -547,6 +547,13 @@ export function detectAtlasQueryMode(value) {
   return onlyEnglishExpression ? 'english_seed' : 'japanese_concept';
 }
 
+export function extractRequestedAtlasExpressions(value) {
+  const text = String(value || '').normalize('NFKC');
+  return [...new Set((text.match(/[A-Za-z]+(?:['’][A-Za-z]+)?(?:\s+[A-Za-z]+(?:['’][A-Za-z]+)?){0,4}/g) || [])
+    .map(term => term.trim())
+    .filter(Boolean))];
+}
+
 export function reuseEquivalentAtlasTopic(existingTaxonomy, category, topic, context = '') {
   const targetKey = canonicalTopicKey(`${topic} ${context}`);
   const normalizedCategory = normalizeAtlasCategory(category, `${topic} ${context}`);
@@ -744,27 +751,50 @@ export async function generateNuanceEntries(
     .filter(entry => entry.term)
     .slice(0, 24);
   const expansionMode = knownExpressions.length > 0;
+  const requestedExpressionTerms = [
+    anchorTerm,
+    ...suppliedTerms,
+    ...extractRequestedAtlasExpressions(cleanTarget),
+  ].filter(Boolean);
+  const requestedExpressionKeys = new Set(requestedExpressionTerms
+    .flatMap(term => expressionLookupKeys({ term, lemma: term, aliases: [] })));
   const catalogExpressions = (Array.isArray(referenceExpressions) ? referenceExpressions : [])
-    .map(entry => ({
+    .map(entry => {
+      const isRequestedHeadword = expressionLookupKeys(entry)
+        .some(key => requestedExpressionKeys.has(key));
+      return {
       term: String(entry?.term || '').trim(),
       lemma: String(entry?.lemma || '').trim(),
       aliases: normalizeStringList(entry?.aliases, 8),
       category: String(entry?.category || '').trim(),
       topic: String(entry?.topic || '').trim(),
+      isRequestedHeadword,
       senses: (Array.isArray(entry?.senses) && entry.senses.length ? entry.senses : [entry])
         .map(sense => ({
           senseId: String(sense?.senseId || '').trim(),
           partOfSpeech: String(sense?.partOfSpeech || '').trim(),
           coreMeaningJa: String(sense?.coreMeaningJa || '').trim().slice(0, 180),
-          nuanceSummaryJa: String(sense?.nuanceJa || '').trim().slice(0, 260),
+          coreImageJa: isRequestedHeadword
+            ? String(sense?.coreImageJa || '').trim().slice(0, 900)
+            : '',
+          nuanceSummaryJa: String(sense?.nuanceJa || '').trim()
+            .slice(0, isRequestedHeadword ? 1800 : 260),
           usagePatterns: (Array.isArray(sense?.usagePatterns) ? sense.usagePatterns : [])
-            .map(pattern => String(pattern?.pattern || '').trim()).filter(Boolean).slice(0, 5),
+            .map(pattern => ({
+              pattern: String(pattern?.pattern || '').trim(),
+              meaningJa: isRequestedHeadword ? String(pattern?.meaningJa || '').trim().slice(0, 220) : '',
+            }))
+            .filter(pattern => pattern.pattern).slice(0, 6),
           exampleSentences: (Array.isArray(sense?.examples) ? sense.examples : [])
-            .map(example => String(example?.source || '').trim()).filter(Boolean).slice(0, 2),
+            .map(example => String(example?.source || '').trim()).filter(Boolean)
+            .slice(0, isRequestedHeadword ? 4 : 2),
+          comparisonTerms: (Array.isArray(sense?.comparisons) ? sense.comparisons : [])
+            .map(comparison => String(comparison?.term || '').trim()).filter(Boolean).slice(0, 5),
           senseFingerprint: sense?.senseFingerprint || {},
         }))
         .slice(0, 8),
-    }))
+      };
+    })
     .filter(entry => entry.term)
     .slice(0, 80);
   const excludedKeys = new Set(knownExpressions.flatMap(expressionLookupKeys));
@@ -788,7 +818,7 @@ export async function generateNuanceEntries(
     'Topic must be a compact Japanese noun phrase, usually 2 to 14 characters. Never write a full sentence or a label ending in 表現, 言い方, 場面, 〜を表す表現, or 〜するとき.',
     'Normally create five genuinely useful expressions for the requested semantic topic. Use six when all six add a meaningful contrast, and use four when a fifth would be repetitive. Return only three as a last resort when adding another entry would reduce depth or accuracy. Always include every supplied seed term unless it is already listed in existingExpressions.',
     expansionMode
-      ? 'This request expands an existing topic. Never return an expression whose term, lemma, inflected form, spelling variant, or phrasal-verb equivalent already appears in existingExpressions. Explore uncovered senses, domains, registers, grammatical roles, and usage boundaries instead of rewriting existing entries. Keep the existing category, topic, map mode, comparison axis, and endpoint labels compatible. Do not pad the result with near-duplicates merely to reach a count.'
+      ? 'This request expands an existing topic. Do not return expressions already in existingExpressions unless the user directly entered that headword in learningTarget or seedTerms. For a directly requested saved headword, return a complete enriched snapshot when useful coverage is missing. For all other expressions, explore uncovered senses, domains, registers, grammatical roles, and usage boundaries instead of rewriting existing entries. Keep the existing category, topic, map mode, comparison axis, and endpoint labels compatible. Do not pad the result with near-duplicates merely to reach a count.'
       : 'This request creates or extends a normal expression set. Choose the most useful central contrasts for the learner.',
     'Choose mapMode for the whole set. Use scale only when every expression can be compared on one genuinely meaningful continuum. In that case provide a concise theme-specific mapAxisJa plus low and high endpoint labels, and assign each expression exactly one integer star level from 1 to 5. Set intensityLevel, intensityMin, and intensityMax to that same integer; never return a range such as 1-2 or 3-4.',
     'Use groups when forcing the expressions onto one continuum would mislead the learner. In groups mode, mapAxisJa should name the organizing principle and nuanceTypeJa must be a concise reusable group label. Do not invent a strength ranking merely to fill the map.',
@@ -801,11 +831,11 @@ export async function generateNuanceEntries(
     'Etymology must distinguish verified historical origin from a learning mnemonic. Never invent a root or confidently state a disputed origin. When uncertain, explicitly say that the origin is uncertain or leave etymologyJa empty.',
     'Return at least three natural example sentences for every expression, each with a faithful Japanese translation and a short usage note. The examples must be genuinely different in situation, grammar, collocation, and communicative purpose; never reuse or lightly rephrase an example anywhere in the set.',
     'Do not treat different parts of speech as interchangeable. Explicitly explain grammatical differences such as adjective versus noun.',
-    'existingCatalog is the learner\'s saved dictionary. Check it before choosing entries. A headword is global across the Atlas, even when an earlier category or topic label differs. Never create a second card for an already saved lemma. If the requested English headword already exists, return that same lemma only when you can add a genuinely missing part of speech or sense; use a stable, meaning-specific senseId and explain the new distinction with exactly the same depth, examples, comparisons, grammar, and usage detail as a brand-new entry. The client will append that complete sense to the existing card rather than shortening the old explanation.',
-    'When one requested headword has several important parts of speech or genuinely distinct meanings, you may return more than one entries item with the same term and lemma. Give each item a different meaning-specific senseId and complete standalone detail. The client will group those items into one headword card with separate sense toggles.',
-    'Different senses within the same part of speech must remain separate when their core images, argument patterns, domains, or implications differ. Reuse an existing senseId only for the same meaning. Never collapse two real senses merely because they came from the same user query.',
+    'existingCatalog is the learner\'s saved dictionary. Check it before choosing entries. A headword is global across the Atlas, even when an earlier category or topic label differs. Never create a second card for an already saved lemma. When a requested English headword already exists, return a complete improved snapshot for that headword whenever there is a useful missing nuance, construction, example, comparison, part of speech, or dictionary-distinct sense. Include the useful existing coverage as well as the new coverage so the response remains independently complete; the client safely merges it without shortening the saved explanation.',
+    'Use a broad pedagogical sense family, not one toggle per tiny translation difference. Variations caused by object choice, complement, construction, register, intensity, or a small contextual shift should normally share one senseId when a learner can understand them as branches of the same core image. Explain those branches together in coreMeaningJa and nuanceJa, and separate their practical use with usagePatterns, examples, collocations, and comparisons.',
+    'Create another senseId within the same part of speech only for a dictionary-distinct semantic branch that cannot be taught clearly as a nearby extension of the same core image. A different part of speech remains separate. When several genuinely distinct branches are required, return one complete entries item per branch; otherwise prefer one rich, connected entry over many thin entries.',
     'For every entry, provide senseFingerprint as compact semantic evidence, not display prose. semanticDomain names the broad meaning area; actionType names the event or state; argumentPatterns gives canonical constructions; typicalObjects gives semantic object/complement classes; implicationTags records stable implications; registerTags records register; physicality must be physical, figurative, abstract, or mixed.',
-    'Compare the requested use with every matching lemma in existingCatalog. Reuse an existing senseId only when part of speech, core meaning, physicality, argument behavior, typical objects, and implications describe the same sense. If the part of speech is the same but any of those features marks a genuinely different use, return a new stable senseId and a complete standalone explanation of equal depth. If uncertain, preserve it as a separate sense rather than blending explanations.',
+    'Compare the requested use with every matching lemma in existingCatalog. Reuse an existing senseId when the part of speech and underlying semantic branch are the same, even if the new request focuses on another construction, object, implication, or nearby nuance. Expand that sense into a complete richer snapshot. Use a new stable senseId only when the core semantic branch is independently teachable and materially different. If uncertain between a nearby extension and a new sense, prefer enriching the existing family while explicitly explaining the internal contrast.',
     'A new sense is not a paraphrase of an existing coreMeaningJa. Do not rename or rewrite an existing sense merely to satisfy the requested count. Prefer other useful comparison expressions when the catalog already covers the requested headword completely.',
     'Add grammarNotes only when useful: part of speech; countability; irregular plural; irregular past/past participle; meaning-dependent countability such as work/works or experience/experiences; and example forms. Do not pad regular forms with obvious explanations.',
     'When a form is irregular or countability is easy to confuse, use that form naturally in at least one example.',
@@ -866,7 +896,7 @@ export async function generateNuanceEntries(
       if (!term) return null;
       const intensityLevel = normalizeNuanceIntensity(entry.intensityLevel, entry.intensity);
       return {
-        promptVersion: 9,
+        promptVersion: 10,
         language: String(language || 'English').trim() || 'English',
         sourceQueryJa: cleanTarget,
         sourceQueries: cleanTarget ? [cleanTarget] : [],
@@ -956,7 +986,8 @@ export async function generateNuanceEntries(
     })
     .filter(Boolean)
     .filter(entry => !expansionMode || !expressionLookupKeys(entry)
-      .some(key => excludedKeys.has(key)))
+      .some(key => excludedKeys.has(key)) || expressionLookupKeys(entry)
+      .some(key => requestedExpressionKeys.has(key)))
     .slice(0, 12);
 
   if (!entries.length) {
