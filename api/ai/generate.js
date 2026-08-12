@@ -321,13 +321,27 @@ function pickResponseSchema(actionType, body) {
               useCasesJa: stringArray('Concrete situations where this expression is natural.'),
               collocations: {
                 type: 'ARRAY',
-                description: 'Common short collocations with a natural context-appropriate Japanese meaning.',
+                description: 'Common short collocations with a Japanese meaning, a practical usage boundary, and one or two natural examples.',
                 maxItems: 8,
                 items: {
                   type: 'OBJECT',
                   properties: {
                     expression: { type: 'STRING' },
                     translationJa: { type: 'STRING' },
+                    usageNoteJa: { type: 'STRING' },
+                    examples: {
+                      type: 'ARRAY',
+                      maxItems: 2,
+                      items: {
+                        type: 'OBJECT',
+                        properties: {
+                          source: { type: 'STRING' },
+                          translation: { type: 'STRING' },
+                          noteJa: { type: 'STRING' },
+                        },
+                        required: ['source', 'translation', 'noteJa'],
+                      },
+                    },
                   },
                   required: ['expression', 'translationJa'],
                 },

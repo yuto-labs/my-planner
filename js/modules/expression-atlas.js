@@ -3190,11 +3190,20 @@ function listSection(title, items, className = '') {
 
 function normalizeCollocationItem(item) {
   if (typeof item === 'string') {
-    return { expression: item.trim(), translationJa: '' };
+    return { expression: item.trim(), translationJa: '', usageNoteJa: '', examples: [] };
   }
   return {
     expression: String(item?.expression || item?.text || '').trim(),
     translationJa: String(item?.translationJa || item?.meaningJa || '').trim(),
+    usageNoteJa: String(item?.usageNoteJa || item?.noteJa || '').trim(),
+    examples: (Array.isArray(item?.examples) ? item.examples : [])
+      .map(example => ({
+        source: String(example?.source || example?.english || example?.sentence || '').trim(),
+        translation: String(example?.translation || example?.japanese || example?.translationJa || '').trim(),
+        noteJa: String(example?.noteJa || example?.note || '').trim(),
+      }))
+      .filter(example => example.source && example.translation)
+      .slice(0, 2),
   };
 }
 
@@ -3205,12 +3214,30 @@ function collocationsSection(items, expressionIndex = buildExpressionIndex(getEx
   return `
     <section class="atlas-detail-section">
       <h2>よく一緒に使う語</h2>
-      <div class="atlas-collocation-list">${collocations.map(item => `
-        <span class="atlas-collocation-item">
-          ${linkedExpressionTerm(item.expression, expressionIndex)}
-          ${item.translationJa ? `<span>${esc(item.translationJa)}</span>` : ''}
-        </span>
-      `).join('')}</div>
+      <div class="atlas-collocation-list">${collocations.map(item => {
+        const hasDetails = Boolean(item.usageNoteJa || item.examples.length);
+        const heading = `
+          <span class="atlas-collocation-heading">
+            ${linkedExpressionTerm(item.expression, expressionIndex)}
+            ${item.translationJa ? `<span>${esc(item.translationJa)}</span>` : ''}
+          </span>`;
+        if (!hasDetails) return `<div class="atlas-collocation-item">${heading}</div>`;
+        return `
+          <details class="atlas-collocation-item atlas-collocation-item--expandable">
+            <summary>${heading}</summary>
+            <div class="atlas-collocation-detail">
+              <div class="atlas-audio-line atlas-collocation-audio"><strong lang="en">${esc(item.expression)}</strong>${speakButton(item.expression)}</div>
+              ${item.usageNoteJa ? `<p>${esc(item.usageNoteJa)}</p>` : ''}
+              ${item.examples.map(example => `
+                <div class="atlas-collocation-example">
+                  <div class="atlas-audio-line"><span lang="en">${esc(example.source)}</span>${speakButton(example.source)}</div>
+                  <small>${esc(example.translation)}</small>
+                  ${example.noteJa ? `<small class="atlas-collocation-note">${esc(example.noteJa)}</small>` : ''}
+                </div>
+              `).join('')}
+            </div>
+          </details>`;
+      }).join('')}</div>
     </section>
   `;
 }
@@ -3355,7 +3382,12 @@ function searchableText(entry) {
     ...(sense.useCasesJa || []),
     ...(sense.collocations || []).flatMap(item => {
       const collocation = normalizeCollocationItem(item);
-      return [collocation.expression, collocation.translationJa];
+      return [
+        collocation.expression,
+        collocation.translationJa,
+        collocation.usageNoteJa,
+        ...collocation.examples.flatMap(example => [example.source, example.translation, example.noteJa]),
+      ];
     }),
     ...(sense.examples || []).flatMap(example => [example.source, example.translation, example.noteJa]),
     ...(sense.comparisons || []).flatMap(comparison => [comparison.term, comparison.differenceJa]),

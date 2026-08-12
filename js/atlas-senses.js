@@ -135,6 +135,42 @@ export function mergeAtlasList(existing, incoming) {
     });
 }
 
+function collocationKey(item) {
+  const expression = typeof item === 'string' ? item : item?.expression || item?.text;
+  return normalized(expression);
+}
+
+function mergeAtlasCollocations(existing, incoming) {
+  const merged = [];
+  const indexes = new Map();
+  [...(Array.isArray(existing) ? existing : []), ...(Array.isArray(incoming) ? incoming : [])]
+    .forEach(item => {
+      const key = collocationKey(item);
+      if (!key) return;
+      const index = indexes.get(key);
+      if (index === undefined) {
+        indexes.set(key, merged.length);
+        merged.push(item);
+        return;
+      }
+      const previous = merged[index];
+      if (typeof item === 'string') return;
+      if (typeof previous === 'string') {
+        merged[index] = item;
+        return;
+      }
+      merged[index] = {
+        ...previous,
+        ...item,
+        expression: item.expression || previous.expression,
+        translationJa: preferRicherText(previous.translationJa, item.translationJa),
+        usageNoteJa: preferRicherText(previous.usageNoteJa, item.usageNoteJa),
+        examples: mergeAtlasList(previous.examples, item.examples),
+      };
+    });
+  return merged;
+}
+
 export function atlasSenseFromEntry(entry = {}) {
   const sense = Object.fromEntries(ATLAS_SENSE_FIELDS.map(field => [field, entry[field]]));
   sense.partOfSpeech = normalizePartOfSpeech(sense.partOfSpeech);
@@ -214,6 +250,8 @@ export function mergeAtlasSense(existing = {}, incoming = {}) {
           || existing.partOfSpeech
         ),
       };
+    } else if (field === 'collocations') {
+      merged.collocations = mergeAtlasCollocations(existing.collocations, incoming.collocations);
     } else if (Array.isArray(existing[field]) || Array.isArray(incoming[field])) {
       merged[field] = mergeAtlasList(existing[field], incoming[field]);
     } else if (typeof existing[field] === 'string' || typeof incoming[field] === 'string') {

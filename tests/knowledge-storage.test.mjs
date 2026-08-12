@@ -508,6 +508,31 @@ test('atlas preserves legacy collocations and new Japanese meanings together', (
   assert.deepEqual(getExpressionEntries().find(entry => entry.id === saved.id)?.collocations, saved.collocations);
 });
 
+test('a rich collocation upgrades the same legacy phrase without duplication', () => {
+  addExpressionEntries([{
+    term: 'monitor', lemma: 'monitor', senseId: 'observe-continuously',
+    collocations: ['monitor progress'],
+  }]);
+  addExpressionEntries([{
+    term: 'monitor', lemma: 'monitor', senseId: 'observe-continuously',
+    collocations: [{
+      expression: 'monitor progress',
+      translationJa: '進捗を継続的に確認する',
+      usageNoteJa: '時間を追って変化を確認するときに自然です。',
+      examples: [{
+        source: 'We monitor progress every week.',
+        translation: '私たちは毎週進捗を確認します。',
+        noteJa: '継続的な確認を表します。',
+      }],
+    }],
+  }]);
+
+  const [saved] = getExpressionEntries().filter(entry => entry.lemma === 'monitor');
+  assert.equal(saved.senses[0].collocations.length, 1);
+  assert.equal(saved.senses[0].collocations[0].examples.length, 1);
+  assert.equal(saved.senses[0].collocations[0].usageNoteJa, '時間を追って変化を確認するときに自然です。');
+});
+
 test('learning deletion is recoverable from trash', () => {
   addLearningEntry(entry('learning-1', '空の色'));
   assert.equal(deleteLearningEntry('learning-1'), true);
