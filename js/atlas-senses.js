@@ -7,6 +7,11 @@ export const ATLAS_SENSE_FIELDS = Object.freeze([
   'cautionsJa', 'grammarNotes', 'category', 'topic', 'categoryId', 'topicId',
   'categoryAliases', 'topicAliases', 'mapMode', 'mapAxisJa', 'mapLowLabelJa',
   'mapHighLabelJa', 'intensityLevel', 'intensityMin', 'intensityMax', 'intensity',
+  'senseFingerprint',
+]);
+
+const FINGERPRINT_LIST_FIELDS = Object.freeze([
+  'argumentPatterns', 'typicalObjects', 'implicationTags', 'registerTags',
 ]);
 
 function normalized(value) {
@@ -35,6 +40,84 @@ function bigramSimilarity(left, right) {
   return (2 * shared) / (a.size + b.size);
 }
 
+function normalizedList(value) {
+  return [...new Set((Array.isArray(value) ? value : [])
+    .map(item => normalized(item))
+    .filter(Boolean))];
+}
+
+function normalizePhysicality(value) {
+  const label = normalized(value);
+  if (['physical', 'literal', '物理', '物理的', '文字通り'].includes(label)) return 'physical';
+  if (['figurative', 'metaphorical', '比喩', '比喩的'].includes(label)) return 'figurative';
+  if (['abstract', '抽象', '抽象的'].includes(label)) return 'abstract';
+  if (['mixed', 'both', '複合', '混合'].includes(label)) return 'mixed';
+  return label;
+}
+
+function listsOverlap(left, right) {
+  const a = new Set(normalizedList(left));
+  return normalizedList(right).some(value => a.has(value));
+}
+
+export function normalizeSenseFingerprint(value = {}) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  return {
+    semanticDomain: String(source.semanticDomain || '').trim(),
+    actionType: String(source.actionType || '').trim(),
+    argumentPatterns: normalizedList(source.argumentPatterns),
+    typicalObjects: normalizedList(source.typicalObjects),
+    implicationTags: normalizedList(source.implicationTags),
+    registerTags: normalizedList(source.registerTags),
+    physicality: normalizePhysicality(source.physicality),
+  };
+}
+
+function fingerprintHasData(value) {
+  const fingerprint = normalizeSenseFingerprint(value);
+  return Boolean(
+    fingerprint.semanticDomain
+    || fingerprint.actionType
+    || fingerprint.physicality
+    || FINGERPRINT_LIST_FIELDS.some(field => fingerprint[field].length)
+  );
+}
+
+function fingerprintConflict(left, right) {
+  const a = normalizeSenseFingerprint(left);
+  const b = normalizeSenseFingerprint(right);
+  const physicalConflict = a.physicality && b.physicality && a.physicality !== b.physicality
+    && new Set([a.physicality, b.physicality]).has('physical')
+    && new Set([a.physicality, b.physicality]).has('figurative');
+  if (physicalConflict) return true;
+
+  const actionConflict = a.actionType && b.actionType && normalized(a.actionType) !== normalized(b.actionType);
+  const patternConflict = a.argumentPatterns.length && b.argumentPatterns.length
+    && !listsOverlap(a.argumentPatterns, b.argumentPatterns);
+  const objectConflict = a.typicalObjects.length && b.typicalObjects.length
+    && !listsOverlap(a.typicalObjects, b.typicalObjects);
+  return Boolean(actionConflict && patternConflict && objectConflict);
+}
+
+function fingerprintSupportsMatch(left, right) {
+  if (!fingerprintHasData(left) || !fingerprintHasData(right) || fingerprintConflict(left, right)) return false;
+  const a = normalizeSenseFingerprint(left);
+  const b = normalizeSenseFingerprint(right);
+  let signals = 0;
+  if (a.semanticDomain && normalized(a.semanticDomain) === normalized(b.semanticDomain)) signals += 1;
+  if (a.actionType && normalized(a.actionType) === normalized(b.actionType)) signals += 2;
+  if (a.physicality && a.physicality === b.physicality) signals += 1;
+  if (listsOverlap(a.argumentPatterns, b.argumentPatterns)) signals += 2;
+  if (listsOverlap(a.typicalObjects, b.typicalObjects)) signals += 1;
+  if (listsOverlap(a.implicationTags, b.implicationTags)) signals += 1;
+  const hasMeaningAnchor = Boolean(
+    (a.semanticDomain && normalized(a.semanticDomain) === normalized(b.semanticDomain))
+    || listsOverlap(a.typicalObjects, b.typicalObjects)
+    || listsOverlap(a.implicationTags, b.implicationTags)
+  );
+  return hasMeaningAnchor && signals >= 4;
+}
+
 export function mergeAtlasList(existing, incoming) {
   const seen = new Set();
   return [...(Array.isArray(existing) ? existing : []), ...(Array.isArray(incoming) ? incoming : [])]
@@ -57,6 +140,7 @@ export function atlasSenseFromEntry(entry = {}) {
   }
   sense.sourceQueryJa = entry.sourceQueryJa || '';
   sense.sourceQueries = Array.isArray(entry.sourceQueries) ? entry.sourceQueries : [];
+  sense.senseFingerprint = normalizeSenseFingerprint(entry.senseFingerprint);
   return sense;
 }
 
@@ -67,6 +151,7 @@ export function sameAtlasSense(existing = {}, incoming = {}) {
 
   const existingId = normalized(existing.senseId);
   const incomingId = normalized(incoming.senseId);
+  if (fingerprintConflict(existing.senseFingerprint, incoming.senseFingerprint)) return false;
   if (existingId && incomingId && existingId === incomingId) return true;
 
   const existingMeaning = normalized(existing.coreMeaningJa);
@@ -74,10 +159,16 @@ export function sameAtlasSense(existing = {}, incoming = {}) {
   if (!existingMeaning || !incomingMeaning) return false;
   if (existingMeaning === incomingMeaning) return true;
 
+  const meaningSimilarity = bigramSimilarity(existingMeaning, incomingMeaning);
+  // A strong structured match is more stable than wording similarity across
+  // independently generated Japanese explanations. Conflicting fingerprints
+  // have already returned false above, so this only absorbs paraphrase drift.
+  if (fingerprintSupportsMatch(existing.senseFingerprint, incoming.senseFingerprint)) return true;
+
   // Fuzzy merging is deliberately conservative. Leaving two nearby senses is
   // reversible; merging two genuinely different meanings is not.
   return Math.min(existingMeaning.length, incomingMeaning.length) >= 12
-    && bigramSimilarity(existingMeaning, incomingMeaning) >= 0.86;
+    && meaningSimilarity >= 0.86;
 }
 
 function preferRicherText(existing, incoming) {
@@ -92,6 +183,18 @@ export function mergeAtlasSense(existing = {}, incoming = {}) {
   ATLAS_SENSE_FIELDS.forEach(field => {
     if (field === 'partOfSpeech') {
       merged.partOfSpeech = normalizePartOfSpeech(incoming.partOfSpeech || existing.partOfSpeech);
+    } else if (field === 'senseFingerprint') {
+      const previous = normalizeSenseFingerprint(existing.senseFingerprint);
+      const next = normalizeSenseFingerprint(incoming.senseFingerprint);
+      merged.senseFingerprint = {
+        semanticDomain: next.semanticDomain || previous.semanticDomain,
+        actionType: next.actionType || previous.actionType,
+        physicality: next.physicality || previous.physicality,
+        ...Object.fromEntries(FINGERPRINT_LIST_FIELDS.map(key => [
+          key,
+          mergeAtlasList(previous[key], next[key]),
+        ])),
+      };
     } else if (field === 'grammarNotes') {
       merged.grammarNotes = {
         ...(existing.grammarNotes || {}),

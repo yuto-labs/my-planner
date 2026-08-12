@@ -147,6 +147,23 @@ test('accepts nuance output using the schema field names', () => {
   };
   assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(response)), true);
 
+  const withFingerprint = structuredClone(response);
+  withFingerprint.entries[0].senseFingerprint = {
+    semanticDomain: 'emotion',
+    actionType: 'relief-state',
+    argumentPatterns: ['feel relief'],
+    typicalObjects: ['person'],
+    implicationTags: ['release'],
+    registerTags: ['neutral'],
+    physicality: 'abstract',
+  };
+  const normalizedFingerprint = JSON.parse(normalizeStructuredResponse(
+    'nuance_generate',
+    JSON.stringify(withFingerprint)
+  ));
+  assert.deepEqual(normalizedFingerprint.entries[0].senseFingerprint.argumentPatterns, ['feel relief']);
+  assert.equal(hasCompleteStructuredResponse('nuance_generate', JSON.stringify(response)), true);
+
   const examplesWithoutOptionalNotes = structuredClone(response);
   examplesWithoutOptionalNotes.entries.forEach(entry => {
     entry.examples.forEach(example => { example.noteJa = ''; });

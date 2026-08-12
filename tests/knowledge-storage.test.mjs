@@ -149,6 +149,104 @@ test('repeated Atlas queries keep distinct same-POS senses despite classificatio
   assert.equal(getExpressionEntries().find(entry => entry.id === first.id)?.senses.length, 2);
 });
 
+test('same sense id cannot merge physical and figurative uses', () => {
+  addExpressionEntries([{
+    term: 'nudge', lemma: 'nudge', partOfSpeech: 'verb', senseId: 'gentle-movement',
+    coreMeaningJa: '人や物を身体的にそっと押す', nuanceJa: 'physical'.repeat(30),
+    senseFingerprint: {
+      semanticDomain: 'movement', actionType: 'light-contact', physicality: 'physical',
+      argumentPatterns: ['nudge someone'], typicalObjects: ['person', 'object'],
+      implicationTags: ['gentle'], registerTags: ['neutral'],
+    },
+  }]);
+  addExpressionEntries([{
+    term: 'nudge', lemma: 'nudge', partOfSpeech: 'verb', senseId: 'gentle-movement',
+    coreMeaningJa: '相手に控えめな働きかけをして行動を促す', nuanceJa: 'figurative'.repeat(30),
+    senseFingerprint: {
+      semanticDomain: 'influence', actionType: 'indirect-prompting', physicality: 'figurative',
+      argumentPatterns: ['nudge someone to do'], typicalObjects: ['person', 'decision'],
+      implicationTags: ['indirect'], registerTags: ['neutral'],
+    },
+  }]);
+
+  const [saved] = getExpressionEntries().filter(item => item.lemma === 'nudge');
+  assert.equal(saved.senses.length, 2);
+  assert.deepEqual(saved.senses.map(sense => sense.senseFingerprint.physicality).sort(), ['figurative', 'physical']);
+});
+
+test('physicality label variants normalize before sense comparison', () => {
+  addExpressionEntries([{
+    term: 'frame', lemma: 'frame', partOfSpeech: 'verb', senseId: 'present-perspective',
+    coreMeaningJa: '見方を形づくる', nuanceJa: 'first'.repeat(30),
+    senseFingerprint: {
+      semanticDomain: 'communication', actionType: 'presentation', physicality: 'metaphorical',
+      argumentPatterns: ['frame something as'], typicalObjects: ['idea'],
+    },
+  }]);
+  addExpressionEntries([{
+    term: 'frame', lemma: 'frame', partOfSpeech: 'verb', senseId: 'present-perspective',
+    coreMeaningJa: 'ある見方になるよう情報を提示する', nuanceJa: 'second'.repeat(40),
+    senseFingerprint: {
+      semanticDomain: 'communication', actionType: 'presentation', physicality: '比喩的',
+      argumentPatterns: ['frame something as'], typicalObjects: ['idea'],
+    },
+  }]);
+
+  const [saved] = getExpressionEntries().filter(item => item.lemma === 'frame');
+  assert.equal(saved.senses.length, 1);
+  assert.equal(saved.senses[0].senseFingerprint.physicality, 'figurative');
+});
+
+test('matching fingerprints enrich a sense despite a changed generated sense id', () => {
+  addExpressionEntries([{
+    term: 'nudge', lemma: 'nudge', partOfSpeech: 'verb', senseId: 'prompt-gently',
+    coreMeaningJa: '相手に控えめに働きかけて行動を促す', nuanceJa: 'first'.repeat(30),
+    senseFingerprint: {
+      semanticDomain: 'influence', actionType: 'indirect-prompting', physicality: 'figurative',
+      argumentPatterns: ['nudge someone to do'], typicalObjects: ['person'],
+      implicationTags: ['indirect'], registerTags: ['neutral'],
+    },
+  }]);
+  addExpressionEntries([{
+    term: 'nudge', lemma: 'nudge', partOfSpeech: 'verb', senseId: 'encourage-subtly',
+    coreMeaningJa: '強制せずに控えめな働きかけで相手の行動を促す', nuanceJa: 'second'.repeat(50),
+    senseFingerprint: {
+      semanticDomain: 'influence', actionType: 'indirect-prompting', physicality: 'figurative',
+      argumentPatterns: ['nudge someone to do'], typicalObjects: ['person'],
+      implicationTags: ['indirect', 'gentle'], registerTags: ['neutral'],
+    },
+  }]);
+
+  const [saved] = getExpressionEntries().filter(item => item.lemma === 'nudge');
+  assert.equal(saved.senses.length, 1);
+  assert.equal(saved.senses[0].nuanceJa, 'second'.repeat(50));
+  assert.deepEqual(saved.senses[0].senseFingerprint.implicationTags.sort(), ['gentle', 'indirect']);
+});
+
+test('a shared grammar pattern alone does not collapse different same-POS senses', () => {
+  addExpressionEntries([{
+    term: 'run', lemma: 'run', partOfSpeech: 'verb', senseId: 'operate-machine',
+    coreMeaningJa: '機械や仕組みを作動させる', nuanceJa: 'machine'.repeat(30),
+    senseFingerprint: {
+      semanticDomain: 'operation', actionType: 'causing-operation', physicality: 'abstract',
+      argumentPatterns: ['run something'], typicalObjects: ['machine'],
+      implicationTags: ['operation'], registerTags: ['neutral'],
+    },
+  }]);
+  addExpressionEntries([{
+    term: 'run', lemma: 'run', partOfSpeech: 'verb', senseId: 'manage-organization',
+    coreMeaningJa: '組織や事業を運営する', nuanceJa: 'business'.repeat(30),
+    senseFingerprint: {
+      semanticDomain: 'management', actionType: 'causing-operation', physicality: 'abstract',
+      argumentPatterns: ['run something'], typicalObjects: ['organization'],
+      implicationTags: ['management'], registerTags: ['neutral'],
+    },
+  }]);
+
+  const [saved] = getExpressionEntries().filter(item => item.lemma === 'run');
+  assert.equal(saved.senses.length, 2);
+});
+
 test('repeated Atlas queries keep different parts of speech as senses of one headword', () => {
   addExpressionEntries([{
     term: 'draft', lemma: 'draft', partOfSpeech: 'noun', category: 'Writing', topic: 'Draft',

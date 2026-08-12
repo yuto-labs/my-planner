@@ -972,7 +972,7 @@ function expressionEntryToRecord(entry, existing = null) {
   const now = new Date().toISOString();
   const id = entry.id || existing?.id || generateId();
   const data = {
-    promptVersion: 8,
+    promptVersion: 9,
     language: 'English',
     sourceQueryJa: '',
     sourceQueries: [],
@@ -990,6 +990,15 @@ function expressionEntryToRecord(entry, existing = null) {
     aliases: [],
     senseId: '',
     partOfSpeech: '',
+    senseFingerprint: {
+      semanticDomain: '',
+      actionType: '',
+      argumentPatterns: [],
+      typicalObjects: [],
+      implicationTags: [],
+      registerTags: [],
+      physicality: '',
+    },
     senses: [],
     mergedInto: '',
     mergedEntryIds: [],

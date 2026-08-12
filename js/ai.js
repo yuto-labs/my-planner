@@ -756,6 +756,12 @@ export async function generateNuanceEntries(
           senseId: String(sense?.senseId || '').trim(),
           partOfSpeech: String(sense?.partOfSpeech || '').trim(),
           coreMeaningJa: String(sense?.coreMeaningJa || '').trim().slice(0, 180),
+          nuanceSummaryJa: String(sense?.nuanceJa || '').trim().slice(0, 260),
+          usagePatterns: (Array.isArray(sense?.usagePatterns) ? sense.usagePatterns : [])
+            .map(pattern => String(pattern?.pattern || '').trim()).filter(Boolean).slice(0, 5),
+          exampleSentences: (Array.isArray(sense?.examples) ? sense.examples : [])
+            .map(example => String(example?.source || '').trim()).filter(Boolean).slice(0, 2),
+          senseFingerprint: sense?.senseFingerprint || {},
         }))
         .slice(0, 8),
     }))
@@ -798,6 +804,8 @@ export async function generateNuanceEntries(
     'existingCatalog is the learner\'s saved dictionary. Check it before choosing entries. A headword is global across the Atlas, even when an earlier category or topic label differs. Never create a second card for an already saved lemma. If the requested English headword already exists, return that same lemma only when you can add a genuinely missing part of speech or sense; use a stable, meaning-specific senseId and explain the new distinction with exactly the same depth, examples, comparisons, grammar, and usage detail as a brand-new entry. The client will append that complete sense to the existing card rather than shortening the old explanation.',
     'When one requested headword has several important parts of speech or genuinely distinct meanings, you may return more than one entries item with the same term and lemma. Give each item a different meaning-specific senseId and complete standalone detail. The client will group those items into one headword card with separate sense toggles.',
     'Different senses within the same part of speech must remain separate when their core images, argument patterns, domains, or implications differ. Reuse an existing senseId only for the same meaning. Never collapse two real senses merely because they came from the same user query.',
+    'For every entry, provide senseFingerprint as compact semantic evidence, not display prose. semanticDomain names the broad meaning area; actionType names the event or state; argumentPatterns gives canonical constructions; typicalObjects gives semantic object/complement classes; implicationTags records stable implications; registerTags records register; physicality must be physical, figurative, abstract, or mixed.',
+    'Compare the requested use with every matching lemma in existingCatalog. Reuse an existing senseId only when part of speech, core meaning, physicality, argument behavior, typical objects, and implications describe the same sense. If the part of speech is the same but any of those features marks a genuinely different use, return a new stable senseId and a complete standalone explanation of equal depth. If uncertain, preserve it as a separate sense rather than blending explanations.',
     'A new sense is not a paraphrase of an existing coreMeaningJa. Do not rename or rewrite an existing sense merely to satisfy the requested count. Prefer other useful comparison expressions when the catalog already covers the requested headword completely.',
     'Add grammarNotes only when useful: part of speech; countability; irregular plural; irregular past/past participle; meaning-dependent countability such as work/works or experience/experiences; and example forms. Do not pad regular forms with obvious explanations.',
     'When a form is irregular or countability is easy to confuse, use that form naturally in at least one example.',
@@ -807,7 +815,7 @@ export async function generateNuanceEntries(
     'Return at least three concrete comparisons for every expression. Compare expressions in the returned set when possible, and explain the decisive difference in viewpoint, implication, grammar, strength, or register instead of giving interchangeable dictionary glosses.',
     'Do not invent quotations, statistics, citations, or unsupported claims.',
     'Return no greeting, preface, conclusion, Markdown, or prose outside the JSON object.',
-    'Use this exact JSON shape: {"category":"日本語の大分類","topic":"日本語の具体的テーマ","mapMode":"scale or groups","mapAxisJa":"比較軸または分類軸","mapLowLabelJa":"scaleの弱い側。groupsなら空欄","mapHighLabelJa":"scaleの強い側。groupsなら空欄","entries":[{"term":"English expression","lemma":"dictionary headword","pronunciationIpa":"/General American IPA/","aliases":["inflected or alternate form"],"senseId":"short semantic sense key","partOfSpeech":"品詞","etymologyJa":"語源の説明","coreImageJa":"原義から分かる根源的なイメージ","coreMeaningJa":"中心的な意味","nuanceJa":"意味の変化と選択基準まで含む深いニュアンス","nuanceTypeJa":"短いニュアンス分類","intensityMin":2,"intensityMax":2,"intensityLevel":2,"register":"使用域","emotionalToneJa":"感情の温度","useCasesJa":["具体的な場面A","具体的な場面B"],"collocations":[{"expression":"natural English combination","translationJa":"組み合わせとして自然な日本語訳"}],"examples":[{"source":"English sentence","translation":"日本語訳","noteJa":"使い方"}],"comparisons":[{"term":"similar expression","differenceJa":"決定的な違い"}],"cautionsJa":["注意点"],"grammarNotes":{"partOfSpeech":"品詞","countability":"可算性。不要なら空欄","plural":"複数形。特記事項がなければ空欄","past":"過去形。特記事項がなければ空欄","pastParticiple":"過去分詞。特記事項がなければ空欄","usageNotes":["意味で可算性が変わる等"],"exampleForms":["重要な活用形"]}}]}',
+    'Use this exact JSON shape: {"category":"日本語の大分類","topic":"日本語の具体的テーマ","mapMode":"scale or groups","mapAxisJa":"比較軸または分類軸","mapLowLabelJa":"scaleの弱い側。groupsなら空欄","mapHighLabelJa":"scaleの強い側。groupsなら空欄","entries":[{"term":"English expression","lemma":"dictionary headword","pronunciationIpa":"/General American IPA/","aliases":["inflected or alternate form"],"senseId":"short semantic sense key","partOfSpeech":"品詞","senseFingerprint":{"semanticDomain":"short domain","actionType":"short event/state type","argumentPatterns":["canonical pattern"],"typicalObjects":["semantic object class"],"implicationTags":["short implication"],"registerTags":["neutral"],"physicality":"physical or figurative or abstract or mixed"},"etymologyJa":"語源の説明","coreImageJa":"原義から分かる根源的なイメージ","coreMeaningJa":"中心的な意味","nuanceJa":"意味の変化と選択基準まで含む深いニュアンス","nuanceTypeJa":"短いニュアンス分類","intensityMin":2,"intensityMax":2,"intensityLevel":2,"register":"使用域","emotionalToneJa":"感情の温度","useCasesJa":["具体的な場面A","具体的な場面B"],"collocations":[{"expression":"natural English combination","translationJa":"組み合わせとして自然な日本語訳"}],"examples":[{"source":"English sentence","translation":"日本語訳","noteJa":"使い方"}],"comparisons":[{"term":"similar expression","differenceJa":"決定的な違い"}],"cautionsJa":["注意点"],"grammarNotes":{"partOfSpeech":"品詞","countability":"可算性。不要なら空欄","plural":"複数形。特記事項がなければ空欄","past":"過去形。特記事項がなければ空欄","pastParticiple":"過去分詞。特記事項がなければ空欄","usageNotes":["意味で可算性が変わる等"],"exampleForms":["重要な活用形"]}}]}',
   ].join(' ');
   const user = JSON.stringify({
     language: String(language || 'English').trim() || 'English',
@@ -858,7 +866,7 @@ export async function generateNuanceEntries(
       if (!term) return null;
       const intensityLevel = normalizeNuanceIntensity(entry.intensityLevel, entry.intensity);
       return {
-        promptVersion: 8,
+        promptVersion: 9,
         language: String(language || 'English').trim() || 'English',
         sourceQueryJa: cleanTarget,
         sourceQueries: cleanTarget ? [cleanTarget] : [],
@@ -875,6 +883,15 @@ export async function generateNuanceEntries(
         aliases: normalizeStringList(entry.aliases, 12),
         senseId: String(entry.senseId || '').trim(),
         partOfSpeech: String(entry.partOfSpeech || '').trim(),
+        senseFingerprint: {
+          semanticDomain: String(entry.senseFingerprint?.semanticDomain || '').trim(),
+          actionType: String(entry.senseFingerprint?.actionType || '').trim(),
+          argumentPatterns: normalizeStringList(entry.senseFingerprint?.argumentPatterns, 8),
+          typicalObjects: normalizeStringList(entry.senseFingerprint?.typicalObjects, 8),
+          implicationTags: normalizeStringList(entry.senseFingerprint?.implicationTags, 8),
+          registerTags: normalizeStringList(entry.senseFingerprint?.registerTags, 6),
+          physicality: String(entry.senseFingerprint?.physicality || '').trim().toLocaleLowerCase(),
+        },
         etymologyJa: String(entry.etymologyJa || '').trim(),
         coreImageJa: String(entry.coreImageJa || '').trim(),
         coreMeaningJa: String(entry.coreMeaningJa || '').trim(),

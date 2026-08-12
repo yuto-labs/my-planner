@@ -10105,12 +10105,37 @@ button.atlas-nuance-map-row:focus-visible {
 .atlas-section-toggle[aria-expanded="false"] span { transform: rotate(-90deg); }
 
 .atlas-detail-section > [data-atlas-collapsible-content][hidden] { display: none !important; }
-.atlas-sense-list { display: grid; gap: 8px; }
-.atlas-sense {
+.atlas-pos-list { display: grid; gap: 8px; }
+.atlas-pos-group {
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-card);
+}
+.atlas-pos-group > summary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 9px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+.atlas-pos-group > summary::-webkit-details-marker { display: none; }
+.atlas-pos-group > summary > span {
+  color: var(--primary-dark);
+  font-size: 12px;
+  font-weight: 650;
+}
+.atlas-pos-group > summary > small { color: var(--text-dim); font-size: 10px; }
+.atlas-pos-group > .atlas-sense-body { padding: 0 12px 12px; }
+.atlas-pos-group > .atlas-sense-list { padding: 0 8px 8px; }
+.atlas-sense-list { display: grid; gap: 7px; }
+.atlas-sense {
+  overflow: hidden;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  background: var(--bg-soft);
 }
 .atlas-sense > summary {
   display: flex;

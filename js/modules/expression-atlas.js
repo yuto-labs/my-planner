@@ -2773,11 +2773,11 @@ function wireCollapsibleDetailSections() {
       else state.openNativeDetailSections.delete(sectionKey);
     });
   });
-  state.container?.querySelectorAll('details.atlas-sense[data-atlas-sense-key]').forEach((details, index) => {
+  state.container?.querySelectorAll('details[data-atlas-sense-key]').forEach(details => {
     const sectionKey = details.dataset.atlasSenseKey;
     const shouldOpen = state.openSenseDetailSections.has(sectionKey)
       ? state.openSenseDetailSections.get(sectionKey)
-      : index === 0;
+      : details.dataset.defaultOpen === 'true';
     details.open = shouldOpen;
     details.addEventListener('toggle', () => {
       if (!details.isConnected) return;
@@ -2884,35 +2884,61 @@ function grammarNotesSection(notes) {
 
 function expressionSensesSection(entry, senses) {
   const expressionIndex = buildExpressionIndex(getExpressionEntries());
+  const grouped = new Map();
+  senses.forEach((sense, index) => {
+    const partOfSpeech = sense.partOfSpeech || 'other';
+    if (!grouped.has(partOfSpeech)) grouped.set(partOfSpeech, []);
+    grouped.get(partOfSpeech).push({ sense, index });
+  });
+  const senseBody = sense => `
+    <div class="atlas-sense-body">
+      ${detailSection('中心的な意味', sense.coreMeaningJa)}
+      ${detailSection('深いニュアンス', sense.nuanceJa)}
+      ${comparisonsSection(sense.comparisons, expressionIndex)}
+      ${listSection('自然に使われる場面', sense.useCasesJa)}
+      ${usagePatternsSection(sense.usagePatterns)}
+      ${examplesSection(sense.examples)}
+      ${grammarNotesSection(sense.grammarNotes)}
+      ${detailSection('感情の温度', sense.emotionalToneJa)}
+      ${collocationsSection(sense.collocations, expressionIndex)}
+      ${listSection('注意点', sense.cautionsJa, 'atlas-note-list--warning')}
+    </div>
+  `;
   return `
     <section class="atlas-detail-section atlas-senses-section">
       <h2>意味・品詞別の解説</h2>
-      <div class="atlas-sense-list">
-        ${senses.map((sense, index) => {
-          const senseKey = `${entry.id}:${sense.senseId || sense.partOfSpeech || 'sense'}:${index}`;
-          const isOpen = state.openSenseDetailSections.has(senseKey)
-            ? state.openSenseDetailSections.get(senseKey)
-            : index === 0;
+      <div class="atlas-pos-list">
+        ${[...grouped.entries()].map(([partOfSpeech, items], groupIndex) => {
+          const posKey = `${entry.id}:pos:${partOfSpeech}`;
+          const posOpen = state.openSenseDetailSections.has(posKey)
+            ? state.openSenseDetailSections.get(posKey)
+            : groupIndex === 0;
           return `
-          <details class="atlas-sense" data-atlas-sense-key="${esc(senseKey)}" ${isOpen ? 'open' : ''}>
-            <summary>
-              <span>${esc(sense.partOfSpeech || `意味 ${index + 1}`)}</span>
-              ${sense.coreMeaningJa ? `<strong>${esc(sense.coreMeaningJa)}</strong>` : ''}
-            </summary>
-            <div class="atlas-sense-body">
-              ${detailSection('中心的な意味', sense.coreMeaningJa)}
-              ${detailSection('深いニュアンス', sense.nuanceJa)}
-              ${comparisonsSection(sense.comparisons, expressionIndex)}
-              ${listSection('自然に使われる場面', sense.useCasesJa)}
-              ${usagePatternsSection(sense.usagePatterns)}
-              ${examplesSection(sense.examples)}
-              ${grammarNotesSection(sense.grammarNotes)}
-              ${detailSection('感情の温度', sense.emotionalToneJa)}
-              ${collocationsSection(sense.collocations, expressionIndex)}
-              ${listSection('注意点', sense.cautionsJa, 'atlas-note-list--warning')}
-            </div>
-          </details>
-        `;
+            <details class="atlas-pos-group" data-atlas-sense-key="${esc(posKey)}"
+              data-default-open="${groupIndex === 0}" ${posOpen ? 'open' : ''}>
+              <summary><span>${esc(partOfSpeech)}</span><small>${items.length} sense${items.length === 1 ? '' : 's'}</small></summary>
+              ${items.length === 1 ? senseBody(items[0].sense) : `
+                <div class="atlas-sense-list">
+                  ${items.map(({ sense, index }, senseIndex) => {
+                    const senseKey = `${entry.id}:sense:${sense.senseId || `${partOfSpeech}-${index}`}`;
+                    const senseOpen = state.openSenseDetailSections.has(senseKey)
+                      ? state.openSenseDetailSections.get(senseKey)
+                      : senseIndex === 0;
+                    return `
+                      <details class="atlas-sense" data-atlas-sense-key="${esc(senseKey)}"
+                        data-default-open="${senseIndex === 0}" ${senseOpen ? 'open' : ''}>
+                        <summary>
+                          <span>意味 ${senseIndex + 1}</span>
+                          ${sense.coreMeaningJa ? `<strong>${esc(sense.coreMeaningJa)}</strong>` : ''}
+                        </summary>
+                        ${senseBody(sense)}
+                      </details>
+                    `;
+                  }).join('')}
+                </div>
+              `}
+            </details>
+          `;
         }).join('')}
       </div>
     </section>
