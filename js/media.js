@@ -58,7 +58,7 @@ export async function uploadPlannerImage(file, kind = 'misc') {
   };
 }
 
-export async function resolvePlannerImageUrl(path, { persistent = false } = {}) {
+export async function resolvePlannerImageUrl(path, { persistent = false, forceRefresh = false } = {}) {
   const cleanPath = String(path || '').trim();
   if (!cleanPath) return '';
 
@@ -67,6 +67,7 @@ export async function resolvePlannerImageUrl(path, { persistent = false } = {}) 
     if (persistentUrl) return persistentUrl;
   }
 
+  if (forceRefresh) urlCache.delete(cleanPath);
   const cached = urlCache.get(cleanPath);
   let signedUrl = cached?.expiresAt > Date.now() ? cached.url : '';
   if (!signedUrl) {
@@ -190,10 +191,13 @@ export async function openPlannerImageViewer({
   const closeButton = viewer.querySelector('.media-lightbox-close');
   const image = viewer.querySelector('img');
   let closed = false;
+  let loadAttempt = 0;
+  let loadTimer = null;
   const close = () => {
     if (closed) return;
     closed = true;
     document.removeEventListener('keydown', onKeyDown);
+    clearTimeout(loadTimer);
     document.body.style.overflow = previousOverflow;
     viewer.remove();
     if (activeViewerClose === close) activeViewerClose = null;
@@ -223,28 +227,53 @@ export async function openPlannerImageViewer({
 
   // A hydrated image already has a valid signed/blob URL. Reusing it makes
   // the viewer open immediately on mobile and avoids a second network lookup.
-  const visibleSrc = String(src || '').trim();
-  const resolvedSrc = visibleSrc || (path
-    ? await resolvePlannerImageUrl(path, {
-        persistent: trigger?.dataset?.mediaPersist === '1',
-      })
-    : '');
-  if (closed) return;
-  if (!resolvedSrc) {
+  const reveal = () => {
+    clearTimeout(loadTimer);
     viewer.classList.remove('media-lightbox--loading');
-    viewer.classList.add('media-lightbox--error');
-    return;
-  }
-
-  image.addEventListener('load', () => {
-    viewer.classList.remove('media-lightbox--loading');
+    viewer.classList.remove('media-lightbox--error');
     requestAnimationFrame(() => viewer.classList.add('media-lightbox--open'));
-  }, { once: true });
-  image.addEventListener('error', () => {
+  };
+  const fail = () => {
+    clearTimeout(loadTimer);
     viewer.classList.remove('media-lightbox--loading');
     viewer.classList.add('media-lightbox--error');
-  }, { once: true });
-  image.src = resolvedSrc;
+  };
+  const loadSource = async (candidate, { allowRefresh = true } = {}) => {
+    if (closed) return;
+    const attempt = ++loadAttempt;
+    const value = String(candidate || '').trim();
+    if (!value) {
+      if (allowRefresh && path) {
+        const fresh = await resolvePlannerImageUrl(path, {
+          persistent: trigger?.dataset?.mediaPersist === '1',
+          forceRefresh: true,
+        });
+        if (attempt === loadAttempt) await loadSource(fresh, { allowRefresh: false });
+      } else fail();
+      return;
+    }
+    viewer.classList.add('media-lightbox--loading');
+    viewer.classList.remove('media-lightbox--error', 'media-lightbox--open');
+    image.onload = () => { if (attempt === loadAttempt) reveal(); };
+    image.onerror = async () => {
+      if (attempt !== loadAttempt) return;
+      if (allowRefresh && path) {
+        const fresh = await resolvePlannerImageUrl(path, {
+          persistent: trigger?.dataset?.mediaPersist === '1',
+          forceRefresh: true,
+        });
+        if (attempt === loadAttempt) await loadSource(fresh, { allowRefresh: false });
+      } else fail();
+    };
+    image.src = value;
+    if (image.complete && image.naturalWidth > 0) reveal();
+    clearTimeout(loadTimer);
+    loadTimer = setTimeout(() => {
+      if (attempt !== loadAttempt) return;
+      image.onerror?.();
+    }, 12000);
+  };
+
   image.setAttribute('role', 'button');
   image.setAttribute('tabindex', '0');
   image.setAttribute('aria-label', '写真を拡大する');
@@ -253,10 +282,7 @@ export async function openPlannerImageViewer({
     event.preventDefault();
     image.click();
   });
-  if (image.complete && image.naturalWidth > 0) {
-    viewer.classList.remove('media-lightbox--loading');
-    requestAnimationFrame(() => viewer.classList.add('media-lightbox--open'));
-  }
+  await loadSource(String(src || '').trim(), { allowRefresh: true });
 }
 
 export async function deletePlannerImage(path) {

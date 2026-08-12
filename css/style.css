@@ -9215,6 +9215,8 @@ button.atlas-nuance-map-row:focus-visible {
 }
 .media-lightbox img {
   display: block;
+  width: auto;
+  height: auto;
   max-width: 100%;
   max-height: calc(100dvh - 108px);
   object-fit: contain;
@@ -9319,9 +9321,12 @@ button.atlas-nuance-map-row:focus-visible {
   border-radius: var(--radius-sm);
 }
 .kn-edit-image img {
-  width: 100%;
+  width: auto;
+  height: auto;
+  max-width: 100%;
   max-height: 48vh;
   object-fit: contain;
+  margin-inline: auto;
 }
 .kn-image-caption {
   position: relative;
@@ -9427,14 +9432,25 @@ button.atlas-nuance-map-row:focus-visible {
   .home-cover-menu-btn { width: 32px; min-width: 32px; padding: 0; }
   .home-cover-editor-preview { height: 138px; }
   .event-photo-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .kn-view-image img { max-height: 52vh; }
-  .kn-edit-image img { max-height: 40vh; }
+  .kn-view-image,
+  .kn-edit-image { width: 100%; }
+  .kn-view-image img,
+  .kn-edit-image img {
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: min(68dvh, 760px);
+    margin-inline: auto;
+  }
   .media-lightbox {
     padding-inline:
       max(8px, env(safe-area-inset-right))
       max(8px, env(safe-area-inset-left));
   }
   .media-lightbox img {
+    width: auto;
+    height: auto;
+    max-width: calc(100vw - 16px);
     max-height: calc(100dvh - 94px);
   }
 }

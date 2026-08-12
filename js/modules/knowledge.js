@@ -1472,6 +1472,9 @@ function renderBlockView(block, numCounter = 0, indent = 0) {
     return `
       <figure class="kn-view-image media-frame media-frame--loading" ${id}>
         <img data-media-path="${esc(block.path || '')}" data-media-view="1"
+          ${Number(block.width) > 0 && Number(block.height) > 0
+            ? `width="${Number(block.width)}" height="${Number(block.height)}"`
+            : ''}
           data-media-caption="${esc(block.caption || '')}" tabindex="0" role="button"
           aria-label="メモの写真を拡大表示" alt="${esc(block.alt || block.caption || 'メモの写真')}">
         ${block.caption ? `<figcaption>${esc(block.caption)}</figcaption>` : ''}
@@ -1869,6 +1872,9 @@ function renderBlockEdit(block, idx, listNumber = 0) {
         data-block-id="${esc(block.id)}" tabindex="0">
         <div class="kn-edit-image media-frame media-frame--loading">
           <img data-media-path="${esc(block.path || '')}" data-media-view="1"
+            ${Number(block.width) > 0 && Number(block.height) > 0
+              ? `width="${Number(block.width)}" height="${Number(block.height)}"`
+              : ''}
             data-media-caption="${esc(block.caption || '')}" tabindex="0" role="button"
             aria-label="メモの写真を拡大表示" alt="${esc(block.alt || block.caption || 'メモの写真')}">
           <button type="button" class="kn-image-remove" data-image-remove-id="${esc(block.id)}"
