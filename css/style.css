@@ -7709,7 +7709,7 @@ button.atlas-nuance-map-row:focus-visible {
   font-size: 16px;
   line-height: 1;
 }
-.atlas-collocation-item--expandable[open] > summary::after { content: '\\2212'; }
+.atlas-collocation-item--expandable[open] > summary::after { content: '\2212'; }
 .atlas-collocation-detail {
   display: grid;
   gap: 10px;
