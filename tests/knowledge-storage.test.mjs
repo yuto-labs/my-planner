@@ -22,6 +22,7 @@ const {
   importBackup,
   restoreTrashItem,
   saveExpressionEntries,
+  updateKnowledgeMemo,
 } = await import('../js/storage.js');
 
 function entry(id, title, updatedAt = '2026-07-27T10:00:00.000Z') {
@@ -63,6 +64,28 @@ test('learning writes preserve ordinary memo records', () => {
   assert.equal(getKnowledgeMemos().length, 1);
   assert.equal(getKnowledgeMemos()[0].title, '既存メモ');
   assert.equal(getLearningEntries().length, 1);
+});
+
+test('a one-character memo edit persists without losing its tags or blocks', () => {
+  localStorage.setItem('mp_knowledge', JSON.stringify([{
+    id: 'memo-small-edit',
+    title: '短い変更',
+    summary: '変更前',
+    tags: ['研究'],
+    blocks: [{ id: 'text-1', type: 'paragraph', text: '変更前', html: '変更前' }],
+    createdAt: '2026-08-15T09:00:00.000Z',
+    updatedAt: '2026-08-15T09:00:00.000Z',
+  }]));
+
+  const saved = updateKnowledgeMemo('memo-small-edit', {
+    summary: '変更後',
+    tags: ['研究'],
+    blocks: [{ id: 'text-1', type: 'paragraph', text: '変更後', html: '変更後' }],
+  });
+
+  assert.equal(saved.blocks[0].text, '変更後');
+  assert.equal(getKnowledgeMemos()[0].blocks[0].text, '変更後');
+  assert.deepEqual(getKnowledgeMemos()[0].tags, ['研究']);
 });
 
 test('atlas writes preserve memos, learning entries, and other atlas record types', () => {

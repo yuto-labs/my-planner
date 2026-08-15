@@ -49,6 +49,8 @@ let editorRedoHistory = [];
 let editorTypingHistoryOpen = false;
 let editorTypingHistoryTimer = null;
 let editorHistoryRestoring = false;
+let editorCompositionActive = false;
+let memoSaveInFlight = false;
 
 // ---- Navigation history for swipe-back ----
 let _knHistory           = [];  // [{memoId: string|null, scrollTop: number}]
@@ -1062,6 +1064,7 @@ export function initKnowledgeDetail(container) {
   }
   pendingImageUploads = new Set();
   pendingImageDeletes = new Set();
+  editorCompositionActive = false;
 
   markEditorBaseline();
 
@@ -1983,6 +1986,15 @@ function wireBlocksEdit(container) {
     }
   });
 
+  wrap.addEventListener('compositionstart', () => {
+    editorCompositionActive = true;
+  });
+  wrap.addEventListener('compositionend', event => {
+    editorCompositionActive = false;
+    const editable = event.target?.closest?.('[contenteditable="true"]');
+    if (editable?.dataset.blockId) syncEditableBlock(editable.dataset.blockId, editable);
+  });
+
   // Sync text on input
   wrap.addEventListener('input', e => {
     // Fallback for keyboards and browser automation paths that omit
@@ -2775,16 +2787,35 @@ function clipboardBlocksFromHtml(html) {
   const template = document.createElement('template');
   template.innerHTML = String(html || '');
   const blocks = [];
+  const fontSizeInPixels = value => {
+    const raw = String(value || '').trim().toLowerCase();
+    const numeric = Number.parseFloat(raw);
+    if (!Number.isFinite(numeric)) return NaN;
+    if (raw.endsWith('pt')) return numeric * (4 / 3);
+    if (raw.endsWith('em') || raw.endsWith('rem')) return numeric * 16;
+    return numeric;
+  };
   const inferredTextBlockType = element => {
     const tag = element?.tagName;
     if (tag === 'H1') return 'h1';
     if (tag === 'H2') return 'h2';
     if (tag && /^H[3-6]$/.test(tag)) return 'h3';
-    const size = Number.parseFloat(element?.style?.fontSize || '');
+    const meaningfulChildren = [...(element?.children || [])]
+      .filter(child => String(child.textContent || '').trim());
+    const soleStyledChild = meaningfulChildren.length === 1
+      && String(meaningfulChildren[0].textContent || '').trim() === String(element?.textContent || '').trim()
+      ? meaningfulChildren[0]
+      : null;
+    const styleSource = soleStyledChild || element;
+    const size = fontSizeInPixels(styleSource?.style?.fontSize || element?.style?.fontSize || '');
+    const weight = String(styleSource?.style?.fontWeight || element?.style?.fontWeight || '').toLowerCase();
+    const isBold = ['bold', 'bolder'].includes(weight)
+      || Number.parseInt(weight, 10) >= 600
+      || ['B', 'STRONG'].includes(styleSource?.tagName);
     if (Number.isFinite(size)) {
       if (size >= 24) return 'h1';
       if (size >= 19) return 'h2';
-      if (size >= 16 && (element?.querySelector('b,strong') || Number.parseInt(element?.style?.fontWeight, 10) >= 600)) return 'h3';
+      if (size >= 16 && isBold) return 'h3';
     }
     return 'paragraph';
   };
@@ -3535,10 +3566,69 @@ function renderTagDisplay(container) {
 
 // ---- Save / Delete ----
 
-async function saveMemo(container) {
-  // Sync title
+function syncEditorDomToState(container) {
   const titleInput = container.querySelector('#kn-edit-title');
   if (titleInput) edState.title = titleInput.value.trim().slice(0, 180);
+
+  container.querySelectorAll('[data-table-header], [data-table-cell]').forEach(input => {
+    const block = findBlockInAllBlocks(edState.blocks, input.dataset.blockId);
+    if (!block) return;
+    const table = normalizeTableData(block);
+    const col = Number(input.dataset.tableCol);
+    if (input.hasAttribute('data-table-header')) table.headers[col] = input.value;
+    else table.rows[Number(input.dataset.tableRow)][col] = input.value;
+    block.table = table;
+  });
+
+  container.querySelectorAll('[data-image-caption-id]').forEach(input => {
+    const block = findBlockInAllBlocks(edState.blocks, input.dataset.imageCaptionId);
+    if (block) block.caption = input.value;
+  });
+
+  container.querySelectorAll('.kn-block-focusable').forEach(el => {
+    const blockId = el.dataset.blockId;
+    if (!blockId) return;
+    const block = findBlockInAllBlocks(edState.blocks, blockId);
+    if (!block) return;
+    if (el.tagName === 'TEXTAREA') {
+      block.text = el.value;
+    } else if (el.isContentEditable || el.contentEditable === 'true') {
+      block.text = el.textContent.replace(/\u200B/g, '');
+      block.html = sanitizeBlockHtml(el.innerHTML).replace(/\u200B/g, '');
+    }
+  });
+}
+
+async function settleEditorInput(container) {
+  const active = document.activeElement;
+  if (active && container.contains(active) && active.matches?.('input, textarea, [contenteditable="true"]')) {
+    active.blur();
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+  editorCompositionActive = false;
+  syncEditorDomToState(container);
+}
+
+async function saveMemo(container) {
+  if (memoSaveInFlight) return;
+  memoSaveInFlight = true;
+  const saveButton = container.querySelector('#kn-save-btn');
+  if (saveButton) saveButton.disabled = true;
+  try {
+    await persistMemo(container);
+  } catch (error) {
+    console.error('Memo save failed:', error);
+    toast('保存できませんでした。入力内容は画面に残しています', 'error');
+  } finally {
+    memoSaveInFlight = false;
+    if (saveButton?.isConnected) saveButton.disabled = false;
+  }
+}
+
+async function persistMemo(container) {
+  // Blur and wait one frame so mobile IME composition reaches the DOM before
+  // the final snapshot is written to local storage and queued for sync.
+  await settleEditorInput(container);
 
   // Treat text left in the tag field as a real tag when Save is pressed.
   // This keeps mobile users from losing a tag just because Enter was omitted.
@@ -3558,20 +3648,6 @@ async function saveMemo(container) {
 
   edState.tags = [...new Set(edState.tags.map(tag => String(tag).trim()).filter(Boolean))];
 
-  // Sync block texts from DOM
-  container.querySelectorAll('.kn-block-focusable').forEach(el => {
-    const blockId = el.dataset.blockId;
-    if (!blockId) return;
-    const block = findBlockInAllBlocks(edState.blocks, blockId);
-    if (!block) return;
-    if (el.tagName === 'TEXTAREA') {
-      block.text = el.value;
-    } else if (el.contentEditable === 'true') {
-      block.text = el.textContent;
-      block.html = sanitizeBlockHtml(el.innerHTML);
-    }
-  });
-
   const memoData = {
     title:   edState.title || '無題のメモ',
     blocks:  edState.blocks,
@@ -3580,6 +3656,13 @@ async function saveMemo(container) {
     starred: edState.starred,
     summary: blocksToText(edState.blocks, 200),
   };
+  const editableSignature = memo => JSON.stringify({
+    title: memo?.title || '',
+    blocks: memo?.blocks || [],
+    tags: memo?.tags || [],
+    url: memo?.url || '',
+    starred: !!memo?.starred,
+  });
 
   if (edState.id) {
     // Clear pendingAI if tags were added during this edit
@@ -3592,6 +3675,11 @@ async function saveMemo(container) {
       toast('保存できませんでした。入力内容は画面に残しています', 'error');
       return;
     }
+    const persisted = getKnowledgeMemoById(edState.id);
+    if (editableSignature(persisted) !== editableSignature(memoData)) {
+      toast('変更を確認できなかったため、編集画面を保持しました。もう一度保存してください', 'error');
+      return;
+    }
     setMemoReviewEnabled(edState.id, edState.reviewEnabled);
     toast('メモを保存しました ✓', 'success');
     markEditorBaseline();
@@ -3601,6 +3689,11 @@ async function saveMemo(container) {
     const saved = addKnowledgeMemo(memoData);
     if (!saved) {
       toast('保存できませんでした。入力内容は画面に残しています', 'error');
+      return;
+    }
+    const persisted = getKnowledgeMemoById(saved.id);
+    if (editableSignature(persisted) !== editableSignature(memoData)) {
+      toast('作成内容を確認できなかったため、編集画面を保持しました。もう一度保存してください', 'error');
       return;
     }
     edState.id   = saved.id;
