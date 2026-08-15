@@ -511,6 +511,9 @@ export function initLearningDetail(container) {
             ${(section.paragraphs || []).map(paragraph => `
               <p>${renderSegments(paragraph, conceptIndex, entry.id)}</p>
             `).join('')}
+            ${(section.richBlocks || []).map(block => (
+              renderKnowledgeRichBlock(block, conceptIndex, entry.id)
+            )).join('')}
           </section>
         `).join('')}
         ${(entry.answer?.cautions || []).length ? `
@@ -542,6 +545,8 @@ export function initLearningDetail(container) {
       </div>
     </article>
   `;
+
+  hydrateLearningEquations(container);
 
   container.querySelector('#learning-title-edit')?.addEventListener('click', () => editTitle(container, entry));
   container.querySelector('#learning-delete-btn')?.addEventListener('click', () => {
@@ -590,6 +595,104 @@ function renderSegments(segments, conceptIndex, currentId) {
     return `<button class="learning-inline-link" type="button"
       data-concept-key="${esc(segment.conceptKey)}" data-concept-label="${esc(segment.text || '')}">${content}</button>`;
   }).join('');
+}
+
+function renderKnowledgeRichBlock(block, conceptIndex, currentId) {
+  if (!block?.type) return '';
+
+  if (block.type === 'list') {
+    const tag = block.style === 'numbered' ? 'ol' : 'ul';
+    return `
+      <div class="learning-rich learning-rich-list">
+        ${block.title ? `<h4>${esc(block.title)}</h4>` : ''}
+        <${tag}>${(block.items || []).map(item => (
+          `<li>${renderSegments(item, conceptIndex, currentId)}</li>`
+        )).join('')}</${tag}>
+      </div>`;
+  }
+
+  if (block.type === 'table') {
+    return `
+      <figure class="learning-rich learning-rich-table">
+        ${block.caption ? `<figcaption>${esc(block.caption)}</figcaption>` : ''}
+        <div class="learning-table-scroll" tabindex="0">
+          <table>
+            <thead><tr>${(block.headers || []).map(header => `<th scope="col">${esc(header)}</th>`).join('')}</tr></thead>
+            <tbody>${(block.rows || []).map(row => (
+              `<tr>${row.map(cell => `<td>${esc(cell)}</td>`).join('')}</tr>`
+            )).join('')}</tbody>
+          </table>
+        </div>
+      </figure>`;
+  }
+
+  if (block.type === 'equation') {
+    return `
+      <figure class="learning-rich learning-rich-equation">
+        <div class="learning-equation-render" data-learning-equation="${esc(block.latex || '')}"></div>
+        <code class="learning-equation-fallback">${esc(block.latex || block.plainText || '')}</code>
+        <figcaption>
+          <strong>${esc(block.plainText || '')}</strong>
+          ${(block.explanation || []).length
+            ? `<span>${renderSegments(block.explanation, conceptIndex, currentId)}</span>`
+            : ''}
+        </figcaption>
+      </figure>`;
+  }
+
+  if (block.type === 'callout') {
+    return `
+      <aside class="learning-rich learning-rich-callout learning-rich-callout--${esc(block.tone || 'info')}">
+        ${block.title ? `<strong>${esc(block.title)}</strong>` : ''}
+        <p>${renderSegments(block.segments, conceptIndex, currentId)}</p>
+      </aside>`;
+  }
+
+  if (block.type === 'flow') {
+    const labels = new Map((block.nodes || []).map(node => [node.id, node.label]));
+    return `
+      <figure class="learning-rich learning-rich-flow">
+        ${block.title ? `<figcaption>${esc(block.title)}</figcaption>` : ''}
+        ${block.altText ? `<p class="sr-only">${esc(block.altText)}</p>` : ''}
+        <div class="learning-flow-steps" aria-hidden="${block.altText ? 'true' : 'false'}">
+          ${(block.edges || []).map(edge => `
+            <div class="learning-flow-step">
+              <span class="learning-flow-node">${esc(labels.get(edge.from) || edge.from)}</span>
+              <span class="learning-flow-arrow"><b>→</b>${edge.label ? `<small>${esc(edge.label)}</small>` : ''}</span>
+              <span class="learning-flow-node">${esc(labels.get(edge.to) || edge.to)}</span>
+            </div>
+          `).join('')}
+        </div>
+      </figure>`;
+  }
+
+  return '';
+}
+
+function hydrateLearningEquations(container, retry = true) {
+  const equations = [...container.querySelectorAll('[data-learning-equation]:not([data-equation-ready])')];
+  if (!equations.length) return;
+  if (!window.katex?.render) {
+    if (retry) setTimeout(() => hydrateLearningEquations(container, false), 400);
+    return;
+  }
+  equations.forEach(target => {
+    const latex = target.dataset.learningEquation || '';
+    try {
+      window.katex.render(latex, target, {
+        displayMode: true,
+        throwOnError: true,
+        strict: 'warn',
+        trust: false,
+        output: 'htmlAndMathml',
+      });
+      target.dataset.equationReady = '1';
+      target.closest('.learning-rich-equation')?.classList.add('is-rendered');
+    } catch {
+      target.dataset.equationReady = 'error';
+      target.closest('.learning-rich-equation')?.classList.add('has-error');
+    }
+  });
 }
 
 function renderConceptChip(concept, conceptIndex, currentId) {

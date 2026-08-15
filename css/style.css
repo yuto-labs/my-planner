@@ -12614,6 +12614,145 @@ button.atlas-nuance-map-row:focus-visible {
   font-weight: 600;
 }
 .learning-answer-section p + p { margin-top: 14px; }
+.learning-rich {
+  min-width: 0;
+  max-width: 100%;
+  margin: 17px 0;
+}
+.learning-rich h4,
+.learning-rich figcaption {
+  margin-bottom: 8px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.learning-rich-list ul,
+.learning-rich-list ol {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding-left: 1.35em;
+}
+.learning-rich-list li { padding-left: 3px; line-height: 1.72; }
+.learning-rich-list li::marker { color: var(--primary-dark); font-weight: 700; }
+.learning-table-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  border-block: 1px solid var(--border);
+  scrollbar-width: thin;
+  overscroll-behavior-inline: contain;
+}
+.learning-rich-table table {
+  width: 100%;
+  min-width: 480px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.learning-rich-table th,
+.learning-rich-table td {
+  padding: 9px 10px;
+  vertical-align: top;
+  text-align: left;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+}
+.learning-rich-table tr:last-child td { border-bottom: 0; }
+.learning-rich-table th {
+  color: var(--text);
+  background: color-mix(in srgb, var(--primary) 6%, var(--bg-card));
+  font-weight: 700;
+}
+.learning-rich-equation {
+  padding: 13px 0;
+  border-block: 1px solid var(--border);
+  text-align: center;
+}
+.learning-equation-render {
+  max-width: 100%;
+  min-height: 34px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 3px 8px 7px;
+  scrollbar-width: thin;
+}
+.learning-equation-fallback {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 9px 10px;
+  color: var(--text);
+  background: var(--bg-hover);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  white-space: pre;
+}
+.learning-rich-equation.is-rendered .learning-equation-fallback { display: none; }
+.learning-rich-equation.has-error .learning-equation-render { display: none; }
+.learning-rich-equation figcaption {
+  display: grid;
+  gap: 3px;
+  margin: 8px auto 0;
+  max-width: 680px;
+  color: var(--text-muted);
+  font-weight: 400;
+  text-align: left;
+}
+.learning-rich-equation figcaption strong { color: var(--text); font-size: 12px; font-weight: 600; }
+.learning-rich-callout {
+  padding: 10px 13px;
+  border-left: 3px solid var(--primary-border);
+  background: color-mix(in srgb, var(--primary) 5%, transparent);
+}
+.learning-rich-callout > strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--text);
+  font-size: 11px;
+}
+.learning-rich-callout p { margin: 0; line-height: 1.7; }
+.learning-rich-callout--definition { border-left-color: var(--primary); }
+.learning-rich-callout--warning {
+  border-left-color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 7%, transparent);
+}
+.learning-flow-steps { display: grid; gap: 8px; }
+.learning-flow-step {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(48px, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+.learning-flow-node {
+  min-width: 0;
+  padding: 8px 9px;
+  color: var(--text);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.learning-flow-arrow {
+  display: grid;
+  place-items: center;
+  min-width: 48px;
+  color: var(--primary-dark);
+  text-align: center;
+  line-height: 1.2;
+}
+.learning-flow-arrow b { font-size: 17px; font-weight: 500; }
+.learning-flow-arrow small {
+  max-width: 120px;
+  color: var(--text-dim);
+  font-size: 9px;
+  overflow-wrap: anywhere;
+}
 .learning-mark {
   margin: 0 1px;
   padding: 0 .12em;
@@ -12748,6 +12887,12 @@ button.atlas-nuance-map-row:focus-visible {
   }
   .learning-section-nav::-webkit-scrollbar { display: none; }
   .learning-section-nav button { flex: 0 0 auto; max-width: 78vw; }
+  .learning-rich-table table { min-width: 430px; font-size: 11px; }
+  .learning-rich-table th,
+  .learning-rich-table td { padding: 8px; }
+  .learning-flow-step { grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr); gap: 5px; }
+  .learning-flow-node { padding: 7px; font-size: 10px; }
+  .learning-flow-arrow { min-width: 44px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

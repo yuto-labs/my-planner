@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 
 import {
   normalizeKnowledgeAnswer,
+  normalizeKnowledgeRichBlocks,
+  knowledgeAnswerText,
   validateKnowledgeEntry,
   buildKnowledgeConceptIndex,
   findKnowledgeConceptMatches,
@@ -64,6 +66,60 @@ test('normalizes structured answers without leaking Markdown', () => {
   assert.equal(entry.answer.directAnswer[0].marks[0], 'strong');
   assert.equal(entry.answer.keyPoints.length, 3);
   assert.equal(validateKnowledgeEntry(entry).valid, true);
+});
+
+test('normalizes safe rich knowledge blocks without changing legacy paragraphs', () => {
+  const raw = rawAnswer();
+  raw.answer.sections[0].richBlocks = [
+    {
+      type: 'list', style: 'numbered', title: '確認順序',
+      items: [[{ text: '光源を確認する', conceptKey: 'rayleigh-scattering' }], [{ text: '散乱を見る' }]],
+    },
+    {
+      type: 'table', caption: '波長の比較', headers: ['光', '散乱'],
+      rows: [['青', '強い'], ['赤', '弱い', '余分なセル']],
+    },
+    {
+      type: 'equation', latex: 'I \\propto 1 / \\lambda^4',
+      plainText: '散乱強度は波長の4乗に反比例する',
+      explanation: [{ text: '波長が短いほど強く散乱される' }],
+    },
+    {
+      type: 'flow', title: '見えるまで', altText: '太陽光が散乱して目に届く',
+      nodes: [{ id: 'sun', label: '太陽光' }, { id: 'eye', label: '目' }],
+      edges: [{ from: 'sun', to: 'eye', label: '散乱して届く' }],
+    },
+  ];
+  const entry = normalizeKnowledgeAnswer(raw, 'なぜ空は青いの？');
+  const rich = entry.answer.sections[0].richBlocks;
+  assert.deepEqual(rich.map(block => block.type), ['list', 'table', 'equation', 'flow']);
+  assert.deepEqual(rich[1].rows[1], ['赤', '弱い']);
+  assert.match(knowledgeAnswerText(entry), /散乱強度は波長の4乗に反比例する/);
+  assert.equal(validateKnowledgeEntry(entry).valid, true);
+});
+
+test('drops malformed rich blocks and keeps valid nearby content', () => {
+  const blocks = normalizeKnowledgeRichBlocks([
+    { type: 'table', headers: ['only one'], rows: [['x']] },
+    { type: 'equation', latex: '', plainText: 'missing formula' },
+    { type: 'flow', nodes: [{ id: 'a', label: 'A' }], edges: [] },
+    { type: 'callout', tone: 'warning', title: '**注意**', segments: [{ text: '**例外があります**' }] },
+    { type: 'unknown', text: '<script>bad</script>' },
+  ]);
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].type, 'callout');
+  assert.equal(blocks[0].title, '注意');
+  assert.equal(blocks[0].segments[0].text, '例外があります');
+});
+
+test('validates concept links inside rich block segments', () => {
+  const raw = rawAnswer();
+  raw.answer.sections[0].richBlocks = [{
+    type: 'callout', tone: 'definition', title: '定義',
+    segments: [{ text: '未登録概念', conceptKey: 'missing-concept' }],
+  }];
+  const entry = normalizeKnowledgeAnswer(raw, 'なぜ空は青いの？');
+  assert.equal(validateKnowledgeEntry(entry).errors.includes('danglingConceptKey'), true);
 });
 
 test('keeps legacy knowledge answers valid without generated key points', () => {

@@ -6,6 +6,7 @@ import {
 } from './data/learning-geography.js';
 
 const ALLOWED_MARKS = new Set(['strong', 'highlight-yellow', 'highlight-blue', 'warning']);
+const KNOWLEDGE_RICH_BLOCK_TYPES = new Set(['list', 'table', 'equation', 'callout', 'flow']);
 const MARKDOWN_NOISE = /(\*\*|__|```|<\/?[a-z][^>]*>)/gi;
 
 export function normalizeKnowledgeKey(value) {
@@ -57,6 +58,125 @@ export function normalizeKnowledgeSegments(segments) {
       conceptKey: normalizeKnowledgeKey(segment?.conceptKey),
     }))
     .filter(segment => segment.text);
+}
+
+function cleanKnowledgeLatex(value) {
+  return String(value || '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+    .trim()
+    .slice(0, 600);
+}
+
+export function normalizeKnowledgeRichBlocks(blocks) {
+  return (Array.isArray(blocks) ? blocks : [])
+    .slice(0, 4)
+    .map(raw => {
+      const type = String(raw?.type || '').trim();
+      if (!KNOWLEDGE_RICH_BLOCK_TYPES.has(type)) return null;
+
+      if (type === 'list') {
+        const items = (Array.isArray(raw.items) ? raw.items : [])
+          .slice(0, 10)
+          .map(normalizeKnowledgeSegments)
+          .filter(item => item.length);
+        if (!items.length) return null;
+        return {
+          type,
+          style: raw.style === 'numbered' ? 'numbered' : 'bullet',
+          title: cleanKnowledgeText(raw.title).slice(0, 100),
+          items,
+        };
+      }
+
+      if (type === 'table') {
+        const headers = (Array.isArray(raw.headers) ? raw.headers : [])
+          .slice(0, 6)
+          .map(value => cleanKnowledgeText(value).slice(0, 120));
+        if (headers.length < 2 || headers.some(header => !header)) return null;
+        const rows = (Array.isArray(raw.rows) ? raw.rows : [])
+          .slice(0, 10)
+          .map(row => headers.map((_, index) => cleanKnowledgeText(row?.[index]).slice(0, 240)))
+          .filter(row => row.some(Boolean));
+        if (!rows.length) return null;
+        return {
+          type,
+          caption: cleanKnowledgeText(raw.caption).slice(0, 140),
+          headers,
+          rows,
+        };
+      }
+
+      if (type === 'equation') {
+        const latex = cleanKnowledgeLatex(raw.latex);
+        const plainText = cleanKnowledgeText(raw.plainText).slice(0, 300);
+        if (!latex || !plainText) return null;
+        return {
+          type,
+          latex,
+          plainText,
+          explanation: normalizeKnowledgeSegments(raw.explanation),
+        };
+      }
+
+      if (type === 'callout') {
+        const segments = normalizeKnowledgeSegments(raw.segments);
+        if (!segments.length) return null;
+        return {
+          type,
+          tone: ['definition', 'info', 'warning'].includes(raw.tone) ? raw.tone : 'info',
+          title: cleanKnowledgeText(raw.title).slice(0, 100),
+          segments,
+        };
+      }
+
+      const nodes = (Array.isArray(raw.nodes) ? raw.nodes : [])
+        .slice(0, 7)
+        .map((node, index) => ({
+          id: normalizeKnowledgeKey(node?.id || `node-${index + 1}`),
+          label: cleanKnowledgeText(node?.label).slice(0, 100),
+        }))
+        .filter(node => node.id && node.label);
+      const nodeIds = new Set(nodes.map(node => node.id));
+      const edges = (Array.isArray(raw.edges) ? raw.edges : [])
+        .slice(0, 10)
+        .map(edge => ({
+          from: normalizeKnowledgeKey(edge?.from),
+          to: normalizeKnowledgeKey(edge?.to),
+          label: cleanKnowledgeText(edge?.label).slice(0, 80),
+        }))
+        .filter(edge => edge.from !== edge.to && nodeIds.has(edge.from) && nodeIds.has(edge.to));
+      if (nodes.length < 2 || !edges.length) return null;
+      return {
+        type,
+        title: cleanKnowledgeText(raw.title).slice(0, 100),
+        nodes,
+        edges,
+        altText: cleanKnowledgeText(raw.altText).slice(0, 360),
+      };
+    })
+    .filter(Boolean);
+}
+
+function richBlockText(block) {
+  if (block.type === 'list') {
+    return [block.title, ...block.items.flatMap(item => item.map(segment => segment.text))];
+  }
+  if (block.type === 'table') return [block.caption, ...block.headers, ...block.rows.flat()];
+  if (block.type === 'equation') {
+    return [block.plainText, ...block.explanation.map(segment => segment.text)];
+  }
+  if (block.type === 'callout') return [block.title, ...block.segments.map(segment => segment.text)];
+  if (block.type === 'flow') {
+    return [block.title, block.altText, ...block.nodes.map(node => node.label), ...block.edges.map(edge => edge.label)];
+  }
+  return [];
+}
+
+function richBlockSegments(block) {
+  if (block.type === 'list') return block.items.flat();
+  if (block.type === 'equation') return block.explanation;
+  if (block.type === 'callout') return block.segments;
+  return [];
 }
 
 function normalizeConcept(concept) {
@@ -155,8 +275,9 @@ export function normalizeKnowledgeAnswer(raw, question = '') {
       paragraphs: (Array.isArray(section?.paragraphs) ? section.paragraphs : [])
         .map(normalizeKnowledgeSegments)
         .filter(paragraph => paragraph.length),
+      richBlocks: normalizeKnowledgeRichBlocks(section?.richBlocks),
     }))
-    .filter(section => section.paragraphs.length);
+    .filter(section => section.paragraphs.length || section.richBlocks.length);
 
   const now = new Date().toISOString();
   return {
@@ -203,6 +324,7 @@ export function knowledgeAnswerText(entry) {
     ...(entry?.answer?.sections || []).flatMap(section => [
       section.heading || '',
       ...(section.paragraphs || []).flatMap(paragraph => paragraph.map(segment => segment.text)),
+      ...(section.richBlocks || []).flatMap(richBlockText),
     ]),
     ...(entry?.answer?.cautions || []),
   ].filter(Boolean).join('\n');
@@ -225,7 +347,10 @@ export function validateKnowledgeEntry(entry) {
   const referencedKeys = [
     ...(entry?.answer?.directAnswer || []),
     ...(entry?.answer?.sections || []).flatMap(section => (
-      (section.paragraphs || []).flatMap(paragraph => paragraph || [])
+      [
+        ...(section.paragraphs || []).flatMap(paragraph => paragraph || []),
+        ...(section.richBlocks || []).flatMap(richBlockSegments),
+      ]
     )),
   ].map(segment => segment?.conceptKey).filter(Boolean);
   if (referencedKeys.some(key => !conceptKeys.has(key))) errors.push('danglingConceptKey');

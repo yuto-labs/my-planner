@@ -672,8 +672,52 @@ function pickResponseSchema(actionType, body) {
                     minItems: 1,
                     items: { type: 'ARRAY', items: segment },
                   },
+                  richBlocks: {
+                    type: 'ARRAY',
+                    maxItems: 4,
+                    description: 'Optional structured visual aids. Return an empty array when none materially improves understanding.',
+                    items: {
+                      type: 'OBJECT',
+                      properties: {
+                        type: { type: 'STRING', enum: ['list', 'table', 'equation', 'callout', 'flow'] },
+                        style: { type: 'STRING', enum: ['bullet', 'numbered'] },
+                        title: { type: 'STRING' },
+                        items: { type: 'ARRAY', items: { type: 'ARRAY', items: segment } },
+                        caption: { type: 'STRING' },
+                        headers: stringArray('Two to six short table headers.'),
+                        rows: { type: 'ARRAY', items: { type: 'ARRAY', items: { type: 'STRING' } } },
+                        latex: { type: 'STRING', description: 'Valid KaTeX-compatible LaTeX without delimiters.' },
+                        plainText: { type: 'STRING', description: 'Accessible plain-language reading of the equation.' },
+                        explanation: { type: 'ARRAY', items: segment },
+                        tone: { type: 'STRING', enum: ['definition', 'info', 'warning'] },
+                        segments: { type: 'ARRAY', items: segment },
+                        nodes: {
+                          type: 'ARRAY',
+                          maxItems: 7,
+                          items: {
+                            type: 'OBJECT',
+                            properties: { id: { type: 'STRING' }, label: { type: 'STRING' } },
+                            required: ['id', 'label'],
+                          },
+                        },
+                        edges: {
+                          type: 'ARRAY',
+                          maxItems: 10,
+                          items: {
+                            type: 'OBJECT',
+                            properties: {
+                              from: { type: 'STRING' }, to: { type: 'STRING' }, label: { type: 'STRING' },
+                            },
+                            required: ['from', 'to', 'label'],
+                          },
+                        },
+                        altText: { type: 'STRING', description: 'Complete textual equivalent of the flow.' },
+                      },
+                      required: ['type'],
+                    },
+                  },
                 },
-                required: ['heading', 'paragraphs'],
+                required: ['heading', 'paragraphs', 'richBlocks'],
               },
             },
             cautions: stringArray('Only genuine uncertainty, disputed points, or important caveats.'),
@@ -1059,6 +1103,60 @@ function normalizeStructuredResponse(actionType, text) {
         ? String(segment.conceptKey).trim()
         : '',
     });
+    const cleanSegments = value => (Array.isArray(value) ? value : [])
+      .map(cleanSegment)
+      .filter(segment => segment.text);
+    const cleanRichBlock = block => {
+      const type = String(block?.type || '').trim();
+      if (!['list', 'table', 'equation', 'callout', 'flow'].includes(type)) return null;
+      if (type === 'list') {
+        return {
+          ...block,
+          type,
+          title: cleanText(block?.title),
+          items: (Array.isArray(block?.items) ? block.items : []).map(cleanSegments),
+        };
+      }
+      if (type === 'table') {
+        return {
+          ...block,
+          type,
+          caption: cleanText(block?.caption),
+          headers: (Array.isArray(block?.headers) ? block.headers : []).map(cleanText),
+          rows: (Array.isArray(block?.rows) ? block.rows : [])
+            .map(row => (Array.isArray(row) ? row.map(cleanText) : [])),
+        };
+      }
+      if (type === 'equation') {
+        return {
+          ...block,
+          type,
+          latex: String(block?.latex || '').trim(),
+          plainText: cleanText(block?.plainText),
+          explanation: cleanSegments(block?.explanation),
+        };
+      }
+      if (type === 'callout') {
+        return {
+          ...block,
+          type,
+          title: cleanText(block?.title),
+          segments: cleanSegments(block?.segments),
+        };
+      }
+      return {
+        ...block,
+        type,
+        title: cleanText(block?.title),
+        altText: cleanText(block?.altText),
+        nodes: (Array.isArray(block?.nodes) ? block.nodes : []).map(node => ({
+          ...node, label: cleanText(node?.label),
+        })),
+        edges: (Array.isArray(block?.edges) ? block.edges : []).map(edge => ({
+          ...edge, label: cleanText(edge?.label),
+        })),
+      };
+    };
     parsed.answer.directAnswer = (Array.isArray(parsed.answer.directAnswer)
       ? parsed.answer.directAnswer
       : []).map(cleanSegment);
@@ -1071,7 +1169,10 @@ function normalizeStructuredResponse(actionType, text) {
       ...section,
       heading: cleanText(section?.heading),
       paragraphs: (Array.isArray(section?.paragraphs) ? section.paragraphs : [])
-        .map(paragraph => (Array.isArray(paragraph) ? paragraph.map(cleanSegment) : [])),
+        .map(cleanSegments),
+      richBlocks: (Array.isArray(section?.richBlocks) ? section.richBlocks : [])
+        .map(cleanRichBlock)
+        .filter(Boolean),
     }));
     parsed.answer.cautions = (Array.isArray(parsed.answer.cautions)
       ? parsed.answer.cautions
@@ -1219,7 +1320,23 @@ function hasCompleteKnowledgeResponse(text) {
         ? section.paragraphs.flatMap(paragraph => (Array.isArray(paragraph) ? paragraph : []))
         : []
     )),
+    ...sections.flatMap(section => (Array.isArray(section?.richBlocks) ? section.richBlocks : []))
+      .flatMap(block => {
+        if (block?.type === 'list') return (block.items || []).flat();
+        if (block?.type === 'equation') return block.explanation || [];
+        if (block?.type === 'callout') return block.segments || [];
+        return [];
+      }),
   ].map(segment => String(segment?.conceptKey || '').trim()).filter(Boolean);
+  const richText = sections.flatMap(section => (Array.isArray(section?.richBlocks) ? section.richBlocks : []))
+    .flatMap(block => {
+      if (block?.type === 'list') return [block.title, ...(block.items || []).flat().map(item => item?.text)];
+      if (block?.type === 'table') return [block.caption, ...(block.headers || []), ...(block.rows || []).flat()];
+      if (block?.type === 'equation') return [block.plainText, ...(block.explanation || []).map(item => item?.text)];
+      if (block?.type === 'callout') return [block.title, ...(block.segments || []).map(item => item?.text)];
+      if (block?.type === 'flow') return [block.title, block.altText, ...(block.nodes || []).map(node => node?.label), ...(block.edges || []).map(edge => edge?.label)];
+      return [];
+    });
   const bodyText = [
     ...direct.map(segment => segment?.text || ''),
     ...keyPoints,
@@ -1230,6 +1347,7 @@ function hasCompleteKnowledgeResponse(text) {
         ))
         : []
     )),
+    ...richText,
   ].join('');
   return Boolean(
     String(parsed?.title || '').trim()
@@ -1617,7 +1735,7 @@ The previous response was incomplete. Answer the learner's exact question direct
           parts: [{
             text: `${String(body.systemText || '')}
 
-The previous response was incomplete or contained formatting noise. Return one complete, self-contained Japanese learning entry. Include 3-5 concise keyPoints. The explanatory body must contain at least 1200 Japanese characters and use natural paragraphs with only content-specific headings. Keep one primary explanatory lens and add only secondary viewpoints that materially deepen, challenge, qualify, or apply it. Do not expose generic framework labels, force unrelated disciplines into the answer, turn analogies into factual identities, or use theatrical and grandiose wording. Do not output Markdown, HTML, **, __, or code fences. Put emphasis only in the marks arrays. Never ask the user to clarify when a reasonable interpretation is possible.`,
+The previous response was incomplete or contained formatting noise. Return one complete, self-contained Japanese learning entry. Include 3-5 concise keyPoints. The explanatory body must contain at least 1200 Japanese characters and use natural paragraphs with only content-specific headings. Every section must include a richBlocks array; use an empty array when no list, table, equation, callout, or flow materially improves understanding. Keep one primary explanatory lens and add only secondary viewpoints that materially deepen, challenge, qualify, or apply it. Do not expose generic framework labels, force unrelated disciplines into the answer, turn analogies into factual identities, or use theatrical and grandiose wording. Do not output Markdown, HTML, **, __, or code fences. Put emphasis only in the marks arrays. Never ask the user to clarify when a reasonable interpretation is possible.`,
           }],
         };
       }

@@ -335,6 +335,32 @@ test('accepts nuance output using the schema field names', () => {
   assert.equal(hasCompleteStructuredResponse('nuance_generate', salvaged), true);
 });
 
+test('keeps structured knowledge visuals while removing formatting noise', () => {
+  const response = {
+    title: '光の散乱',
+    classification: { majorId: 'natural_sciences', middleId: 'physics' },
+    primaryConcept: { key: 'rayleigh-scattering', label: 'レイリー散乱' },
+    concepts: [],
+    answer: {
+      directAnswer: [{ text: 'あ'.repeat(900), conceptKey: '' }],
+      keyPoints: ['短波長ほど散乱が強い', '大気分子が光を散乱する', '観察方向で見え方が変わる'],
+      sections: [{
+        heading: '**波長との関係**',
+        paragraphs: [[{ text: '本文', conceptKey: '' }]],
+        richBlocks: [{
+          type: 'equation', latex: 'I \\propto 1 / \\lambda^4',
+          plainText: '**散乱強度は波長の4乗に反比例する**',
+          explanation: [{ text: '__短波長ほど強い__', conceptKey: '' }],
+        }],
+      }],
+    },
+  };
+  const normalized = JSON.parse(normalizeStructuredResponse('knowledge_answer', JSON.stringify(response)));
+  assert.equal(normalized.answer.sections[0].heading, '波長との関係');
+  assert.equal(normalized.answer.sections[0].richBlocks[0].plainText.includes('**'), false);
+  assert.equal(hasCompleteStructuredResponse('knowledge_answer', JSON.stringify(normalized)), true);
+});
+
 test('safely accepts a partial enrichment only for an exact saved sense id', () => {
   const request = JSON.stringify({
     existingCatalog: [{
