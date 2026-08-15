@@ -52,6 +52,7 @@ let editorTypingHistoryTimer = null;
 let editorHistoryRestoring = false;
 let editorCompositionActive = false;
 let memoSaveInFlight = false;
+let crossBlockSelectionMode = false;
 
 // ---- Navigation history for swipe-back ----
 let _knHistory           = [];  // [{memoId: string|null, scrollTop: number}]
@@ -1631,6 +1632,7 @@ function renderEditMode(container, { preserveHistory = false } = {}) {
   const { title, blocks, tags, id } = edState;
   const hasApi = isAiAvailable();
   if (!preserveHistory) resetEditorHistory();
+  crossBlockSelectionMode = false;
 
   container.innerHTML = `
     <div class="kn-edit-page">
@@ -1691,6 +1693,12 @@ function renderEditMode(container, { preserveHistory = false } = {}) {
             title="マーカー色" aria-expanded="false">MARK</button>
         </div>
         <button class="kn-toolbar-btn kn-toolbar-color-btn" id="kn-color-btn" title="文字色">🎨</button>
+        <button type="button" class="kn-toolbar-btn kn-range-select-btn" id="kn-range-select-btn"
+          title="ブロックをまたいで選択" aria-label="ブロックをまたいで選択" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M7 4H4v3M17 4h3v3M7 20H4v-3M17 20h3v-3M9 8h6M12 8v8M9 16h6"/>
+          </svg>
+        </button>
         <button type="button" class="kn-toolbar-block-menu-btn" id="kn-block-actions-toggle"
           aria-label="ブロック操作" aria-expanded="false" title="ブロック操作">•••</button>
         <div class="kn-toolbar-block-actions" aria-label="ブロック操作">
@@ -2093,6 +2101,7 @@ function wireBlocksEdit(container) {
 
   // Delete buttons
   wrap.addEventListener('click', e => {
+    if (crossBlockSelectionMode) return;
     const selectedBlock = e.target.closest('.kn-block[data-block-id]');
     if (selectedBlock) {
       activeEditorBlockId = selectedBlock.dataset.blockId;
@@ -2196,6 +2205,7 @@ function wireBlockDrag(container, wrap) {
   };
 
   wrap.addEventListener('pointerdown', e => {
+    if (crossBlockSelectionMode) return;
     if (e.target.closest('button, select, input, textarea, a, [data-media-view]')) return;
     const blockEl = e.target.closest('.kn-block[data-block-id]');
     if (!blockEl || (e.pointerType === 'mouse' && e.button !== 0)) return;
@@ -2549,6 +2559,10 @@ function syncEditableBlock(blockId, editable) {
 
 function wireToolbar(container) {
   let savedHighlightSelection = null;
+  const rangeSelectButton = container.querySelector('#kn-range-select-btn');
+  rangeSelectButton?.addEventListener('click', () => {
+    setCrossBlockSelectionMode(container, !crossBlockSelectionMode);
+  });
   const blockMenuToggle = container.querySelector('#kn-block-actions-toggle');
   const blockMenu = container.querySelector('.kn-toolbar-block-actions');
   const placeBlockMenu = () => {
@@ -2716,6 +2730,29 @@ function wireToolbar(container) {
       container.querySelector('#kn-color-picker')?.classList.add('hidden');
     });
   });
+}
+
+function setCrossBlockSelectionMode(container, enabled) {
+  const editPage = container.querySelector('.kn-edit-page');
+  const wrap = container.querySelector('#kn-blocks-wrap');
+  const button = container.querySelector('#kn-range-select-btn');
+  if (!editPage || !wrap || !button) return;
+
+  if (enabled) syncEditorDomToState(container);
+  else window.getSelection()?.removeAllRanges?.();
+
+  crossBlockSelectionMode = enabled;
+  editPage.classList.toggle('kn-range-select-mode', enabled);
+  button.classList.toggle('active', enabled);
+  button.setAttribute('aria-pressed', String(enabled));
+  button.setAttribute('title', enabled ? '範囲選択を終了' : 'ブロックをまたいで選択');
+  button.setAttribute('aria-label', enabled ? '範囲選択を終了' : 'ブロックをまたいで選択');
+
+  wrap.querySelectorAll('.kn-block-text[contenteditable]').forEach(editable => {
+    editable.setAttribute('contenteditable', enabled ? 'false' : 'true');
+  });
+
+  if (enabled && wrap.contains(document.activeElement)) document.activeElement.blur();
 }
 
 function getFocusedBlockId(container) {
@@ -3254,6 +3291,7 @@ function rerenderBlocks(container) {
   if (!wrap) return;
   wrap.innerHTML = renderBlocksEdit(edState.blocks);
   wireBlocksEdit(container);
+  if (crossBlockSelectionMode) setCrossBlockSelectionMode(container, true);
   const activeId = activeEditorBlockId && findBlockInAllBlocks(edState.blocks, activeEditorBlockId)
     ? activeEditorBlockId
     : edState.blocks[0]?.id;

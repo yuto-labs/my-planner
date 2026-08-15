@@ -3152,6 +3152,26 @@ button { cursor: pointer; font-family: inherit; }
   pointer-events: none;
 }
 .kn-toolbar-color-btn { font-size: 14px; }
+.kn-range-select-btn {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 32px;
+  border: 1px solid transparent;
+}
+.kn-range-select-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.kn-range-select-btn.active {
+  border-color: var(--primary-border);
+  background: var(--primary-bg);
+  color: var(--primary);
+}
 .kn-toolbar-mark-btn { min-width: 46px; color: #b77900; }
 .kn-toolbar-mark-btn[aria-expanded="true"] {
   background: rgba(245, 197, 66, 0.18);
@@ -3336,6 +3356,29 @@ button { cursor: pointer; font-family: inherit; }
   font-size: 14px; line-height: 1.55; color: var(--text);
   font-family: inherit; word-break: break-word;
   white-space: pre-wrap;
+}
+.kn-range-select-mode .kn-blocks-wrap,
+.kn-range-select-mode .kn-block,
+.kn-range-select-mode .kn-block-text {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+.kn-range-select-mode .kn-block-text { cursor: text; }
+.kn-range-select-mode .kn-block--active {
+  box-shadow: none;
+  background: transparent;
+}
+.kn-range-select-mode .kn-block-prefix--toggle,
+.kn-range-select-mode .kn-image-remove,
+.kn-range-select-mode .kn-table-actions,
+.kn-range-select-mode .kn-block-controls,
+.kn-range-select-mode .kn-add-block-btn {
+  pointer-events: none;
+}
+.kn-range-select-mode .kn-toolbar > :not(.kn-range-select-btn) {
+  opacity: 0.42;
+  pointer-events: none;
 }
 .kn-block-text img {
   display: block;
