@@ -2,7 +2,7 @@
    The height guard keeps landscape phones on the existing mobile layout. */
 @media (min-width: 700px) and (min-height: 600px), (min-width: 1000px) {
   :root {
-    --responsive-shell-w: 960px;
+    --responsive-shell-w: 1000px;
   }
 
   #app {
@@ -13,14 +13,26 @@
   /* Give overview screens more breathing room without changing their DOM. */
   .home-page {
     width: 100%;
-    max-width: 900px;
+    max-width: none;
     margin-inline: auto;
     padding-inline: 28px;
   }
 
   .kn-list-page {
     width: 100%;
-    max-width: 880px;
+    max-width: none;
+    margin-inline: auto;
+  }
+
+  .home-cover {
+    width: calc(100% + 56px);
+    height: 172px;
+    margin-inline: -28px;
+  }
+
+  .kn-memo-list {
+    width: 100%;
+    max-width: 960px;
     margin-inline: auto;
   }
 
@@ -81,9 +93,19 @@
 
   /* Keep focused reading and transient surfaces comfortably narrow. */
   .modal,
-  .search-overlay,
   .cal-day-sheet-panel {
     max-width: 680px;
+  }
+
+  .search-overlay {
+    max-width: var(--responsive-shell-w);
+  }
+
+  .search-bar,
+  .search-body {
+    width: 100%;
+    max-width: 900px;
+    margin-inline: auto;
   }
 
   .cal-ymp-panel,
@@ -102,23 +124,28 @@
 /* Allow a little more workspace on larger desktops while preserving line length. */
 @media (min-width: 1200px) and (min-height: 700px), (min-width: 1400px) {
   :root {
-    --responsive-shell-w: 1040px;
+    --responsive-shell-w: 1160px;
   }
 
-  .home-page {
-    max-width: 940px;
+  .home-cover {
+    height: 200px;
   }
 
-  .kn-list-page {
-    max-width: 920px;
+  .kn-memo-list {
+    max-width: 1080px;
   }
 
   .learning-page {
-    max-width: 920px;
+    max-width: 1000px;
   }
 
   .learning-detail {
-    max-width: 840px;
+    max-width: 880px;
+  }
+
+  .search-bar,
+  .search-body {
+    max-width: 1000px;
   }
 }
 
