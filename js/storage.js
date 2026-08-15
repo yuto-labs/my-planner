@@ -1272,6 +1272,24 @@ export function getKnowledgeMemos() {
   return getAllKnowledgeRecords().filter(record => !isInternalKnowledgeRecord(record));
 }
 
+export function normalizeMemoBlockIds(blocks, idFactory = generateId) {
+  const seen = new Set();
+  const nextId = () => {
+    let id = String(idFactory() || '').trim();
+    while (!id || seen.has(id)) id = String(idFactory() || '').trim();
+    return id;
+  };
+  const visit = block => {
+    const next = { ...(block || {}) };
+    const originalId = String(next.id || '').trim();
+    next.id = originalId && !seen.has(originalId) ? originalId : nextId();
+    seen.add(next.id);
+    if (Array.isArray(next.children)) next.children = next.children.map(visit);
+    return next;
+  };
+  return (Array.isArray(blocks) ? blocks : []).map(visit);
+}
+
 export function saveKnowledgeMemos(memos) {
   const currentInternal = getAllKnowledgeRecords().filter(isInternalKnowledgeRecord);
   const incoming = Array.isArray(memos) ? memos : [];

@@ -13,6 +13,7 @@ import {
   addToPendingAIQueue, removeFromPendingAIQueue,
   pushUndo, applyUndo, addReviewLog, getReviewLog,
   getTags, addTag,
+  normalizeMemoBlockIds,
 } from '../storage.js';
 import {
   suggestKnowledgeTags, explainTerm, summarizeAndTagText,
@@ -1038,7 +1039,7 @@ export function initKnowledgeDetail(container) {
     edState = {
       id:      memo.id,
       title:   memo.title,
-      blocks:  deepClone(memo.blocks || [defaultBlock()]),
+      blocks:  normalizeMemoBlockIds(deepClone(memo.blocks || [defaultBlock()])),
       tags:    [...(memo.tags || [])],
       url:     memo.url || '',
       starred: !!memo.starred,
@@ -1750,7 +1751,7 @@ function renderEditMode(container, { preserveHistory = false } = {}) {
       // Reload from storage to discard changes
       const memo = getKnowledgeMemoById(id);
       if (memo) {
-        edState = { ...edState, title: memo.title, blocks: deepClone(memo.blocks || [defaultBlock()]),
+        edState = { ...edState, title: memo.title, blocks: normalizeMemoBlockIds(deepClone(memo.blocks || [defaultBlock()])),
           tags: [...(memo.tags || [])], url: memo.url || '', starred: !!memo.starred,
           reviewEnabled: isMemoReviewEnabled(memo.id), isEdit: false };
       }

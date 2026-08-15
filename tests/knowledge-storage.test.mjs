@@ -17,6 +17,7 @@ const {
   getExpressionEntries,
   getLearningEntries,
   getKnowledgeMemos,
+  normalizeMemoBlockIds,
   getTranslationSets,
   getTrashItems,
   importBackup,
@@ -86,6 +87,23 @@ test('a one-character memo edit persists without losing its tags or blocks', () 
   assert.equal(saved.blocks[0].text, '変更後');
   assert.equal(getKnowledgeMemos()[0].blocks[0].text, '変更後');
   assert.deepEqual(getKnowledgeMemos()[0].tags, ['研究']);
+});
+
+test('duplicate pasted block ids are repaired without changing memo content', () => {
+  let sequence = 0;
+  const blocks = normalizeMemoBlockIds([{
+    id: 'copied-block', type: 'h1', text: '画像1', html: '<strong>画像1</strong>',
+  }, {
+    id: 'copied-block', type: 'paragraph', text: '本文', html: '本文', children: [{
+      id: 'copied-block', type: 'h2', text: '途中の見出し', html: '途中の見出し',
+    }],
+  }], () => `repaired-${++sequence}`);
+
+  assert.deepEqual(blocks.map(block => block.id), ['copied-block', 'repaired-1']);
+  assert.equal(blocks[1].children[0].id, 'repaired-2');
+  assert.equal(blocks[0].text, '画像1');
+  assert.equal(blocks[0].html, '<strong>画像1</strong>');
+  assert.equal(blocks[1].children[0].text, '途中の見出し');
 });
 
 test('atlas writes preserve memos, learning entries, and other atlas record types', () => {
