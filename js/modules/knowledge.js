@@ -3379,12 +3379,13 @@ function collectExistingKnowledgeTags() {
 
 function addKnowledgeTagToEdit(tag, container) {
   const trimmed = String(tag || '').trim();
-  if (!trimmed || edState.tags.includes(trimmed)) return;
+  if (!trimmed || edState.tags.includes(trimmed)) return false;
   recordEditorHistory(container);
   touchKnowledgeTag(trimmed);
   edState.tags.push(trimmed);
   addTag(trimmed);
   renderTagDisplay(container);
+  return true;
 }
 
 function syncKnowledgeTagSuggestions(container) {
@@ -3417,14 +3418,6 @@ function syncKnowledgeTagSuggestions(container) {
     ${candidates.map(tag => `<button class="kn-tag-suggest-btn" type="button" data-existing-tag="${esc(tag)}">${esc(tag)}</button>`).join('')}
   `;
 
-  row.querySelectorAll('[data-existing-tag]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      addKnowledgeTagToEdit(btn.dataset.existingTag, container);
-      input.value = '';
-      input.focus();
-      syncKnowledgeTagSuggestions(container);
-    });
-  });
 }
 
 // ---- Paste summarize ----
@@ -3474,6 +3467,7 @@ async function handlePasteSummarize(text, container) {
 function wireTagInput(container) {
   const input = container.querySelector('#kn-tag-input');
   if (!input) return;
+  const suggestions = container.querySelector('#kn-tag-suggestions');
 
   const addCurrentInputTag = () => {
     const tag = input.value.trim().replace(/,$/, '');
@@ -3485,6 +3479,23 @@ function wireTagInput(container) {
   input.addEventListener('focus', () => syncKnowledgeTagSuggestions(container));
   input.addEventListener('input', () => syncKnowledgeTagSuggestions(container));
   input.addEventListener('blur', () => setTimeout(() => syncKnowledgeTagSuggestions(container), 0));
+
+  const chooseSuggestion = event => {
+    const btn = event.target.closest('[data-existing-tag]');
+    if (!btn || !suggestions?.contains(btn)) return;
+    // On touch devices blur may clear the suggestion row before click fires.
+    // Commit on pointerdown so the selected tag always reaches editor state.
+    event.preventDefault();
+    addKnowledgeTagToEdit(btn.dataset.existingTag, container);
+    input.value = '';
+    input.focus({ preventScroll: true });
+    syncKnowledgeTagSuggestions(container);
+  };
+  suggestions?.addEventListener('pointerdown', chooseSuggestion);
+  suggestions?.addEventListener('click', event => {
+    // Keyboard activation has no pointerdown, so retain a click fallback.
+    if (event.detail === 0) chooseSuggestion(event);
+  });
 
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter' || e.key === ',') {
@@ -3528,6 +3539,24 @@ async function saveMemo(container) {
   // Sync title
   const titleInput = container.querySelector('#kn-edit-title');
   if (titleInput) edState.title = titleInput.value.trim().slice(0, 180);
+
+  // Treat text left in the tag field as a real tag when Save is pressed.
+  // This keeps mobile users from losing a tag just because Enter was omitted.
+  const tagInput = container.querySelector('#kn-tag-input');
+  if (tagInput?.value.trim()) {
+    tagInput.value
+      .split(/[,、\n]/)
+      .map(tag => tag.trim())
+      .filter(Boolean)
+      .forEach(tag => {
+        if (!edState.tags.includes(tag)) edState.tags.push(tag);
+        touchKnowledgeTag(tag);
+        addTag(tag);
+      });
+    tagInput.value = '';
+  }
+
+  edState.tags = [...new Set(edState.tags.map(tag => String(tag).trim()).filter(Boolean))];
 
   // Sync block texts from DOM
   container.querySelectorAll('.kn-block-focusable').forEach(el => {
