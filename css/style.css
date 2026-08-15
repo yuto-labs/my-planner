@@ -12741,9 +12741,19 @@ button.atlas-nuance-map-row:focus-visible {
   flex-wrap: nowrap;
 }
 .kn-delete-action {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 40px;
   color: var(--danger);
   background: color-mix(in srgb, var(--danger) 8%, transparent);
   border: 1px solid color-mix(in srgb, var(--danger) 24%, transparent);
+}
+.kn-delete-action svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  fill: currentColor;
 }
 .kn-delete-action:hover,
 .kn-delete-action:focus-visible { background: color-mix(in srgb, var(--danger) 15%, transparent); }
