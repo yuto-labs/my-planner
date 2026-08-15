@@ -4,7 +4,7 @@
   "description": "自己管理・知識ベースアプリ",
   "start_url": "/index.html",
   "display": "standalone",
-  "orientation": "portrait-primary",
+  "orientation": "any",
   "background_color": "#0D0D15",
   "theme_color": "#BEE6D8",
   "lang": "ja",

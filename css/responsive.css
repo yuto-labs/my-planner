@@ -1,0 +1,65 @@
+/* Tablet and desktop layout layer.
+   The height guard keeps landscape phones on the existing mobile layout. */
+@media (min-width: 700px) and (min-height: 600px), (min-width: 1000px) {
+  :root {
+    --responsive-shell-w: 960px;
+  }
+
+  #app {
+    width: 100%;
+    max-width: var(--responsive-shell-w);
+  }
+
+  /* Give overview screens more breathing room without changing their DOM. */
+  .home-page {
+    width: 100%;
+    max-width: 900px;
+    margin-inline: auto;
+    padding-inline: 28px;
+  }
+
+  .kn-list-page {
+    width: 100%;
+    max-width: 880px;
+    margin-inline: auto;
+  }
+
+  /* Fixed controls must follow the widened app edge, not the old 680px edge. */
+  .fab {
+    right: max(20px, calc((100vw - min(100vw, var(--responsive-shell-w))) / 2 + 20px));
+  }
+
+  /* Keep focused reading and transient surfaces comfortably narrow. */
+  .modal,
+  .search-overlay,
+  .cal-day-sheet-panel {
+    max-width: 680px;
+  }
+
+  .cal-ymp-panel,
+  .kn-ai-sheet-panel {
+    width: min(100%, 720px);
+    margin-inline: auto;
+    transform: translateY(100%);
+  }
+
+  .cal-ymp--open .cal-ymp-panel,
+  .kn-ai-sheet--open .kn-ai-sheet-panel {
+    transform: translateY(0);
+  }
+}
+
+/* Allow a little more workspace on larger desktops while preserving line length. */
+@media (min-width: 1200px) and (min-height: 700px), (min-width: 1400px) {
+  :root {
+    --responsive-shell-w: 1040px;
+  }
+
+  .home-page {
+    max-width: 940px;
+  }
+
+  .kn-list-page {
+    max-width: 920px;
+  }
+}
