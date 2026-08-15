@@ -27,15 +27,21 @@ test('installed tablet app supports both orientations', () => {
 
 test('responsive stylesheet loads after the established design stylesheet', () => {
   const baseIndex = indexHtml.indexOf('css/style.css?v=285');
-  const responsiveIndex = indexHtml.indexOf('css/responsive.css?v=1');
+  const responsiveIndex = indexHtml.indexOf('css/responsive.css?v=2');
 
   assert.ok(baseIndex >= 0);
   assert.ok(responsiveIndex > baseIndex);
 });
 
 test('offline cache includes the responsive stylesheet', () => {
-  assert.match(serviceWorker, /const CACHE_VER\s*=\s*'v322'/);
-  assert.match(serviceWorker, /'\.\/css\/responsive\.css\?v=1'/);
+  assert.match(serviceWorker, /const CACHE_VER\s*=\s*'v323'/);
+  assert.match(serviceWorker, /'\.\/css\/responsive\.css\?v=2'/);
+});
+
+test('knowledge layout uses its current learning classes on larger screens', () => {
+  assert.match(responsiveCss, /\.learning-page\s*\{[\s\S]*?max-width:\s*900px/);
+  assert.match(responsiveCss, /\.learning-detail\s*\{[\s\S]*?max-width:\s*820px/);
+  assert.match(responsiveCss, /@media \(min-width: 1000px\)[\s\S]*?\.learning-list/);
 });
 
 test('responsive stylesheet has balanced blocks', () => {

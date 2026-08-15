@@ -24,6 +24,56 @@
     margin-inline: auto;
   }
 
+  /* Knowledge uses its own newer learning-* layout classes. */
+  .learning-page {
+    max-width: 900px;
+    padding-inline: 24px;
+  }
+
+  .learning-detail {
+    max-width: 820px;
+    padding-inline: 24px;
+  }
+
+  .learning-ask h2 {
+    font-size: 19px;
+  }
+
+  .learning-ask p,
+  .learning-card-question,
+  .learning-card-preview {
+    font-size: 12px;
+  }
+
+  .learning-toolbar {
+    grid-template-columns: minmax(0, 1fr) 190px;
+  }
+
+  .learning-browse-tabs button,
+  .learning-browse-intro span,
+  .learning-browse-heading button,
+  .learning-browse-heading > span {
+    font-size: 11px;
+  }
+
+  .learning-browse-grid button strong,
+  .learning-browse-stack button strong,
+  .learning-browse-intro strong {
+    font-size: 13px;
+  }
+
+  .learning-card-title {
+    font-size: 15px;
+  }
+
+  .learning-answer {
+    font-size: 15px;
+  }
+
+  .learning-answer-section h3 {
+    font-size: 17px;
+  }
+
   /* Fixed controls must follow the widened app edge, not the old 680px edge. */
   .fab {
     right: max(20px, calc((100vw - min(100vw, var(--responsive-shell-w))) / 2 + 20px));
@@ -61,5 +111,33 @@
 
   .kn-list-page {
     max-width: 920px;
+  }
+
+  .learning-page {
+    max-width: 920px;
+  }
+
+  .learning-detail {
+    max-width: 840px;
+  }
+}
+
+@media (min-width: 1000px) {
+  .learning-list,
+  .learning-browse-results {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .learning-browse-grid,
+  .learning-browse-stack {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .learning-country-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .learning-empty {
+    grid-column: 1 / -1;
   }
 }

@@ -2,7 +2,7 @@
 // sw.js — Service Worker: Cache-first offline support v3
 // ============================================================
 
-const CACHE_VER  = 'v322';
+const CACHE_VER  = 'v323';
 const APP_CACHE  = `my-planner-app-${CACHE_VER}`;
 const CDN_CACHE  = `my-planner-cdn-${CACHE_VER}`;
 const PERSISTENT_IMAGE_CACHE = 'my-planner-images-v1';
@@ -15,7 +15,7 @@ const APP_ASSETS = [
   './icon-192.png',
   './icon-512.png',
   './css/style.css?v=285',
-  './css/responsive.css?v=1',
+  './css/responsive.css?v=2',
   './js/app.js',
   './js/storage.js',
   './js/datepicker.js',
