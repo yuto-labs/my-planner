@@ -1,7 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const { renderMemoCardPreview } = await import('../js/modules/knowledge.js');
+const {
+  renderMemoCardPreview,
+  resolveNewMemoReviewEnabled,
+} = await import('../js/modules/knowledge.js');
+
+test('new memos default to review disabled unless explicitly enabled', () => {
+  assert.equal(resolveNewMemoReviewEnabled(), false);
+  assert.equal(resolveNewMemoReviewEnabled({}), false);
+  assert.equal(resolveNewMemoReviewEnabled({ reviewEnabled: false }), false);
+  assert.equal(resolveNewMemoReviewEnabled({ reviewEnabled: true }), true);
+});
 
 test('memo preview preserves block structure and line breaks', () => {
   const html = renderMemoCardPreview([

@@ -34,7 +34,7 @@ test('responsive stylesheet loads after the established design stylesheet', () =
 });
 
 test('offline cache includes the responsive stylesheet', () => {
-  assert.match(serviceWorker, /const CACHE_VER\s*=\s*'v327'/);
+  assert.match(serviceWorker, /const CACHE_VER\s*=\s*'v328'/);
   assert.match(serviceWorker, /'\.\/css\/responsive\.css\?v=4'/);
 });
 

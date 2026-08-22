@@ -238,6 +238,10 @@ export function openNewKnowledgeMemo(opts = {}) {
   nav('knowledge-detail', { routeHash: 'knowledge-detail?new=1' });
 }
 
+export function resolveNewMemoReviewEnabled(opts) {
+  return opts?.reviewEnabled === true;
+}
+
 // ============================================================
 // Block constants
 // ============================================================
@@ -1005,7 +1009,7 @@ let edState = {
   tags:    [],
   url:     '',
   starred: false,
-  reviewEnabled: true,
+  reviewEnabled: false,
   isEdit:  false,
 };
 
@@ -1058,7 +1062,7 @@ export function initKnowledgeDetail(container) {
       tags:    pendingNewOpts?.tags || [],
       url:     '',
       starred: false,
-      reviewEnabled: pendingNewOpts?.reviewEnabled !== false,
+      reviewEnabled: resolveNewMemoReviewEnabled(pendingNewOpts),
       isEdit:  true, // new memo starts in edit mode
     };
     activeEditorBlockId = edState.blocks[0]?.id || null;
