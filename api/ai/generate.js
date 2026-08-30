@@ -471,7 +471,7 @@ function pickResponseSchema(actionType, body) {
         },
         variants: {
           type: 'ARRAY',
-          description: 'Exactly three meaningfully different, natural English translations in the requested style order.',
+          description: 'Exactly three meaningfully different, audited natural English translations in this order: natural_conversational, standard_faithful, expressive_polished.',
           minItems: 3,
           maxItems: 3,
           items: {
@@ -479,7 +479,7 @@ function pickResponseSchema(actionType, body) {
             properties: {
               style: {
                 type: 'STRING',
-                enum: ['standard_faithful', 'natural_conversational', 'expressive_polished'],
+                enum: ['natural_conversational', 'standard_faithful', 'expressive_polished'],
               },
               translation: { type: 'STRING' },
               backTranslationJa: {
@@ -491,6 +491,27 @@ function pickResponseSchema(actionType, body) {
                 description: 'A content-specific Japanese explanation that cites the source situation and actual wording choices, then explains their impression, emphasis, register, and suitable situations.',
               },
               register: { type: 'STRING' },
+              naturalnessReview: {
+                type: 'OBJECT',
+                description: 'A final usage audit completed after revising the draft translation. All checks must be true only for the final wording.',
+                properties: {
+                  grammarAndSyntaxNatural: { type: 'BOOLEAN' },
+                  collocationsNatural: { type: 'BOOLEAN' },
+                  registerAppropriate: { type: 'BOOLEAN' },
+                  meaningPreserved: { type: 'BOOLEAN' },
+                  reviewNoteJa: {
+                    type: 'STRING',
+                    description: 'A concise Japanese record of what was checked or revised, grounded in this sentence.',
+                  },
+                },
+                required: [
+                  'grammarAndSyntaxNatural',
+                  'collocationsNatural',
+                  'registerAppropriate',
+                  'meaningPreserved',
+                  'reviewNoteJa',
+                ],
+              },
               vocabularyNotes: {
                 type: 'ARRAY',
                 description: 'Three to five substantial notes on vocabulary, collocations, grammar, tense/aspect, clause connection, emphasis, or information structure that materially shape this translation.',
@@ -531,6 +552,7 @@ function pickResponseSchema(actionType, body) {
               'backTranslationJa',
               'overallNuanceJa',
               'register',
+              'naturalnessReview',
               'vocabularyNotes',
               'comparisons',
             ],
@@ -762,16 +784,23 @@ function parseStructuredResponse(text) {
 function hasCompleteTranslationResponse(text) {
   const parsed = parseStructuredResponse(text);
   const variants = Array.isArray(parsed?.variants) ? parsed.variants : [];
+  const expectedStyles = ['natural_conversational', 'standard_faithful', 'expressive_polished'];
   const translations = variants
     .map(variant => String(variant?.translation || '').trim().toLocaleLowerCase())
     .filter(Boolean);
   return variants.length === 3
     && new Set(translations).size === 3
-    && variants.every(variant => (
-      String(variant?.translation || '').trim()
+    && variants.every((variant, index) => (
+      String(variant?.style || '').trim() === expectedStyles[index]
+      && String(variant?.translation || '').trim()
       && String(variant?.backTranslationJa || '').trim()
       && String(variant?.overallNuanceJa || '').trim().length >= 40
       && String(variant?.register || '').trim()
+      && variant?.naturalnessReview?.grammarAndSyntaxNatural === true
+      && variant?.naturalnessReview?.collocationsNatural === true
+      && variant?.naturalnessReview?.registerAppropriate === true
+      && variant?.naturalnessReview?.meaningPreserved === true
+      && String(variant?.naturalnessReview?.reviewNoteJa || '').trim().length >= 20
       && Array.isArray(variant?.vocabularyNotes)
       && variant.vocabularyNotes.filter(note => (
         String(note?.expression || '').trim()
@@ -1215,6 +1244,12 @@ function logStructuredValidationFailure(actionType, text, stage) {
         nuanceChars: String(variant?.overallNuanceJa || '').trim().length,
         notes: Array.isArray(variant?.vocabularyNotes) ? variant.vocabularyNotes.length : 0,
         comparisons: Array.isArray(variant?.comparisons) ? variant.comparisons.length : 0,
+        naturalnessPassed: [
+          variant?.naturalnessReview?.grammarAndSyntaxNatural,
+          variant?.naturalnessReview?.collocationsNatural,
+          variant?.naturalnessReview?.registerAppropriate,
+          variant?.naturalnessReview?.meaningPreserved,
+        ].every(value => value === true),
       })),
     });
     return;
@@ -1671,7 +1706,7 @@ export default async function handler(req, res) {
           parts: [{
             text: `${String(body.systemText || '')}
 
-The previous response was incomplete. Return all three distinct translation variants even when the Japanese is short, fragmentary, colloquial, or ambiguous. Never ask the user to make the Japanese more specific. For every variant, make overallNuanceJa specific to the source content and actual English wording; include three to five substantial vocabulary or construction notes and two to four sentence-specific comparisons. State reasonable interpretations and assumptions in overallNuanceJa.`,
+The previous response was incomplete. Return all three distinct translation variants in this exact order: natural_conversational, standard_faithful, expressive_polished. Even when the Japanese is short, fragmentary, colloquial, or ambiguous, never ask the user to make it more specific. Before returning JSON, silently audit and revise each English sentence for grammar, syntax, articles, prepositions, tense and aspect, collocations, idiomatic information structure, register, Japanese calques, and preservation of meaning. Set every naturalnessReview check to true only after the final wording passes. For every variant, make overallNuanceJa specific to the source content and actual English wording; include three to five substantial vocabulary or construction notes and two to four sentence-specific comparisons. State reasonable interpretations and assumptions in overallNuanceJa.`,
           }],
         };
       }

@@ -656,11 +656,19 @@ test('accepts multiple complete meanings for one Atlas headword', () => {
 });
 
 test('accepts detailed translation variants with expanded notes and comparisons', () => {
-  const makeVariant = (translation, japanese) => ({
+  const makeVariant = (style, translation, japanese) => ({
+    style,
     translation,
     backTranslationJa: japanese,
     overallNuanceJa: '元の出来事と話者の視点に触れながら、実際に選んだ語句と構文が強調や距離感をどう変えるかを説明します。',
     register: 'neutral',
+    naturalnessReview: {
+      grammarAndSyntaxNatural: true,
+      collocationsNatural: true,
+      registerAppropriate: true,
+      meaningPreserved: true,
+      reviewNoteJa: '語順、時制、語の組み合わせと原文の意味保持を、この文に即して確認しました。',
+    },
     vocabularyNotes: [
       { expression: `${translation} phrase`, lemma: translation, coreImageJa: '語句が持つ核の像を説明します。', nuanceJa: 'この文で生まれる焦点を説明します。' },
       { expression: `${translation} tense`, lemma: translation, coreImageJa: '時制が作る時間の見方を説明します。', nuanceJa: 'この文での時間的な含意を説明します。' },
@@ -672,11 +680,19 @@ test('accepts detailed translation variants with expanded notes and comparisons'
     ],
   });
   const response = { variants: [
-    makeVariant('One', '一'),
-    makeVariant('Two', '二'),
-    makeVariant('Three', '三'),
+    makeVariant('natural_conversational', 'One', '一'),
+    makeVariant('standard_faithful', 'Two', '二'),
+    makeVariant('expressive_polished', 'Three', '三'),
   ] };
   assert.equal(hasCompleteStructuredResponse('translation_variants', JSON.stringify(response)), true);
+  assert.equal(hasCompleteStructuredResponse('translation_variants', JSON.stringify({
+    variants: [response.variants[1], response.variants[0], response.variants[2]],
+  })), false);
+  assert.equal(hasCompleteStructuredResponse('translation_variants', JSON.stringify({
+    variants: response.variants.map((variant, index) => index === 0
+      ? { ...variant, naturalnessReview: { ...variant.naturalnessReview, collocationsNatural: false } }
+      : variant),
+  })), false);
 });
 
 test('rejects translation notes that only contain labels', () => {

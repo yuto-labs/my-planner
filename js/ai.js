@@ -1108,12 +1108,14 @@ export async function generateTranslationVariants(
   const system = [
     'You are a careful bilingual editor for Japanese learners of English.',
     'Return JSON only and follow the response schema.',
-    'Create exactly three natural English translations in this exact order: standard_faithful (明快・忠実), natural_conversational (自然・会話), expressive_polished (洗練・表現).',
-    'standard_faithful must be a clear, complete translation that favors common high-frequency vocabulary and straightforward grammar while preserving every fact, relation, condition, degree, and implication in the source.',
-    'Never shorten standard_faithful by omitting information. For a long source, keep the necessary length or split it into natural sentences. Plain language must not become childish, vague, overly casual, or a summary.',
-    'natural_conversational should sound idiomatic in ordinary modern English and may restructure the sentence while preserving meaning.',
+    'Create exactly three natural English translations in this exact order: natural_conversational (自然な英訳), standard_faithful (忠実な英訳), expressive_polished (洗練した英訳).',
+    'natural_conversational is the default best translation for the source: idiomatic modern English with the register the Japanese itself supports. It is not automatically casual or spoken. Restructure the sentence freely when that is what a proficient English speaker would naturally say.',
+    'standard_faithful must preserve every fact, relation, condition, degree, implication, and uncertainty in the source, but fidelity applies to meaning rather than Japanese word order. Use natural English syntax, articles, prepositions, collocations, tense, aspect, and information structure; never preserve an unnatural Japanese-shaped construction merely because it is literal.',
+    'Never shorten standard_faithful by omitting information. For a long source, keep the necessary length or split it into natural sentences. Plain language must not become childish, vague, overly casual, a summary, or translationese.',
     'expressive_polished may use richer rhythm or more precise vocabulary when the source supports it, but must remain contemporary and genuinely usable. Do not choose archaic, literary, or rare words merely to sound sophisticated, and do not invent facts or emotions.',
     'Each variant must preserve the source meaning while making a meaningful difference in voice, sentence structure, rhythm, register, and intended situation. Do not create superficial synonym swaps.',
+    'Before producing the final JSON, perform a separate silent naturalness review phase for each draft. Check grammar and syntax, articles, singular/plural choice, prepositions, tense and aspect, collocations, idiomatic information structure, register, ambiguity, Japanese calques, and preservation of every source meaning. Rewrite any wording that is merely grammatically possible but unlikely, awkward, misleading, or non-native in real use.',
+    'After revising, fill naturalnessReview for the final wording. Set a check to true only if the final sentence passes it. reviewNoteJa must briefly identify sentence-specific choices that were checked or corrected; do not use a generic statement such as「自然な英語です」.',
     'The user will not provide a target situation. Do not force each translation into a fixed scenario. Explain the register, impression, and situations where each wording naturally fits in overallNuanceJa.',
     'Always answer, even when the Japanese is short, colloquial, fragmentary, or ambiguous. Never refuse or ask the user to provide a more specific sentence solely because context is missing.',
     'For ambiguous wording, choose reasonable interpretations for the three variants and clearly identify each assumption in overallNuanceJa. Keep uncertainty visible instead of returning an empty translation.',
@@ -1132,7 +1134,7 @@ export async function generateTranslationVariants(
     'Prefer an existing category/topic from existingTaxonomy when semantically equivalent; otherwise create a clear reusable label. Never use vague labels such as その他, 一般, 英語表現, or the category name itself.',
     'Topic must be a compact Japanese noun phrase, usually 2 to 14 characters. Never use a full sentence or an ending such as 表現, 言い方, 場面, or 〜を表す表現.',
     'Return no greeting, preface, overall sentence dissection, conclusion, Markdown, or prose outside the JSON object.',
-    'Use this exact JSON shape: {"category":"日本語の大分類","topic":"日本語の具体的テーマ","variants":[{"style":"standard_faithful","translation":"English translation","backTranslationJa":"和訳（逆翻訳）","overallNuanceJa":"文全体の印象・使用域・自然に合う場面","register":"使用域","vocabularyNotes":[{"expression":"主要語彙または構文","lemma":"dictionary headword","senseHintJa":"この文での短い意味","etymologyJa":"信頼できる語源。該当しなければ空欄","coreImageJa":"原義または構文のコアイメージ","nuanceJa":"この文で生まれる深いニュアンス"}],"comparisons":[{"expression":"使用表現","alternative":"似た表現","differenceJa":"決定的な違い"}]},{"style":"natural_conversational","translation":"English translation","backTranslationJa":"和訳（逆翻訳）","overallNuanceJa":"文全体の印象・使用域・自然に合う場面","register":"使用域","vocabularyNotes":[],"comparisons":[]},{"style":"expressive_polished","translation":"English translation","backTranslationJa":"和訳（逆翻訳）","overallNuanceJa":"文全体の印象・使用域・自然に合う場面","register":"使用域","vocabularyNotes":[],"comparisons":[]}]}',
+    'Use this exact JSON shape: {"category":"日本語の大分類","topic":"日本語の具体的テーマ","variants":[{"style":"natural_conversational","translation":"English translation","backTranslationJa":"和訳（逆翻訳）","overallNuanceJa":"文全体の印象・使用域・自然に合う場面","register":"使用域","naturalnessReview":{"grammarAndSyntaxNatural":true,"collocationsNatural":true,"registerAppropriate":true,"meaningPreserved":true,"reviewNoteJa":"この文に即した確認内容"},"vocabularyNotes":[{"expression":"主要語彙または構文","lemma":"dictionary headword","senseHintJa":"この文での短い意味","etymologyJa":"信頼できる語源。該当しなければ空欄","coreImageJa":"原義または構文のコアイメージ","nuanceJa":"この文で生まれる深いニュアンス"}],"comparisons":[{"expression":"使用表現","alternative":"似た表現","differenceJa":"決定的な違い"}]},{"style":"standard_faithful","translation":"English translation","backTranslationJa":"和訳（逆翻訳）","overallNuanceJa":"文全体の印象・使用域・自然に合う場面","register":"使用域","naturalnessReview":{"grammarAndSyntaxNatural":true,"collocationsNatural":true,"registerAppropriate":true,"meaningPreserved":true,"reviewNoteJa":"この文に即した確認内容"},"vocabularyNotes":[],"comparisons":[]},{"style":"expressive_polished","translation":"English translation","backTranslationJa":"和訳（逆翻訳）","overallNuanceJa":"文全体の印象・使用域・自然に合う場面","register":"使用域","naturalnessReview":{"grammarAndSyntaxNatural":true,"collocationsNatural":true,"registerAppropriate":true,"meaningPreserved":true,"reviewNoteJa":"この文に即した確認内容"},"vocabularyNotes":[],"comparisons":[]}]}',
   ].join(' ');
   const user = JSON.stringify({
     sourceTextJa: source,
@@ -1141,7 +1143,7 @@ export async function generateTranslationVariants(
     existingTaxonomy: (Array.isArray(existingTaxonomy) ? existingTaxonomy : []).slice(0, 40),
     allowedCategories: NUANCE_ATLAS_CATEGORIES,
     requestedVariantCount: 3,
-    requiredStyles: ['standard_faithful', 'natural_conversational', 'expressive_polished'],
+    requiredStyles: ['natural_conversational', 'standard_faithful', 'expressive_polished'],
   });
 
   const raw = await callAPI(
@@ -1155,9 +1157,9 @@ export async function generateTranslationVariants(
   );
   const parsed = tryParseJSON(raw);
   const styleDefinitions = [
-    { style: 'standard_faithful', labelJa: '明快・忠実' },
-    { style: 'natural_conversational', labelJa: '自然・会話' },
-    { style: 'expressive_polished', labelJa: '洗練・表現' },
+    { style: 'natural_conversational', labelJa: '自然な英訳' },
+    { style: 'standard_faithful', labelJa: '忠実な英訳' },
+    { style: 'expressive_polished', labelJa: '洗練した英訳' },
   ];
   const sourceVariants = Array.isArray(parsed?.variants) ? parsed.variants : [];
   const unique = new Set();
@@ -1176,6 +1178,13 @@ export async function generateTranslationVariants(
         overallNuanceJa: String(item?.overallNuanceJa || item?.nuanceJa || '').trim(),
         nuanceJa: String(item?.overallNuanceJa || item?.nuanceJa || '').trim(),
         register: String(item?.register || '').trim(),
+        naturalnessReview: {
+          grammarAndSyntaxNatural: item?.naturalnessReview?.grammarAndSyntaxNatural === true,
+          collocationsNatural: item?.naturalnessReview?.collocationsNatural === true,
+          registerAppropriate: item?.naturalnessReview?.registerAppropriate === true,
+          meaningPreserved: item?.naturalnessReview?.meaningPreserved === true,
+          reviewNoteJa: String(item?.naturalnessReview?.reviewNoteJa || '').trim(),
+        },
         backTranslationJa: String(item?.backTranslationJa || '').trim(),
         vocabularyNotes: (Array.isArray(item?.vocabularyNotes) ? item.vocabularyNotes : [])
           .map(note => ({
@@ -1213,6 +1222,11 @@ export async function generateTranslationVariants(
   );
   const variantsAreComplete = variants.every(variant => (
     variant.overallNuanceJa.length >= 40
+    && variant.naturalnessReview.grammarAndSyntaxNatural
+    && variant.naturalnessReview.collocationsNatural
+    && variant.naturalnessReview.registerAppropriate
+    && variant.naturalnessReview.meaningPreserved
+    && variant.naturalnessReview.reviewNoteJa.length >= 20
     && variant.vocabularyNotes.length >= 3
     && variant.comparisons.length >= 2
   ));
@@ -1220,7 +1234,7 @@ export async function generateTranslationVariants(
     throw new Error('3種類の英訳と解説を十分に揃えられませんでした。もう一度お試しください。');
   }
   return {
-    promptVersion: 5,
+    promptVersion: 6,
     language: 'English',
     sourceTextJa: source,
     contextJa: context,

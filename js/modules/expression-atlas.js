@@ -1561,7 +1561,7 @@ function renderTranslationGenerator() {
         <div>
           <div class="atlas-kicker">JAPANESE TO ENGLISH</div>
           <h1>和文から英訳を作る</h1>
-          <p>明快・忠実、自然・会話、洗練・表現の3案を、情報を省かず比較します。</p>
+          <p>自然な英訳、忠実な英訳、洗練した英訳の3案を、使える自然さを確認して比較します。</p>
         </div>
       </header>
 
@@ -1602,7 +1602,7 @@ function renderTranslationGenerator() {
           <h2 class="atlas-translation-result-title">ニュアンス別英訳3パターン＆深掘り解説</h2>
           ${renderTranslationStyleGuide()}
           <div class="atlas-translation-variant-list">
-            ${(draft.variants || []).map((variant, index) => renderTranslationVariant(variant, index)).join('')}
+            ${orderedTranslationVariants(draft.variants).map((variant, index) => renderTranslationVariant(variant, index)).join('')}
           </div>
         </section>
       ` : ''}
@@ -1644,10 +1644,22 @@ function renderTranslationGenerator() {
 }
 
 const TRANSLATION_STYLE_PRESENTATION = [
-  { style: 'standard_faithful', labelJa: '明快・忠実', descriptionJa: '基本的な語彙で、原文の情報を省かず伝える' },
-  { style: 'natural_conversational', labelJa: '自然・会話', descriptionJa: '実際の会話で選ばれやすい語順と表現にする' },
-  { style: 'expressive_polished', labelJa: '洗練・表現', descriptionJa: '使える自然さを保ちながら、語感と流れを整える' },
+  { style: 'natural_conversational', labelJa: '自然な英訳', descriptionJa: '原文に合う使用域で、実際に最も選ばれやすい英語' },
+  { style: 'standard_faithful', labelJa: '忠実な英訳', descriptionJa: '情報を省かず、英語として自然な構造で伝える' },
+  { style: 'expressive_polished', labelJa: '洗練した英訳', descriptionJa: '使える自然さを保ちながら、語感と流れを整える' },
 ];
+
+export function orderedTranslationVariants(variants) {
+  const order = new Map(TRANSLATION_STYLE_PRESENTATION.map((item, index) => [item.style, index]));
+  return (Array.isArray(variants) ? variants : [])
+    .map((variant, index) => ({ variant, index }))
+    .sort((left, right) => {
+      const leftRank = order.has(left.variant?.style) ? order.get(left.variant.style) : order.size + left.index;
+      const rightRank = order.has(right.variant?.style) ? order.get(right.variant.style) : order.size + right.index;
+      return leftRank - rightRank || left.index - right.index;
+    })
+    .map(item => item.variant);
+}
 
 function renderTranslationStyleGuide() {
   return `
@@ -1663,9 +1675,9 @@ function renderTranslationStyleGuide() {
 }
 
 function renderTranslationVariant(variant, index) {
-  const presentation = TRANSLATION_STYLE_PRESENTATION.find(item => item.style === variant.style)
-    || TRANSLATION_STYLE_PRESENTATION[index];
-  const patternTitle = presentation?.labelJa || variant.labelJa || `パターン ${index + 1}`;
+  const matchedPresentation = TRANSLATION_STYLE_PRESENTATION.find(item => item.style === variant.style);
+  const presentation = matchedPresentation || TRANSLATION_STYLE_PRESENTATION[index];
+  const patternTitle = matchedPresentation?.labelJa || variant.labelJa || presentation?.labelJa || `パターン ${index + 1}`;
   const expressionIndex = buildExpressionIndex(getExpressionEntries());
   const hasLinkedWords = tokenizeEnglishForLinks(variant.translation, expressionIndex)
     .some(part => part.token && isUsefulLinkedToken(part.token, expressionIndex));
@@ -1910,7 +1922,7 @@ function renderTranslationDetail() {
         <h2>ニュアンス別英訳3パターン＆深掘り解説</h2>
         ${renderTranslationStyleGuide()}
         <div class="atlas-translation-variant-list">
-          ${(set.variants || []).map((variant, index) => renderTranslationVariant(variant, index)).join('')}
+          ${orderedTranslationVariants(set.variants).map((variant, index) => renderTranslationVariant(variant, index)).join('')}
         </div>
       </section>
       <section class="atlas-detail-section">
