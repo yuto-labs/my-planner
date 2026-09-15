@@ -1055,25 +1055,7 @@ function toDateStrLocal(d) {
 
 function getSortedFilteredTasks() {
   const { filter } = state;
-  let tasks = getTasks();
-
-  const wo = { large: 0, medium: 1, small: 2 };
-  const dueSortValue = (task) => {
-    if (!task.dueDate) return Number.POSITIVE_INFINITY;
-    return new Date(`${task.dueDate}T${task.dueTime || '23:59'}:00`).getTime();
-  };
-  tasks.sort((a, b) => {
-    const ao = Number(a.sortOrder);
-    const bo = Number(b.sortOrder);
-    if (Number.isFinite(ao) && Number.isFinite(bo) && ao !== bo) return ao - bo;
-    const ad = dueSortValue(a);
-    const bd = dueSortValue(b);
-    if (ad !== bd) return ad - bd;
-    if (a.completed !== b.completed) return a.completed ? 1 : -1;
-    if (wo[a.weight] !== wo[b.weight]) return wo[a.weight] - wo[b.weight];
-    return new Date(b.createdAt) - new Date(a.createdAt);
-  });
-
+  const tasks = sortTasksByDeadline(getTasks());
   if (filter === 'abandoned') return tasks.filter(t => t.abandoned);
   const active = tasks.filter(t => !t.abandoned);
   if (filter === 'pending') return active.filter(t => !t.completed);
@@ -1082,6 +1064,26 @@ function getSortedFilteredTasks() {
     return active.filter(t => t.weight === filter);
   }
   return active;
+}
+
+export function sortTasksByDeadline(tasks) {
+  const wo = { large: 0, medium: 1, small: 2 };
+  const dueSortValue = (task) => {
+    if (!task.dueDate) return Number.POSITIVE_INFINITY;
+    const value = new Date(`${task.dueDate}T${task.dueTime || '23:59'}:00`).getTime();
+    return Number.isFinite(value) ? value : Number.POSITIVE_INFINITY;
+  };
+  return [...tasks].sort((a, b) => {
+    const ad = dueSortValue(a);
+    const bd = dueSortValue(b);
+    if (ad !== bd) return ad - bd;
+    if (a.completed !== b.completed) return a.completed ? 1 : -1;
+    const ao = Number(a.sortOrder);
+    const bo = Number(b.sortOrder);
+    if (Number.isFinite(ao) && Number.isFinite(bo) && ao !== bo) return ao - bo;
+    if (wo[a.weight] !== wo[b.weight]) return wo[a.weight] - wo[b.weight];
+    return new Date(b.createdAt) - new Date(a.createdAt);
+  });
 }
 
 function renderTaskItem(task) {
@@ -1288,10 +1290,10 @@ function handleAdd() {
       const wrapper = document.createElement('div');
       wrapper.innerHTML = renderTaskItem(newTask);
       const newLi = wrapper.firstElementChild;
-      // Insert before first completed task to keep sort order
-      const firstDone = listEl.querySelector('.task-item.completed');
-      if (firstDone) listEl.insertBefore(newLi, firstDone);
-      else           listEl.appendChild(newLi);
+      const orderedIds = getSortedFilteredTasks().map(task => task.id);
+      const nextId = orderedIds[orderedIds.indexOf(newTask.id) + 1];
+      const nextLi = nextId ? [...listEl.children].find(li => li.dataset.taskId === nextId) : null;
+      listEl.insertBefore(newLi, nextLi || null);
 
       // Slide-in animation
       newLi.style.opacity   = '0';
@@ -1854,6 +1856,14 @@ function wireDragDrop(listEl) {
     const li = e.target.closest('[data-task-id]');
     if (!li || !draggingId || li.dataset.taskId === draggingId) return;
     li.classList.remove('task-drag-over');
+    const tasks = getTasks();
+    const dragged = tasks.find(task => task.id === draggingId);
+    const target = tasks.find(task => task.id === li.dataset.taskId);
+    if (!dragged || !target) return;
+    if (dragged.dueDate !== target.dueDate || (dragged.dueTime || '') !== (target.dueTime || '') || dragged.completed !== target.completed) {
+      toast('同じ締め切り・状態のタスク内で並び替えできます', 'info');
+      return;
+    }
     reorderTask(draggingId, li.dataset.taskId);
     rerenderList();
   });
