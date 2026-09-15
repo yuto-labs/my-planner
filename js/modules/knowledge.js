@@ -27,6 +27,7 @@ import {
   wirePlannerImageViewer,
 } from '../media.js';
 import { flushPendingSync } from '../sync.js';
+import { markdownBlockType, completedInlineMarkdown } from '../markdown-shortcuts.js';
 
 const nav       = (view, options = {}) => window.AppNav?.navigate(view, options);
 const toast     = (msg, type) => window.AppNav?.showToast(msg, type);
@@ -1975,6 +1976,63 @@ function renderBlockTypeOptions(currentType) {
     .join('');
 }
 
+function caretIsAtEditableEnd(editable) {
+  const selection = window.getSelection();
+  if (!selection?.rangeCount || !selection.isCollapsed) return false;
+  const range = selection.getRangeAt(0);
+  if (!editable.contains(range.startContainer)) return false;
+  const before = document.createRange();
+  before.selectNodeContents(editable);
+  before.setEnd(range.startContainer, range.startOffset);
+  return before.toString() === editable.textContent;
+}
+
+function convertMarkdownBlockShortcut(editable, container, afterSpace = false) {
+  if (editorCompositionActive || editable.childElementCount || !caretIsAtEditableEnd(editable)) return false;
+  const blockId = editable.dataset.blockId;
+  const block = findBlockInAllBlocks(edState.blocks, blockId);
+  if (!block || block.type !== 'paragraph') return false;
+  const text = editable.textContent.replace(/\u200B/g, '');
+  if (afterSpace && !text.endsWith(' ')) return false;
+  const type = markdownBlockType(afterSpace ? text.slice(0, -1) : text);
+  if (!type) return false;
+  recordEditorHistory(container);
+  block.type = type;
+  block.text = '';
+  block.html = '';
+  if (type === 'divider') {
+    const loc = findBlockLocation(blockId);
+    const nextBlock = defaultBlock();
+    loc.blocks.splice(loc.idx + 1, 0, nextBlock);
+    rerenderBlocks(container);
+    focusBlock(nextBlock.id, container);
+  } else {
+    if (type === 'toggle') {
+      block.children = [];
+      block.collapsed = true;
+    }
+    rerenderBlocks(container);
+    focusBlock(blockId, container);
+  }
+  return true;
+}
+
+function convertInlineMarkdownShortcut(editable, container) {
+  if (editable.childElementCount || !caretIsAtEditableEnd(editable)) return false;
+  const completed = completedInlineMarkdown(editable.textContent.replace(/\u200B/g, ''));
+  if (!completed) return false;
+  recordEditorHistory(container);
+  editable.innerHTML = `${esc(completed.prefix)}<${completed.tag}>${esc(completed.text)}</${completed.tag}>`;
+  const range = document.createRange();
+  const selection = window.getSelection();
+  range.selectNodeContents(editable);
+  range.collapse(false);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  syncEditableBlock(editable.dataset.blockId, editable);
+  return true;
+}
+
 function wireBlocksEdit(container) {
   const wrap = container.querySelector('#kn-blocks-wrap');
   if (!wrap) return;
@@ -1994,6 +2052,12 @@ function wireBlocksEdit(container) {
   });
 
   wrap.addEventListener('beforeinput', event => {
+    const editable = event.target?.closest?.('.kn-block-text[contenteditable="true"]');
+    if (editable && event.inputType === 'insertText' && event.data === ' '
+      && convertMarkdownBlockShortcut(editable, container)) {
+      event.preventDefault();
+      return;
+    }
     if (event.target?.closest?.('[contenteditable="true"], textarea, input')) {
       beginEditorTextHistory(container);
     }
@@ -2054,6 +2118,10 @@ function wireBlocksEdit(container) {
       if (block) {
         block.text = el.textContent.replace(/\u200B/g, '');
         block.html = sanitizeBlockHtml(el.innerHTML).replace(/\u200B/g, '');
+        if (!editorCompositionActive && e.inputType === 'insertText') {
+          if (e.data === ' ' && convertMarkdownBlockShortcut(el, container, true)) return;
+          convertInlineMarkdownShortcut(el, container);
+        }
       }
     }
   });
@@ -2064,6 +2132,11 @@ function wireBlocksEdit(container) {
     if (el.contentEditable !== 'true') return;
     const blockId = el.dataset.blockId;
     if (!blockId) return;
+    if (e.key === ' ' && !e.ctrlKey && !e.metaKey && !e.altKey
+      && convertMarkdownBlockShortcut(el, container)) {
+      e.preventDefault();
+      return;
+    }
     handleBlockKeydown(e, blockId, container);
   });
 
