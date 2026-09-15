@@ -9539,6 +9539,28 @@ button.atlas-nuance-map-row:focus-visible {
   }
 }
 
+.kn-block--checklist, .kn-view-checklist { display: flex; align-items: flex-start; gap: 8px; }
+.kn-checklist-input, .kn-view-checklist input {
+  width: 18px; height: 18px; margin: 2px 0 0;
+  flex: 0 0 18px; accent-color: var(--primary); cursor: pointer;
+}
+.kn-block--checklist .kn-block-text, .kn-view-checklist > span { min-width: 0; }
+.kn-view-checklist { margin: 3px 0; font-size: 14px; line-height: 1.6; }
+.kn-view-checklist.is-checked > span { color: var(--text-muted); text-decoration: line-through; }
+.kn-block--checklist.is-checked .kn-block-text { color: var(--text-muted); }
+.kn-block--codeblock { display: block; min-width: 0; }
+.kn-block-code-input, .kn-view-codeblock {
+  box-sizing: border-box; width: 100%; max-width: 100%;
+  border: 1px solid var(--border); border-radius: var(--radius-xs);
+  background: var(--bg-hover); color: var(--text);
+  font-family: ui-monospace, Consolas, monospace; font-size: 13px; line-height: 1.55;
+  tab-size: 2;
+}
+.kn-block-code-input { min-height: 104px; padding: 10px 12px; resize: vertical; outline: none; }
+.kn-block-code-input:focus-visible { border-color: var(--primary); }
+.kn-view-codeblock { margin: 8px 0; padding: 10px 12px; overflow-x: auto; white-space: pre; }
+.kn-memo-preview-line--codeblock .kn-memo-preview-text { font-family: ui-monospace, Consolas, monospace; white-space: pre-wrap; }
+
 
 /* ---- UX polish: tap response and readability ---- */
 .nav-btn { position: relative; overflow: hidden; }

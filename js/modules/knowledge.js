@@ -27,7 +27,7 @@ import {
   wirePlannerImageViewer,
 } from '../media.js';
 import { flushPendingSync } from '../sync.js';
-import { markdownBlockType, completedInlineMarkdown } from '../markdown-shortcuts.js';
+import { markdownBlockShortcut, completedInlineMarkdown } from '../markdown-shortcuts.js';
 
 const nav       = (view, options = {}) => window.AppNav?.navigate(view, options);
 const toast     = (msg, type) => window.AppNav?.showToast(msg, type);
@@ -254,11 +254,13 @@ const BLOCK_TYPES = [
   { type: 'h3',        icon: 'H3', label: '見出し3'           },
   { type: 'bullet',    icon: '•',  label: '箇条書き'          },
   { type: 'numbered',  icon: '1.',  label: '番号付き'         },
+  { type: 'checklist', icon: '☐',  label: 'チェックリスト'   },
   { type: 'quote',     icon: '❝',  label: '引用'              },
   { type: 'toggle',    icon: '▶',  label: 'トグル'            },
   { type: 'math',      icon: 'Σ',  label: '数式(KaTeX)'       },
   { type: 'table',     icon: '▦',  label: '表'                },
   { type: 'divider',   icon: '─',  label: '区切り線'          },
+  { type: 'codeblock', icon: '<>', label: 'コード'            },
 ];
 
 const BLOCK_COLORS = [
@@ -632,7 +634,7 @@ export function renderMemoCardPreview(blocks, maxBlocks = 7) {
       }
       if (!text.trim()) continue;
 
-      const type = ['h1', 'h2', 'h3', 'bullet', 'numbered', 'quote', 'toggle'].includes(block.type)
+      const type = ['h1', 'h2', 'h3', 'bullet', 'numbered', 'checklist', 'quote', 'toggle', 'codeblock'].includes(block.type)
         ? block.type
         : 'paragraph';
       const toggleCollapsed = type === 'toggle'
@@ -640,13 +642,14 @@ export function renderMemoCardPreview(blocks, maxBlocks = 7) {
         : false;
       const prefix = type === 'bullet' ? '•'
         : type === 'numbered' ? `${numbered || 1}.`
+          : type === 'checklist' ? (block.checked ? '☑' : '☐')
           : type === 'toggle' ? (toggleCollapsed ? '▶' : '▼')
             : type === 'quote' ? '“'
               : '';
       rows.push(`
         <div class="kn-memo-preview-line kn-memo-preview-line--${type}" style="--preview-depth:${Math.min(depth, 2)}">
           ${prefix ? `<span class="kn-memo-preview-prefix" aria-hidden="true">${prefix}</span>` : ''}
-          <div class="kn-memo-preview-text">${block.html ? getBlockRichHtml(block) : esc(text)}</div>
+          <div class="kn-memo-preview-text">${type === 'codeblock' ? esc(text) : block.html ? getBlockRichHtml(block) : esc(text)}</div>
         </div>
       `);
       rendered++;
@@ -1427,6 +1430,25 @@ function renderViewMode(container) {
     });
   });
 
+  container.querySelectorAll('[data-view-checklist-id]').forEach(input => {
+    input.addEventListener('change', () => {
+      const memo = edState.id ? getKnowledgeMemoById(edState.id) : null;
+      if (!memo) { input.checked = !input.checked; return; }
+      const nextBlocks = deepClone(memo.blocks || []);
+      const savedBlock = findBlockInAllBlocks(nextBlocks, input.dataset.viewChecklistId);
+      if (!savedBlock || savedBlock.type !== 'checklist') { input.checked = !input.checked; return; }
+      savedBlock.checked = input.checked;
+      if (!updateKnowledgeMemo(memo.id, { blocks: nextBlocks })) {
+        input.checked = !input.checked;
+        toast('チェック状態を保存できませんでした', 'error');
+        return;
+      }
+      const currentBlock = findBlockInAllBlocks(edState.blocks, input.dataset.viewChecklistId);
+      if (currentBlock) currentBlock.checked = input.checked;
+      input.closest('.kn-view-checklist')?.classList.toggle('is-checked', input.checked);
+    });
+  });
+
   // Wire related memos — use openKnowledgeMemo so history is tracked
   container.querySelectorAll('[data-related-id]').forEach(card => {
     card.addEventListener('click', () => openKnowledgeMemo(card.dataset.relatedId));
@@ -1473,6 +1495,10 @@ function renderBlockView(block, numCounter = 0, indent = 0) {
     return `<div class="kn-view-math" ${id} data-katex="${esc(block.text || '')}">${esc(block.text || '')}</div>`;
   }
 
+  if (block.type === 'codeblock') {
+    return `<pre class="kn-view-codeblock" ${id}><code>${esc(block.text || '')}</code></pre>`;
+  }
+
   if (block.type === 'table') {
     const table = normalizeTableData(block);
     return `<div class="kn-view-table-wrap" ${id}><table class="kn-view-table"><thead><tr>${table.headers.map(cell => `<th>${esc(cell)}</th>`).join('')}</tr></thead><tbody>${table.rows.map(row => `<tr>${row.map(cell => `<td>${esc(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
@@ -1514,6 +1540,7 @@ function renderBlockView(block, numCounter = 0, indent = 0) {
     h2:        `<h2 class="kn-view-h2" ${id} ${style}>${inlineText}</h2>`,
     h3:        `<h3 class="kn-view-h3" ${id} ${style}>${inlineText}</h3>`,
     bullet:    `<div class="kn-view-bullet" ${id} ${style}><span class="kn-view-bullet-dot">•</span><span>${inlineText}</span></div>`,
+    checklist: `<div class="kn-view-checklist${block.checked ? ' is-checked' : ''}" ${id} ${style}><input type="checkbox" data-view-checklist-id="${esc(block.id || '')}" aria-label="チェックリスト項目を完了" ${block.checked ? 'checked' : ''}><span>${inlineText}</span></div>`,
     numbered:  `<div class="kn-view-numbered" ${id} ${style}><span class="kn-view-numbered-n">${numCounter}.</span><span>${inlineText}</span></div>`,
     quote:     `<blockquote class="kn-view-quote" ${id} ${style}>${inlineText}</blockquote>`,
     paragraph: `<p class="kn-view-para" ${id} ${style}>${inlineText || '<br>'}</p>`,
@@ -1918,6 +1945,16 @@ function renderBlockEdit(block, idx, listNumber = 0) {
       ${insertRow}`;
   }
 
+  if (block.type === 'codeblock') {
+    return `
+      <div class="kn-block kn-block--codeblock${block.id === activeEditorBlockId ? ' kn-block--active' : ''}" data-block-id="${esc(block.id)}">
+        <textarea class="kn-block-code-input kn-block-focusable" data-block-id="${esc(block.id)}"
+          spellcheck="false" aria-label="コードブロック" placeholder="コードを入力">${esc(block.text || '')}</textarea>
+        ${controls}
+      </div>
+      ${insertRow}`;
+  }
+
   if (block.type === 'table') {
     const table = normalizeTableData(block);
     return `
@@ -1935,6 +1972,7 @@ function renderBlockEdit(block, idx, listNumber = 0) {
     h2: '見出し2',
     h3: '見出し3',
     bullet: '箇条書き',
+    checklist: 'チェックリスト',
     numbered: '番号付きリスト',
     quote: '引用',
     toggle: 'トグルのタイトル',
@@ -1942,6 +1980,7 @@ function renderBlockEdit(block, idx, listNumber = 0) {
 
   const prefix = {
     bullet:   '<span class="kn-block-prefix">•</span>',
+    checklist: `<input type="checkbox" class="kn-block-prefix kn-checklist-input" data-edit-checklist-id="${esc(block.id)}" aria-label="チェックリスト項目を完了" ${block.checked ? 'checked' : ''}>`,
     numbered: `<span class="kn-block-prefix">${listNumber || 1}.</span>`,
     quote:    '<span class="kn-block-prefix kn-block-prefix--quote">❝</span>',
     toggle:   `<button type="button" class="kn-block-prefix kn-block-prefix--toggle kn-toggle-edit-btn"
@@ -1950,7 +1989,7 @@ function renderBlockEdit(block, idx, listNumber = 0) {
   }[block.type] || '';
 
   return `
-    <div class="kn-block ${typeClass}${block.id === activeEditorBlockId ? ' kn-block--active' : ''}" data-block-id="${esc(block.id)}">
+    <div class="kn-block ${typeClass}${block.checked && block.type === 'checklist' ? ' is-checked' : ''}${block.id === activeEditorBlockId ? ' kn-block--active' : ''}" data-block-id="${esc(block.id)}">
       ${prefix}
       <div class="kn-block-text kn-block-focusable" contenteditable="true"
         data-block-id="${esc(block.id)}"
@@ -1981,25 +2020,29 @@ function caretIsAtEditableEnd(editable) {
   if (!selection?.rangeCount || !selection.isCollapsed) return false;
   const range = selection.getRangeAt(0);
   if (!editable.contains(range.startContainer)) return false;
-  const before = document.createRange();
-  before.selectNodeContents(editable);
-  before.setEnd(range.startContainer, range.startOffset);
-  return before.toString() === editable.textContent;
+  const after = document.createRange();
+  after.selectNodeContents(editable);
+  after.setStart(range.startContainer, range.startOffset);
+  return after.toString().replace(/\u200B|\r?\n/g, '') === '';
 }
 
 function convertMarkdownBlockShortcut(editable, container, afterSpace = false) {
-  if (editorCompositionActive || editable.childElementCount || !caretIsAtEditableEnd(editable)) return false;
+  if (editorCompositionActive || !caretIsAtEditableEnd(editable)) return false;
+  if ([...editable.querySelectorAll('*')].some(node => !['BR', 'DIV'].includes(node.tagName))) return false;
   const blockId = editable.dataset.blockId;
   const block = findBlockInAllBlocks(edState.blocks, blockId);
-  if (!block || block.type !== 'paragraph') return false;
+  if (!block || !['paragraph', 'bullet'].includes(block.type)) return false;
   const text = editable.textContent.replace(/\u200B/g, '');
   if (afterSpace && !text.endsWith(' ')) return false;
-  const type = markdownBlockType(afterSpace ? text.slice(0, -1) : text);
-  if (!type) return false;
+  const shortcut = markdownBlockShortcut(afterSpace ? text.slice(0, -1) : text);
+  if (!shortcut) return false;
+  if (block.type === 'bullet' && shortcut.type !== 'checklist') return false;
+  const { type } = shortcut;
   recordEditorHistory(container);
   block.type = type;
   block.text = '';
   block.html = '';
+  if (type === 'checklist') block.checked = shortcut.checked;
   if (type === 'divider') {
     const loc = findBlockLocation(blockId);
     const nextBlock = defaultBlock();
@@ -2018,15 +2061,26 @@ function convertMarkdownBlockShortcut(editable, container, afterSpace = false) {
 }
 
 function convertInlineMarkdownShortcut(editable, container) {
-  if (editable.childElementCount || !caretIsAtEditableEnd(editable)) return false;
-  const completed = completedInlineMarkdown(editable.textContent.replace(/\u200B/g, ''));
+  if (!caretIsAtEditableEnd(editable)) return false;
+  const tail = window.getSelection()?.anchorNode;
+  if (tail?.nodeType !== Node.TEXT_NODE) return false;
+  for (let parent = tail.parentElement; parent && parent !== editable; parent = parent.parentElement) {
+    if (parent.tagName !== 'DIV') return false;
+  }
+  const completed = completedInlineMarkdown(tail.textContent.replace(/\u200B/g, ''));
   if (!completed) return false;
   recordEditorHistory(container);
-  editable.innerHTML = `${esc(completed.prefix)}<${completed.tag}>${esc(completed.text)}</${completed.tag}>`;
+  const fragment = document.createDocumentFragment();
+  if (completed.prefix) fragment.append(document.createTextNode(completed.prefix));
+  const formatted = document.createElement(completed.tag);
+  formatted.textContent = completed.text;
+  const caretAnchor = document.createTextNode('\u200B');
+  fragment.append(formatted, caretAnchor);
+  tail.replaceWith(fragment);
   const range = document.createRange();
   const selection = window.getSelection();
-  range.selectNodeContents(editable);
-  range.collapse(false);
+  range.setStart(caretAnchor, 1);
+  range.collapse(true);
   selection?.removeAllRanges();
   selection?.addRange(range);
   syncEditableBlock(editable.dataset.blockId, editable);
@@ -2074,10 +2128,11 @@ function wireBlocksEdit(container) {
 
   // Sync text on input
   wrap.addEventListener('input', e => {
+    const el = e.target;
+    if (el.matches?.('[data-edit-checklist-id]')) return;
     // Fallback for keyboards and browser automation paths that omit
     // beforeinput. At this point edState still has the pre-edit value.
     beginEditorTextHistory(container);
-    const el = e.target;
     if (el.matches?.('[data-table-header], [data-table-cell]')) {
       const block = findBlockInAllBlocks(edState.blocks, el.dataset.blockId);
       if (!block) return;
@@ -2126,6 +2181,16 @@ function wireBlocksEdit(container) {
     }
   });
 
+  wrap.addEventListener('change', e => {
+    const input = e.target.closest?.('[data-edit-checklist-id]');
+    if (!input) return;
+    const block = findBlockInAllBlocks(edState.blocks, input.dataset.editChecklistId);
+    if (!block || block.type !== 'checklist') return;
+    recordEditorHistory(container);
+    block.checked = input.checked;
+    input.closest('.kn-block')?.classList.toggle('is-checked', input.checked);
+  });
+
   // Keyboard shortcuts
   wrap.addEventListener('keydown', e => {
     const el = e.target;
@@ -2156,7 +2221,7 @@ function wireBlocksEdit(container) {
       openToggleForEditing(blockId, container);
       return;
     }
-    if (block?.type === 'bullet' || block?.type === 'numbered') {
+    if (block?.type === 'bullet' || block?.type === 'numbered' || block?.type === 'checklist') {
       continueListFromBlock(blockId, container, el);
       return;
     }
@@ -2478,7 +2543,7 @@ function handleBlockKeydown(e, blockId, container) {
       return;
     }
     if (!e.shiftKey) {
-      if (block?.type === 'bullet' || block?.type === 'numbered') {
+      if (block?.type === 'bullet' || block?.type === 'numbered' || block?.type === 'checklist') {
         continueListFromBlock(blockId, container, e.target);
         return;
       }
@@ -2588,6 +2653,7 @@ function continueListFromBlock(blockId, container, editable = null) {
   // Enter on an empty list item finishes that list item, like ordinary note editors.
   if (!(currentBlock.text || '').trim()) {
     currentBlock.type = 'paragraph';
+    delete currentBlock.checked;
     rerenderBlocks(container);
     focusBlock(blockId, container);
     return;
@@ -2601,6 +2667,7 @@ function continueListFromBlock(blockId, container, editable = null) {
 
   const nextBlock = insertBlockAfter(blockId, currentBlock.type);
   if (!nextBlock) return;
+  if (nextBlock.type === 'checklist') nextBlock.checked = false;
   if (split) {
     nextBlock.text = split.after.text;
     nextBlock.html = split.after.html;
@@ -2865,6 +2932,9 @@ function changeBlockType(blockId, type, container) {
   const releasedChildren = block.type === 'toggle' && type !== 'toggle'
     ? [...(block.children || [])]
     : [];
+  if (block.type === 'codeblock' || type === 'codeblock') delete block.html;
+  if (type === 'checklist') block.checked = block.checked === true;
+  else delete block.checked;
 
   block.type = type;
   if (type === 'toggle') {
@@ -3893,6 +3963,7 @@ function confirmDelete(memoId, container) {
 function defaultBlock(type = 'paragraph') {
   const block = { id: generateId(), type, text: '', color: null };
   if (type === 'table') block.table = createDefaultTable();
+  if (type === 'checklist') block.checked = false;
   return block;
 }
 

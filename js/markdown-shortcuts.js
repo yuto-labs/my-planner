@@ -9,10 +9,20 @@ const BLOCK_MARKERS = new Map([
   ['>', 'quote'],
   ['>>', 'toggle'],
   ['---', 'divider'],
+  ['[ ]', 'checklist'],
+  ['[x]', 'checklist'],
+  ['- [ ]', 'checklist'],
+  ['- [x]', 'checklist'],
+  ['```', 'codeblock'],
 ]);
 
 export function markdownBlockType(marker) {
-  return BLOCK_MARKERS.get(marker) || null;
+  return markdownBlockShortcut(marker)?.type || null;
+}
+
+export function markdownBlockShortcut(marker) {
+  const type = BLOCK_MARKERS.get(marker);
+  return type ? { type, checked: marker === '[x]' || marker === '- [x]' } : null;
 }
 
 export function completedInlineMarkdown(text) {

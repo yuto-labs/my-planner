@@ -26,7 +26,7 @@ test('installed tablet app supports both orientations', () => {
 });
 
 test('responsive stylesheet loads after the established design stylesheet', () => {
-  const baseIndex = indexHtml.indexOf('css/style.css?v=287');
+  const baseIndex = indexHtml.indexOf('css/style.css?v=288');
   const responsiveIndex = indexHtml.indexOf('css/responsive.css?v=4');
 
   assert.ok(baseIndex >= 0);
@@ -34,7 +34,7 @@ test('responsive stylesheet loads after the established design stylesheet', () =
 });
 
 test('offline cache includes the responsive stylesheet', () => {
-  assert.match(serviceWorker, /const CACHE_VER\s*=\s*'v331'/);
+  assert.match(serviceWorker, /const CACHE_VER\s*=\s*'v332'/);
   assert.match(serviceWorker, /'\.\/css\/responsive\.css\?v=4'/);
 });
 
