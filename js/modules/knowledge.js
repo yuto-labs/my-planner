@@ -252,6 +252,9 @@ const BLOCK_TYPES = [
   { type: 'h1',        icon: 'H1', label: '見出し1'           },
   { type: 'h2',        icon: 'H2', label: '見出し2'           },
   { type: 'h3',        icon: 'H3', label: '見出し3'           },
+  { type: 'h4',        icon: 'H4', label: '見出し4'           },
+  { type: 'h5',        icon: 'H5', label: '見出し5'           },
+  { type: 'h6',        icon: 'H6', label: '見出し6'           },
   { type: 'bullet',    icon: '•',  label: '箇条書き'          },
   { type: 'numbered',  icon: '1.',  label: '番号付き'         },
   { type: 'checklist', icon: '☐',  label: 'チェックリスト'   },
@@ -634,7 +637,7 @@ export function renderMemoCardPreview(blocks, maxBlocks = 7) {
       }
       if (!text.trim()) continue;
 
-      const type = ['h1', 'h2', 'h3', 'bullet', 'numbered', 'checklist', 'quote', 'toggle', 'codeblock'].includes(block.type)
+      const type = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'bullet', 'numbered', 'checklist', 'quote', 'toggle', 'codeblock'].includes(block.type)
         ? block.type
         : 'paragraph';
       const toggleCollapsed = type === 'toggle'
@@ -1496,7 +1499,8 @@ function renderBlockView(block, numCounter = 0, indent = 0) {
   }
 
   if (block.type === 'codeblock') {
-    return `<pre class="kn-view-codeblock" ${id}><code>${esc(block.text || '')}</code></pre>`;
+    const language = String(block.language || '').trim();
+    return `<pre class="kn-view-codeblock" ${id}${language ? ` data-language="${esc(language)}"` : ''}><code>${esc(block.text || '')}</code></pre>`;
   }
 
   if (block.type === 'table') {
@@ -1539,6 +1543,9 @@ function renderBlockView(block, numCounter = 0, indent = 0) {
     h1:        `<h1 class="kn-view-h1" ${id} ${style}>${inlineText}</h1>`,
     h2:        `<h2 class="kn-view-h2" ${id} ${style}>${inlineText}</h2>`,
     h3:        `<h3 class="kn-view-h3" ${id} ${style}>${inlineText}</h3>`,
+    h4:        `<h4 class="kn-view-h4" ${id} ${style}>${inlineText}</h4>`,
+    h5:        `<h5 class="kn-view-h5" ${id} ${style}>${inlineText}</h5>`,
+    h6:        `<h6 class="kn-view-h6" ${id} ${style}>${inlineText}</h6>`,
     bullet:    `<div class="kn-view-bullet" ${id} ${style}><span class="kn-view-bullet-dot">•</span><span>${inlineText}</span></div>`,
     checklist: `<div class="kn-view-checklist${block.checked ? ' is-checked' : ''}" ${id} ${style}><input type="checkbox" data-view-checklist-id="${esc(block.id || '')}" aria-label="チェックリスト項目を完了" ${block.checked ? 'checked' : ''}><span>${inlineText}</span></div>`,
     numbered:  `<div class="kn-view-numbered" ${id} ${style}><span class="kn-view-numbered-n">${numCounter}.</span><span>${inlineText}</span></div>`,
@@ -1971,6 +1978,9 @@ function renderBlockEdit(block, idx, listNumber = 0) {
     h1: '見出し1',
     h2: '見出し2',
     h3: '見出し3',
+    h4: '見出し4',
+    h5: '見出し5',
+    h6: '見出し6',
     bullet: '箇条書き',
     checklist: 'チェックリスト',
     numbered: '番号付きリスト',
@@ -2042,6 +2052,8 @@ function convertMarkdownBlockShortcut(editable, container, afterSpace = false) {
   block.type = type;
   block.text = '';
   block.html = '';
+  if (type === 'codeblock') block.language = shortcut.language || '';
+  else delete block.language;
   if (type === 'checklist') block.checked = shortcut.checked;
   if (type === 'divider') {
     const loc = findBlockLocation(blockId);
@@ -2062,6 +2074,7 @@ function convertMarkdownBlockShortcut(editable, container, afterSpace = false) {
 
 function convertInlineMarkdownShortcut(editable, container) {
   if (!caretIsAtEditableEnd(editable)) return false;
+  editable.normalize();
   const tail = window.getSelection()?.anchorNode;
   if (tail?.nodeType !== Node.TEXT_NODE) return false;
   for (let parent = tail.parentElement; parent && parent !== editable; parent = parent.parentElement) {
@@ -2072,8 +2085,21 @@ function convertInlineMarkdownShortcut(editable, container) {
   recordEditorHistory(container);
   const fragment = document.createDocumentFragment();
   if (completed.prefix) fragment.append(document.createTextNode(completed.prefix));
-  const formatted = document.createElement(completed.tag);
-  formatted.textContent = completed.text;
+  const tags = completed.tags || [completed.tag];
+  let formatted = document.createElement(tags[0]);
+  let contentTarget = formatted;
+  for (const tag of tags.slice(1)) {
+    const child = document.createElement(tag);
+    contentTarget.append(child);
+    contentTarget = child;
+  }
+  contentTarget.textContent = completed.text;
+  if (completed.tag === 'a') {
+    formatted.href = completed.href;
+    formatted.target = '_blank';
+    formatted.rel = 'noopener';
+    formatted.className = 'kn-inline-link';
+  }
   const caretAnchor = document.createTextNode('\u200B');
   fragment.append(formatted, caretAnchor);
   tail.replaceWith(fragment);
@@ -2984,7 +3010,7 @@ function clipboardBlocksFromHtml(html) {
     const tag = element?.tagName;
     if (tag === 'H1') return 'h1';
     if (tag === 'H2') return 'h2';
-    if (tag && /^H[3-6]$/.test(tag)) return 'h3';
+    if (tag && /^H[3-6]$/.test(tag)) return tag.toLowerCase();
     const meaningfulChildren = [...(element?.children || [])]
       .filter(child => String(child.textContent || '').trim());
     const soleStyledChild = meaningfulChildren.length === 1

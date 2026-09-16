@@ -12,14 +12,17 @@ test('offline app shell includes the memo shortcut module', () => {
 });
 
 test('markdown block markers map to existing memo block types', () => {
-  assert.deepEqual(['#', '##', '###', '-', '*', '+', '1.', '>', '>>', '---']
+  assert.deepEqual(['#', '##', '###', '####', '#####', '######', '-', '*', '+', '1.', '7.', '>', '>>', '---']
     .map(markdownBlockType),
-  ['h1', 'h2', 'h3', 'bullet', 'bullet', 'bullet', 'numbered', 'quote', 'toggle', 'divider']);
-  assert.equal(markdownBlockType('####'), null);
+  ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'bullet', 'bullet', 'bullet', 'numbered', 'numbered', 'quote', 'toggle', 'divider']);
+  assert.equal(markdownBlockType('#######'), null);
   assert.equal(markdownBlockType('some # text'), null);
   assert.deepEqual(markdownBlockShortcut('- [ ]'), { type: 'checklist', checked: false });
   assert.deepEqual(markdownBlockShortcut('[x]'), { type: 'checklist', checked: true });
   assert.deepEqual(markdownBlockShortcut('```'), { type: 'codeblock', checked: false });
+  assert.deepEqual(markdownBlockShortcut('```javascript'), {
+    type: 'codeblock', checked: false, language: 'javascript',
+  });
 });
 
 test('completed inline markers identify formatting without changing ordinary text', () => {
@@ -28,6 +31,15 @@ test('completed inline markers identify formatting without changing ordinary tex
   });
   assert.deepEqual(completedInlineMarkdown('note *emphasis*'), {
     prefix: 'note ', text: 'emphasis', tag: 'em',
+  });
+  assert.deepEqual(completedInlineMarkdown('heading ***important***'), {
+    prefix: 'heading ', text: 'important', tags: ['strong', 'em'],
+  });
+  assert.deepEqual(completedInlineMarkdown('heading __important__'), {
+    prefix: 'heading ', text: 'important', tag: 'strong',
+  });
+  assert.deepEqual(completedInlineMarkdown('heading _emphasis_'), {
+    prefix: 'heading ', text: 'emphasis', tag: 'em',
   });
   assert.deepEqual(completedInlineMarkdown('note ~~removed~~'), {
     prefix: 'note ', text: 'removed', tag: 's',
@@ -41,6 +53,13 @@ test('completed inline markers identify formatting without changing ordinary tex
   assert.deepEqual(completedInlineMarkdown(' and *again*'), {
     prefix: ' and ', text: 'again', tag: 'em',
   });
+  assert.deepEqual(completedInlineMarkdown('see [OpenAI](https://openai.com)'), {
+    prefix: 'see ', text: 'OpenAI', tag: 'a', href: 'https://openai.com',
+  });
+  assert.deepEqual(completedInlineMarkdown('see <https://openai.com/docs>'), {
+    prefix: 'see ', text: 'https://openai.com/docs', tag: 'a', href: 'https://openai.com/docs',
+  });
+  assert.equal(completedInlineMarkdown('[unsafe](javascript:alert(1))'), null);
 });
 
 test('new memo block data renders safely without rewriting existing blocks', () => {
@@ -48,6 +67,7 @@ test('new memo block data renders safely without rewriting existing blocks', () 
     { id: 'old', type: 'paragraph', text: 'Existing note' },
     { id: 'check', type: 'checklist', text: 'Done', checked: true },
     { id: 'code', type: 'codeblock', text: 'if (a < b) {\n  run();\n}' },
+    { id: 'heading', type: 'h4', text: 'Saved heading' },
   ];
   const html = renderBlocksView(blocks);
   assert.match(html, /kn-view-checklist is-checked/);
@@ -55,6 +75,8 @@ test('new memo block data renders safely without rewriting existing blocks', () 
   assert.match(html, /<pre class="kn-view-codeblock"/);
   assert.match(html, /if \(a &lt; b\)/);
   assert.match(html, /run\(\);\n\}/);
+  assert.match(html, /kn-view-h4/);
+  assert.match(html, /Saved heading/);
   assert.match(html, /Existing note/);
   const preview = renderMemoCardPreview(blocks);
   assert.match(preview, /☑/);
@@ -62,5 +84,5 @@ test('new memo block data renders safely without rewriting existing blocks', () 
   const normalized = normalizeMemoBlockIds(blocks);
   assert.equal(normalized[1].checked, true);
   assert.equal(normalized[2].text, blocks[2].text);
-  assert.deepEqual(blocks.map(block => block.id), ['old', 'check', 'code']);
+  assert.deepEqual(blocks.map(block => block.id), ['old', 'check', 'code', 'heading']);
 });

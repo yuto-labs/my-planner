@@ -2753,6 +2753,9 @@ button { cursor: pointer; font-family: inherit; }
 .kn-view-h1   { font-size: 24px; font-weight: 750; margin: 20px 0 7px; letter-spacing: 0; line-height: 1.35; }
 .kn-view-h2   { font-size: 19px; font-weight: 700; margin: 17px 0 6px; line-height: 1.4; }
 .kn-view-h3   { font-size: 16px; font-weight: 700; margin: 13px 0 4px; line-height: 1.45; }
+.kn-view-h4   { font-size: 15px; font-weight: 700; margin: 11px 0 3px; line-height: 1.45; }
+.kn-view-h5   { font-size: 14px; font-weight: 700; margin: 10px 0 3px; line-height: 1.45; }
+.kn-view-h6   { font-size: 14px; font-weight: 600; margin: 9px 0 3px; line-height: 1.45; }
 .kn-view-para { font-size: 14px; line-height: 1.72; margin: 2px 0 7px; white-space: pre-wrap; }
 .kn-view-bullet > span:last-child,
 .kn-view-numbered > span:last-child,
@@ -3408,6 +3411,9 @@ button { cursor: pointer; font-family: inherit; }
 .kn-block--h1 .kn-block-text { font-size: 24px; font-weight: 750; letter-spacing: 0; line-height: 1.35; }
 .kn-block--h2 .kn-block-text { font-size: 19px; font-weight: 700; line-height: 1.4; }
 .kn-block--h3 .kn-block-text { font-size: 16px; font-weight: 700; line-height: 1.45; }
+.kn-block--h4 .kn-block-text { font-size: 15px; font-weight: 700; line-height: 1.45; }
+.kn-block--h5 .kn-block-text { font-size: 14px; font-weight: 700; line-height: 1.45; }
+.kn-block--h6 .kn-block-text { font-size: 14px; font-weight: 600; line-height: 1.45; }
 .kn-block--quote .kn-block-text {
   border-left: 3px solid var(--primary); padding-left: 12px;
   color: var(--text-muted); font-style: italic;
