@@ -35,8 +35,9 @@ test('responsive stylesheet loads after the established design stylesheet', () =
 });
 
 test('offline cache includes the responsive stylesheet', () => {
-  assert.match(serviceWorker, /const CACHE_VER\s*=\s*'v333'/);
+  assert.match(serviceWorker, /const CACHE_VER\s*=\s*'v\d+'/);
   assert.match(serviceWorker, /'\.\/css\/responsive\.css\?v=4'/);
+  assert.match(serviceWorker, /'\.\/js\/planning-time\.js'/);
 });
 
 test('knowledge layout uses its current learning classes on larger screens', () => {

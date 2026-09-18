@@ -15,6 +15,7 @@ import {
 import { esc, today, tomorrow, formatDate, generateId, addDays, toDateStr, getEventsForDate } from '../utils.js';
 import { splitGoalToTasks, generateTaskSchedule } from '../ai.js';
 import { openDatePicker, openTimePicker, openDurationPicker, formatPickerDate, formatDuration } from '../datepicker.js';
+import { clockTimeToMinutes, halfOpenRangesOverlap } from '../planning-time.js';
 
 const toast     = (msg, type) => window.AppNav?.showToast(msg, type);
 const undoToast = (msg, cb)   => window.AppNav?.showUndoToast(msg, cb);
@@ -820,10 +821,10 @@ function dateInPlanningPeriod(dateStr) {
 }
 
 function blockOutsidePlanningWindow(block) {
-  const startMin = timeToMinutes(block.startTime);
-  const endMin = timeToMinutes(block.endTime);
-  const activeStart = timeToMinutes(state.codexStartTime);
-  const activeEnd = timeToMinutes(state.codexEndTime);
+  const startMin = clockTimeToMinutes(block.startTime);
+  const endMin = clockTimeToMinutes(block.endTime);
+  const activeStart = clockTimeToMinutes(state.codexStartTime);
+  const activeEnd = clockTimeToMinutes(state.codexEndTime);
   if (startMin == null || endMin == null || activeStart == null || activeEnd == null) return true;
   if (endMin <= startMin) return true;
   if (startMin < activeStart || endMin > activeEnd) return true;
@@ -845,8 +846,8 @@ function blockOverlapsExistingSchedule(block) {
 }
 
 function blockOverlapsCalendar(block) {
-  const startMin = timeToMinutes(block.startTime);
-  const endMin = timeToMinutes(block.endTime);
+  const startMin = clockTimeToMinutes(block.startTime);
+  const endMin = clockTimeToMinutes(block.endTime);
   if (endMin <= startMin) return true;
 
   return getEventsForDate(getEvents(), block.date).some(e => {
@@ -866,12 +867,12 @@ function blockOverlapsCalendar(block) {
 }
 
 function timeRangesOverlap(aStart, aEnd, bStart, bEnd) {
-  const as = timeToMinutes(aStart);
-  const ae = timeToMinutes(aEnd);
-  const bs = timeToMinutes(bStart);
-  const be = timeToMinutes(bEnd);
+  const as = clockTimeToMinutes(aStart);
+  const ae = clockTimeToMinutes(aEnd);
+  const bs = clockTimeToMinutes(bStart);
+  const be = clockTimeToMinutes(bEnd);
   if ([as, ae, bs, be].some(v => v == null)) return true;
-  return as < be && ae > bs;
+  return halfOpenRangesOverlap(as, ae, bs, be);
 }
 
 function findInternalScheduleOverlaps(blocks) {
@@ -899,17 +900,10 @@ function findInternalScheduleOverlaps(blocks) {
   return overlaps;
 }
 
-function timeToMinutes(t) {
-  if (!/^\d{2}:\d{2}$/.test(t || '')) return null;
-  const [h, m] = t.split(':').map(Number);
-  if (h < 0 || h > 23 || m < 0 || m > 59) return null;
-  return h * 60 + m;
-}
-
 function getCodexDailyBreaks() {
   if (!state.codexBreakStart || !state.codexBreakEnd) return [];
-  const start = timeToMinutes(state.codexBreakStart);
-  const end = timeToMinutes(state.codexBreakEnd);
+  const start = clockTimeToMinutes(state.codexBreakStart);
+  const end = clockTimeToMinutes(state.codexBreakEnd);
   if (start == null || end == null || end <= start) return [];
   return [{ start: state.codexBreakStart, end: state.codexBreakEnd, label: '休憩' }];
 }

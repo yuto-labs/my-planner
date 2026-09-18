@@ -20,6 +20,7 @@
 - `datepicker.js`: 日付選択UI
 - `holidays.js`: 日本の祝日判定
 - `utils.js`: 日付や文字列などの共通関数
+- `planning-time.js`: カレンダーとタスク配分で共有する時刻変換・重複判定
 - `shared-calendar.js`: 共有カレンダーのデータ操作
 - `notion-import.js`: Notion由来データの変換
 - `markdown-shortcuts.js`: メモのMarkdown入力判定

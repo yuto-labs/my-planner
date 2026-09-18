@@ -28,6 +28,12 @@ import {
   wirePlannerImageViewer,
 } from '../media.js';
 import { flushPendingSync } from '../sync.js';
+import {
+  calendarEventRange,
+  clockTimeToMinutes,
+  halfOpenRangesOverlap,
+  scheduleRangeForDate,
+} from '../planning-time.js';
 
 const toast     = (msg, type) => window.AppNav?.showToast(msg, type);
 const undoToast = (msg, cb)   => window.AppNav?.showUndoToast(msg, cb);
@@ -1004,7 +1010,7 @@ function compareTimedItems(a, b) {
 }
 
 function getTimedItemStartMin(item) {
-  if (item._scheduleItem) return timeToMinutes(item.startTime) ?? 1440;
+  if (item._scheduleItem) return clockTimeToMinutes(item.startTime) ?? 1440;
   if (item._isAllDay) return 0;
   const startSrc = item._displayStart ?? item.start;
   const d = startSrc ? new Date(startSrc) : null;
@@ -1013,8 +1019,8 @@ function getTimedItemStartMin(item) {
 }
 
 function renderTimedScheduleItem(item, slotH) {
-  const startMin = timeToMinutes(item.startTime) ?? 0;
-  const endMin = timeToMinutes(item.endTime) ?? (startMin + 60);
+  const startMin = clockTimeToMinutes(item.startTime) ?? 0;
+  const endMin = clockTimeToMinutes(item.endTime) ?? (startMin + 60);
   const duration = Math.max(endMin - startMin, 30);
   const top = (startMin / 60) * slotH;
   const height = (duration / 60) * slotH - 2;
@@ -1028,13 +1034,6 @@ function renderTimedScheduleItem(item, slotH) {
     <div>${esc(timeStr)}</div>
     <div style="font-weight:500">${esc(item.title || 'My Schedule')}</div>
   </div>`;
-}
-
-function timeToMinutes(t) {
-  if (!/^\d{2}:\d{2}$/.test(t || '')) return null;
-  const [h, m] = t.split(':').map(Number);
-  if (h < 0 || h > 23 || m < 0 || m > 59) return null;
-  return h * 60 + m;
 }
 
 function getCurrentShareDefaults() {
@@ -1153,38 +1152,17 @@ function openReadOnlySharedEvent(event) {
   window.AppNav?.openModal({ title: '共有予定', body, footer: null });
 }
 
-function rangesOverlap(aStart, aEnd, bStart, bEnd) {
-  return aStart < bEnd && bStart < aEnd;
-}
-
-function eventRange(event) {
-  const start = new Date(event.start).getTime();
-  if (!Number.isFinite(start)) return null;
-  const end = event.end ? new Date(event.end).getTime() : start + 60 * 60 * 1000;
-  return { start, end: Number.isFinite(end) && end > start ? end : start + 60 * 60 * 1000 };
-}
-
-function scheduleItemRange(item, dateStr) {
-  if (!item?.startTime) return null;
-  const start = new Date(`${dateStr}T${item.startTime}:00`).getTime();
-  if (!Number.isFinite(start)) return null;
-  const endTime = item.endTime || item.startTime;
-  let end = new Date(`${dateStr}T${endTime}:00`).getTime();
-  if (!Number.isFinite(end) || end <= start) end = start + 60 * 60 * 1000;
-  return { start, end };
-}
-
 /** 新しい予定と時間が重なる既存予定・マイスケジュールを警告用に集める。 */
 function getEventConflicts(candidate, excludeId = '') {
-  const range = eventRange(candidate);
+  const range = calendarEventRange(candidate);
   if (!range) return [];
   const dateStr = toDateStr(new Date(candidate.start));
   const conflicts = [];
 
   getEvents().forEach(event => {
     if (!event || event.id === excludeId) return;
-    const other = eventRange(event);
-    if (!other || !rangesOverlap(range.start, range.end, other.start, other.end)) return;
+    const other = calendarEventRange(event);
+    if (!other || !halfOpenRangesOverlap(range.start, range.end, other.start, other.end)) return;
     conflicts.push({
       type: 'event',
       title: event.title || '予定',
@@ -1193,8 +1171,8 @@ function getEventConflicts(candidate, excludeId = '') {
   });
 
   getScheduleItemsForDate(dateStr).forEach(item => {
-    const other = scheduleItemRange(item, dateStr);
-    if (!other || !rangesOverlap(range.start, range.end, other.start, other.end)) return;
+    const other = scheduleRangeForDate(item, dateStr);
+    if (!other || !halfOpenRangesOverlap(range.start, range.end, other.start, other.end)) return;
     conflicts.push({
       type: 'schedule',
       title: item.title || 'My Schedule',
