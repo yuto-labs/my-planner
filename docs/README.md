@@ -1,21 +1,25 @@
 # My Planner コード読解ガイド
 
 このディレクトリには、My Plannerを初めて読む人向けの資料を置いています。
-JavaScriptやHTMLの文法をすべて覚えてから読む必要はありません。分からない記法が出た時に
-`javascript-basics.md`へ戻りながら、実際の画面とコードを対応させて読んでください。
+JavaScriptやHTMLをまったく触ったことがない人を想定しています。
+最初から巨大なファイルを読む必要はありません。資料で一つ理解したら、実際の画面と短いコードを
+一つだけ対応させる、という順番で進めてください。
 
 ## おすすめの順番
 
-1. [`javascript-basics.md`](javascript-basics.md)
-2. [`architecture.md`](architecture.md)
-3. [`file-map.md`](file-map.md)
-4. `index.html`
-5. `js/app.js`
-6. 小さい画面モジュール（`tagspage.js`、`archive.js`、`search.js`）
-7. [`data-and-sync.md`](data-and-sync.md)
-8. `js/storage.js`と`js/sync.js`
-9. [`ai-flow.md`](ai-flow.md)
-10. `js/ai.js`と`api/ai/generate.js`
+1. [`start-here.md`](start-here.md) - 開発環境と最初の30分
+2. [`html-css-basics.md`](html-css-basics.md) - 画面の骨組みと見た目
+3. [`javascript-basics.md`](javascript-basics.md) - 動作を作る文法
+4. [`first-walkthrough.md`](first-walkthrough.md) - 起動から画面表示まで実コードを追う
+5. [`architecture.md`](architecture.md) - アプリ全体の設計
+6. [`file-map.md`](file-map.md) - ファイルを探す地図
+7. 小さい画面モジュール（`tagspage.js`、`archive.js`、`search.js`）
+8. [`data-and-sync.md`](data-and-sync.md) - 端末保存と同期
+9. [`database-basics.md`](database-basics.md) - SupabaseとSQL
+10. [`ai-flow.md`](ai-flow.md) - AI回答の生成と保存
+11. [`debugging-and-tests.md`](debugging-and-tests.md) - 不具合の調べ方
+12. [`glossary.md`](glossary.md) - 分からない単語を引く場所
+13. [`project-config.md`](project-config.md) - package、PWA、Vercel設定
 
 ## コード内コメントの読み方
 
@@ -37,3 +41,10 @@ JavaScriptやHTMLの文法をすべて覚えてから読む必要はありませ
 大きな関数を上から全部読むより、画面で操作を一つ決めて、その操作に関わる関数を
 `Shift+F12`で追う方が理解しやすくなります。
 
+## 最初は読まなくてよいもの
+
+- `node_modules`: 外部ライブラリ本体。このリポジトリには通常保存しません
+- 長い組み込み教材データ: `js/data/etymology-core.js`など
+- `supabase/migrations`: DB構造を変更するときに読む履歴
+- `api/ai/generate.js`内の巨大なJSON Schema: AIの形式エラーを調べる段階で読む
+- `css/style.css`の全行: 調べたい要素のclass名を検索して、その周辺だけ読む

@@ -48,14 +48,19 @@ my-planner/
 
 ## Code Reading Guide
 
-JavaScriptやHTMLを初めて読む場合は、次の資料から順番に進むと全体像を追いやすくなります。
+JavaScriptやHTMLを初めて読む場合は、まず [`docs/README.md`](docs/README.md) を入口にしてください。
+完全な初学者向けの順番と、各章で実際に開くファイルを案内しています。
 
-1. [`docs/README.md`](docs/README.md) - 読む順番とコメントの見方
-2. [`docs/javascript-basics.md`](docs/javascript-basics.md) - このアプリで使う文法
-3. [`docs/architecture.md`](docs/architecture.md) - 起動から画面表示までの流れ
-4. [`docs/file-map.md`](docs/file-map.md) - ファイルごとの役割
-5. [`docs/data-and-sync.md`](docs/data-and-sync.md) - 保存と同期の安全設計
-6. [`docs/ai-flow.md`](docs/ai-flow.md) - AI回答を生成・検証・保存する流れ
+- [`docs/start-here.md`](docs/start-here.md) - VS Code、起動、最初の読み方
+- [`docs/html-css-basics.md`](docs/html-css-basics.md) - HTMLとCSSの基礎
+- [`docs/javascript-basics.md`](docs/javascript-basics.md) - このアプリで使うJavaScript
+- [`docs/first-walkthrough.md`](docs/first-walkthrough.md) - 起動処理を実コードで追う
+- [`docs/architecture.md`](docs/architecture.md) - 全体設計
+- [`docs/data-and-sync.md`](docs/data-and-sync.md) - 保存と同期の安全設計
+- [`docs/database-basics.md`](docs/database-basics.md) - SupabaseとSQL
+- [`docs/ai-flow.md`](docs/ai-flow.md) - AI回答を生成・検証・保存する流れ
+- [`docs/debugging-and-tests.md`](docs/debugging-and-tests.md) - 不具合調査とテスト
+- [`docs/glossary.md`](docs/glossary.md) - 用語集
 
 ## Tech Stack
 

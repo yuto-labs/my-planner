@@ -1,3 +1,4 @@
+// メモ一覧の短いプレビューが改行・トグル構造を壊さないことを守るテスト。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 

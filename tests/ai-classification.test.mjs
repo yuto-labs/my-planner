@@ -1,3 +1,4 @@
+// 表現帳の質問判定、分類再利用、音声分割が入力の揺れに耐えることを守るテスト。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 

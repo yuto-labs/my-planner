@@ -1,3 +1,4 @@
+// タスクが保存順ではなく期限の近い順に、同条件では安定して並ぶことを守るテスト。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 

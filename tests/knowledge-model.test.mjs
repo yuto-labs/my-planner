@@ -1,3 +1,4 @@
+// KnowledgeのAI回答を安全な表示形式へ直し、分類・概念リンクを検証するテスト。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 

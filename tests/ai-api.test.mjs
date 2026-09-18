@@ -1,3 +1,4 @@
+// AIサーバーが不完全なJSONを保存せず、有用な補完回答は救済できることを守るテスト。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 

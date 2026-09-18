@@ -1,3 +1,4 @@
+// Markdown風入力とメモブロック表示が、既存形式やオフライン配信でも動くことを守るテスト。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

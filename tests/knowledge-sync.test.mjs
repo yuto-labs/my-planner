@@ -1,3 +1,4 @@
+// 複数端末で同時編集したKnowledge・表現帳を、内容を落とさず統合するテスト。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 

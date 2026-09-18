@@ -61,3 +61,19 @@
 不具合の再発を防ぐ自動テストです。ファイル名は、主に何を守るテストかを表します。
 機能を変えた時は、関連テストに加えて`npm test`ですべて実行します。
 
+## docs
+
+コードを読むための教材です。アプリの実行には使われません。
+
+- `README.md`: 学習順序の入口
+- `start-here.md`: VS Codeと最初の操作
+- `html-css-basics.md`: HTML/CSSの基礎
+- `javascript-basics.md`: JavaScriptの基礎
+- `first-walkthrough.md`: 起動処理の実コード追跡
+- `architecture.md`: 全体構造
+- `data-and-sync.md`: 保存と同期
+- `database-basics.md`: SupabaseとSQL
+- `ai-flow.md`: AI処理
+- `debugging-and-tests.md`: 調査とテスト
+- `glossary.md`: 用語集
+- `project-config.md`: JSON設定、PWA、Vercel

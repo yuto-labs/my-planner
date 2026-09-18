@@ -1,3 +1,4 @@
+// 既存データを書き換えず、自然な英訳を最初に表示することを守るテスト。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 

@@ -1,6 +1,8 @@
+// 端末保存を再現する偽物のlocalStorageを使い、メモや表現帳を失わないことを守るテスト。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+// Node.jsにはブラウザのlocalStorageがないため、Mapで必要な動作だけ再現する。
 const values = new Map();
 globalThis.localStorage = {
   getItem(key) { return values.has(key) ? values.get(key) : null; },

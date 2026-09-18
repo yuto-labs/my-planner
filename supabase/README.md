@@ -2,6 +2,9 @@
 
 Supabase SQL Editorへ貼り付けて実行するデータベース定義をまとめています。
 
+SQLやSupabaseが初めての場合は、先に [`../docs/database-basics.md`](../docs/database-basics.md) を
+読んでください。`schema.sql`は新規環境の完成形、`migrations/`は既存環境へ後から加えた差分です。
+
 ## New project
 
 新しいSupabaseプロジェクトでは、最初に [`schema.sql`](schema.sql) を実行します。
@@ -19,3 +22,12 @@ Supabase SQL Editorへ貼り付けて実行するデータベース定義をま�
 
 各SQLは再実行を考慮して作られていますが、本番環境では内容を確認してから実行してください。
 アプリの秘密情報やAPIキーは、このディレクトリへ保存しません。
+
+## 安全確認
+
+- 対象のSupabaseプロジェクト名を確認する
+- 実行前にSQL全体を読む
+- `drop table`や無条件の`delete`がないことを確認する
+- RLSを無効化する変更を入れない
+- 実行後にTable EditorとAuthenticationの両方を確認する
+- 本番データがある場合はバックアップを用意する

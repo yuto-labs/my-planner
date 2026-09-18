@@ -1,3 +1,4 @@
+// Vercel Functionを偽物のHTTP要求・応答で呼び、認証やモデル切替を確認するテスト。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 

@@ -1,3 +1,4 @@
+// 表現帳の固定カテゴリ、テーマ、原形、リンク用キーの正規化を守るテスト。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
