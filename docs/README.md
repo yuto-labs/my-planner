@@ -19,9 +19,10 @@ JavaScriptやHTMLをまったく触ったことがない人を想定していま
 10. [`data-and-sync.md`](data-and-sync.md) - 端末保存と同期
 11. [`database-basics.md`](database-basics.md) - SupabaseとSQL
 12. [`ai-flow.md`](ai-flow.md) - AI回答の生成と保存
-13. [`debugging-and-tests.md`](debugging-and-tests.md) - 不具合の調べ方
-14. [`glossary.md`](glossary.md) - 分からない単語を引く場所
-15. [`project-config.md`](project-config.md) - package、PWA、Vercel設定
+13. [`function-map.md`](function-map.md) - 関数名と一時状態の逆引き
+14. [`debugging-and-tests.md`](debugging-and-tests.md) - 不具合の調べ方
+15. [`glossary.md`](glossary.md) - 分からない単語を引く場所
+16. [`project-config.md`](project-config.md) - package、PWA、Vercel設定
 
 ## コード内コメントの読み方
 

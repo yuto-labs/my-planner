@@ -71,6 +71,9 @@ function validateRequestBody(body) {
   };
 }
 
+// ---- モデル選択と機能別JSON Schema ----
+// pickResponseSchemaの戻り値がGeminiの回答の「型」になる。
+// 保存形式を変える場合は、ここと後半の正規化処理をセットで見直す。
 function pickModel(pref) {
   const fastModel = process.env.GEMINI_MODEL_FAST || 'gemini-3.5-flash-lite';
   const qualityModel = process.env.GEMINI_MODEL_QUALITY || 'gemini-3.5-flash';
@@ -776,6 +779,9 @@ function extractGeminiIssue(data) {
   return 'Gemini returned an empty response.';
 }
 
+// ---- 構造化回答の解析・検証・救済 ----
+// AIのJSONをすぐ保存せず、機能ごとの必須項目を確認する。
+// normalizeStructuredResponseは軽微な形式差を直し、hasComplete...は内容の十分さを判定する。
 function parseStructuredResponse(text) {
   const cleaned = String(text || '')
     .trim()
@@ -1460,6 +1466,9 @@ const GEMINI_REQUEST_TIMEOUT_MS = 120_000;
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+// ---- Gemini通信とフォールバック ----
+// 1回のHTTP通信、同一モデルの再試行、代替モデルへの切替を分離する。
+// AbortControllerで必ず終了させ、タイムアウト後に通信が残り続けないようにする。
 async function requestGeminiOnce(key, model, payload, timeoutMs = 50_000) {
   const controller = new AbortController();
   const timeoutId = setTimeout(
@@ -1548,6 +1557,9 @@ function getBearerToken(req) {
   return match?.[1] || '';
 }
 
+// ---- Supabase JWTの確認 ----
+// ブラウザが送ったBearer tokenからユーザーを検証し、
+// サーバーのGeminiキーを認証済みリクエストにだけ使う。
 function getSupabaseConfig() {
   return {
     url: process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL,

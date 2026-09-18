@@ -265,6 +265,9 @@ function renderLibrary(container) {
   });
 }
 
+// ---- 分類ごとの閲覧 ----
+// 同じKnowledge記録を、分野・時代・地域・つながりの異なる入口から表示する。
+// 分類ごとにデータを複製しているわけではない。
 function resetBrowseTrail() {
   listState.browseMajorId = ''; listState.middleId = '';
   listState.timeCentury = ''; listState.timeDecade = '';
@@ -459,6 +462,9 @@ async function createLearningEntry(container) {
 }
 
 /** 選択中Knowledgeの本文、関連概念、編集操作を描画する。 */
+// ---- Knowledge詳細画面 ----
+// 構造化された段落、表、数式、関連概念を表示する。
+// 関連概念は、一件なら直接、複数なら候補選択へ進む。
 export function initLearningDetail(container) {
   const entry = getLearningEntryById(selectedEntryId);
   if (!entry) {

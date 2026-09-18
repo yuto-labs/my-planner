@@ -31,6 +31,9 @@ import {
 } from '../ai.js';
 
 /** キャッシュ上で未設定でもサーバー状態を再確認し、AI利用可否を確定する。 */
+// ---- 起動と音声再生 ----
+// initExpressionAtlasが画面の入口。音声は長文を分割し、新しい再生が
+// 始まったらrunIdで古いキューを無効にする。
 async function ensureAtlasAiReady() {
   if (isAiAvailable()) return true;
   const runtime = await refreshAiRuntimeStatus({ force: true });
@@ -385,6 +388,9 @@ function render() {
 }
 
 /** 現在libraryModeの検索・階層・カード一覧を描画する。 */
+// ---- 表現帳の一覧と階層ナビゲーション ----
+// category -> topic -> entryの順で絞り込むが、保存本体はフラットな配列。
+// expressionPlacementsが一つの見出し語を複数テーマに表示する投影を作る。
 function renderLibrary() {
   if (state.libraryMode === 'translations') {
     renderTranslationLibrary();
@@ -559,6 +565,8 @@ function wireModeSwitch() {
   });
 }
 
+// ---- 組み込み教材: 用法アニメーション ----
+// 前置詞等のコアイメージを、説明と視覚表現の両方で表示する。
 function renderUsageLibrary() {
   const query = normalize(state.search);
   const visible = ENGLISH_USAGE_CORE.filter(entry => {
@@ -966,6 +974,7 @@ function usageSearchText(entry) {
   ].join(' '));
 }
 
+// ---- 組み込み教材: 語源・形態素 ----
 function renderMorphologyLibrary() {
   const query = normalize(state.search);
   const visible = ETYMOLOGY_CORE.filter(entry => {
@@ -1216,6 +1225,9 @@ function morphologySearchText(entry) {
   ].filter(Boolean).join(' '));
 }
 
+// ---- 和文英訳と英語の疑問 ----
+// 生成フォーム、保存済み一覧、詳細表示を同じ一時状態で切り替える。
+// 英文内の語は、一致する表現帳エントリがある時だけリンク化する。
 function renderTranslationLibrary() {
   const sets = getTranslationSets();
   const query = normalize(state.search);
@@ -2106,6 +2118,8 @@ function wireLibraryContent() {
   });
 }
 
+// ---- 個人表現帳のカード・検索・詳細 ----
+// detailHistoryに直前の開き方を残し、関連語へ進んでも元の位置へ戻す。
 function renderLibraryContent({ level, entries, categories, topics, allEntries, unifiedResults }) {
   if (state.search) {
     return renderUnifiedSearchResults(unifiedResults);
@@ -2629,6 +2643,9 @@ function renderGenerator() {
   });
 }
 
+// ---- 表現生成と画面上の一時状態 ----
+// handleGenerateがAI呼び出しから保存レポートまでを担当する。
+// 生成中に別画面へ移動しても、ドラフトと結果はモジュール状態に残る。
 function renderAtlasQueryModeHint(value) {
   return detectAtlasQueryMode(value) === 'english_seed'
     ? '英語表現を中心語として、関連表現との違いまで深く解説します。'
@@ -2957,6 +2974,9 @@ function wireClassificationEditor(record, kind) {
   });
 }
 
+// ---- 解説を組み立てる表示パーツ ----
+// 文法、語源、例文、比較を小さな描画関数に分ける。
+// これらは表示用で、引数の保存データを変更しない。
 function grammarNotesSection(notes) {
   if (!notes || typeof notes !== 'object') return '';
   const rows = [
@@ -3539,6 +3559,7 @@ function applyManualClassification(record, category, topic) {
   };
 }
 
+// ---- このモジュール内だけで使う小さな共通関数 ----
 function normalize(value) {
   return String(value || '').trim().toLocaleLowerCase();
 }

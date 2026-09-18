@@ -27,6 +27,9 @@ export { NUANCE_ATLAS_CATEGORIES };
 
 const ATLAS_DETAILED_CATALOG_LIMIT = 24;
 
+// ---- 表現帳の既存データ検索 ----
+// AIへ全件の本文を送らず、今回の質問に近い解説だけを選ぶ。
+// headwordIndexは重複回避用、detailedEntriesは内容比較用である。
 function atlasSearchText(entry = {}) {
   const senses = Array.isArray(entry?.senses) && entry.senses.length ? entry.senses : [entry];
   return [entry?.term, entry?.lemma, ...(entry?.aliases || []), entry?.category, entry?.topic,
@@ -101,6 +104,9 @@ const AUTH_SESSION_TIMEOUT_MS = 12_000;
 const FAST_MODEL = 'fast';
 const QUALITY_MODEL = 'quality';
 
+// ---- AIサーバー通信 ----
+// 以降の機能関数はcallAPI / callServerAIを通し、認証・中断・
+// エラー文言・JSON解析を同じルールにする。
 /** サーバーで利用可能なモデル等を確認し、短時間キャッシュする。 */
 export async function refreshAiRuntimeStatus({ force = false } = {}) {
   const current = getAiRuntime();
@@ -290,6 +296,7 @@ export async function streamDailyMessage(tasks = [], events = [], goals = [], on
   });
 }
 
+// JSONがコードブロック付きで返っても読めるようにする。
 function tryParseJSON(text) {
   const cleaned = String(text || '').trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
   try { return JSON.parse(cleaned); } catch {}
@@ -338,6 +345,8 @@ export async function getDailyMessage(tasks = [], events = [], goals = []) {
 }
 
 /** 自然文から予定の日付・時刻・題名・カテゴリ候補を構造化する。 */
+// ---- ホーム・カレンダー・分析のAI機能 ----
+// 日常操作で素早く返す用途で、長文教材より小さい出力上限を使う。
 export async function parseNaturalLanguageEvent(text, categories = []) {
   const now = new Date();
   const localToday = today();
@@ -521,6 +530,8 @@ export async function generateAnalyticsSummary(monthStr, data) {
   return text.trim();
 }
 
+// ---- 通常メモのAI補助 ----
+// 保存はknowledge.js / storage.jsが担当し、ここではタグ・用語解説・整理結果を作る。
 export async function suggestKnowledgeTags(title, textPreview) {
   const cacheKey = `kn_tags_${title}_${textPreview.slice(0, 60)}`;
   const cached = getAiCache(cacheKey);
@@ -595,6 +606,8 @@ export async function formatKnowledgeMemo(rawText, existingMemosCtx = '', option
   };
 }
 
+// ---- 表現帳の分類・英語質問・Knowledge解説 ----
+// canonicalTopicKeyは、表記ゆれで似たテーマが増えるのを抑える比較用キー。
 function normalizedTopicText(value) {
   return String(value || '')
     .normalize('NFKC')
@@ -792,6 +805,8 @@ export async function generateKnowledgeAnswer(question, taxonomy, options = {}) 
 }
 
 /** 英語表現の比較解説を生成し、既存見出し語へ統合できる形に正規化する。 */
+// ---- 英語表現と和文英訳の教材生成 ----
+// 必須項目を指定し、既存表現と統合できる構造化データで返す。
 export async function generateNuanceEntries(
   {
     language = 'English',
@@ -1268,6 +1283,7 @@ export async function generateTranslationVariants(
   };
 }
 
+// AIの小さな形式ゆれを、保存しやすい配列とオブジェクトへそろえる。
 function normalizeStringList(value, maxItems) {
   return (Array.isArray(value) ? value : [])
     .map(item => String(item || '').trim())
@@ -1314,6 +1330,8 @@ export async function summarizeAndTagText(text) {
   return tryParseJSON(result) || { summary: '', tags: [] };
 }
 
+// ---- 目標・タスク・プランナーのAI機能 ----
+// 学習候補、目標分解、自然文操作、時間割り当てをまとめる。
 export async function detectKnowledgeGaps(goalTitle, existingTags) {
   const cacheKey = `kngap_${goalTitle}_${[...existingTags].sort().join(',')}`;
   const cached = getAiCache(cacheKey);

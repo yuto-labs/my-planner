@@ -76,6 +76,7 @@
 - `data-and-sync.md`: 保存と同期
 - `database-basics.md`: SupabaseとSQL
 - `ai-flow.md`: AI処理
+- `function-map.md`: 関数名、状態変数、機能ごとの呼び出し順
 - `debugging-and-tests.md`: 調査とテスト
 - `glossary.md`: 用語集
 - `project-config.md`: JSON設定、PWA、Vercel
