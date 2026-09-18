@@ -1579,17 +1579,20 @@ export default async function handler(req, res) {
   const startedAt = Date.now();
   const remainingTimeMs = (minimum = 0) => Math.max(0, HANDLER_BUDGET_MS - (Date.now() - startedAt) - minimum);
 
+  // 1. このAPIは生成内容をbodyで受け取るPOSTだけを許可する。
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' });
     return;
   }
 
+  // 2. 秘密のGeminiキーはVercel環境変数からだけ読む。
   const key = process.env.GEMINI_API_KEY;
   if (!key) {
     res.status(503).json({ error: 'Gemini API key is not configured on the server.' });
     return;
   }
 
+  // 3. actionごとの文字数・出力量・JSON指定をサーバー側で確定する。
   let body;
   try {
     body = validateRequestBody(readBody(req));
@@ -1597,6 +1600,7 @@ export default async function handler(req, res) {
     res.status(error?.status || 400).json({ error: error?.message || 'Invalid AI request.' });
     return;
   }
+  // 4. Supabaseのアクセストークンを検証し、ログインユーザーだけに利用を許可する。
   const token = getBearerToken(req);
   try {
     await requireAuthenticatedUser(token, Math.min(7_000, remainingTimeMs(NETWORK_SAFETY_MS)));
@@ -1605,6 +1609,7 @@ export default async function handler(req, res) {
     return;
   }
 
+  // 5. 用途に合う主モデルと、障害時に使う別モデルを選ぶ。
   const model = pickModel(body.modelPreference);
   const fallbackModel = pickFallbackModel(body.modelPreference);
   const responseFormat = body.responseFormat;
@@ -1617,6 +1622,7 @@ export default async function handler(req, res) {
     generationConfig.temperature = responseFormat === 'json' ? 0.2 : 0.4;
   }
 
+  // 6. ブラウザから来た文章をGemini REST APIの要求形式へ変換する。
   let payload = {
     contents: [
       {
@@ -1642,6 +1648,7 @@ export default async function handler(req, res) {
     };
   }
 
+  // 7. 生成、形式検証、必要な一度の補完再試行を同じ時間予算内で行う。
   try {
     let { upstream, data, model: activeModel } = await requestGeminiResilient(
       key, model, fallbackModel, payload,
@@ -1688,6 +1695,7 @@ export default async function handler(req, res) {
     }
     // These actions have action-specific recovery instructions below. They
     // used to be excluded here, making that recovery path unreachable.
+    // 空回答または必須項目不足だけを再試行する。正常回答を二重生成しない。
     const shouldRetry = !text || incompleteStructured;
     if (shouldRetry) {
       // Preserve room for Vercel to send a useful response and for the client

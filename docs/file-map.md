@@ -68,8 +68,10 @@
 - `README.md`: 学習順序の入口
 - `start-here.md`: VS Codeと最初の操作
 - `html-css-basics.md`: HTML/CSSの基礎
+- `css-reading-guide.md`: 長いCSSから対象規則を探す方法
 - `javascript-basics.md`: JavaScriptの基礎
 - `first-walkthrough.md`: 起動処理の実コード追跡
+- `feature-walkthroughs.md`: 機能をファイル横断で追う練習
 - `architecture.md`: 全体構造
 - `data-and-sync.md`: 保存と同期
 - `database-basics.md`: SupabaseとSQL

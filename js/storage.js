@@ -376,7 +376,8 @@ function calcNextDueDate(currentDueDate, recurrence) {
   return toDateStr_simple(next);
 }
 
-// ---- Goals ----
+// ---- Goals（目標）----
+// 目標は関連タスクから計算する進捗とは別に、題名・期限・説明を保存する。
 
 export function getGoals() { return load(KEY.GOALS, []); }
 export function saveGoals(goals) {
@@ -385,6 +386,7 @@ export function saveGoals(goals) {
   return true;
 }
 
+/** 目標へ既定値、ID、作成・更新日時を付けて保存する。 */
 export function addGoal(goal) {
   const goals = getGoals();
   const now = new Date().toISOString();
@@ -413,6 +415,7 @@ export function updateGoal(id, updates) {
   return goals[idx];
 }
 
+/** 目標を復元可能なごみ箱へ移してから削除する。 */
 export function deleteGoal(id) {
   const goals = getGoals();
   const target = goals.find(goal => goal.id === id);
@@ -423,7 +426,8 @@ export function deleteGoal(id) {
   return target;
 }
 
-// ---- Categories ----
+// ---- Categories（予定カテゴリ）----
+// 予定はカテゴリIDだけを持ち、表示名と色はこの一覧から引く。
 
 export function getCategories() { return load(KEY.CATS, DEFAULT_CATEGORIES); }
 export function saveCategories(cats) { save(KEY.CATS, cats); }
@@ -438,7 +442,8 @@ export function getCategoryColor(id) {
   return getCategoryById(id)?.color || '#6b7280';
 }
 
-// ---- Settings ----
+// ---- Settings（端末設定）----
+// 設定は部分更新が多いため、saveSettingsは現在値へpatchを重ねて未指定項目を残す。
 
 const DEFAULT_SETTINGS = {
   apiKey: '',
@@ -459,6 +464,7 @@ const DEFAULT_AI_RUNTIME = {
   message: '',
 };
 
+/** 古い保存値に新しい既定値を重ね、設定追加後も欠損なく返す。 */
 export function getSettings() {
   const stored = load(KEY.SETS, {});
   // Earlier builds wrote the old default (false) into settings even when the
@@ -469,6 +475,7 @@ export function getSettings() {
     : true;
   return { ...DEFAULT_SETTINGS, ...stored, aiEnabled };
 }
+/** 指定された設定だけを更新し、他の設定項目を保持する。 */
 export function saveSettings(s) { save(KEY.SETS, { ...getSettings(), ...s }); }
 
 export function getApiKey() { return getSettings().apiKey || ''; }
@@ -488,7 +495,9 @@ export function isAiAvailable() {
 export function getMyScheduleColor() { return getSettings().myScheduleColor || DEFAULT_SETTINGS.myScheduleColor; }
 
 // ---- AI Result Cache ----
+// 同じ短いAI要求の再通信を減らす期限付きキャッシュ。正式なメモ本文とは別物。
 
+/** 有効期限内のAIキャッシュだけを返し、期限切れはその場で除去する。 */
 export function getAiCache(key) {
   const cache = load(KEY.CACHE, {});
   const entry = cache[key];
@@ -501,6 +510,7 @@ export function getAiCache(key) {
   return entry.val;
 }
 
+/** 結果と有効期限を組にして保存する。 */
 export function setAiCache(key, val, ttlMs = 86_400_000) {
   const cache = load(KEY.CACHE, {});
   cache[key] = { val, exp: Date.now() + ttlMs };
@@ -512,6 +522,7 @@ export function clearAiCache() {
 }
 
 // ---- Pending AI Queue ----
+// すぐ処理しないAI依頼を、再読み込み後も再開できるよう端末へ残す。
 // Items awaiting AI processing (created offline or in batch mode)
 // Shape: { id, type, title, queuedAt }
 // type: 'memo_tags'
@@ -520,6 +531,7 @@ export function getPendingAIQueue() {
   return load(KEY.AI_QUEUE, []);
 }
 
+/** 同じID・種類を重複させずAI待機列へ追加する。 */
 export function addToPendingAIQueue(item) {
   const queue = getPendingAIQueue();
   // Deduplicate by id+type
@@ -553,7 +565,8 @@ export function saveBatchSettings(patch) {
   save(KEY.BATCH_CFG, { ...current, ...patch });
 }
 
-// ---- マイスケジュール (personal daily schedule items) ----
+// ---- マイスケジュール（個人の一日用時間ブロック）----
+// カレンダー予定とは別データだが、Today画面では同じ時間軸に表示する。
 
 const SCHED_KEY = 'mp_schedule';
 
@@ -564,6 +577,7 @@ export function saveScheduleItems(items) {
   return true;
 }
 
+/** 日付、開始・終了時刻、由来タスクなどを持つ時間ブロックを追加する。 */
 export function addScheduleItem(item) {
   const items = getScheduleItems();
   const now = new Date().toISOString();
@@ -589,6 +603,7 @@ export function updateScheduleItem(id, updates) {
   return saveScheduleItems(items) ? items[idx] : null;
 }
 
+/** マイスケジュール項目をごみ箱へ退避してから削除する。 */
 export function deleteScheduleItem(id) {
   const items = getScheduleItems();
   const target = items.find(item => item.id === id);
@@ -599,6 +614,10 @@ export function deleteScheduleItem(id) {
   return target;
 }
 
+/**
+ * 条件に合うAI生成案などを新しい一覧へ置換する。
+ * 条件外の手動項目は残し、置換対象だけをごみ箱・同期削除へ送る。
+ */
 export function replaceScheduleItems(predicate, replacements) {
   const items = getScheduleItems();
   const removed = items.filter(predicate);
@@ -683,7 +702,8 @@ export function setMonthlyReport(yyyymm, report) {
   save(MONTHLY_REPORT_KEY, all);
 }
 
-// ---- Spaced Repetition Review Schedule ----
+// ---- Spaced Repetition Review Schedule（メモの間隔反復）----
+// memoIdをキーに、段階・前回日・次回日を保存する。復習なしはstage=-1で表す。
 // Shape: { [memoId]: { nextReview:'YYYY-MM-DD', stage:0-6, lastReview:'YYYY-MM-DD' } }
 const REVIEW_KEY = 'mp_reviews';
 
@@ -710,6 +730,7 @@ export function saveReviewSchedule(schedule) {
   _notifySync('review_schedule');
   return true;
 }
+/** 復習対象にしたメモへ、最初の復習予定を作る。 */
 export function scheduleFirstReview(memoId) {
   const schedule = getReviewSchedule();
   if (schedule[memoId]) return;
@@ -722,6 +743,7 @@ export function isMemoReviewEnabled(memoId) {
   return getReviewSchedule()[memoId]?.stage !== REVIEW_DISABLED_STAGE;
 }
 
+/** 復習対象の切替を行い、無効時もメモ本文自体は変更しない。 */
 export function setMemoReviewEnabled(memoId, enabled) {
   if (!memoId) return null;
   const schedule = getReviewSchedule();
@@ -744,6 +766,7 @@ export function setMemoReviewEnabled(memoId, enabled) {
   return schedule[memoId];
 }
 
+/** Again/Hard/Good/Easyの評価から段階と次回日を更新する。 */
 export function rateReview(memoId, rating) {
   const schedule = getReviewSchedule();
   const entry = schedule[memoId];
@@ -763,6 +786,7 @@ export function rateReview(memoId, rating) {
   saveReviewSchedule(schedule);
 }
 
+/** 各評価を押した場合の次回間隔を、保存せずプレビューする。 */
 export function previewReviewIntervals(memoId) {
   const entry = getReviewEntry(memoId);
   const stage = entry?.stage ?? 0;
@@ -1406,6 +1430,7 @@ export function getExpressionEntries() {
     .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
 }
 
+/** 表現帳全体を同じ見出し語単位へ統合し、通常メモ等を残して保存する。 */
 export function saveExpressionEntries(entries) {
   const allRecords = getAllKnowledgeRecords();
   const redirects = new Map();
@@ -1501,6 +1526,7 @@ export function addExpressionEntries(entries) {
   return addExpressionEntriesWithReport(entries).entries;
 }
 
+/** 一つの表現カードを更新し、既存senseと他レコードを保持する。 */
 export function updateExpressionEntry(id, updates) {
   const entries = getExpressionEntries();
   const index = entries.findIndex(entry => entry.id === id);
@@ -1521,6 +1547,7 @@ export function updateExpressionEntry(id, updates) {
   return saveExpressionEntries(entries) ? entries[index] : null;
 }
 
+/** 表現カード全体をごみ箱へ退避してから削除する。 */
 export function deleteExpressionEntry(id) {
   const allRecords = getAllKnowledgeRecords();
   const target = allRecords.find(record => record.id === id && isExpressionAtlasRecord(record));
@@ -1543,6 +1570,7 @@ export function getKnowledgeMemoById(id) {
   return getKnowledgeMemos().find(m => m.id === id) || null;
 }
 
+/** 通常メモへ既定値と正規化済みブロックIDを付けて保存する。 */
 export function addKnowledgeMemo(memo) {
   const memos = getKnowledgeMemos();
   const now = new Date().toISOString();
@@ -1557,6 +1585,7 @@ export function addKnowledgeMemo(memo) {
   return saveKnowledgeMemos(memos) ? newMemo : null;
 }
 
+/** 小さな変更でもupdatedAtを進め、タグや未変更ブロックを落とさず更新する。 */
 export function updateKnowledgeMemo(id, updates) {
   const memos = getKnowledgeMemos();
   const idx   = memos.findIndex(m => m.id === id);
@@ -1565,6 +1594,7 @@ export function updateKnowledgeMemo(id, updates) {
   return saveKnowledgeMemos(memos) ? memos[idx] : null;
 }
 
+/** 通常メモをごみ箱へ退避し、復習予定も整合させて削除する。 */
 export function deleteKnowledgeMemo(id) {
   const memos = getKnowledgeMemos();
   const target = memos.find(m => m.id === id);
@@ -1586,7 +1616,8 @@ export function deleteKnowledgeMemo(id) {
   return target;
 }
 
-// ---- Trash ----
+// ---- Trash（全機能共通のごみ箱）----
+// payloadへ削除前の完全なオブジェクトを残し、entityTypeで復元先を決める。
 const TRASH_KEY = 'mp_trash';
 
 export function getTrashItems() {
@@ -1627,6 +1658,7 @@ export function getLearningEntryById(id) {
   return getLearningEntries().find(entry => entry.id === id) || null;
 }
 
+/** Knowledge項目を通常メモ等と同じ配列へ、安全に戻して保存する。 */
 export function saveLearningEntries(entries) {
   const records = getAllKnowledgeRecords();
   const preserved = records.filter(record => !isLearningLibraryRecord(record));
@@ -1641,6 +1673,7 @@ export function saveLearningEntries(entries) {
   return true;
 }
 
+/** 一般知識の質問回答を内部Knowledgeレコードとして追加する。 */
 export function addLearningEntry(entry) {
   const current = getLearningEntries();
   const nextEntry = { ...entry, id: entry.id || generateId() };
@@ -1655,6 +1688,7 @@ export function updateLearningEntry(id, updates) {
   return saveLearningEntries(entries) ? entries[index] : null;
 }
 
+/** Knowledge項目を回答全体ごとごみ箱へ退避する。 */
 export function deleteLearningEntry(id) {
   const records = getAllKnowledgeRecords();
   const target = records.find(record => record.id === id && isLearningLibraryRecord(record));
@@ -1669,6 +1703,7 @@ export function deleteLearningEntry(id) {
   return true;
 }
 
+/** 英語の疑問と構造化回答を表現帳領域へ保存する。 */
 export function addEnglishQuestion(question) {
   const text = String(question?.questionJa || '').trim();
   if (!text) return null;
@@ -1726,6 +1761,7 @@ export function saveTranslationSets(sets) {
   return true;
 }
 
+/** 元の日本語と複数英訳を一組のレコードとして保存する。 */
 export function addTranslationSet(set) {
   if (!String(set?.sourceTextJa || '').trim()) return null;
   const current = getTranslationSets();
@@ -1781,6 +1817,7 @@ export function addTrashItem({ entityType, payload, title }) {
   return item;
 }
 
+/** ごみ箱の一件を完全削除し、クラウドにも削除を通知する。 */
 export function removeTrashItem(id) {
   const items = getTrashItems();
   const target = items.find(item => item.id === id);
@@ -1933,7 +1970,8 @@ export function setTermExplanation(term, explanation) {
   save(TERM_KEY, cache);
 }
 
-// ---- Task Archive ----
+// ---- Task Archive（完了タスクの長期保管）----
+// ごみ箱とは異なり、完了履歴として残す正常な移動先。
 // Completed tasks older than the retention window are moved here by autoArchiveTasks()
 const ARCHIVE_KEY = 'mp_task_archive';
 const ARCHIVE_AFTER_DAYS = 7;
@@ -1946,6 +1984,7 @@ export function saveArchivedTasks(tasks) {
 }
 
 /** Move completed tasks older than ARCHIVE_AFTER_DAYS to the archive store */
+/** 一定期間を過ぎた完了タスクを、削除せずアーカイブへ移す。 */
 export function autoArchiveTasks() {
   const cutoff = new Date();
   cutoff.setHours(0, 0, 0, 0);
@@ -2020,7 +2059,7 @@ export function deleteSubtask(taskId, subtaskId) {
   saveTasks(tasks);
 }
 
-// ---- Global Tags ----
+// ---- Global Tags（タスクとメモで候補表示するタグ辞書）----
 const TAGS_KEY = 'mp_tags';
 
 export function getTags()             { return load(TAGS_KEY, []); }
@@ -2030,6 +2069,7 @@ export function saveTags(tags) {
   return true;
 }
 
+/** 前後空白を除いた新しいタグだけを候補辞書へ追加する。 */
 export function addTag(name) {
   const trimmed = (name || '').trim();
   if (!trimmed) return;
@@ -2124,6 +2164,7 @@ export function importBackup(jsonStr) {
   // don't overwrite API key on import
 }
 
+/** アカウント切替後に、一覧化されたユーザーデータだけを端末から外す。 */
 export function clearUserContentLocal() {
   USER_CONTENT_KEYS.forEach(key => {
     try { localStorage.removeItem(key); } catch {}
@@ -2260,7 +2301,7 @@ export async function restoreUserContentSnapshot(userId) {
   }
 }
 
-// ---- Habits (streak-based habit tracker) ----
+// ---- Habits（連続日数を扱う習慣トラッカー）----
 // Habit shape: { id, title, icon, freq:'daily'|'weekdays'|'weekly', color, streak, createdAt }
 // Done shape:  { [habitId]: ['YYYY-MM-DD', ...] }
 
@@ -2302,6 +2343,7 @@ export function isHabitDoneToday(habitId) {
 }
 
 /** 今日の完了をトグル。true=完了→未完了, false=未完了→完了 */
+/** 今日の完了を切り替え、連続日数の計算に使う日付記録を更新する。 */
 export function toggleHabitToday(habitId) {
   const todayStr = toDateStr_simple(new Date());
   const done = getHabitDoneMap();
@@ -2341,7 +2383,8 @@ export function getHabitHistory(habitId, days = 14) {
   });
 }
 
-// ---- Undo Stack (in-memory — cleared on page reload) ----
+// ---- Undo Stack（再読み込みで消える、直前操作の一時履歴）----
+// 永続履歴ではなく、完了・削除直後の「元に戻す」トースト専用。
 // Action shapes:
 //   { type:'delete_task',  task }
 //   { type:'complete_task', taskId, wasCompleted, completedAt }
@@ -2351,6 +2394,7 @@ export function getHabitHistory(habitId, days = 14) {
 const _undo = [];
 const UNDO_MAX = 15;
 
+/** 取り消し関数と説明をスタックへ積み、件数上限を越えた古い操作を捨てる。 */
 export function pushUndo(action) {
   _undo.push(action);
   if (_undo.length > UNDO_MAX) _undo.shift();
@@ -2365,6 +2409,7 @@ export function hasUndo() {
 }
 
 /** Perform the undo. Returns the action type string or null. */
+/** 最新の一件を取り出し、その操作が持つ復元関数を実行する。 */
 export function applyUndo() {
   const action = popUndo();
   if (!action) return null;

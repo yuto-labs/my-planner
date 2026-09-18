@@ -9,17 +9,19 @@ JavaScriptやHTMLをまったく触ったことがない人を想定していま
 
 1. [`start-here.md`](start-here.md) - 開発環境と最初の30分
 2. [`html-css-basics.md`](html-css-basics.md) - 画面の骨組みと見た目
-3. [`javascript-basics.md`](javascript-basics.md) - 動作を作る文法
-4. [`first-walkthrough.md`](first-walkthrough.md) - 起動から画面表示まで実コードを追う
-5. [`architecture.md`](architecture.md) - アプリ全体の設計
-6. [`file-map.md`](file-map.md) - ファイルを探す地図
-7. 小さい画面モジュール（`tagspage.js`、`archive.js`、`search.js`）
-8. [`data-and-sync.md`](data-and-sync.md) - 端末保存と同期
-9. [`database-basics.md`](database-basics.md) - SupabaseとSQL
-10. [`ai-flow.md`](ai-flow.md) - AI回答の生成と保存
-11. [`debugging-and-tests.md`](debugging-and-tests.md) - 不具合の調べ方
-12. [`glossary.md`](glossary.md) - 分からない単語を引く場所
-13. [`project-config.md`](project-config.md) - package、PWA、Vercel設定
+3. [`css-reading-guide.md`](css-reading-guide.md) - このアプリのCSSを探す方法
+4. [`javascript-basics.md`](javascript-basics.md) - 動作を作る文法
+5. [`first-walkthrough.md`](first-walkthrough.md) - 起動から画面表示まで実コードを追う
+6. [`architecture.md`](architecture.md) - アプリ全体の設計
+7. [`feature-walkthroughs.md`](feature-walkthroughs.md) - 一機能をファイル横断で追う
+8. [`file-map.md`](file-map.md) - ファイルを探す地図
+9. 小さい画面モジュール（`tagspage.js`、`archive.js`、`search.js`）
+10. [`data-and-sync.md`](data-and-sync.md) - 端末保存と同期
+11. [`database-basics.md`](database-basics.md) - SupabaseとSQL
+12. [`ai-flow.md`](ai-flow.md) - AI回答の生成と保存
+13. [`debugging-and-tests.md`](debugging-and-tests.md) - 不具合の調べ方
+14. [`glossary.md`](glossary.md) - 分からない単語を引く場所
+15. [`project-config.md`](project-config.md) - package、PWA、Vercel設定
 
 ## コード内コメントの読み方
 

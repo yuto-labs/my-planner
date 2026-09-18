@@ -1,3 +1,7 @@
+// AI設定画面から呼ばれる軽量な状態確認API。
+// 実際の文章生成は行わず、設定された各Geminiモデルへ到達できるかだけを調べる。
+
+/** 一つのモデル情報へ短い要求を送り、8秒以内に利用可能か判定する。 */
 async function checkModel(key, model) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 8_000);
@@ -17,6 +21,7 @@ async function checkModel(key, model) {
   }
 }
 
+/** APIキー設定とfast/quality各経路の状態を、秘密情報を含めず返す。 */
 export default async function handler(req, res) {
   const key = process.env.GEMINI_API_KEY;
   const configured = !!key;

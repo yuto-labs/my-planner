@@ -80,7 +80,9 @@ const CONFLICT_KEY = {
   review_schedule: 'user_id,memo_id',
 };
 
-// ---- Push デバウンスタイマー ----
+// ---- Pushの一時状態と安全設定 ----
+// 入力のたびに通信せず短時間まとめる。削除待ちと直近更新はlocalStorageにも残し、
+// 再読み込みや一時的な通信断の後に再開できるようにする。
 const _timers = {};
 const _deleteTimers = new Map();
 const _pushPromises = new Map();
@@ -329,7 +331,9 @@ export async function flushPendingSync() {
   };
 }
 
-// ---- Push ----
+// ---- Push（端末からクラウド）----
+// storage.jsから通知されたテーブルだけを送る。送信中に同じ種類の変更が来ても、
+// Promiseと再試行タイマーで重複通信や取りこぼしを避ける。
 
 /** 同じテーブルへの並行pushを一つのPromiseへまとめる。 */
 function _pushTable(tableKey) {
@@ -448,7 +452,9 @@ function _missingColumnFromError(error) {
   return named?.[1] || null;
 }
 
-// ---- Pull (起動時 + オンライン復帰時) ----
+// ---- Pull（クラウドから端末）----
+// 起動時、オンライン復帰時、Realtime通知時に実行する。取得結果をそのまま置換せず、
+// データ型ごとのマージ関数で端末の未送信変更と照合する。
 
 /**
  * 全同期対象をクラウドから取得し、種類ごとの安全なマージ処理を行う。
@@ -479,7 +485,7 @@ export async function pullAll(forceReplace = false) {
   return results.some(r => r.status === 'fulfilled' && r.value === true);
 }
 
-// ---- Pull helpers ----
+// ---- データ型別のPullと競合統合 ----
 
 /** Supabaseの1回の取得上限を越えるデータをページ単位ですべて読む。 */
 export async function selectAllForUser(client, table, columns, userId, orderColumn, pageSize = PULL_PAGE_SIZE) {
@@ -504,6 +510,7 @@ export async function selectAllForUser(client, table, columns, userId, orderColu
 
 const _selectAllForUser = selectAllForUser;
 
+/** アクティブ・アーカイブの両タスクを取得し、各保存先へ安全に分けて統合する。 */
 async function _pullTasks(client, userId, forceReplace = false) {
   const { data, error } = await _selectAllForUser(client, 'tasks', '*', userId, 'id');
   if (error) throw error;
@@ -533,6 +540,7 @@ async function _pullTasks(client, userId, forceReplace = false) {
   return changedActive || changedArchive;
 }
 
+/** 個人予定を取得し、削除確認・既知クラウド版・端末編集を比較して統合する。 */
 async function _pullEvents(client, userId, forceReplace = false) {
   let { data, error } = await _selectAllForUser(client, 'events', '*', userId, 'id');
   if (error) {
@@ -765,6 +773,7 @@ async function _reconcileRemoteCollection({
   return reconciled.next;
 }
 
+/** 目標を取得し、共通のID付きコレクション統合へ渡す。 */
 async function _pullGoals(client, userId, forceReplace = false) {
   const { data, error } = await _selectAllForUser(client, 'goals', '*', userId, 'id');
   if (error) throw error;
@@ -779,6 +788,10 @@ async function _pullGoals(client, userId, forceReplace = false) {
   return _writeCollectionAfterSync('mp_goals', local, next, userId, 'goals');
 }
 
+/**
+ * 通常メモ・表現帳・Knowledgeを取得する。
+ * 同じIDの通常メモは編集時刻、Knowledgeはフィールド時刻、表現帳はsense単位で統合する。
+ */
 async function _pullMemos(client, userId, forceReplace = false) {
   const { data, error } = await _selectAllForUser(client, 'knowledge_memos', '*', userId, 'id');
   if (error) throw error;
@@ -904,6 +917,7 @@ function mergeLearningRecord(local, remote) {
   return merged;
 }
 
+/** Knowledgeの題名と回答を、それぞれの更新時刻に基づいて三方向統合する。 */
 export function mergeLearningRecordsForSync(local, remote) {
   const localById = new Map((local || []).filter(item => item?.id).map(item => [item.id, item]));
   const pushCandidates = [];
@@ -987,6 +1001,7 @@ function mergeAtlasRecord(local, remote) {
   };
 }
 
+/** 表現帳の同時追加senseや例文を失わず、一つの見出し語レコードへ統合する。 */
 export function mergeAtlasRecordsForSync(local, remote) {
   const localById = new Map((local || []).filter(item => item?.id).map(item => [item.id, item]));
   const pushCandidates = [];
@@ -1000,6 +1015,7 @@ export function mergeAtlasRecordsForSync(local, remote) {
   return { items, pushCandidates };
 }
 
+/** ごみ箱を先に取得し、他コレクションの明示削除判定にも利用できるようにする。 */
 async function _pullTrash(client, userId, forceReplace = false) {
   const { data, error } = await _selectAllForUser(client, 'trash_items', '*', userId, 'id');
   if (error) throw error;
@@ -1013,6 +1029,7 @@ async function _pullTrash(client, userId, forceReplace = false) {
   return _writeCollectionAfterSync('mp_trash', local, next, userId, 'trash_items');
 }
 
+/** マイスケジュールを取得し、端末だけにある時間ブロックも保護する。 */
 async function _pullSchedule(client, userId, forceReplace = false) {
   const { data, error } = await _selectAllForUser(client, 'schedule_items', '*', userId, 'id');
   if (error) throw error;
@@ -1027,6 +1044,7 @@ async function _pullSchedule(client, userId, forceReplace = false) {
   return _writeCollectionAfterSync('mp_schedule', local, next, userId, 'schedule_items');
 }
 
+/** IDを持たないタグ名を、削除待ちと最近追加した名前を考慮して統合する。 */
 async function _pullTags(client, userId, forceReplace = false) {
   const { data, error } = await _selectAllForUser(client, 'tags', 'name', userId, 'name');
   if (error) throw error;
@@ -1086,6 +1104,7 @@ async function _pullTags(client, userId, forceReplace = false) {
   return _writeCollectionAfterSync('mp_tags', localTags, reconciled.next, userId, 'tags');
 }
 
+/** memoIdをキーにした復習予定を比較可能な一時配列へ変換して統合する。 */
 async function _pullReviewSchedule(client, userId, forceReplace = false) {
   const { data, error } = await _selectAllForUser(client, 'review_schedule', '*', userId, 'memo_id');
   if (error) throw error;
@@ -1133,7 +1152,8 @@ export async function pullIfStale(minAgeMs = 30_000, forceReplace = false) {
   return pulled;
 }
 
-// ---- Utils ----
+// ---- 同期を支える内部処理 ----
+// 削除の再試行、直近upsert、版番号、バックアップ、書き込み直前の再マージを扱う。
 
 function _resumePersistedSyncWork() {
   _getPendingDeletes().forEach(payload => _scheduleDelete(payload));
@@ -1404,6 +1424,7 @@ function _reviewEntryTs(entry) {
   return Number.isFinite(nextReview) ? nextReview : 0;
 }
 
+/** 復習日時と段階を、端末間で大小比較できる一つの数値へ変換する。 */
 export function reviewEntryVersion(entry) {
   return _reviewEntryVersion(entry);
 }
@@ -1519,6 +1540,7 @@ export function resolveRemoteMissingProtection({
   return { protectedIds, nextState };
 }
 
+/** クラウド応答から一時的に欠けたIDを記録し、次回pullでも保護判断を引き継ぐ。 */
 function _trackRemoteMissingItems({
   collectionKey,
   userId,
@@ -1554,6 +1576,7 @@ function _syncBackupKey(collectionKey, userId) {
   return `mp_sync_backups:${collectionKey}:${userId}`;
 }
 
+/** 同期で書き換える直前の値を、ユーザー・種類別の世代バックアップへ残す。 */
 function _writeSyncBackup(collectionKey, userId, value) {
   try {
     const key = _syncBackupKey(collectionKey, userId);
@@ -1569,6 +1592,10 @@ function _writeSyncBackup(collectionKey, userId, value) {
   }
 }
 
+/**
+ * 同期中に新しく行われた端末編集をもう一度マージしてから配列を書き込む。
+ * pull開始時点のpreviousだけで上書きしないための最後の防壁。
+ */
 function _writeCollectionAfterSync(key, previous, next, userId, collectionKey) {
   if (getActiveUserId() !== userId) return false;
   const fresh = _ls(key, []);
@@ -1585,6 +1612,7 @@ function _writeCollectionAfterSync(key, previous, next, userId, collectionKey) {
   return true;
 }
 
+/** オブジェクト形式の復習予定へ、配列版と同じ書き込み直前保護を適用する。 */
 function _writeObjectAfterSync(key, previous, next, userId, collectionKey) {
   if (getActiveUserId() !== userId) return false;
   const fresh = _ls(key, {});
@@ -1612,6 +1640,7 @@ function _writeObjectAfterSync(key, previous, next, userId, collectionKey) {
   return true;
 }
 
+/** pull開始後にfreshへ加わった変更だけを、pulled結果へ戻す。 */
 export function mergeFreshLocalCollection(key, previous, fresh, pulled) {
   if (JSON.stringify(fresh) === JSON.stringify(previous)) return pulled;
 
@@ -1696,6 +1725,7 @@ function _dedupeById(items) {
   return [...byId.values()];
 }
 
+/** 最終成功時刻を保存し、該当テーブルのエラー表示を解除する。 */
 function _recordSyncSuccess(type, table = null) {
   const current = getSyncStatus();
   const tableErrors = { ...(current.tableErrors || {}) };
@@ -1716,6 +1746,7 @@ function _recordSyncSuccess(type, table = null) {
   localStorage.setItem(SYNC_STATUS_KEY, JSON.stringify(next));
 }
 
+/** 同期エラーを画面表示用の短い状態へ保存し、元データは削除しない。 */
 function _recordSyncError(table, error, type = 'push') {
   const current = getSyncStatus();
   const at = new Date().toISOString();
