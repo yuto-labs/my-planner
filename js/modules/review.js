@@ -1,5 +1,8 @@
 // ============================================================
-// review.js - Anki-like spaced repetition review session
+// review.js - メモの間隔反復セッション
+//
+// 復習対象に設定された通常メモだけを扱い、評価結果はstorage.jsの
+// 復習スケジュールへ保存する。表現帳やKnowledgeの表示状態とは独立している。
 // ============================================================
 import {
   getReviewsForDate, getKnowledgeMemoById,

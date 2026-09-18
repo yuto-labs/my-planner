@@ -1,5 +1,8 @@
 // ============================================================
-// goals.js — Goal management with AI task splitting
+// goals.js - 目標管理とAIによるタスク分解
+//
+// 目標自体の進捗に加え、関連タスクとメモを同じ画面から参照する。
+// AI案は直接保存せず、ユーザーが選んだ項目だけをタスクへ追加する。
 // ============================================================
 
 import {
@@ -62,6 +65,7 @@ function render() {
   wireGoalActions(container);
 }
 
+/** 保存済み目標を期限・進捗付きの一覧へ描画する。 */
 function renderGoalList() {
   const { tab } = state;
   const goals = getGoals().filter(g => g.type === tab);
@@ -206,6 +210,7 @@ async function promptDelete(goalId) {
   );
 }
 
+/** 目標を実行可能な小タスクへ分解し、確認モーダルへ渡す。 */
 async function handleAISplit(goalId, itemEl) {
   const goal = getGoals().find(g => g.id === goalId);
   if (!goal) return;
@@ -287,6 +292,7 @@ function showAITaskModal(goal, result) {
   };
 }
 
+/** 目標の新規作成と編集に共通するフォームを開く。 */
 function openGoalModal(goal) {
   const isEdit = !!goal;
   let selectedType = goal?.type || state.tab;
@@ -387,6 +393,7 @@ function openGoalModal(goal) {
   };
 }
 
+/** 目標達成に不足しそうな知識をAIで候補化する。 */
 async function handleAIKnowledgeSuggest(goalId, itemEl) {
   const goal = getGoals().find(g => g.id === goalId);
   if (!goal) return;

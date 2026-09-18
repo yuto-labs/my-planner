@@ -34,7 +34,8 @@ const toast     = (msg, type) => window.AppNav?.showToast(msg, type);
 const undoToast = (msg, cb)   => window.AppNav?.showUndoToast(msg, cb);
 
 // ============================================================
-// Module-level shared state (persists across navigations)
+// 画面遷移やエディタ再描画をまたいで保持する一時状態。
+// 本文の正式な保存先ではない。保存前の下書き、Undo履歴、画像通信中フラグを持つ。
 // ============================================================
 
 let currentMemoId  = null;  // null = new memo
@@ -245,7 +246,8 @@ export function resolveNewMemoReviewEnabled(opts) {
 }
 
 // ============================================================
-// Block constants
+// メモを構成できるブロック種別と、新規作成時だけ使うテンプレート定義。
+// 保存済みブロックは type で判別するため、既存typeの名称を変更しないこと。
 // ============================================================
 
 const BLOCK_TYPES = [
@@ -340,7 +342,7 @@ const TEMPLATES = {
 };
 
 // ============================================================
-// LIST VIEW
+// 一覧画面。大量のメモを一度にDOMへ置かず、検索索引とページ単位表示を使う。
 // ============================================================
 
 const MEMO_LIST_PAGE_SIZE = 40;
@@ -698,7 +700,8 @@ function pruneMemoSearchIndex(memos) {
 }
 
 // ============================================================
-// AI INPUT SHEET
+// 長文をAIで整理して新規メモの下書きへ変換する入力シート。
+// AI結果は直接保存せず、通常のエディタで確認・修正してから保存する。
 // ============================================================
 
 export function openKnowledgeAiOrganizer() {
@@ -1008,7 +1011,8 @@ function startNewMemo(templateKey) {
 }
 
 // ============================================================
-// DETAIL / EDITOR VIEW
+// 詳細・編集画面。edStateが現在開いている一件の下書き全体を持つ。
+// DOMだけを書き換えると保存時に戻るため、操作時は必ずedStateも更新する。
 // ============================================================
 
 // Editor state (kept in memory while editing)
@@ -1250,7 +1254,7 @@ function renderDetail(container, options = {}) {
 }
 
 // ============================================================
-// VIEW MODE
+// 閲覧モード。保存済みブロックを安全なHTMLへ変換し、数式・画像・関連メモを接続する。
 // ============================================================
 
 function renderViewMode(container) {
@@ -1560,6 +1564,7 @@ function renderBlockView(block, numCounter = 0, indent = 0) {
   return tagMap[block.type] || tagMap.paragraph;
 }
 
+/** 許可したインライン装飾だけをHTML化し、それ以外はエスケープする。 */
 function renderInlineMarkdown(text) {
   return text
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
@@ -1587,6 +1592,7 @@ function renderAllKaTeX(container) {
 
 // ---- Term selection / explain ----
 
+/** 閲覧中の文字選択から、用語解説を呼び出せる操作を接続する。 */
 function setupTermSelection(contentEl, rootContainer) {
   if (!contentEl) return;
   let floatingBtn = null;
@@ -1668,7 +1674,7 @@ function showTermPopup(term, text, anchorEl, rootContainer) {
 }
 
 // ============================================================
-// EDIT MODE
+// 編集モード。ブロック追加・移動・階層化・書式・画像・Undo/Redoを扱う。
 // ============================================================
 
 /**
@@ -1891,6 +1897,7 @@ function renderEditMode(container, { preserveHistory = false } = {}) {
   });
 }
 
+/** edState.blocksを編集可能なブロックDOMへ変換する。 */
 function renderBlocksEdit(blocks) {
   let listNumber = 0;
   return blocks.map((block, idx) => {
@@ -2566,6 +2573,7 @@ function renderMathPreviews(container) {
   });
 }
 
+/** Enter、Backspace、Markdownショートカットなどのキー操作をブロック編集へ変換する。 */
 function handleBlockKeydown(e, blockId, container) {
   if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
     e.preventDefault();
@@ -3531,6 +3539,7 @@ function focusLastBlock(container) {
 
 // ---- AI Tag suggestion ----
 
+/** 題名と本文冒頭からタグ候補を得る。候補は自動保存せず選択を待つ。 */
 async function handleAITagSuggest(container) {
   const btn = container.querySelector('#kn-ai-tag-btn');
   if (!btn) return;
@@ -3716,6 +3725,7 @@ async function handlePasteSummarize(text, container) {
 
 // ---- Tag input wiring ----
 
+/** タグ入力、直近候補、Enter追加、既存タグ選択を接続する。 */
 function wireTagInput(container) {
   const input = container.querySelector('#kn-tag-input');
   if (!input) return;
@@ -3787,6 +3797,7 @@ function renderTagDisplay(container) {
 
 // ---- Save / Delete ----
 
+/** 保存直前に、まだinput要素内だけにある編集値をedStateへ回収する。 */
 function syncEditorDomToState(container) {
   const titleInput = container.querySelector('#kn-edit-title');
   if (titleInput) edState.title = titleInput.value.trim().slice(0, 180);
@@ -3993,7 +4004,7 @@ function confirmDelete(memoId, container) {
 }
 
 // ============================================================
-// HELPERS
+// ブロック生成・探索・本文抽出など、閲覧と編集の両方で使う共通処理。
 // ============================================================
 
 function defaultBlock(type = 'paragraph') {

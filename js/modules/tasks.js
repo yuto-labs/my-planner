@@ -1,5 +1,8 @@
 ﻿// ============================================================
-// tasks.js - Task management module
+// tasks.js - タスク一覧・編集・AI時間配分
+//
+// stateは入力中フォーム、絞り込み、時間配分パネルの一時値を保持する。
+// タスク本体はstorage.js、AIによる分解と配分はai.js、日付UIはdatepicker.jsを使う。
 // ============================================================
 
 import {
@@ -19,6 +22,7 @@ const nav       = (view)      => window.AppNav?.navigate(view);
 
 let openPlannerHandler = null;
 
+// 保存対象ではない画面状態。画面の再描画後も入力値を維持するためモジュールに置く。
 let state = {
   filter:      'pending',    // 'all' | 'pending' | 'done' | 'large' | 'medium' | 'small'
   container:   null,
@@ -112,6 +116,7 @@ export function initTasks(container) {
 
 // ---- Render ----
 
+/** 現在stateから入力フォーム、フィルタ、タスク一覧、時間配分パネルを描く。 */
 function render() {
   const { container } = state;
 
@@ -408,6 +413,7 @@ function renderProgressBar() {
   `;
 }
 
+/** フィルタの件数表示に使う、状態別タスク数を一度に集計する。 */
 function getTaskCounts() {
   const tasks = getTasks();
   return {
@@ -468,6 +474,7 @@ function updateFilterBar() {
   wireFilters(state.container);
 }
 
+/** 変更範囲に応じ、件数だけまたは一覧全体を更新する。 */
 function refreshTaskUi(shouldRerenderList = false) {
   renderProgressBar();
   updateFilterBar();
@@ -586,6 +593,7 @@ function openCodexTimePicker(key, btn, label, allowClear = false) {
   });
 }
 
+/** AI時間配分へ渡すタスク・予定・利用可能時間を一つの要求へまとめる。 */
 function buildCodexPayload() {
   const periodStart = state.codexStartDate || today();
   const periodEnd = state.codexEndDate || periodStart;
@@ -648,6 +656,7 @@ async function copyCodexPayload(container) {
   }
 }
 
+/** AIへ時間配分を依頼し、すぐ保存せず確認可能な下書きとして表示する。 */
 async function runCodexAiPlan(container, btn) {
   if (!isAiAvailable()) { toast('AIを利用できません。AI設定を確認してください', 'error'); return; }
   const payload = buildCodexPayload();
@@ -667,6 +676,7 @@ async function runCodexAiPlan(container, btn) {
   }
 }
 
+/** 確認済みAI案をマイスケジュールへ反映し、重複する旧案を整理する。 */
 function applyCodexPlan(container, options = {}) {
   const input = container.querySelector('#codex-import-text');
   const raw = input?.value?.trim();
@@ -1054,6 +1064,7 @@ function toDateStrLocal(d) {
 
 // ---- List rendering ----
 
+/** 現在のフィルタを適用してから期限順へ並べた表示用配列を返す。 */
 function getSortedFilteredTasks() {
   const { filter } = state;
   const tasks = sortTasksByDeadline(getTasks());
@@ -1180,6 +1191,7 @@ function renderListInto(listEl) {
 
 // ---- Event delegation (wired ONCE per render) ----
 
+/** 一覧内の編集・完了・削除・放棄などのイベントをまとめて接続する。 */
 function wireTaskActions() {
   const listEl = state.container?.querySelector('#task-list');
   if (!listEl || listEl._wired) return;
@@ -1315,6 +1327,7 @@ function handleAdd() {
   toast(`「${title}」を追加しました`, 'success');
 }
 
+/** 大きなタスクをAIで小タスクへ分解し、保存前の確認画面を出す。 */
 async function handleDecompose(taskId, btn) {
   const task = getTasks().find(t => t.id === taskId);
   if (!task) return;
@@ -1468,6 +1481,7 @@ function handleUnabandon(taskId, li) {
 
 // ---- Task edit modal (title + due date/time + tags + subtasks + memo) ----
 
+/** タスク行をその場で編集状態にし、確定時だけstorageへ保存する。 */
 function startTitleEdit(li, taskId) {
   const task = getTasks().find(t => t.id === taskId);
   if (!task) return;
@@ -1828,6 +1842,7 @@ function rerenderList() {
 
 // ---- Drag & Drop ----
 
+/** ポインタ操作で手動順を変更する。期限順表示時の同順位判定にも使われる。 */
 function wireDragDrop(listEl) {
   if (!listEl) return;
   let draggingId = null;

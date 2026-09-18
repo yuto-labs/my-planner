@@ -1,5 +1,7 @@
 // ============================================================
-// tagspage.js - Cross-item tag browser (tasks + memos)
+// tagspage.js - タスクとメモを横断するタグ別一覧
+//
+// 一覧の入口だけを担当し、項目タップ後の編集は元の画面へ委譲する。
 // ============================================================
 
 import { getTasks, getArchivedTasks, getKnowledgeMemos } from '../storage.js';

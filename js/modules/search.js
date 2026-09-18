@@ -1,5 +1,8 @@
 // ============================================================
-// search.js - Universal cross-data search overlay
+// search.js - アプリ内データの横断検索
+//
+// タスク、予定、メモ、表現帳などを読み取り専用で照合し、
+// 結果タップ後は各機能が持つ正規の詳細画面へ移動する。
 // ============================================================
 
 import {
@@ -88,6 +91,7 @@ export function openSearch() {
   });
 }
 
+/** 検索オーバーレイを閉じ、登録したキーボード処理も解除する。 */
 export function closeSearch() {
   const overlay = document.getElementById('search-overlay');
   if (!overlay) return;

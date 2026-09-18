@@ -1,5 +1,9 @@
 ﻿// ============================================================
-// calendar.js - Calendar: month / week / day views + event CRUD
+// calendar.js - 月・週・日カレンダーと予定の作成・編集
+//
+// stateは「どの期間・表示形式・共有元を見ているか」を保持する。
+// render()が外枠、renderView()が月/週/日の中身を描画する。
+// 予定そのものの永続化はstorage.js、共有通信はshared-calendar.jsへ委譲する。
 // ============================================================
 
 import {
@@ -33,6 +37,7 @@ const EVENT_TITLE_HISTORY_MAX = 240;
 const SHARED_REFRESH_MS = 15_000;
 
 // Module state
+// 画面を再描画しても保持したい、カレンダー専用の一時状態。
 let state = {
   mode: 'month',         // 'month' | 'week' | 'day'
   cursor: new Date(),    // current view date
@@ -93,6 +98,7 @@ export function initCalendar(container) {
   };
 }
 
+/** FABから日付を選び、その日を初期値にした予定作成フォームを開く。 */
 export function openCalendarAddFlow() {
   if (state.container?.dataset.view !== 'calendar') return;
   document.querySelector('.cal-day-sheet')?.remove();
@@ -105,6 +111,7 @@ export function openCalendarAddFlow() {
   });
 }
 
+/** URLに共有招待があれば一度だけ処理し、処理済みトークンをURLから除く。 */
 async function handleCalendarInviteFromUrl() {
   const url = new URL(window.location.href);
   const token = url.searchParams.get('shareInvite');
@@ -123,6 +130,7 @@ async function handleCalendarInviteFromUrl() {
 // Swipe listeners live on the container element for the lifetime of the view.
 // They must NOT be inside render() - render() is called on every navigation
 // and would accumulate duplicate listeners on the same DOM node.
+/** 月・週・日を左右スワイプで移動するリスナーを、この画面の寿命だけ登録する。 */
 function _setupSwipe(container) {
   let _sx = 0, _sy = 0, _dx = 0;
   let _tracking = false;
@@ -250,6 +258,7 @@ function _setupSwipe(container) {
 
 // ---- Main render ----
 
+/** ヘッダー、表示切替、カレンダー本体を現在stateからまとめて再描画する。 */
 function render() {
   const { mode, cursor, container } = state;
   if (!container) return;
@@ -361,6 +370,7 @@ async function loadCalendarShareGroups() {
   }
 }
 
+/** 個人または共有グループへ表示元を切り替え、必要な予定を取得する。 */
 async function setCalendarSource(source, groupId = '') {
   const previousGroupId = state.groupId;
   state.source = source;
@@ -396,6 +406,7 @@ function sharedCalendarFingerprint() {
   });
 }
 
+/** 画面位置を保ったまま、個人同期と共有予定をバックグラウンド更新する。 */
 async function refreshCalendarBackground() {
   if (!state.container || state.container.dataset.view !== 'calendar') return;
   if (state.source !== 'personal') {
@@ -468,6 +479,7 @@ function isSharedSource() {
   return state.source !== 'personal' && !!state.groupId;
 }
 
+/** 現在選択している個人/共有ソースに属する予定だけを返す。 */
 function getVisibleEvents() {
   return isSharedSource() ? state.sharedEvents : getEvents();
 }
@@ -514,6 +526,7 @@ function getWeekStartDate(fallbackDate = state.cursor) {
   return d;
 }
 
+/** 表示モードに応じてカーソルを前後の月・週・日へ移す。 */
 function moveCursor(dir) {
   _selectedDate = null;
   const { mode, cursor } = state;
@@ -530,6 +543,7 @@ function moveCursor(dir) {
   render();
 }
 
+/** state.modeに対応する月・週・日の描画関数へ振り分ける。 */
 function renderView() {
   const { mode } = state;
   if (mode === 'month') renderMonth();
@@ -540,6 +554,7 @@ function renderView() {
 // MONTH VIEW
 // ============================================================
 
+/** 6週分の日付セルと、その日に属する予定の短いプレビューを描く。 */
 function renderMonth() {
   const { cursor } = state;
   const events = getMonthVisibleEvents();
@@ -648,6 +663,7 @@ function renderMonth() {
 // WEEK / DAY VIEW (time grid)
 // ============================================================
 
+/** 週または日の予定を、時刻位置と長さを持つ縦グリッドへ配置する。 */
 function renderTimeGrid(numDays = 7) {
   const { cursor } = state;
   const events = getVisibleEvents();
@@ -1158,6 +1174,7 @@ function scheduleItemRange(item, dateStr) {
   return { start, end };
 }
 
+/** 新しい予定と時間が重なる既存予定・マイスケジュールを警告用に集める。 */
 function getEventConflicts(candidate, excludeId = '') {
   const range = eventRange(candidate);
   if (!range) return [];
@@ -2008,6 +2025,7 @@ function createRecurringEvents(eventData, recurType, endDateStr, excludeWeekdays
   return pendingEvents.length;
 }
 
+/** 入力途中の題名に近い履歴を、時刻やカテゴリの再利用候補として返す。 */
 function getEventTitleSuggestions(query, excludeId = null) {
   const q = String(query || '').trim().toLowerCase();
   if (!q) return [];
@@ -2065,6 +2083,7 @@ function getEventTitleSuggestions(query, excludeId = null) {
     .sort((a, b) => (b.score - a.score) || (b.latest - a.latest) || a.title.localeCompare(b.title, 'ja'));
 }
 
+/** 単発または繰り返し範囲を確認し、ごみ箱へ退避してから削除する。 */
 async function handleDelete(event) {
   const { openModal: _, closeModal: close } = { closeModal: null };
 

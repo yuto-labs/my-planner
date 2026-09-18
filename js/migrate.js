@@ -141,6 +141,7 @@ function _eventTagsFromRow(row) {
     : [];
 }
 
+/** アプリ内タスクをSupabaseのtasks行へ変換する。 */
 export function taskToRow(task, userId, isArchived) {
   return {
     id:                task.id,
@@ -169,6 +170,7 @@ export function taskToRow(task, userId, isArchived) {
   };
 }
 
+/** Supabaseのtasks行を、画面で使うタスクへ戻す。 */
 export function rowToTask(row) {
   return {
     id:               row.id,
@@ -195,6 +197,7 @@ export function rowToTask(row) {
   };
 }
 
+/** 個人予定をDB行へ変換し、共有設定や添付情報もJSON列へ保持する。 */
 export function eventToRow(event, userId) {
   return {
     id:           event.id,
@@ -216,6 +219,7 @@ export function eventToRow(event, userId) {
   };
 }
 
+/** DB予定を旧データとも互換性のあるアプリ形式へ戻す。 */
 export function rowToEvent(row) {
   return {
     id:          row.id,
@@ -264,6 +268,7 @@ export function rowToGoal(row) {
   };
 }
 
+/** 通常メモと内部Knowledgeレコードを、内容を削らずDB行へ変換する。 */
 export function memoToRow(memo, userId) {
   return {
     id:         memo.id,
@@ -279,6 +284,7 @@ export function memoToRow(memo, userId) {
   };
 }
 
+/** DBのメモ行からブロック、タグ、更新日時を復元する。 */
 export function rowToMemo(row) {
   return {
     id:        row.id,

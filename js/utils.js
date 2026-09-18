@@ -5,11 +5,13 @@
 // カレンダー・タスク・AI解析で同じ日付ルールを共有できるようにする。
 // ============================================================
 
+/** 端末内データ用の衝突しにくい短いIDを生成する。 */
 export function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
 
 // HTML escaping
+/** ユーザー文字列をHTMLへ埋め込む前に特殊文字を無害化する。 */
 export function esc(str) {
   return String(str ?? '')
     .replace(/&/g, '&amp;')
@@ -181,6 +183,7 @@ export function formatTime(isoStr) {
  * Returns events with _displayStart/_displayEnd properties for multi-day cases.
  * Middle days of 3+ day spans are marked _isAllDay = true.
  */
+/** 単発・複数日・繰り返し予定から、指定日に表示する予定を返す。 */
 export function getEventsForDate(events, dateStr) {
   return events
     .filter((ev) => {
@@ -314,6 +317,7 @@ export function getRecurringInstances(masterEvent, windowStart, windowEnd) {
 }
 
 // ---- Debounce ----
+/** 連続呼び出しを最後の一回へまとめ、検索や保存の過剰実行を防ぐ。 */
 export function debounce(fn, ms = 300) {
   let t;
   return (...args) => {

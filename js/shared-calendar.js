@@ -151,6 +151,7 @@ export function getShareGroupsForEventForm() {
   return ls(CACHE_KEY, []);
 }
 
+/** 参加中グループを取得し、オフライン表示用キャッシュも更新する。 */
 export async function loadSharedGroups() {
   const client = await getClient();
   const userId = await getUserId();
@@ -190,6 +191,7 @@ export async function loadSharedGroups() {
   return groups;
 }
 
+/** ログインユーザーを所有者とする共有グループを作る。 */
 export async function createSharedGroup(name) {
   const client = await getClient();
   const userId = await getUserId();
@@ -239,6 +241,7 @@ export async function deleteSharedGroup(groupId) {
   return true;
 }
 
+/** グループ参加用の期限付き招待トークンを発行する。 */
 export async function createSharedInvite(groupId, email = '') {
   const client = await getClient();
   const userId = await getUserId();
@@ -276,6 +279,7 @@ export async function createSharedInvite(groupId, email = '') {
   };
 }
 
+/** 招待を検証して参加する。未ログイン時はトークンを端末へ保留する。 */
 export async function acceptSharedInvite(token) {
   const client = await getClient();
   const userId = await getUserId();
@@ -306,6 +310,7 @@ export async function consumePendingSharedInvite() {
   return acceptSharedInvite(token);
 }
 
+/** 閲覧可能なグループ予定を集め、共有範囲に応じて詳細を伏せる。 */
 export async function collectSharedCalendarEvents(groupId = '') {
   const client = await getClient();
   const userId = await getUserId();
@@ -358,6 +363,7 @@ export function countShareableLocalEvents(groupId = '', scope = 'future') {
   }).length;
 }
 
+/** 条件に合う個人予定へ共有設定を一括付与し、通常同期へ流す。 */
 export function bulkShareLocalEvents({ groupId, visibility = 'shared_detail', scope = 'future' } = {}) {
   if (!groupId) throw new Error('共有先グループを選んでください');
   const safeVisibility = visibility === 'shared_busy' ? 'shared_busy' : 'shared_detail';

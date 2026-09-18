@@ -1,5 +1,8 @@
 // ============================================================
-// home.js — Dashboard / Home screen
+// home.js - 今日の情報をまとめるダッシュボード
+//
+// 保存処理を独自に持たず、予定・タスク・メモの各storage関数を組み合わせる。
+// 自然文入力はAIの解釈結果を必ず確認可能な操作へ変換してから保存する。
 // ============================================================
 
 import {
@@ -259,6 +262,7 @@ export function initHome(container) {
   });
 }
 
+/** カバー画像の追加・撮影・位置調整・削除を画面へ接続する。 */
 function wireHomeCover(container, currentCover) {
   const photoInput = container.querySelector('#home-cover-photo-input');
   const cameraInput = container.querySelector('#home-cover-camera-input');
@@ -343,6 +347,7 @@ function wireHomeCover(container, currentCover) {
   cameraInput?.addEventListener('change', handleFile);
 }
 
+/** 画像のどの位置を帯の中へ見せるか調整する編集UIを開く。 */
 function openHomeCoverEditor(container, currentCover) {
   if (!currentCover?.path || document.querySelector('.home-cover-editor')) return;
   let positionX = clampCoverPosition(currentCover.positionX);
@@ -476,6 +481,7 @@ function weightOrder(w) {
   return w === 'large' ? 0 : w === 'small' ? 2 : 1;
 }
 
+/** ホーム向けに、期限と完了操作を含む短いタスク行を組み立てる。 */
 function renderFocusTask(task, todayStr) {
   const dotClass = `weight-${task.weight || 'medium'}`;
   let urgency = '';
@@ -508,6 +514,7 @@ function renderFocusTask(task, todayStr) {
   `;
 }
 
+/** カレンダー予定とマイスケジュールを同じ見た目の行へ変換する。 */
 function renderScheduleItem(event) {
   if (event._homeType === 'mySchedule') {
     const color = getMyScheduleColor();
@@ -666,6 +673,7 @@ async function handleNLInput(input, btn, container) {
   }
 }
 
+/** AIの削除指示を候補へ照合し、誤削除を避ける確認データを作る。 */
 function resolveAiDeletion(parsed) {
   const action = parsed.action;
   const query = normalizeSearchText(parsed.targetTitle || parsed.title || '');
@@ -713,6 +721,7 @@ function normalizeSearchText(value) {
     .replace(/\s+/g, '');
 }
 
+/** 自然文入力を通常メモまたは表形式メモのブロックへ変換する。 */
 function buildMemoBlocksFromInput(rawText, memo, isDatabase, fields, rows) {
   if (!isDatabase) return [{ id: generateId(), type: 'paragraph', text: memo || rawText }];
   const blocks = [

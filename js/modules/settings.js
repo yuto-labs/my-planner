@@ -1,5 +1,8 @@
 // ============================================================
-// settings.js - simple user settings + advanced AI settings
+// settings.js - 外観・アカウント・同期・AIの設定画面
+//
+// 値の保存だけでなく、ログイン切替前の同期完了と端末スナップショット保護も担当する。
+// 認証自体はsupabase.js、データ同期はsync.jsの公開関数を通して操作する。
 // ============================================================
 
 import {
@@ -38,6 +41,7 @@ export function initAISettings(container) {
   }).catch(() => {});
 }
 
+/** 一般設定を現在値から描画し、各コントロールの変更イベントを接続する。 */
 function renderMainSettings(container) {
   const settings = getSettings();
   const categories = getCategories();
@@ -164,6 +168,7 @@ function renderMainSettings(container) {
   });
 }
 
+/** AIの利用可否・モデル状態・接続診断を表示する。 */
 function renderAISettings(container) {
   const settings = getSettings();
   const pendingQueue = getPendingAIQueue();
@@ -274,6 +279,7 @@ function renderCategoryRow(cat) {
   `;
 }
 
+/** ログイン状態に応じて、認証または同期管理のUIを返す。 */
 function renderAccountSection() {
   const syncStatus = getSyncStatus();
   const cfg = getStoredConfig();
@@ -333,6 +339,7 @@ function safeCloudHost(url) {
   }
 }
 
+/** 内部同期状態を、利用者が判断できる短い表示へ変換する。 */
 function renderSyncStatus(status) {
   const lastPush = status.lastPushAt ? formatSyncTime(status.lastPushAt) : 'まだありません';
   const lastPull = status.lastPullAt ? formatSyncTime(status.lastPullAt) : 'まだありません';

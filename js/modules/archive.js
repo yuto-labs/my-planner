@@ -1,5 +1,8 @@
 // ============================================================
-// archive.js - Trash page for deleted items
+// archive.js - 削除済みデータのごみ箱
+//
+// 完全削除前に、元データの種類に応じた復元を提供する。
+// 戻る操作は固定ページではなく、app.jsが記録した直前画面へ戻す。
 // ============================================================
 
 import {
@@ -26,6 +29,7 @@ export function initArchive(container) {
   render(container);
 }
 
+/** ごみ箱の中身を月ごとにまとめ、復元・完全削除操作を描画する。 */
 function render(container) {
   const items = getTrashItems();
 
@@ -116,6 +120,7 @@ function renderMonthBlock(ym, items) {
   `;
 }
 
+/** 元データの種類と題名が分かる、ごみ箱の一行を組み立てる。 */
 function renderTrashItem(item) {
   const meta = TYPE_META[item.entityType] || { label: item.entityType || 'Item', icon: '•' };
   const payload = item.payload || {};

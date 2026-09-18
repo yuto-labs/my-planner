@@ -1,5 +1,8 @@
 // ============================================================
-// today.js — Today detail page
+// today.js - 選択日のタイムラインとタスクを扱う日別画面
+//
+// カレンダー予定とマイスケジュールを一つの時間軸へ統合するが、
+// 編集時は元の種類へ戻してそれぞれ正しい保存関数を呼ぶ。
 // ============================================================
 
 import {
@@ -26,6 +29,7 @@ export function initToday(container) {
 
 // ---- Main render ----
 
+/** 選択日の予定・マイスケジュール・タスクを読み直して画面全体を描く。 */
 function renderPage(container) {
   const todayStr  = selectedDateStr || today();
   const now       = new Date();
@@ -181,6 +185,7 @@ function wireDateNav(container) {
 // "次は" banner
 // ============================================================
 
+/** 現在時刻以降でもっとも近い予定を、二種類のデータから探す。 */
 function findNextEvent(events, schedItems, nowMin) {
   const all = [];
 
@@ -320,6 +325,7 @@ function wireTaskMoreToggle(container) {
   });
 }
 
+/** タスク行の横スワイプを完了操作へ変換し、誤作動しない距離を判定する。 */
 function attachSwipe(item, container) {
   const content = item.querySelector('.swipe-content');
   const bg      = item.querySelector('.swipe-bg');
@@ -394,6 +400,7 @@ function updateProgressUI(container) {
 // Timeline
 // ============================================================
 
+/** 異なる形式の予定を表示用の共通タイムライン項目へそろえて並べる。 */
 function buildTimeline(events, schedItems) {
   const items = [];
 
@@ -533,6 +540,7 @@ function timelineCardHTML(item, nowMin) {
   </div>`;
 }
 
+/** タイムライン項目のタップを、それぞれの編集画面へ接続する。 */
 function wireTimeline(container, todayStr) {
   container.querySelector('#today-timeline')?.addEventListener('click', e => {
     const btn = e.target.closest('[data-delete-id]');

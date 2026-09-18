@@ -1,5 +1,8 @@
 // ============================================================
-// analytics.js — タスク分析 / ナレッジ分析
+// analytics.js - 保存済み実績から作るタスク・Knowledge分析
+//
+// AI提案を主目的にせず、完了履歴や復習結果を集計して事実を見せる。
+// 元データは変更せず、描画時に期間別の統計へ変換する読み取り専用画面。
 // ============================================================
 import {
   getTasks, getArchivedTasks, getKnowledgeMemos,
@@ -208,6 +211,7 @@ function renderAccuracyContent(acc) {
 }
 
 /* ---- Tasks tab ---- */
+/** 完了数・所要時間・推移など、タスク側の集計を描画する。 */
 function renderTasksTab() {
   const score = calcWeekScore();
   const trend = calcMonthlyTrend();
@@ -287,6 +291,7 @@ function renderTasksTab() {
 }
 
 /* ---- Knowledge tab ---- */
+/** メモと復習履歴から、学習状況の集計を描画する。 */
 function renderKnowledgeTab() {
   const balance      = calcFieldBalance();
   const revSpeed     = calcReviewSpeed();

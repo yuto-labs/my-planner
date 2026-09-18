@@ -1,5 +1,9 @@
 // ============================================================
-// expression-atlas.js - AI-assisted expression nuance library
+// expression-atlas.js - 英語表現・英訳・語源・機能語をまとめる表現帳
+//
+// libraryModeで「表現」「英訳」「英語の疑問」「語源」「機能語」を切り替え、
+// screenで一覧・詳細・生成画面を切り替える。保存処理はstorage.js、
+// AI生成と正規化はai.js、同じ見出し語の意味統合はatlas-senses.jsが担当する。
 // ============================================================
 
 import {
@@ -26,6 +30,7 @@ import {
   refreshAiRuntimeStatus,
 } from '../ai.js';
 
+/** キャッシュ上で未設定でもサーバー状態を再確認し、AI利用可否を確定する。 */
 async function ensureAtlasAiReady() {
   if (isAiAvailable()) return true;
   const runtime = await refreshAiRuntimeStatus({ force: true });
@@ -60,6 +65,7 @@ const toast = (message, type = 'info') => window.AppNav?.showToast(message, type
 const ATLAS_RECENT_KEY = 'mp_atlas_recent_entries';
 const MAX_RECENT_ENTRIES = 12;
 
+// 再描画しても維持する表現帳専用の一時状態。保存済み教材そのものではない。
 let state = {
   container: null,
   search: '',
@@ -138,6 +144,7 @@ function speakButton(text) {
   return `<button type="button" class="atlas-speak-btn" data-atlas-speak="${esc(value)}" aria-label="${esc(value)} を再生" title="英語を再生"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4h4l5 4V6l-5 4H4Zm12.4-2.3a6 6 0 0 1 0 8.6m2.7-11.3a10 10 0 0 1 0 14"/></svg><span class="sr-only">英語を再生</span></button>`;
 }
 
+/** 音声ボタンのイベント委譲を受け、同じ文の再生・停止も制御する。 */
 function handleSpeakClick(event) {
   const button = event.target.closest?.('[data-atlas-speak]');
   if (!button || !state.container?.contains(button)) return;
@@ -187,6 +194,7 @@ function handleSpeakClick(event) {
   play(0);
 }
 
+/** 再生中音声と次チャンクを停止し、古い非同期イベントを無効化する。 */
 function stopAtlasSpeech() {
   state.speechRunId += 1;
   window.speechSynthesis?.cancel?.();
@@ -195,6 +203,7 @@ function stopAtlasSpeech() {
   state.container?.querySelectorAll('.atlas-speak-btn.is-speaking').forEach(item => item.classList.remove('is-speaking'));
 }
 
+/** 長文を単語途中で切らず、音声合成が安定する長さへ分割する。 */
 export function splitAtlasSpeechText(text, maxLength = 180) {
   const sentences = String(text || '').trim().match(/[^.!?;:\n]+[.!?;:]?|\n+/g) || [];
   const chunks = [];
@@ -245,6 +254,7 @@ function markGeneratorBusy(formSelector, message) {
   submit.textContent = message;
 }
 
+/** 詳細履歴、一覧、アプリ全体の順に一段ずつ戻る。 */
 export function backFromExpressionAtlas() {
   if (!state.container) {
     nav('memo');
@@ -374,6 +384,7 @@ function render() {
   renderLibrary();
 }
 
+/** 現在libraryModeの検索・階層・カード一覧を描画する。 */
 function renderLibrary() {
   if (state.libraryMode === 'translations') {
     renderTranslationLibrary();
@@ -640,6 +651,7 @@ function renderUsageCard(entry) {
   `;
 }
 
+/** 前置詞など組み込み機能語のコアイメージと用法を表示する。 */
 function renderUsageDetail() {
   const entry = getEnglishUsageCoreEntry(state.usageId);
   if (!entry) {
@@ -1044,6 +1056,7 @@ function renderMorphologyCard(entry) {
   `;
 }
 
+/** 接頭辞・語根・接尾辞の由来、意味の枝分かれ、関連語を表示する。 */
 function renderMorphologyDetail() {
   const entry = getEtymologyCoreEntry(state.morphemeId);
   if (!entry) {
@@ -1447,6 +1460,7 @@ async function answerEnglishQuestion(question) {
   }
 }
 
+/** 保存した英語の疑問回答と、表現帳へ変換できる関連語を表示する。 */
 function renderQuestionDetail() {
   const item = getEnglishQuestions().find(question => question.id === state.questionId);
   if (!item) {
@@ -1552,6 +1566,7 @@ function openTranslationGenerator() {
   scrollMainToTop();
 }
 
+/** 日本語文と生成状態を保持する英訳入力画面を描画する。 */
 function renderTranslationGenerator() {
   const draft = state.translationDraft;
   const input = state.translationInput;
@@ -1710,6 +1725,7 @@ function renderTranslationVariant(variant, index) {
   `;
 }
 
+/** 英文中の保存済み見出し語だけを、詳細へ移動できる控えめなリンクにする。 */
 function renderLinkedEnglishText(text, expressionIndex) {
   return tokenizeEnglishForLinks(text, expressionIndex).map(part => {
     if (!part.token || !isUsefulLinkedToken(part.token, expressionIndex)) return esc(part.text);
@@ -1781,6 +1797,7 @@ function openMorphologyDetail(morphemeId) {
   scrollMainToTop();
 }
 
+/** 同じ表記に複数senseがある場合だけ、移動先を選ぶ小さな一覧を出す。 */
 function showWordMatchPicker(token, entries) {
   state.container?.querySelector('.atlas-word-picker')?.remove();
   const sheet = document.createElement('div');
@@ -1966,6 +1983,7 @@ function renderTranslationDetail() {
   wireCollapsibleDetailSections();
 }
 
+/** 検索条件に応じてカード領域だけを更新し、入力フォーカスを保つ。 */
 function updateLibraryContent() {
   const library = state.container?.querySelector('#atlas-library');
   const count = state.container?.querySelector('#atlas-count');
@@ -2275,6 +2293,7 @@ function renderPersonalShelves(entries) {
   return `<div class="atlas-personal-shelves">${shelf('ピン留め', pinned)}${shelf('最近見た項目', recent)}</div>`;
 }
 
+/** 選択した見出し語を、品詞・senseごとのトグルと解説へ描画する。 */
 function renderDetail() {
   const entry = getExpressionEntries().find(item => item.id === state.entryId);
   if (!entry) {
@@ -2459,6 +2478,7 @@ function sameWordThemeSection(entry, matches) {
   `;
 }
 
+/** 表現比較または英単語深掘りのAI入力フォームを描画する。 */
 function renderGenerator() {
   const input = state.generatorInput;
   const expansionTerms = (input.existingExpressions || []).map(item => item.term).filter(Boolean);
@@ -3147,6 +3167,7 @@ function resolveNuanceMapMeta(entries) {
   return { mode, axis, low, high };
 }
 
+/** 比較軸と強度を、優劣ではないニュアンス地図として描画する。 */
 function renderNuanceMap(entries, { interactive = true } = {}) {
   if (!Array.isArray(entries) || !entries.length) return '';
   const meta = resolveNuanceMapMeta(entries);

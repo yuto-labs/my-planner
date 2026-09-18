@@ -1,5 +1,8 @@
 // ============================================================
-// knowledge-graph.js — Tag network visualization (SVG + force layout)
+// knowledge-graph.js - メモ同士のタグ関係を可視化するグラフ
+//
+// ノード位置は表示用の一時状態で、メモ本文やタグ自体は変更しない。
+// SVG上のタグを選ぶと、同じタグを持つメモへ絞り込める。
 // ============================================================
 
 import { getKnowledgeMemos } from '../storage.js';
@@ -187,6 +190,7 @@ function computeLayout(nodes, edges, W, H) {
 // SVG Render
 // ============================================================
 
+/** ノードと接続線をSVGへ配置し、ドラッグと選択操作を接続する。 */
 function renderGraph(container, nodes, edges, allMemos) {
   const W = Math.min(container.clientWidth || 360, 680);
   const H = Math.max(330, Math.min(window.innerHeight - 260, 500));

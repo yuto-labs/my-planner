@@ -260,6 +260,7 @@ function getFriendlyAiError(status, message) {
   return raw || `AIエラー (${status})`;
 }
 
+/** 短い文章生成を呼び、互換用に一度だけonChunkへ完成文を渡す。 */
 export async function streamText({ model = FAST_MODEL, system, userContent, maxTokens = 200, onChunk }) {
   const full = await callAPI(model, system || '', userContent, maxTokens, 'text', 'daily_message');
   let acc = '';
@@ -336,6 +337,7 @@ export async function getDailyMessage(tasks = [], events = [], goals = []) {
   return parsed;
 }
 
+/** 自然文から予定の日付・時刻・題名・カテゴリ候補を構造化する。 */
 export async function parseNaturalLanguageEvent(text, categories = []) {
   const now = new Date();
   const localToday = today();
@@ -551,6 +553,7 @@ export async function explainTerm(term, context = '') {
   return result.trim();
 }
 
+/** 貼り付けた長文を、メモエディタで編集できるブロック配列へ整理する。 */
 export async function formatKnowledgeMemo(rawText, existingMemosCtx = '', options = {}) {
   const system = [
     'You are a careful Japanese note editor. Turn rough notes into a structured memo without changing their meaning. Return JSON only.',
@@ -670,6 +673,7 @@ function normalizeNuanceIntensity(value, fallback = '') {
   return match ? Number(match[0]) : 3;
 }
 
+/** 英語学習上の疑問へ回答し、後から表現帳へ関連付けられる概念も返す。 */
 export async function answerEnglishLearningQuestion(questionJa, options = {}) {
   const question = String(questionJa || '').trim();
   if (!question) throw new Error('英語についての疑問を入力してください。');
@@ -1420,6 +1424,7 @@ export async function processBatchQueue(onProgress) {
 
 
 // ---- Whole-app AI helpers ----
+/** ホームの自然文を、追加・検索・削除など実行前の操作候補へ解釈する。 */
 export async function interpretPlannerInput(text, context = {}) {
   const localToday = context.today || today();
   const localTomorrow = addDaysToDateString(localToday, 1);
@@ -1512,6 +1517,7 @@ function resolveRelativeDate(text, localToday) {
   return null;
 }
 
+/** タスクと空き時間から、確認可能なマイスケジュール案を生成する。 */
 export async function generateTaskSchedule(payload) {
   const result = await callAPI(
     QUALITY_MODEL,
