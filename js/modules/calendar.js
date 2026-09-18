@@ -34,6 +34,7 @@ import {
   halfOpenRangesOverlap,
   scheduleRangeForDate,
 } from '../planning-time.js';
+import { calendarSwipeDirection, isCalendarHorizontalDrag } from '../calendar-gesture.js';
 
 const toast     = (msg, type) => window.AppNav?.showToast(msg, type);
 const undoToast = (msg, cb)   => window.AppNav?.showUndoToast(msg, cb);
@@ -200,7 +201,7 @@ function _setupSwipe(container) {
     const dy = Math.abs(y - _sy);
 
     if (!_tracking) {
-      if (Math.abs(dx) < 12 || Math.abs(dx) < dy * 1.15) return;
+      if (!isCalendarHorizontalDrag(dx, dy)) return;
       _tracking = true;
     }
 
@@ -224,8 +225,8 @@ function _setupSwipe(container) {
     const dx = _tracking ? _dx : e.changedTouches[0].clientX - _sx;
     const dy = Math.abs(e.changedTouches[0].clientY - _sy);
     const v = view();
-    const threshold = Math.max(56, Math.min(96, window.innerWidth * 0.16));
-    const shouldMove = Math.abs(dx) > Math.abs(dy) * 1.25 && Math.abs(dx) > threshold;
+    const swipeDirection = calendarSwipeDirection(dx, dy, window.innerWidth);
+    const shouldMove = swipeDirection !== 0;
 
     if (!_tracking && !shouldMove) return;
     if (!v) { clearDrag(); return; }
@@ -237,7 +238,7 @@ function _setupSwipe(container) {
     if (shouldMove) {
       _swipeLocked = true;                  // lock until render animation ends
       clearDrag();
-      moveCursor(dx > 0 ? -1 : 1);
+      moveCursor(swipeDirection);
     } else {
       v.style.transition = 'transform 0.14s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.14s ease';
       v.style.transform = 'translate3d(0,0,0)';
