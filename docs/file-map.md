@@ -22,6 +22,7 @@
 - `utils.js`: 日付や文字列などの共通関数
 - `planning-time.js`: カレンダーとタスク配分で共有する時刻変換・重複判定
 - `calendar-gesture.js`: カレンダーのタップと左右スワイプの境界判定
+- `task-planning.js`: AI時間配分JSONの正規化、重複検査、見積時間計算
 - `shared-calendar.js`: 共有カレンダーのデータ操作
 - `notion-import.js`: Notion由来データの変換
 - `markdown-shortcuts.js`: メモのMarkdown入力判定

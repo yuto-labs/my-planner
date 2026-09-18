@@ -15,7 +15,14 @@ import {
 import { esc, today, tomorrow, formatDate, generateId, addDays, toDateStr, getEventsForDate } from '../utils.js';
 import { splitGoalToTasks, generateTaskSchedule } from '../ai.js';
 import { openDatePicker, openTimePicker, openDurationPicker, formatPickerDate, formatDuration } from '../datepicker.js';
-import { clockTimeToMinutes, halfOpenRangesOverlap } from '../planning-time.js';
+import { clockTimeToMinutes } from '../planning-time.js';
+import {
+  applyPlanningBuffer,
+  clockRangesOverlapConservatively,
+  estimateMinutesByWeight,
+  findScheduleOverlaps,
+  normalizeSchedulePlan,
+} from '../task-planning.js';
 
 const toast     = (msg, type) => window.AppNav?.showToast(msg, type);
 const undoToast = (msg, cb)   => window.AppNav?.showUndoToast(msg, cb);
@@ -615,7 +622,7 @@ function buildCodexPayload() {
   const todayStart = periodStart === today() ? nextHalfHour() : null;
   const tasksWithEffective = relevantTasks.map(t => ({
     ...t,
-    effectiveMinutes: applyBufferAndRound(t.estimatedMinutes, state.codexBufferPct),
+    effectiveMinutes: applyPlanningBuffer(t.estimatedMinutes, state.codexBufferPct),
   }));
   const tasksAdjusted = adjustTasksForOverflow(
     tasksWithEffective, periodStart, periodEnd,
@@ -694,7 +701,7 @@ function applyCodexPlan(container, options = {}) {
     return;
   }
 
-  const blocks = normalizeCodexScheduleItems(plan);
+  const blocks = normalizeSchedulePlan(plan);
   if (!blocks.length) {
     toast('scheduleItems が見つかりませんでした', 'error');
     return;
@@ -731,7 +738,7 @@ function applyCodexPlan(container, options = {}) {
     return;
   }
 
-  const internalOverlaps = findInternalScheduleOverlaps(blocks);
+  const internalOverlaps = findScheduleOverlaps(blocks);
   if (internalOverlaps.length) {
     toast(`AIが作成した予定同士の重なりが ${internalOverlaps.length} 件あります。条件を調整して再実行してください`, 'error');
     return;
@@ -764,45 +771,6 @@ function applyCodexPlan(container, options = {}) {
   rerenderList();
   renderProgressBar();
   toast(`${options.sourceLabel || 'AI案'}: ${blocks.length}件をマイスケジュールに反映しました`, 'success');
-}
-
-function normalizeCodexScheduleItems(plan) {
-  const source = Array.isArray(plan)
-    ? plan
-    : plan.scheduleItems || plan.mySchedule || plan.blocks || plan.plan || plan.items || plan.schedule?.items || [];
-  if (!Array.isArray(source)) return [];
-  return source
-    .map(normalizeCodexBlock)
-    .filter(b => /^\d{4}-\d{2}-\d{2}$/.test(b.date) && /^\d{2}:\d{2}$/.test(b.startTime) && /^\d{2}:\d{2}$/.test(b.endTime));
-}
-
-function normalizeCodexBlock(b) {
-  const startRaw = b.startTime || b.start_time || b.start || b.from || '';
-  const endRaw = b.endTime || b.end_time || b.end || b.to || '';
-  const dateRaw = b.date || b.day || extractDateFromDateTime(startRaw) || '';
-  return {
-    taskId: b.taskId || b.task_id || b.id || null,
-    title: b.title || b.taskTitle || b.task_title || b.name || '',
-    date: String(dateRaw).slice(0, 10),
-    startTime: normalizeCodexTime(startRaw),
-    endTime: normalizeCodexTime(endRaw),
-    note: b.note || b.reason || b.memo || '',
-  };
-}
-
-function extractDateFromDateTime(value) {
-  const text = String(value || '');
-  const match = text.match(/\d{4}-\d{2}-\d{2}/);
-  return match?.[0] || '';
-}
-
-function normalizeCodexTime(value) {
-  const text = String(value || '').trim();
-  const isoTime = text.match(/T(\d{2}:\d{2})(?::\d{2})?/);
-  if (isoTime) return isoTime[1];
-  const time = text.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
-  if (!time) return '';
-  return `${String(Number(time[1])).padStart(2, '0')}:${time[2]}`;
 }
 
 function isNormalTask(task) {
@@ -867,37 +835,7 @@ function blockOverlapsCalendar(block) {
 }
 
 function timeRangesOverlap(aStart, aEnd, bStart, bEnd) {
-  const as = clockTimeToMinutes(aStart);
-  const ae = clockTimeToMinutes(aEnd);
-  const bs = clockTimeToMinutes(bStart);
-  const be = clockTimeToMinutes(bEnd);
-  if ([as, ae, bs, be].some(v => v == null)) return true;
-  return halfOpenRangesOverlap(as, ae, bs, be);
-}
-
-function findInternalScheduleOverlaps(blocks) {
-  const overlaps = [];
-  const byDate = new Map();
-  blocks.forEach(block => {
-    if (!byDate.has(block.date)) byDate.set(block.date, []);
-    byDate.get(block.date).push(block);
-  });
-
-  byDate.forEach(dayBlocks => {
-    const sorted = [...dayBlocks].sort((a, b) => a.startTime.localeCompare(b.startTime));
-    for (let index = 1; index < sorted.length; index++) {
-      if (timeRangesOverlap(
-        sorted[index - 1].startTime,
-        sorted[index - 1].endTime,
-        sorted[index].startTime,
-        sorted[index].endTime
-      )) {
-        overlaps.push(sorted[index]);
-      }
-    }
-  });
-
-  return overlaps;
+  return clockRangesOverlapConservatively(aStart, aEnd, bStart, bEnd);
 }
 
 function getCodexDailyBreaks() {
@@ -906,17 +844,6 @@ function getCodexDailyBreaks() {
   const end = clockTimeToMinutes(state.codexBreakEnd);
   if (start == null || end == null || end <= start) return [];
   return [{ start: state.codexBreakStart, end: state.codexBreakEnd, label: '休憩' }];
-}
-
-function estimateMinutesByWeight(weight) {
-  if (weight === 'large') return 180;
-  if (weight === 'small') return 45;
-  return 90;
-}
-
-function applyBufferAndRound(minutes, bufferPct) {
-  const raw = Math.max(1, Number(minutes) || 90) * (1 + (Number(bufferPct) || 0) / 100);
-  return Math.round(raw / 10) * 10;
 }
 
 // ---- Overflow scaling helpers ----
