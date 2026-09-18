@@ -1,3 +1,10 @@
+// ============================================================
+// learning-library.js - 一般知識を質問・保存・分類・閲覧するKnowledge画面
+//
+// 一覧と詳細は同じモジュールで管理する。AI回答は構造化データとして保存し、
+// 分野・時代・地域・概念リンクという複数の入口から同じ記録へたどれる。
+// ============================================================
+
 import {
   getLearningEntries,
   getLearningEntryById,
@@ -44,6 +51,7 @@ let listState = {
 let questionDraft = '';
 let generationController = null;
 
+/** 指定Knowledgeを詳細表示し、戻るための閲覧履歴も必要に応じて残す。 */
 export function openLearningEntry(id, { remember = true } = {}) {
   if (!getLearningEntryById(id)) return;
   if (remember && selectedEntryId && selectedEntryId !== id) detailHistory.push(selectedEntryId);
@@ -72,6 +80,7 @@ export function hasActiveKnowledgeWork() {
   return !!generationController || !!questionDraft.trim();
 }
 
+/** Knowledge一覧画面を初期描画し、検索・分類・新規質問の操作を接続する。 */
 export function initLearningLibrary(container) {
   renderLibrary(container);
   return () => {
@@ -407,6 +416,7 @@ function renderEmptyState(hasEntries) {
   `;
 }
 
+/** AIへ質問し、検証済み回答だけをKnowledge記録として保存する。 */
 async function createLearningEntry(container) {
   const input = container.querySelector('#learning-question-input');
   const question = String(input?.value || '').trim();
@@ -448,6 +458,7 @@ async function createLearningEntry(container) {
   }
 }
 
+/** 選択中Knowledgeの本文、関連概念、編集操作を描画する。 */
 export function initLearningDetail(container) {
   const entry = getLearningEntryById(selectedEntryId);
   if (!entry) {

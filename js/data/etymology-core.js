@@ -1,6 +1,6 @@
-// Built-in, versioned morphology reference. User notes are stored separately.
-// The compact source rows keep the offline bundle small; expandSeed provides
-// one consistent detail contract for every entry.
+// 頻出する接頭辞・語根・接尾辞の組み込み教材。
+// ユーザーのメモとは分離して版管理し、元データは容量を抑えた配列で保持する。
+// expandSeed が表示用の共通オブジェクトへ展開するため、各行の列順を変えないこと。
 
 const CORE_VERSION = 1;
 

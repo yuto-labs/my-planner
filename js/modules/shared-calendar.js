@@ -1,3 +1,10 @@
+// ============================================================
+// shared-calendar.js - 共有グループ専用のカレンダー画面
+//
+// 個人カレンダーの予定を所有したまま、共有範囲に応じた情報だけを表示する。
+// 招待・グループ管理の通信処理自体は js/shared-calendar.js が担当する。
+// ============================================================
+
 import {
   acceptSharedInvite,
   bulkShareLocalEvents,
@@ -24,6 +31,7 @@ let state = {
   error: null,
 };
 
+/** 共有予定を読み込み、月表示とグループ切替を初期化する。 */
 export function initSharedCalendar(container) {
   state.container = container;
   state.loading = true;

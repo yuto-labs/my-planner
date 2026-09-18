@@ -11,6 +11,7 @@ let tagsState = { activeTag: null };
 let _pendingTag = null;
 export function setTagFilter(tag) { _pendingTag = tag; }
 
+/** 選択タグを持つタスクとメモを横断して一覧表示する。 */
 export function initTagsPage(container) {
   if (_pendingTag !== null) {
     tagsState.activeTag = _pendingTag;

@@ -1,7 +1,10 @@
 // ============================================================
-// supabase.js — Supabase クライアント初期化 & 認証管理
+// supabase.js - Supabase クライアント初期化と認証管理
 //
-// ⚠ SERVICE ROLE KEY はここに絶対に置かないでください。
+// このファイルは「誰としてクラウドへ接続するか」だけを担当する。
+// データの同期内容は sync.js、行形式の変換は migrate.js に分離している。
+//
+// SERVICE ROLE KEY はここに絶対に置かないでください。
 //   anon key のみ使用 (RLS で行レベルセキュリティ保護)
 // ============================================================
 
@@ -62,6 +65,7 @@ export function setActiveUserId(userId) {
 
 // ---- Client (lazy-loaded from CDN ESM) ----
 
+/** Supabase SDKを必要になった時だけ読み込み、同じクライアントを再利用する。 */
 export async function getClient() {
   if (_client) return _client;
 
@@ -93,6 +97,7 @@ export async function getClient() {
 
 // ---- Auth ----
 
+/** 現在ブラウザに保存されているログインセッションを返す。 */
 export async function getSession() {
   const client = await getClient();
   if (!client) return null;
@@ -100,6 +105,7 @@ export async function getSession() {
   return session;
 }
 
+/** メールリンクから戻ったURLを解析し、Supabaseセッションを確立する。 */
 export async function handleAuthRedirect() {
   const client = await getClient();
   if (!client) return { handled: false, session: null };
@@ -140,6 +146,7 @@ export async function handleAuthRedirect() {
   return { handled, session };
 }
 
+/** 別端末などで受け取ったマジックリンク文字列からログインする。 */
 export async function signInWithMagicLinkUrl(linkText) {
   const client = await getClient();
   if (!client) throw new Error('Supabase URL / Anon Key を設定してください');
@@ -222,6 +229,7 @@ export async function verifyEmailOtp(email, token) {
   return data?.session ?? null;
 }
 
+/** Supabaseのセッションを終了する。端末データの保護は呼び出し元が先に行う。 */
 export async function signOut() {
   const client = await getClient();
   if (client) {

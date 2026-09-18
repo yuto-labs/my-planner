@@ -19,6 +19,7 @@ let state = {
   container: null,
 };
 
+/** 目標一覧、進捗、AIタスク分解、関連メモを初期化する。 */
 export function initGoals(container) {
   state.container = container;
   render();

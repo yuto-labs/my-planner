@@ -1,5 +1,8 @@
 // ============================================================
-// utils.js - Date helpers, formatting, misc utilities
+// utils.js - 日付計算・表示整形・HTML安全化など、画面間で共有する小さな関数
+//
+// 特定画面の状態や保存処理は持たせない。ここへ置く関数は副作用を少なくし、
+// カレンダー・タスク・AI解析で同じ日付ルールを共有できるようにする。
 // ============================================================
 
 export function generateId() {
@@ -44,6 +47,7 @@ export function toTimeStr(date) {
  * Extract explicit Japanese clock times without guessing AM/PM.
  * "10時半" => 10:30, while "夜10時半" => 22:30.
  */
+/** 「10時半」「午後3時」などの日本語表現から時刻候補を抽出する。 */
 export function parseJapaneseTimes(input) {
   const value = String(input || '').normalize('NFKC');
   const pattern = /(?:(午前|午後|朝|昼|夕方|夜)\s*の?\s*)?(\d{1,2})(?::(\d{1,2})|時(?:(\d{1,2})分|(半))?)/g;
@@ -270,6 +274,7 @@ export function getGreetingPeriod() {
  * Instances list in storage should just be individual events with recurringId set.
  * This is used if you want on-the-fly generation (not used in this v1 - we store individually).
  */
+/** 繰り返し設定から、表示期間内に必要な予定インスタンスだけを計算する。 */
 export function getRecurringInstances(masterEvent, windowStart, windowEnd) {
   const instances = [];
   if (!masterEvent.recurring) return instances;

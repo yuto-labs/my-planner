@@ -1,8 +1,10 @@
 // ============================================================
-// migrate.js — localStorage → Supabase 一括移行 + 変換関数
+// migrate.js - localStorageからSupabaseへの初回移行と行形式の変換
 //
 // Settings 画面の「データを移行」ボタンから呼び出される。
 // 既存の localStorage データは一切消去しない。
+// 下半分の xxxToRow / rowToXxx は通常同期でも共有するため、
+// ブラウザ側とDB側のフィールド名の違いはこのファイルだけで吸収する。
 // ============================================================
 
 import { getClient, getUserId, setMigratedForCurrentUser } from './supabase.js';

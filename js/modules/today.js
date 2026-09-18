@@ -17,6 +17,7 @@ let selectedDateStr = today();
 
 // ---- Entry point ----
 
+/** Today画面を初期化し、時系列予定とフォーカスタスクを描画する。 */
 export function initToday(container) {
   if (!selectedDateStr) selectedDateStr = today();
   updateTodayHeaderTitle();
@@ -608,6 +609,7 @@ function renderStudyPromptIfNeeded(schedItems, nowMin, container) {
 // Add schedule modal (self-contained, no app.js dependency)
 // ============================================================
 
+/** マイスケジュール項目を追加・編集する共通モーダルを開く。 */
 export function openScheduleItemModal({ dateStr = today(), item = null, onSaved = null } = {}) {
   const overlay = document.getElementById('modal-overlay');
   if (!overlay) return;

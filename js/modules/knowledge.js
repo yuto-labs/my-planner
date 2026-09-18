@@ -63,6 +63,7 @@ let _pendingDetailScrollTop = 0;
 let _backFromDetail      = false;
 let _detailGestureCleanup = null;
 
+/** メモIDを選択状態にし、一覧から詳細画面へ移動する。 */
 export function openKnowledgeMemo(id) {
   const main = document.getElementById('main-content');
   const fromDetail = main?.dataset.view === 'knowledge-detail';
@@ -351,6 +352,7 @@ let listState = {
   visibleCount: MEMO_LIST_PAGE_SIZE,
 };
 
+/** メモ一覧を描画し、検索・タグ・ごみ箱・新規作成を接続する。 */
 export function initKnowledge(container) {
   const returningFromDetail = _backFromDetail;
   if (!returningFromDetail) _knHistory = [];
@@ -415,6 +417,7 @@ function restoreKnowledgeListPosition() {
   });
 }
 
+/** 星付き優先・更新順でメモカードを再描画する。 */
 function renderList() {
   const { container, search, filterTag } = listState;
   const memos = [...getKnowledgeMemos()].sort((a, b) => {
@@ -1027,6 +1030,7 @@ export function isKnowledgeEditorOpen() {
   return !!edState?.isEdit;
 }
 
+/** メモの閲覧またはブロック編集画面を初期化する。 */
 export function initKnowledgeDetail(container) {
   editorSessionToken += 1;
   if (_detailGestureCleanup) { _detailGestureCleanup(); _detailGestureCleanup = null; }
@@ -1667,6 +1671,10 @@ function showTermPopup(term, text, anchorEl, rootContainer) {
 // EDIT MODE
 // ============================================================
 
+/**
+ * 現在の下書きをブロックエディタとして描画する。
+ * preserveHistory=true は再描画によってUndo履歴を失わないために使う。
+ */
 function renderEditMode(container, { preserveHistory = false } = {}) {
   const { title, blocks, tags, id } = edState;
   const hasApi = isAiAvailable();
@@ -3163,6 +3171,7 @@ function insertRichClipboardBlocks(blockId, editable, blocks, container) {
   return true;
 }
 
+/** HTML・画像・プレーンテキストを判別し、書式と改行を保ったブロックへ変換する。 */
 function handleEditorPaste(event, container) {
   const target = event.target;
   const editable = target?.closest?.('[contenteditable="true"]');
@@ -3821,6 +3830,7 @@ async function settleEditorInput(container) {
   syncEditorDomToState(container);
 }
 
+/** 下書きを検証・正規化して保存し、成功後だけ閲覧モードへ戻す。 */
 async function saveMemo(container) {
   if (memoSaveInFlight) return;
   memoSaveInFlight = true;

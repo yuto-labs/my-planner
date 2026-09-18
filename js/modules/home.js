@@ -29,6 +29,7 @@ const toast = (msg, type) => window.AppNav?.showToast(msg, type);
 const undoToast = (msg, cb) => window.AppNav?.showUndoToast(msg, cb);
 let nlBusy = false;
 
+/** 今日の予定・タスク・習慣・カバー画像をまとめたホーム画面を初期化する。 */
 export function initHome(container) {
   const todayStr  = today();
   const tomorrowStr = tomorrow();
@@ -570,6 +571,7 @@ function timeToMinutes(t) {
   return h * 60 + m;
 }
 
+/** ホームの自然文入力を解析し、予定・タスク等の確認フローへ渡す。 */
 async function handleNLInput(input, btn, container) {
   const text = input?.value?.trim();
   if (!text || nlBusy) return;

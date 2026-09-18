@@ -1,12 +1,18 @@
 // ============================================================
-// sync.js — Supabase リアルタイム同期レイヤー
+// sync.js - Supabase リアルタイム同期レイヤー
 //
 // 設計方針:
 //   - storage.js が書き込むたびに registerSyncHook で通知を受け取り push
 //   - push はテーブルごとに 800ms デバウンスでまとめて実行
 //   - 削除は registerSyncDeleteHook で通知を受け取り即時 DELETE
 //   - 起動時 pullAll() で最新データをマージ (last-write-wins by updated_at)
-//   - pull は localStorage に直書き (storage.js を経由しない → 無限ループ防止)
+//   - pull は localStorage に直書き (storage.js を経由しない -> 無限ループ防止)
+//
+// 注意:
+//   同期は「クラウドの内容で端末を丸ごと置換」する処理ではない。
+//   端末側だけにある新しいデータ、削除待ちの記録、直近の編集を照合してから
+//   マージする。空の端末や一時的な通信失敗を正として上書きしないことが、
+//   このファイルで最も重要な安全条件である。
 // ============================================================
 
 import { getActiveUserId, getClient, getUserId } from './supabase.js';
@@ -21,6 +27,8 @@ import {
 } from './migrate.js';
 import { mergeAtlasSenseArrays as mergeSharedAtlasSenseArrays } from './atlas-senses.js';
 
+// 内部名、localStorageキー、DBテーブル、変換関数を同じ内部名で対応させる。
+// 同期対象を増やす場合は、これらのマップをまとめて更新する。
 // ---- localStorage キーマップ ----
 const LS_KEYS = {
   tasks:            'mp_tasks',
@@ -103,6 +111,10 @@ let _syncEpoch = 0;
 
 // ---- init ----
 
+/**
+ * storage.js の保存・削除通知を同期処理へ接続する。
+ * 短時間の連続入力を毎回送らないよう、データ型ごとにデバウンスする。
+ */
 export function initSync() {
   // storage.js から書き込み通知を受け取る
   registerSyncHook((table) => {
@@ -121,6 +133,10 @@ export function initSync() {
   });
 }
 
+/**
+ * ログイン中ユーザーの Supabase 更新を購読する。
+ * 通知を受けた時点では直接上書きせず、app.js に安全な再取得を依頼する。
+ */
 export async function startRealtimeSync() {
   const client = await getClient();
   const userId = await getUserId();
@@ -158,6 +174,7 @@ export async function startRealtimeSync() {
   return true;
 }
 
+/** 現在の購読を解除する。ログアウトやアカウント切替前に必ず呼ぶ。 */
 export async function stopRealtimeSync() {
   clearTimeout(_realtimePullTimer);
   _realtimePullTimer = null;
@@ -175,10 +192,15 @@ export async function stopRealtimeSync() {
   _realtimeUserId = null;
 }
 
+/** 未送信の保存・削除・通信が残っているかを返す。 */
 export function hasPendingSyncWork() {
   return Object.values(_timers).some(Boolean) || _deleteTimers.size > 0 || _pushPromises.size > 0;
 }
 
+/**
+ * アカウント切替時に、前ユーザーのタイマーや通信結果が混ざらないよう初期化する。
+ * epoch を進めることで、切替前に開始した非同期処理の結果も無効化できる。
+ */
 export async function resetSyncForUserSwitch({ flush = false } = {}) {
   if (flush) {
     try {
@@ -207,6 +229,7 @@ export async function resetSyncForUserSwitch({ flush = false } = {}) {
   return true;
 }
 
+/** 設定画面などに表示する、直近の同期成功・失敗状態を返す。 */
 export function getSyncStatus() {
   return _ls(SYNC_STATUS_KEY, {
     lastPushAt: null,
@@ -218,6 +241,10 @@ export function getSyncStatus() {
   });
 }
 
+/**
+ * 同期機能導入前から端末にある予定を、一度だけクラウドへ補完する。
+ * リモートに同じIDがあれば更新日時を比較し、古い内容で上書きしない。
+ */
 export async function backfillLocalEvents() {
   const client = await getClient();
   const userId = await getUserId();
@@ -271,6 +298,10 @@ export async function backfillLocalEvents() {
   return true;
 }
 
+/**
+ * デバウンス待ちの更新を直ちに送る。画面離脱・ログアウト前の取りこぼし防止に使う。
+ * attempted / succeeded を返し、呼び出し元が切替を続けてよいか判断できる。
+ */
 export async function flushPendingSync() {
   const pendingDeletes = _getPendingDeletes();
   const tables = new Set([
@@ -300,6 +331,7 @@ export async function flushPendingSync() {
 
 // ---- Push ----
 
+/** 同じテーブルへの並行pushを一つのPromiseへまとめる。 */
 function _pushTable(tableKey) {
   if (_pushPromises.has(tableKey)) return _pushPromises.get(tableKey);
   const epoch = _syncEpoch;
@@ -310,6 +342,7 @@ function _pushTable(tableKey) {
   return promise;
 }
 
+/** 現在の端末データをDB行へ変換し、最近変更された項目をupsertする。 */
 async function _pushTableNow(tableKey, epoch = _syncEpoch) {
   const client = await getClient();
   const userId = await getUserId();
@@ -359,6 +392,10 @@ async function _pushTableNow(tableKey, epoch = _syncEpoch) {
   return true;
 }
 
+/**
+ * 新旧どちらのDBスキーマでも保存できるよう、存在しない列を除いて再試行する。
+ * 移行途中の環境で一件の未知列が同期全体を止めるのを防ぐ互換処理。
+ */
 async function _upsertRowsCompat(client, dbTable, rows, conflict) {
   let attemptRows = rows;
   const strippedColumns = [];
@@ -413,6 +450,10 @@ function _missingColumnFromError(error) {
 
 // ---- Pull (起動時 + オンライン復帰時) ----
 
+/**
+ * 全同期対象をクラウドから取得し、種類ごとの安全なマージ処理を行う。
+ * forceReplace は保守用途。通常は端末側だけにあるデータを残すマージを使う。
+ */
 export async function pullAll(forceReplace = false) {
   const client = await getClient();
   const userId = await getUserId();
@@ -440,6 +481,7 @@ export async function pullAll(forceReplace = false) {
 
 // ---- Pull helpers ----
 
+/** Supabaseの1回の取得上限を越えるデータをページ単位ですべて読む。 */
 export async function selectAllForUser(client, table, columns, userId, orderColumn, pageSize = PULL_PAGE_SIZE) {
   const rows = [];
   let from = 0;
@@ -548,6 +590,10 @@ async function _getConfirmedTrashEntityIds(client, userId, entityTypes) {
   );
 }
 
+/**
+ * ID単位で端末とクラウドを比較し、より新しい内容を採用する。
+ * クラウドから一時的に消えて見える項目は、明示削除が確認できるまで端末に残す。
+ */
 export function reconcileEventCollections(
   local,
   remote,
@@ -605,6 +651,7 @@ export function reconcileEventCollections(
   return { next, pushCandidates: [...pushCandidates.values()] };
 }
 
+/** IDを持たないタグ名などを、削除待ちと直近追加を考慮して統合する。 */
 export function reconcileNamedCollections(
   local,
   remote,
@@ -637,6 +684,10 @@ export function reconcileNamedCollections(
   return { next: [...next].sort(), pushCandidates };
 }
 
+/**
+ * 通常のID付きコレクションに共通するpull・保護・再push・スナップショット更新を行う。
+ * 各 _pullXxx はデータ変換だけを担当し、この関数へ安全判断を委ねる。
+ */
 async function _reconcileRemoteCollection({
   client,
   userId,
@@ -1074,6 +1125,7 @@ async function _pullReviewSchedule(client, userId, forceReplace = false) {
 
 let _lastPullAt = 0;
 
+/** 前回取得から十分時間が経った場合だけpullし、画面復帰のたびの過剰通信を防ぐ。 */
 export async function pullIfStale(minAgeMs = 30_000, forceReplace = false) {
   if (Date.now() - _lastPullAt < minAgeMs) return false;
   const pulled = await pullAll(forceReplace);
@@ -1093,6 +1145,10 @@ function _resumePersistedSyncWork() {
   pendingTables.forEach(table => _schedulePushRetry(table));
 }
 
+/**
+ * 削除要求を先に端末へ永続化し、短い猶予後にクラウドへ送る。
+ * 通信断やアプリ終了があっても、次回起動時に再開できる。
+ */
 function _scheduleDelete(payload, delayMs = DELETE_GRACE_MS) {
   const scopedPayload = { ...payload, userId: payload.userId || getActiveUserId() || null };
   _markPendingDelete(scopedPayload);
@@ -1105,6 +1161,7 @@ function _scheduleDelete(payload, delayMs = DELETE_GRACE_MS) {
   }, delayMs));
 }
 
+/** 削除対象が今も端末に存在しないことを再確認してから、クラウドを削除する。 */
 async function _executeDelete(scopedPayload, epoch = _syncEpoch) {
   if (epoch !== _syncEpoch || (scopedPayload.userId && scopedPayload.userId !== getActiveUserId())) return false;
   if (!_isStillDeleted(scopedPayload)) {
@@ -1419,6 +1476,10 @@ function _remoteMissingStateKey(collectionKey, userId) {
   return `mp_sync_remote_missing_v${REMOTE_MISSING_STATE_VERSION}:${collectionKey}:${userId}`;
 }
 
+/**
+ * クラウド応答に無いだけの端末項目を「削除済み」と誤認しないための保護判定。
+ * 明示的な削除記録がない限り、RLS・通信遅延・空応答から端末データを守る。
+ */
 export function resolveRemoteMissingProtection({
   local = [],
   remote = [],

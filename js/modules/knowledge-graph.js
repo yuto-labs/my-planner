@@ -10,6 +10,7 @@ const nav = (view) => window.AppNav?.navigate(view);
 // Module-level: selected tag for filtering
 export let graphFilterTag = null;
 
+/** メモのタグ関係をノードと線へ変換し、探索可能なグラフとして描画する。 */
 export function initKnowledgeGraph(container) {
   const memos = getKnowledgeMemos();
 

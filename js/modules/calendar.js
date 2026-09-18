@@ -49,6 +49,7 @@ let _slideDir     = null;  // 'next' | 'prev' | null - swipe animation direction
 let _selectedDate = null;  // currently highlighted date string (single-tap)
 let _swipeLocked  = false; // true while slide animation plays - blocks consecutive swipes
 
+/** カレンダー画面の状態を初期化し、月・週・日表示と各操作を接続する。 */
 export function initCalendar(container) {
   state.container = container;
   state.mode = 'month';
@@ -851,6 +852,7 @@ function openYearMonthPicker() {
 // DAY BOTTOM SHEET
 // ============================================================
 
+/** 選択日の予定を一覧で見せる。月表示では日付の再タップからここへ入る。 */
 function openDaySheet(dateStr) {
   // Remove any existing sheet
   document.querySelector('.cal-day-sheet')?.remove();
@@ -1190,6 +1192,7 @@ function getEventConflicts(candidate, excludeId = '') {
 // EVENT MODAL (add / edit)
 // ============================================================
 
+/** 予定の新規作成・編集に共通するフォームを開く。 */
 function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = {}) {
   const isEdit = !!event;
   let attachments = Array.isArray(event?.attachments)
@@ -1932,6 +1935,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
   saveBtn.onclick = () => saveEvent(false);
 }
 
+/** 開始日から終了日まで、除外曜日を避けて繰り返し予定を実体化する。 */
 function createRecurringEvents(eventData, recurType, endDateStr, excludeWeekdays = [], options = {}) {
   const recurringId = options.recurringId || generateId();
   const startDate = new Date(eventData.start);

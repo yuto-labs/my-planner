@@ -9,6 +9,7 @@ import { esc, formatDate, formatTime } from '../utils.js';
 
 const nav = (view) => window.AppNav?.navigate(view);
 
+/** 全機能を横断する検索オーバーレイを開き、入力へフォーカスする。 */
 export function openSearch() {
   const overlay = document.getElementById('search-overlay');
   if (!overlay || !overlay.classList.contains('hidden')) return;
@@ -109,6 +110,7 @@ function renderSkeleton() {
   `;
 }
 
+/** クエリを各データ型へ照合し、元画面へ移動できる結果を描画する。 */
 function renderResults(q, container) {
   const lower = q.toLowerCase();
 

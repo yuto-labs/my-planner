@@ -1,5 +1,6 @@
-/* Tablet and desktop layout layer.
-   The height guard keeps landscape phones on the existing mobile layout. */
+/* タブレット・PC専用のレイアウト上書き。
+   スマートフォンの使用感を変えないため、幅だけでなく高さも条件に含める。
+   style.cssを土台として、横幅・カラム数・最大幅だけを必要最小限変更する。 */
 @media (min-width: 700px) and (min-height: 600px), (min-width: 1000px) {
   :root {
     --responsive-shell-w: 1000px;

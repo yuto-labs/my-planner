@@ -1,3 +1,8 @@
+// Vercel上で動くAI API。ブラウザから受けた要求を検証し、Geminiへ中継する。
+// 秘密のAPIキー、利用モデル、再試行、構造化JSON検証はすべてここに閉じ込める。
+// クライアントへ不完全な回答を返さない一方、軽微な形式差は正規化して救済する。
+
+/** Vercelが文字列またはオブジェクトで渡すbodyを一つの形へそろえる。 */
 function readBody(req) {
   if (typeof req.body === 'string') {
     try { return JSON.parse(req.body); } catch { return null; }
@@ -5,6 +10,7 @@ function readBody(req) {
   return req.body || {};
 }
 
+// 機能ごとの上限。短い分類処理と長いKnowledge解説を同じ上限にしない。
 const ACTION_LIMITS = Object.freeze({
   ai_request: 600,
   daily_message: 240,
@@ -34,6 +40,7 @@ const JSON_ACTIONS = new Set([
   'planner_action', 'task_schedule',
 ]);
 
+/** action、文字数、出力上限を検証し、許可済みの設定だけを返す。 */
 function validateRequestBody(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     throw Object.assign(new Error('Invalid JSON request body.'), { status: 400 });
@@ -100,6 +107,7 @@ function getTaskIdsFromPrompt(userText) {
   }
 }
 
+/** 機能ごとのJSON Schemaを選び、Geminiの出力形を可能な限り固定する。 */
 function pickResponseSchema(actionType, body) {
   const action = String(actionType || '');
   if (action === 'task_schedule') {
@@ -1491,6 +1499,7 @@ async function requestGemini(key, model, payload, timeoutMs = 50_000) {
   return requestGeminiOnce(key, model, payload, Math.min(remainingMs, 25_000));
 }
 
+/** 主モデル失敗時に、同じ要求を互換モデルで一度だけ再試行する。 */
 async function requestGeminiResilient(key, model, fallbackModel, payload, timeoutMs = 50_000) {
   const startedAt = Date.now();
   const first = await requestGemini(key, model, payload, timeoutMs);
@@ -1517,6 +1526,7 @@ function logGeminiFailure({ upstream, data, model, actionType }) {
   });
 }
 
+/** AbortControllerで通信上限を設け、サーバー処理が無期限に残るのを防ぐ。 */
 async function fetchWithTimeout(url, options, timeoutMs) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), Math.max(1_000, timeoutMs));
@@ -1563,6 +1573,7 @@ async function requireAuthenticatedUser(token, timeoutMs) {
   return response.json();
 }
 
+/** HTTP要求を認証・検証し、必要なら補完再試行して最終回答を返す。 */
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   const startedAt = Date.now();

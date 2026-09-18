@@ -1,5 +1,9 @@
 // ============================================================
-// media.js - private, user-owned image storage helpers
+// media.js - ユーザー専用画像の圧縮・保存・表示・削除
+//
+// 画像本体はlocalStorageへ入れず、Supabase Storageへ保存する。
+// メモ等にはpathと寸法だけを持たせ、表示時に期限付きURLへ解決する。
+// ホーム画像だけはオフラインでも見えるようCache Storageにも控えを置く。
 // ============================================================
 
 import { getClient, getUserId } from './supabase.js';
@@ -15,6 +19,7 @@ const urlCache = new Map();
 const blobUrlCache = new Map();
 let activeViewerClose = null;
 
+/** 画像を端末向けサイズへ圧縮し、ログインユーザー専用パスへ保存する。 */
 export async function uploadPlannerImage(file, kind = 'misc') {
   if (!(file instanceof File) || !file.type.startsWith('image/')) {
     throw new Error('画像ファイルを選択してください');
@@ -58,6 +63,7 @@ export async function uploadPlannerImage(file, kind = 'misc') {
   };
 }
 
+/** 保存パスを表示可能なURLへ変換する。期限付きURLはメモリ上で再利用する。 */
 export async function resolvePlannerImageUrl(path, { persistent = false, forceRefresh = false } = {}) {
   const cleanPath = String(path || '').trim();
   if (!cleanPath) return '';
@@ -97,6 +103,7 @@ export async function resolvePlannerImageUrl(path, { persistent = false, forceRe
   }
 }
 
+/** root内の画像要素へ、非同期で実画像URLを設定する。 */
 export async function hydratePlannerImages(root) {
   const images = [...(root?.querySelectorAll?.('img[data-media-path]') || [])];
   await Promise.all(images.map(async image => {
@@ -138,6 +145,7 @@ export async function hydratePlannerImages(root) {
   }));
 }
 
+/** root内の画像タップを、共通の拡大ビューアへ接続する。 */
 export function wirePlannerImageViewer(root) {
   if (!root?.addEventListener || root.dataset.mediaViewerWired === '1') return;
   root.dataset.mediaViewerWired = '1';
@@ -165,6 +173,7 @@ export function wirePlannerImageViewer(root) {
   });
 }
 
+/** 端末画面に収まる拡大ビューアを開き、必要なら削除操作も提供する。 */
 export async function openPlannerImageViewer({
   path = '',
   src = '',
@@ -285,6 +294,7 @@ export async function openPlannerImageViewer({
   await loadSource(String(src || '').trim(), { allowRefresh: true });
 }
 
+/** Storage・永続キャッシュ・URLキャッシュから同じ画像を削除する。 */
 export async function deletePlannerImage(path) {
   const cleanPath = String(path || '').trim();
   if (!cleanPath) return true;
@@ -400,6 +410,7 @@ function escapeAttribute(value) {
   return escapeHtml(value).replaceAll('\n', ' ');
 }
 
+/** 長辺とJPEG品質を抑え、同期速度とStorage使用量を安定させる。 */
 async function compressImage(file) {
   const sourceUrl = URL.createObjectURL(file);
   try {

@@ -1,4 +1,9 @@
-// Shared, side-effect-free helpers for Nuance Atlas records.
+// ============================================================
+// atlas-model.js - 表現帳の分類・見出し語・リンク判定
+//
+// DOMや保存処理を持たない純粋関数だけを置く。入力が同じなら結果も同じなので、
+// AI出力の揺れを吸収する処理とテストを画面コードから分離できる。
+// ============================================================
 
 const IRREGULAR_LEMMAS = new Map([
   ['am', 'be'], ['are', 'be'], ['is', 'be'], ['was', 'be'], ['were', 'be'], ['been', 'be'],
@@ -165,6 +170,7 @@ export function stableAtlasId(prefix, value) {
   return `${prefix}-${normalized || 'uncategorized'}`;
 }
 
+/** AIのカテゴリ・テーマ表記を、保存で使う安定IDと表示名へそろえる。 */
 export function withStableClassification(record = {}) {
   const rawCategory = normalizeAtlasLabel(record.category);
   const category = normalizeAtlasCategory(
@@ -279,6 +285,7 @@ export function expressionLookupKeys(entry = {}) {
   }).filter(Boolean);
 }
 
+/** 見出し語・原形・別名から、詳細画面へ高速に引ける索引を作る。 */
 export function buildExpressionIndex(entries = []) {
   const index = new Map();
   entries.forEach(raw => {

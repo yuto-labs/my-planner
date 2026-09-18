@@ -11,6 +11,7 @@ import { esc, fmtDays } from '../utils.js';
 const nav = (view) => window.AppNav?.navigate(view);
 let reviewSession = null;
 
+/** 今日が期限のメモを一件ずつ復習し、評価から次回日を計算する。 */
 export function initReview(container) {
   const todayStr = new Date().toISOString().slice(0, 10);
   if (!reviewSession || reviewSession.date !== todayStr) {

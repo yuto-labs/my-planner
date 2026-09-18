@@ -1,3 +1,6 @@
+// Knowledgeを分野から探すための大分類・中分類マスタ。
+// AIには表示名だけでなく安定IDも返させ、表記揺れで分類が増殖するのを防ぐ。
+
 export const LEARNING_TAXONOMY = [
   {
     id: 'formal_sciences',

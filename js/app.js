@@ -1,6 +1,10 @@
 ﻿// ============================================================
 // app.js - Main SPA router and app shell
 // ============================================================
+// ブラウザが最初に読み込むJavaScriptです。
+// URLのハッシュ（#home、#calendarなど）と画面モジュールを結び付け、
+// 共通ヘッダー、下部ナビ、モーダル、テーマ、同期の開始を管理します。
+// 個別画面の中身は js/modules/ に委ね、このファイルは全体の交通整理をします。
 
 import {
   getSettings, getPendingAIQueue, autoArchiveTasks, isAiAvailable,
@@ -43,6 +47,8 @@ import { initArchive } from './modules/archive.js';
 import { initTagsPage, setTagFilter } from './modules/tagspage.js';
 
 // ---- Module registry ----
+// URLで使う画面名を、表示タイトルと初期化関数へ対応付けます。
+// backは戻り先、navRootは下部ナビで選択状態にする親画面です。
 const MODULES = {
   home:              { title: 'My planner', init: initHome },
   calendar:          { title: 'Calendar',   init: initCalendar },
@@ -64,6 +70,7 @@ const MODULES = {
   tags:              { title: 'Tags',       init: initTagsPage },
 };
 
+// 画面をまたいで共有する、アプリ外枠の実行状態です。
 let currentView = null;
 let cleanupFn = null;
 let swUpdateIntervalId = null;
@@ -76,6 +83,7 @@ let pendingSyncRefresh = false;
 let pendingForcedPull = false;
 let archiveReturnRoute = null;
 
+/** ゴミ箱を開く直前の画面へ戻す。戻り先が不明な場合はTasksへ戻す。 */
 function backFromArchive() {
   const route = archiveReturnRoute;
   archiveReturnRoute = null;
@@ -86,24 +94,33 @@ function backFromArchive() {
   navigate(route.view, { routeHash: route.hash });
 }
 
+/** 最後に文字入力・フォーカス操作があった時刻を記録する。 */
 function markUserEditing() {
   lastEditAt = Date.now();
 }
 
+/** 共通モーダルが現在表示されているかを返す。 */
 function hasOpenModal() {
   const overlay = document.getElementById('modal-overlay');
   return !!overlay && !overlay.classList.contains('hidden') && !!overlay.children.length;
 }
 
+/** 日付選択オーバーレイが現在表示されているかを返す。 */
 function hasOpenDatePicker() {
   const overlay = document.getElementById('dp-picker-overlay');
   return !!overlay && !overlay.classList.contains('hidden') && !!overlay.children.length;
 }
 
+/** カレンダーの日別予定シートが開いているかを返す。 */
 function hasOpenCalendarSheet() {
   return !!document.querySelector('.cal-day-sheet');
 }
 
+/**
+ * 要素が文字入力を受け付けるものか判定する。
+ * @param {Element|null} el 判定対象
+ * @returns {boolean} input、textarea、select、contenteditableならtrue
+ */
 function isEditableElement(el) {
   if (!el) return false;
   if (el.isContentEditable) return true;
@@ -111,6 +128,11 @@ function isEditableElement(el) {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
 }
 
+/**
+ * 現在の画面に、まだ正式保存されていない入力途中の内容があるか調べる。
+ * 同期や自動再描画で入力内容を消さないための防波堤として使います。
+ * @returns {boolean} 入力途中の内容があればtrue
+ */
 function hasUnsavedDraft() {
   if (hasOpenDatePicker()) return true;
 
@@ -136,6 +158,11 @@ function hasUnsavedDraft() {
   return false;
 }
 
+/**
+ * ユーザーが現在編集している、または編集直後かをまとめて判定する。
+ * 日本語変換中、モーダル入力中、メモ編集画面も編集状態に含めます。
+ * @returns {boolean} 自動更新を一時延期すべきならtrue
+ */
 function isUserEditing() {
   const active = document.activeElement;
   if (isComposingText) return true;
@@ -148,6 +175,10 @@ function isUserEditing() {
   return (Date.now() - lastEditAt) < 1500;
 }
 
+/**
+ * 編集中に延期していたクラウド取得・画面更新を、安全になった時点で実行する。
+ * 同期処理そのものが残っている間も待ち、古い取得結果で入力を上書きしないようにします。
+ */
 function flushDeferredSyncWork() {
   if (isUserEditing() || hasPendingSyncWork()) {
     scheduleDeferredSyncWork();
@@ -170,17 +201,27 @@ function flushDeferredSyncWork() {
   if (shouldRefresh) refreshCurrentView({ preserveScroll: true });
 }
 
+/** 編集が止まってから延期中の同期処理を再確認するタイマーを設定する。 */
 function scheduleDeferredSyncWork() {
   clearTimeout(editIdleTimer);
   editIdleTimer = setTimeout(flushDeferredSyncWork, 1700);
 }
 
+/**
+ * 同期による再描画を即時実行せず、編集終了後へ回す。
+ * @param {object} options
+ * @param {boolean} options.needsPull クラウドの再取得も必要ならtrue
+ */
 function deferSyncWhileEditing({ needsPull = false } = {}) {
   pendingSyncRefresh = true;
   pendingForcedPull = pendingForcedPull || needsPull;
   scheduleDeferredSyncWork();
 }
 
+/**
+ * アプリ全体の入力・日本語変換・フォーカスを監視し、同期による入力消失を防ぐ。
+ * beforeunloadでは未保存メモを閉じる直前にもブラウザの警告を出します。
+ */
 function setupEditActivityGuard() {
   const markAndDefer = () => {
     markUserEditing();
@@ -226,6 +267,15 @@ function setupEditActivityGuard() {
 
 // ---- Navigation ----
 
+/**
+ * 指定した画面へ移動し、以前の画面を片付けて新しい画面を初期化する。
+ * @param {string} view MODULESに登録された画面名
+ * @param {object} options
+ * @param {boolean} options.preserveScroll 同じ画面の再描画時にスクロール位置を保つ
+ * @param {boolean} options.skipUnsavedGuard 未保存確認を呼び出し側で済ませた場合にtrue
+ * @param {string} options.routeHash 詳細画面など、URLへ残す完全なハッシュ
+ * @returns {boolean|undefined} 移動できた場合true、未保存確認で止めた場合false
+ */
 export function navigate(view, options = {}) {
   if (!MODULES[view]) view = 'home';
   if (view === currentView) return;
@@ -302,6 +352,10 @@ export function navigate(view, options = {}) {
   return true;
 }
 
+/**
+ * 現在の画面を同じURLのまま作り直し、最新の保存データを表示する。
+ * 入力中は再描画せず、編集終了後へ延期します。
+ */
 export function refreshCurrentView(options = {}) {
   if (!currentView) return;
   if (currentView === 'expression-atlas' && shouldPreserveExpressionAtlasView()) return;
@@ -317,6 +371,7 @@ export function refreshCurrentView(options = {}) {
 // ---- Toast ----
 
 let toastTimer = null;
+/** 数秒で消える短い通知を表示する。 */
 export function showToast(message, type = 'info') {
   const container = document.getElementById('toast-container');
   if (!container) return;
@@ -328,8 +383,9 @@ export function showToast(message, type = 'info') {
 }
 
 /**
- * Toast with an undo button. Stays for 5s.
- * onUndo() is called if user taps "元に戻す".
+ * 「元に戻す」ボタン付き通知を5秒間表示する。
+ * @param {string} message 表示メッセージ
+ * @param {Function} onUndo ボタンが押された時だけ実行する復元処理
  */
 export function showUndoToast(message, onUndo) {
   const container = document.getElementById('toast-container');
@@ -358,6 +414,10 @@ export function showUndoToast(message, onUndo) {
 let modalCleanup = null;
 let modalClose = null;
 
+/**
+ * アプリ共通のモーダルを開き、Esc、背景クリック、Tab移動を管理する。
+ * @returns {Function} 呼び出し側からモーダルを閉じるための関数
+ */
 export function openModal({ title, body, footer, onClose, wide = false }) {
   const overlay = document.getElementById('modal-overlay');
   if (modalClose) modalClose();
@@ -438,6 +498,7 @@ export function openModal({ title, body, footer, onClose, wide = false }) {
   return close; // caller can call close() to dismiss programmatically
 }
 
+/** 現在の共通モーダルを閉じ、登録したイベント監視を解除する。 */
 export function closeModal() {
   if (modalClose) {
     modalClose();
@@ -450,6 +511,10 @@ export function closeModal() {
 }
 
 // ---- Confirm dialog ----
+/**
+ * 共通モーダルで二択の確認画面を表示する。
+ * @returns {Promise<boolean>} OKならtrue、キャンセルならfalse
+ */
 export function confirm(message, opts = {}) {
   return new Promise((resolve) => {
     const body = document.createElement('div');
@@ -479,6 +544,7 @@ export function confirm(message, opts = {}) {
 
 // ---- Theme management ----
 
+/** 保存済み設定から背景テーマとアクセント色をまとめて適用する。 */
 function applyTheme(theme) {
   const html = document.documentElement;
   const settings = getSettings();
@@ -489,12 +555,14 @@ function applyTheme(theme) {
   applyAccentTheme(settings.accentRgb || DEFAULT_ACCENT_RGB, tuning);
 }
 
+/** RGBの一要素を0〜255の整数へ収める。 */
 function clampRgb(value, fallback) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(0, Math.min(255, Math.round(n)));
 }
 
+/** 不完全なアクセント色設定を、安全なRGBオブジェクトへ補正する。 */
 function normalizeAccentRgb(rgb) {
   return {
     r: clampRgb(rgb?.r, DEFAULT_ACCENT_RGB.r),
@@ -503,12 +571,14 @@ function normalizeAccentRgb(rgb) {
   };
 }
 
+/** 設定値を0〜100%へ収め、数値でなければ既定値を返す。 */
 function clampPercent(value, fallback) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(0, Math.min(100, Math.round(n)));
 }
 
+/** 背景・コントラスト・鮮やかさの設定を使用可能な範囲へ正規化する。 */
 function normalizeThemeTuning(tuning) {
   const fallbackTone = Math.round(((Number(tuning?.blackLevel) || DEFAULT_THEME_TUNING.toneLevel) + (100 - (Number(tuning?.whiteLevel) || 45))) / 2);
   return {
@@ -519,6 +589,7 @@ function normalizeThemeTuning(tuning) {
   };
 }
 
+/** 二つのRGB色をratioの割合で混ぜ、新しいRGB色を返す。 */
 function mixRgb(a, b, ratio) {
   const t = Math.max(0, Math.min(1, ratio));
   return {
@@ -528,6 +599,7 @@ function mixRgb(a, b, ratio) {
   };
 }
 
+/** RGB色を、色相・彩度・明度で調整しやすいHSL形式へ変換する。 */
 function rgbToHsl(rgb) {
   const r = normalizeAccentRgb(rgb).r / 255;
   const g = normalizeAccentRgb(rgb).g / 255;
@@ -554,6 +626,7 @@ function rgbToHsl(rgb) {
   return { h, s, l };
 }
 
+/** HSL形式の色を、CSSで扱いやすいRGBへ戻す。 */
 function hslToRgb(h, s, l) {
   let r;
   let g;
@@ -583,12 +656,14 @@ function hslToRgb(h, s, l) {
   };
 }
 
+/** RGBオブジェクトをCSSのrgb()/rgba()文字列へ変換する。 */
 function rgbToCss(rgb, alpha = 1) {
   const c = normalizeAccentRgb(rgb);
   if (alpha >= 1) return `rgb(${c.r}, ${c.g}, ${c.b})`;
   return `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`;
 }
 
+/** 背景色の明るさに応じて、読みやすい黒または白の文字色を返す。 */
 function contrastTextForRgb(rgb) {
   const channelLuminance = value => {
     const normalized = value / 255;
@@ -607,6 +682,10 @@ function contrastTextForRgb(rgb) {
   return darkContrast >= lightContrast ? '#0D0D15' : '#FFFFFF';
 }
 
+/**
+ * ライト・ダークと調整値から、背景、カード、文字、境界線などのCSS変数を設定する。
+ * 設定画面で背景を調整した時に、画面全体が同じ規則で変化する中心処理です。
+ */
 function applySurfaceTheme(mode, tuningInput) {
   const root = document.documentElement;
   const tuning = normalizeThemeTuning(tuningInput);
@@ -690,6 +769,10 @@ function applySurfaceTheme(mode, tuningInput) {
   root.style.setProperty('--home-glow', `rgba(190,230,216,${glowAlpha.toFixed(3)})`);
 }
 
+/**
+ * 選択したアクセント色から、ボタン、淡い背景、成功色、グラデーションを派生させる。
+ * 白に近い色でもライト背景上で見えなくならないよう明度を補正します。
+ */
 function applyAccentTheme(rgb, tuningInput) {
   const root = document.documentElement;
   const tuning = normalizeThemeTuning(tuningInput);
@@ -727,6 +810,10 @@ function applyAccentTheme(rgb, tuningInput) {
 
 // ---- App init ----
 
+/**
+ * アプリ起動時に一度だけ実行する最上位の初期化処理。
+ * AI状態、認証、データ保護付きアカウント切替、同期、テーマ、PWA、共通操作を順に開始します。
+ */
 async function init() {
   try { await refreshAiRuntimeStatus({ force: true }); } catch {}
 
@@ -891,10 +978,15 @@ async function init() {
   });
 }
 
+/** URLの`#calendar`のような部分から、画面名だけを取り出す。 */
 function getViewFromHash() {
   return window.location.hash.replace(/^#/, '').split('?')[0].trim() || 'home';
 }
 
+/**
+ * Service Workerを登録し、新版を検出したら編集・同期が安全な時だけ再読み込みする。
+ * 更新のために編集中の文章を失わないことが重要です。
+ */
 async function setupServiceWorkerAutoUpdate() {
   const registration = await navigator.serviceWorker.register('./sw.js');
   const markWaitingWorker = (worker) => {
@@ -946,6 +1038,10 @@ window.AppTags = { open: (tag) => { setTagFilter(tag); navigate('tags'); } };
 
 // ---- Offline / connectivity monitor ----
 
+/**
+ * オンライン・オフライン切替を監視する。
+ * 復帰時はAI待機キューを処理し、Supabaseの最新データも取得します。
+ */
 function setupConnectivityMonitor() {
   const inject = () => {
     // Inject offline indicator if not already there
@@ -998,6 +1094,10 @@ function setupConnectivityMonitor() {
   updateStatus();
 }
 
+/**
+ * アプリを開いている間、一定間隔でクラウド変更を確認する。
+ * 入力中や送信待ちがある場合は取得と再描画を延期します。
+ */
 function setupForegroundSync() {
   if (foregroundSyncIntervalId) clearInterval(foregroundSyncIntervalId);
   foregroundSyncIntervalId = setInterval(() => {
@@ -1017,6 +1117,10 @@ function setupForegroundSync() {
 
 // ---- FAB (Floating Action Button) ----
 
+/**
+ * 右下のFloating Action Buttonを、現在の画面に合う役割とアイコンへ切り替える。
+ * TasksではAI分配、Calendarでは予定追加、MemoではAI整理を開きます。
+ */
 function setupFAB() {
   const fab = document.getElementById('fab');
   if (!fab) return;
@@ -1066,12 +1170,17 @@ function setupFAB() {
 
 // ---- Keyboard shortcuts ----
 
+/** キーボードイベントの発生元が文字入力中の要素か判定する。 */
 function isEditingText(target) {
   const el = target instanceof Element ? target : document.activeElement;
   if (!el) return false;
   return !!el.closest?.('input, textarea, select, [contenteditable="true"]');
 }
 
+/**
+ * 検索や画面移動のグローバルショートカットを登録する。
+ * メモや入力欄へ文字を打っている間は、数字キーを含む全ショートカットを無効にします。
+ */
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', e => {
     // Ignore all global shortcuts while typing/editing text, including memo blocks.
@@ -1112,6 +1221,7 @@ function setupKeyboardShortcuts() {
   });
 }
 
+/** 利用可能なキーボードショートカットを共通モーダルへ表示する。 */
 function showShortcutsHelp() {
   const body = document.createElement('div');
   body.innerHTML = `

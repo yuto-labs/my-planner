@@ -1,6 +1,11 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
+  <!--
+    index.htmlは、すべての画面で共通する外枠だけを定義します。
+    CalendarやMemoなどの中身は、js/app.jsが画面ごとのJavaScriptを呼び出して
+    <main id="main-content">の中へ描画します。
+  -->
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: dark)">
@@ -11,18 +16,21 @@
   <meta name="apple-mobile-web-app-title" content="マイプランナー">
   <title>マイプランナー</title>
 
+  <!-- PWAとしてホーム画面へ追加する時の名前・アイコン・起動方法です。 -->
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icon-192.png" type="image/png">
   <link rel="apple-touch-icon" href="icon-192.png">
 
+  <!-- 画面で使うWebフォントへ早めに接続し、初回表示の待ち時間を減らします。 -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,400;1,500&family=Inter:wght@400;500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;600;700&display=swap" rel="stylesheet">
 
+  <!-- style.cssが基本、responsive.cssがタブレット・PC向けの上書きです。 -->
   <link rel="stylesheet" href="css/style.css?v=289">
   <link rel="stylesheet" href="css/responsive.css?v=4">
 
-  <!-- KaTeX -->
+  <!-- メモ内の数式を表示する外部ライブラリKaTeX。deferによりHTML解析後に実行します。 -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous"
@@ -30,13 +38,13 @@
 </head>
 <body>
   <div id="app">
-    <!-- Loading screen -->
+    <!-- JavaScriptの初期化と最初のデータ確認が終わるまで表示する画面です。 -->
     <div id="loading-screen">
       <div class="loader-ring"></div>
       <p>読み込み中…</p>
     </div>
 
-    <!-- App header -->
+    <!-- 全画面共通のヘッダー。戻る・設定・ゴミ箱・検索の処理はapp.jsが登録します。 -->
     <header id="app-header" class="hidden">
       <div class="header-inner">
         <button id="back-btn" class="back-btn hidden" aria-label="戻る">
@@ -65,10 +73,10 @@
       </div>
     </header>
 
-    <!-- Main content -->
+    <!-- 現在の画面モジュールが、ここへHTMLを描画します。 -->
     <main id="main-content"></main>
 
-    <!-- Bottom navigation -->
+    <!-- data-viewの値がapp.jsのMODULESキーと対応します。 -->
     <nav id="bottom-nav" class="hidden">
       <button class="nav-btn" data-view="home" aria-label="Home">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
@@ -92,16 +100,16 @@
       </button>
     </nav>
 
-    <!-- Modal overlay -->
+    <!-- app.jsのopenModal()が、確認画面や設定用UIをこの中へ入れます。 -->
     <div id="modal-overlay" class="hidden"></div>
 
-    <!-- Toast notifications -->
+    <!-- 保存完了やエラーなど、短時間だけ出す通知の置き場所です。 -->
     <div id="toast-container" aria-live="polite"></div>
 
-    <!-- Universal search overlay -->
+    <!-- 予定・タスク・メモなどを横断する検索画面です。 -->
     <div id="search-overlay" class="search-overlay hidden" role="dialog" aria-label="検索"></div>
 
-    <!-- Floating Action Button -->
+    <!-- 右下の共通ボタン。現在の画面に応じてapp.jsが役割とアイコンを変えます。 -->
     <button id="fab" class="fab" aria-label="追加">
       <svg viewBox="0 0 24 24" fill="currentColor" width="26" height="26">
         <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
@@ -109,6 +117,7 @@
     </button>
   </div>
 
+  <!-- type="module"により、app.jsからimportした他のJSファイルも読み込めます。 -->
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

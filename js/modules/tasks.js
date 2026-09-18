@@ -69,6 +69,7 @@ function saveLastTaskTags(tags) {
 
 // ---- Public ----
 
+/** タスク一覧、絞り込み、追加、並べ替え、AI分解を初期化する。 */
 export function initTasks(container) {
   state.container = container;
   if (!state.addTitle && !state.addTags.length) {
@@ -1066,6 +1067,7 @@ function getSortedFilteredTasks() {
   return active;
 }
 
+/** 未完了を中心に、期限日時が近い順へ安定して並べる。 */
 export function sortTasksByDeadline(tasks) {
   const wo = { large: 0, medium: 1, small: 2 };
   const dueSortValue = (task) => {
@@ -1210,6 +1212,7 @@ function wireTaskActions() {
 
 // ---- Actions ----
 
+/** 入力欄の内容を検証し、現在のタグ既定値を含めてタスクを追加する。 */
 function handleAdd() {
   const c     = state.container;
   const input = c.querySelector('#task-input');
@@ -1350,6 +1353,7 @@ async function handleDecompose(taskId, btn) {
   }
 }
 
+/** 完了状態を切り替え、取り消せるようUndo情報も残す。 */
 function handleToggle(taskId, li) {
   const tasks = getTasks();
   const task  = tasks.find(t => t.id === taskId);

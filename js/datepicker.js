@@ -93,6 +93,7 @@ function _preparePopup(popup, label) {
 
 // ---- Date Picker ----
 
+/** ネイティブ入力に依存しない共通の日付選択モーダルを開く。 */
 export function openDatePicker({ value, onConfirm, onClear }) {
   const overlay = _getOverlay();
   const now = new Date();
@@ -180,6 +181,7 @@ export function openDatePicker({ value, onConfirm, onClear }) {
 
 // ---- Time Picker ----
 
+/** 時・分をタップで選べる共通の時刻選択モーダルを開く。 */
 export function openTimePicker({ value, onConfirm, onClear }) {
   const overlay = _getOverlay();
   const now = new Date();
@@ -263,6 +265,7 @@ export function formatDuration(minutes) {
   return `${h}時間${m}分`;
 }
 
+/** 作業時間を分単位で選ぶ共通モーダルを開く。 */
 export function openDurationPicker({ value, onConfirm, onClear }) {
   const overlay = _getOverlay();
 

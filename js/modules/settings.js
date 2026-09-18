@@ -25,10 +25,12 @@ import { openSharedCalendarSettings } from './shared-calendar.js';
 const toast = (msg, type) => window.AppNav?.showToast(msg, type);
 const nav = (view) => window.AppNav?.navigate(view);
 
+/** 一般設定、外観、アカウント、同期状態を表示する。 */
 export function initSettings(container) {
   renderMainSettings(container);
 }
 
+/** AI接続状態と詳細設定だけを表示する設定サブページ。 */
 export function initAISettings(container) {
   renderAISettings(container);
   refreshAiRuntimeStatus().then(() => {

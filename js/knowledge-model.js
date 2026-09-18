@@ -1,3 +1,10 @@
+// ============================================================
+// knowledge-model.js - Knowledge回答の正規化・検証・概念リンク
+//
+// AIの文章をそのままHTMLとして保存せず、段落・強調・表・数式などの許可した
+// 構造へ変換する。表示崩れを防ぎ、後から分類や関連概念を検索可能にする。
+// ============================================================
+
 import { LEARNING_MAJOR_BY_ID, LEARNING_MIDDLE_BY_ID } from './data/learning-taxonomy.js';
 import {
   normalizeLearningCountryCodes,
@@ -257,6 +264,7 @@ function normalizeGeography(value = {}) {
   return { scope, regionIds, countryCodes };
 }
 
+/** AI回答の表記揺れや欠損を補い、画面と保存処理が扱う共通形へそろえる。 */
 export function normalizeKnowledgeAnswer(raw, question = '') {
   const concepts = (Array.isArray(raw?.concepts) ? raw.concepts : [])
     .map(normalizeConcept)
@@ -330,6 +338,7 @@ export function knowledgeAnswerText(entry) {
   ].filter(Boolean).join('\n');
 }
 
+/** 保存に必要な質問・分類・回答内容がそろっているか検証する。 */
 export function validateKnowledgeEntry(entry) {
   const errors = [];
   if (!entry?.title) errors.push('title');

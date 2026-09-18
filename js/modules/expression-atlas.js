@@ -107,6 +107,7 @@ let state = {
   },
 };
 
+/** 表現帳の一覧・英訳・疑問・生成モードを初期化する。 */
 export function initExpressionAtlas(container) {
   state = {
     ...state,
@@ -325,6 +326,7 @@ export function backFromExpressionAtlas() {
   nav('memo');
 }
 
+/** 現在のモードと選択状態から、必要な画面だけを描画する。 */
 function render() {
   if (!state.container) return;
   clearTimeout(state.searchTimer);
@@ -1393,6 +1395,7 @@ function renderQuestionCard(item) {
   </button>`;
 }
 
+/** 英語の疑問をAIへ送り、構造化回答として保存する。 */
 async function handleEnglishQuestionSubmit(event) {
   event.preventDefault();
   if (state.generating) return;
@@ -1813,6 +1816,7 @@ function showWordMatchPicker(token, entries) {
   sheet.querySelector('[data-word-picker-close]')?.focus();
 }
 
+/** 日本語文を英訳し、元の日本語と三つの訳・解説を一組で保存する。 */
 async function handleTranslationGenerate(event) {
   event.preventDefault();
   if (state.generating) return;
@@ -2616,6 +2620,7 @@ function updateAtlasQueryModeHint() {
   if (hint) hint.textContent = renderAtlasQueryModeHint(state.generatorInput.learningTarget);
 }
 
+/** 日本語テーマまたは英語見出し語から解説を生成し、既存項目へ安全に統合する。 */
 async function handleGenerate(event) {
   event.preventDefault();
   if (state.generating) return;

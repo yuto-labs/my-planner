@@ -1,4 +1,5 @@
-// Stable geographic helpers for Knowledge entries. Country identifiers use ISO 3166-1 alpha-2.
+// Knowledgeを地域から探すための安定した地域・国マスタ。
+// 国コードは表示名が変わっても同一国を識別できるようISO 3166-1 alpha-2を使う。
 
 export const LEARNING_REGIONS = [
   ['world', '世界'],

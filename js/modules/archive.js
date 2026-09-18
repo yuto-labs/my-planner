@@ -21,6 +21,7 @@ const TYPE_META = {
   schedule: { label: 'Schedule', icon: '◫' },
 };
 
+/** ごみ箱を種類・月ごとに表示し、復元と完全削除を接続する。 */
 export function initArchive(container) {
   render(container);
 }

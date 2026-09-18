@@ -1,5 +1,15 @@
 // ============================================================
-// storage.js — localStorage wrapper + data models
+// storage.js - ブラウザ内データの読み書きと、各データ型の更新ルール
+//
+// このファイルは画面と localStorage の間にある「保存の窓口」です。
+// 画面側から localStorage を直接変更すると、更新日時・ごみ箱・同期通知の
+// いずれかが抜けやすいため、原則としてここで公開している関数を使います。
+//
+// 読み方:
+//   1. load / save が共通の低レベル処理
+//   2. Events / Tasks などの節がデータ型ごとの操作
+//   3. 後半の Knowledge 節は、旧形式も壊さず新形式へまとめる互換層
+//   4. Snapshot 節は、ログイン切替や同期事故に備える端末内バックアップ
 // ============================================================
 
 import { generateId } from './utils.js';
@@ -24,6 +34,8 @@ const KEY = {
   AI_RUNTIME:'mp_ai_runtime',
 };
 
+// ログアウト・アカウント切替時に保護する「ユーザーが作ったデータ」の一覧。
+// 新しい永続データを追加したら、この一覧への追加も検討すること。
 const USER_CONTENT_KEYS = [
   KEY.EVENTS,
   KEY.TASKS,
@@ -53,6 +65,7 @@ const USER_CONTENT_KEYS = [
   'mp_sync_status',
 ];
 
+// 定数の初期化順に依存せず USER_CONTENT_KEYS から参照するため関数にしている。
 function SCHED_KEY_SAFE() { return 'mp_schedule'; }
 function FOCUS_LOG_KEY_SAFE() { return 'mp_focus_logs'; }
 function HABIT_LOG_KEY_SAFE() { return 'mp_habit_logs'; }
@@ -74,7 +87,9 @@ function HABIT_DONE_KEY_SAFE() { return 'mp_habit2_done'; }
 let _syncHook       = null; // (tableKey: string) => void
 let _syncDeleteHook = null; // ({ table, id?, name? }) => void
 
+/** 保存後に呼ぶ同期処理を sync.js から登録する。 */
 export function registerSyncHook(fn)       { _syncHook       = fn; }
+/** 削除後に呼ぶリモート削除処理を sync.js から登録する。 */
 export function registerSyncDeleteHook(fn) { _syncDeleteHook = fn; }
 
 function _notifySync(tableKey) {
@@ -102,6 +117,10 @@ export const DEFAULT_THEME_TUNING = {
 
 // ---- Primitive helpers ----
 
+/**
+ * JSON として保存された値を読む。
+ * 壊れたJSONや初回起動では fallback を返し、画面全体の停止を防ぐ。
+ */
 function load(key, fallback) {
   try {
     const raw = localStorage.getItem(key);
@@ -111,6 +130,10 @@ function load(key, fallback) {
   }
 }
 
+/**
+ * 値をJSON化して保存する共通処理。
+ * 容量超過などの失敗を呼び出し元へ返し、UIにも通知できるようイベントを出す。
+ */
 function save(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
@@ -124,7 +147,8 @@ function save(key, value) {
   }
 }
 
-// ---- Events ----
+// ---- Events（カレンダー予定）----
+// 配列全体を保存した後に同期へ通知する。個別操作は必ず updatedAt を更新する。
 
 export function getEvents() { return load(KEY.EVENTS, []); }
 export function saveEvents(events) {
@@ -133,6 +157,7 @@ export function saveEvents(events) {
   return true;
 }
 
+/** 新しい予定にID・作成日時・省略可能フィールドの初期値を補って保存する。 */
 export function addEvent(ev) {
   const events = getEvents();
   const now = new Date().toISOString();
@@ -149,6 +174,7 @@ export function addEvent(ev) {
   return saveEvents(events) ? newEv : null;
 }
 
+/** 指定した予定だけを差分更新し、同期の競合判定に使う updatedAt も進める。 */
 export function updateEvent(id, updates) {
   const events = getEvents();
   const idx = events.findIndex(e => e.id === id);
@@ -157,6 +183,10 @@ export function updateEvent(id, updates) {
   return saveEvents(events) ? events[idx] : null;
 }
 
+/**
+ * 予定をごみ箱へ退避してから本体を削除する。
+ * ごみ箱への保存に失敗した場合は予定を残し、取り返せない削除を避ける。
+ */
 export function deleteEvent(id) {
   const events = getEvents();
   const target = events.find(e => e.id === id);
@@ -167,6 +197,7 @@ export function deleteEvent(id) {
   return target;
 }
 
+/** 繰り返し予定のうち、指定日時以降だけをごみ箱へ移して削除する。 */
 export function deleteFutureRecurring(recurringId, fromDateISO) {
   if (!recurringId) return [];
   const from = new Date(fromDateISO);
@@ -189,7 +220,8 @@ export function deleteFutureRecurring(recurringId, fromDateISO) {
   return removed;
 }
 
-// ---- Tasks ----
+// ---- Tasks（タスク）----
+// 完了・放棄・並び順・繰り返し生成を一か所で整え、画面ごとの挙動差を防ぐ。
 
 export function getTasks() { return load(KEY.TASKS, []); }
 export function saveTasks(tasks) {
@@ -198,6 +230,7 @@ export function saveTasks(tasks) {
   return true;
 }
 
+/** タスクの既定値と安定した並び順を補って保存する。 */
 export function addTask(task) {
   const tasks = getTasks();
   const nextSortOrder = tasks.reduce((max, item) => {
@@ -230,6 +263,10 @@ export function addTask(task) {
   return saveTasks(tasks) ? newTask : null;
 }
 
+/**
+ * タスクを差分更新する。完了時刻などの派生値と、次回の繰り返しタスクもここで扱う。
+ * 同じ完了操作が再実行されても、次回分を重複生成しないよう seriesId で確認する。
+ */
 export function updateTask(id, updates) {
   const tasks = getTasks();
   const idx = tasks.findIndex(t => t.id === id);
@@ -271,6 +308,7 @@ export function updateTask(id, updates) {
   return tasks[idx];
 }
 
+/** ごみ箱への退避が成功した場合にだけ、タスク本体を削除する。 */
 export function deleteTask(id) {
   const tasks = getTasks();
   const target = tasks.find(t => t.id === id);
@@ -761,9 +799,13 @@ function toDateStr_simple(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
-// ---- Knowledge Memos ----
+// ---- Knowledge / Memo 共通保存領域 ----
 // Block shape: { id, type, text, color, collapsed, children }
 // Memo shape:  { id, title, blocks, tags, starred, url, summary, createdAt, updatedAt }
+//
+// 通常メモ、表現帳、英訳、Knowledge、ホーム画像設定は同じ配列に保存される。
+// 内部タグと専用 block.type で種類を判定するため、通常メモ一覧では内部レコードを除外する。
+// この構成により既存DBを壊さず機能を追加できるが、保存時に別種類のレコードを落とさないこと。
 
 const KNOWLEDGE_KEY = 'mp_knowledge';
 const TERM_KEY      = 'mp_terms';
@@ -865,6 +907,10 @@ function mergeUniqueArray(existing, incoming) {
   return mergeAtlasList(existing, incoming);
 }
 
+/**
+ * 同じ言語・見出し語の表現を一つの代表レコードへ統合する。
+ * 品詞や意味は senses 配列に残すため、統合は内容の削除を意味しない。
+ */
 function consolidateExpressionEntries(entries) {
   const groups = new Map();
   (Array.isArray(entries) ? entries : [])
@@ -895,6 +941,7 @@ function consolidateExpressionEntries(entries) {
   });
 }
 
+/** 既存の濃い解説を保ちながら、新しい意味・出典質問・別名を足し合わせる。 */
 function mergeExpressionEntry(existing, incoming) {
   const existingSenses = expressionSenses(existing);
   const incomingSenses = expressionSenses(incoming);
@@ -1268,10 +1315,15 @@ function learningEntryToRecord(entry, existing = null) {
   };
 }
 
+/** 通常のメモだけを返し、表現帳などの内部レコードを一覧へ混ぜない。 */
 export function getKnowledgeMemos() {
   return getAllKnowledgeRecords().filter(record => !isInternalKnowledgeRecord(record));
 }
 
+/**
+ * 貼り付けや複製で重なったブロックIDを付け直す。
+ * ID重複は編集対象の取り違えや、画像・トグルの誤更新につながるため保存前に正規化する。
+ */
 export function normalizeMemoBlockIds(blocks, idFactory = generateId) {
   const seen = new Set();
   const nextId = () => {
@@ -1290,6 +1342,10 @@ export function normalizeMemoBlockIds(blocks, idFactory = generateId) {
   return (Array.isArray(blocks) ? blocks : []).map(visit);
 }
 
+/**
+ * 通常メモを保存する際、同じ保存領域にある表現帳・Knowledge等を必ず引き継ぐ。
+ * incoming が通常メモだけでも内部レコードを消さないことが重要。
+ */
 export function saveKnowledgeMemos(memos) {
   const currentInternal = getAllKnowledgeRecords().filter(isInternalKnowledgeRecord);
   const incoming = Array.isArray(memos) ? memos : [];
@@ -1401,6 +1457,10 @@ export function saveExpressionEntries(entries) {
   return true;
 }
 
+/**
+ * AIが生成した表現を既存見出し語へ統合し、追加・更新・重複の結果も返す。
+ * UIはこの結果を使い「保存されなかった」のか「既存項目へ追加された」のかを区別する。
+ */
 export function addExpressionEntriesWithReport(entries) {
   const current = getExpressionEntries();
   const saved = [];
@@ -1700,6 +1760,7 @@ export function updateTranslationSet(id, updates) {
   return saveTranslationSets(sets) ? sets[index] : null;
 }
 
+/** 削除対象の完全な payload をごみ箱へ保存し、後から同じ形で復元できるようにする。 */
 export function addTrashItem({ entityType, payload, title }) {
   if (!entityType || !payload) return null;
   const items = getTrashItems();
@@ -1739,6 +1800,10 @@ export function removeTrashItemByEntity(entityType, entityId) {
   return removed;
 }
 
+/**
+ * ごみ箱の種類に応じて元の保存先へ戻す。
+ * 復元先への保存が成功するまでごみ箱側を消さない。
+ */
 export function restoreTrashItem(id) {
   const items = getTrashItems();
   const item = items.find(entry => entry.id === id);
@@ -1992,6 +2057,7 @@ export function getReviewEntry(memoId) {
 
 // ---- Backup / Restore ----
 
+/** ユーザー作成データをJSONバックアップとして書き出す。 */
 export function exportBackup() {
   const { apiKey: _, ...safeSettings } = getSettings();
   return JSON.stringify({
@@ -2015,6 +2081,10 @@ export function exportBackup() {
   }, null, 2);
 }
 
+/**
+ * バックアップの形式を検証してから各保存先へ戻す。
+ * 部分的な入力でも、存在しない項目を空配列で上書きしない。
+ */
 export function importBackup(jsonStr) {
   const data = JSON.parse(jsonStr);
   if (data.events)    saveEvents(data.events);
@@ -2129,6 +2199,7 @@ async function deleteUserSnapshot(userId) {
   });
 }
 
+/** アカウント切替前の端末データを IndexedDB に退避する。 */
 export async function preserveUserContentSnapshot(userId) {
   if (!userId) return false;
   const data = {};
@@ -2154,6 +2225,10 @@ export async function preserveUserContentSnapshot(userId) {
   }
 }
 
+/**
+ * 同じユーザーの端末スナップショットを復元する。
+ * 現在値が空である項目を中心に補完し、新しい編集を古い控えで潰さない。
+ */
 export async function restoreUserContentSnapshot(userId) {
   if (!userId) return false;
   let snapshot = null;

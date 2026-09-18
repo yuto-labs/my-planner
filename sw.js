@@ -1,5 +1,9 @@
 // ============================================================
-// sw.js — Service Worker: Cache-first offline support v3
+// sw.js - オフライン起動と静的ファイル更新を担当するService Worker
+//
+// アプリ本体はcache-first、CDNはstale-while-revalidateを使う。
+// API・Supabase応答は個人データや期限付き内容を含むため絶対にキャッシュしない。
+// JS/CSSの動作を変更したときはCACHE_VERも進め、古い端末キャッシュを更新する。
 // ============================================================
 
 const CACHE_VER  = 'v333';
@@ -113,6 +117,7 @@ self.addEventListener('fetch', event => {
 });
 
 // ---- Strategy: cache-first ----
+/** 静的ファイルはキャッシュを優先し、未保存の場合だけネットワークから取得する。 */
 async function cacheFirst(req) {
   const cached = await caches.match(req);
   if (cached) return cached;
@@ -138,6 +143,7 @@ async function cacheFirst(req) {
 }
 
 // ---- Strategy: stale-while-revalidate ----
+/** CDNは現在のキャッシュを即返しつつ、裏で次回用の最新版へ更新する。 */
 async function staleWhileRevalidate(req, cacheName) {
   const cache  = await caches.open(cacheName);
   const cached = await cache.match(req);

@@ -1,3 +1,10 @@
+// ============================================================
+// shared-calendar.js - 共有カレンダーのDB操作と端末キャッシュ
+//
+// modules/shared-calendar.js が画面を担当し、このファイルはグループ・招待・
+// 共有予定の通信を担当する。個人予定そのものはstorage.jsを通して更新する。
+// ============================================================
+
 import { getClient, getUserId } from './supabase.js';
 import { getEvents, updateEvent, deleteEvent } from './storage.js';
 import { rowToEvent } from './migrate.js';

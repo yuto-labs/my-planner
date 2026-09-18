@@ -1,5 +1,6 @@
-// Built-in guide to the high-frequency relationship words that carry English
-// sentence structure. These are learning maps, not one-to-one translations.
+// 表現帳に最初から収録する、前置詞・接続詞など頻出機能語の教材データ。
+// 一対一の日本語訳ではなく、空間・方向・関係のコアイメージを学ぶための資料。
+// ユーザーがAIで追加した表現とは別に、アプリ本体の更新で版管理する。
 
 const ref = form => [{
   title: `Merriam-Webster: ${form}`,

@@ -1,6 +1,10 @@
 // ============================================================
-// ai.js - AI client layer
-// Same-origin server API (Gemini on Vercel)
+// ai.js - 画面とサーバーAI APIの間にあるクライアント層
+//
+// 画面からGeminiを直接呼ばず、同一オリジンの /api/ai/generate を使う。
+// APIキーをブラウザへ露出せず、認証・タイムアウト・モデル選択・JSON整形を
+// サーバー側へ集約するためである。このファイルは各機能のプロンプト作成と、
+// 戻り値をアプリのデータ形式へ正規化する役割を持つ。
 // ============================================================
 
 import {
@@ -43,6 +47,10 @@ function atlasQueryTokens(value) {
     .filter(token => token.length > 1))];
 }
 
+/**
+ * 保存済み表現の全件本文を送らず、質問に近い項目だけを詳しくAIへ渡す。
+ * 件数が増えても速度と重複判定精度のバランスを保つための検索前処理。
+ */
 export function buildAtlasCatalogContext(referenceExpressions = [], {
   learningTarget = '', requestedExpressionTerms = [], category = '', topic = '',
   detailedLimit = ATLAS_DETAILED_CATALOG_LIMIT,
@@ -93,6 +101,7 @@ const AUTH_SESSION_TIMEOUT_MS = 12_000;
 const FAST_MODEL = 'fast';
 const QUALITY_MODEL = 'quality';
 
+/** サーバーで利用可能なモデル等を確認し、短時間キャッシュする。 */
 export async function refreshAiRuntimeStatus({ force = false } = {}) {
   const current = getAiRuntime();
   const cacheDuration = current.configured ? 10 * 60 * 1000 : 30 * 1000;
@@ -131,6 +140,10 @@ export async function refreshAiRuntimeStatus({ force = false } = {}) {
   }
 }
 
+/**
+ * 認証トークン付きでAI APIを呼ぶ共通入口。
+ * タイムアウト後も永遠に「生成中」にならないよう、失敗を必ず例外へ変換する。
+ */
 async function callServerAI(
   modelPreference,
   systemText,
@@ -705,6 +718,7 @@ export async function answerEnglishLearningQuestion(questionJa, options = {}) {
   return answer;
 }
 
+/** 一般知識の質問を、保存可能な構造化回答と分類情報へ変換する。 */
 export async function generateKnowledgeAnswer(question, taxonomy, options = {}) {
   const cleanQuestion = String(question || '').trim();
   if (!cleanQuestion) throw new Error('質問を入力してください。');
@@ -773,6 +787,7 @@ export async function generateKnowledgeAnswer(question, taxonomy, options = {}) 
   return parsed;
 }
 
+/** 英語表現の比較解説を生成し、既存見出し語へ統合できる形に正規化する。 */
 export async function generateNuanceEntries(
   {
     language = 'English',
@@ -1093,6 +1108,7 @@ export async function generateNuanceEntries(
   return [...grouped.values()];
 }
 
+/** 日本語文から、用途の異なる自然な英訳セットを生成する。 */
 export async function generateTranslationVariants(
   {
     sourceTextJa = '',

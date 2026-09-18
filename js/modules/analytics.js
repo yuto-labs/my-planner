@@ -464,6 +464,7 @@ function appendSummarySection(container, summary, monthStr) {
 }
 
 /* ---- Entry point ---- */
+/** 保存済み実績からタスク・学習の分析画面を描画する。 */
 export function initAnalytics(container) {
   const todayStr     = today();
   const currentMonth = todayStr.slice(0, 7);

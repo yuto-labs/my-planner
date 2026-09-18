@@ -46,6 +46,17 @@ my-planner/
 ルート直下の `icon-192.png` と `icon-512.png` はPWAが直接参照する完成画像です。
 編集用の元画像は `assets/source/` に分けています。
 
+## Code Reading Guide
+
+JavaScriptやHTMLを初めて読む場合は、次の資料から順番に進むと全体像を追いやすくなります。
+
+1. [`docs/README.md`](docs/README.md) - 読む順番とコメントの見方
+2. [`docs/javascript-basics.md`](docs/javascript-basics.md) - このアプリで使う文法
+3. [`docs/architecture.md`](docs/architecture.md) - 起動から画面表示までの流れ
+4. [`docs/file-map.md`](docs/file-map.md) - ファイルごとの役割
+5. [`docs/data-and-sync.md`](docs/data-and-sync.md) - 保存と同期の安全設計
+6. [`docs/ai-flow.md`](docs/ai-flow.md) - AI回答を生成・検証・保存する流れ
+
 ## Tech Stack
 
 - Vanilla JavaScript / ES Modules

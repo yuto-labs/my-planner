@@ -1,3 +1,10 @@
+// ============================================================
+// atlas-senses.js - 同じ英語見出し語に含まれる意味単位の比較と統合
+//
+// AIが返すIDだけを信用せず、品詞・意味領域・構文・目的語・含意を比較する。
+// 明確に同じ意味は内容を補完し、違う意味は同じ見出し語内の別senseとして残す。
+// ============================================================
+
 import { normalizePartOfSpeech } from './atlas-model.js';
 
 export const ATLAS_SENSE_FIELDS = Object.freeze([
@@ -186,6 +193,7 @@ export function atlasSenseFromEntry(entry = {}) {
   return sense;
 }
 
+/** 二つの解説が、統合してよい同一senseかを保守的に判定する。 */
 export function sameAtlasSense(existing = {}, incoming = {}) {
   const existingPart = normalizePartOfSpeech(existing.partOfSpeech);
   const incomingPart = normalizePartOfSpeech(incoming.partOfSpeech);
@@ -275,6 +283,7 @@ export function atlasSenseAddsLearningContent(existing = {}, incoming = {}) {
   return stableJson(project(merged)) !== stableJson(project(existing));
 }
 
+/** 既存senseを削らず、新規senseまたは追加情報を配列へ統合する。 */
 export function mergeAtlasSenseArrays(existing, incoming) {
   const senses = (Array.isArray(existing) ? existing : []).map(sense => atlasSenseFromEntry(sense));
   (Array.isArray(incoming) ? incoming : []).forEach(rawSense => {

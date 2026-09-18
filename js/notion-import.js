@@ -1,8 +1,16 @@
+// ============================================================
+// notion-import.js - Notionエクスポートを既存メモ形式へ変換する
+//
+// ZIP内のCSVとMarkdownを読み、重複を避けながらブロック形式へ変換する。
+// 元ファイルは変更せず、既存メモと内部Knowledgeレコードも保持する。
+// ============================================================
+
 import { getKnowledgeMemos, saveKnowledgeMemos, scheduleFirstReview } from './storage.js';
 import { generateId } from './utils.js';
 
 const NOTION_ID_RE = /([0-9a-f]{32})/i;
 
+/** ZIPを解析し、保存前に確認できるインポート候補を返す。 */
 export async function parseNotionExport(file) {
   const zipLib = await ensureJSZip();
   const zip = await zipLib.loadAsync(file);
@@ -56,6 +64,7 @@ export async function parseNotionExport(file) {
   };
 }
 
+/** 確認済み候補を現在のメモへ追加し、必要なら復習予定も作る。 */
 export function importNotionPreview(preview, { skipDuplicates = true } = {}) {
   const current = getKnowledgeMemos();
   const existingTitles = new Set(current.map(m => normalizeTitle(m.title)));
