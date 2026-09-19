@@ -299,6 +299,8 @@ export function navigate(view, options = {}) {
   if (cleanupFn) { try { cleanupFn(); } catch {} cleanupFn = null; }
 
   currentView = view;
+  // 画面固有のレスポンシブ調整を、他画面へ漏らさずCSSで指定するための印。
+  document.getElementById('app')?.setAttribute('data-view', view);
   const existingRoute = window.location.hash.replace(/^#/, '');
   const routeHash = options.routeHash
     || (existingRoute && getViewFromHash() === view ? existingRoute : view);

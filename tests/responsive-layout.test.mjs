@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [responsiveCss, indexHtml, serviceWorker, manifestText] = await Promise.all([
+const [styleCss, responsiveCss, indexHtml, serviceWorker, manifestText] = await Promise.all([
+  readFile(new URL('../css/style.css', import.meta.url), 'utf8'),
   readFile(new URL('../css/responsive.css', import.meta.url), 'utf8'),
   readFile(new URL('../index.html', import.meta.url), 'utf8'),
   readFile(new URL('../sw.js', import.meta.url), 'utf8'),
@@ -27,7 +28,7 @@ test('installed tablet app supports both orientations', () => {
 });
 
 test('responsive stylesheet loads after the established design stylesheet', () => {
-  const baseIndex = indexHtml.indexOf('css/style.css?v=289');
+  const baseIndex = indexHtml.indexOf('css/style.css?v=290');
   const responsiveIndex = indexHtml.indexOf('css/responsive.css?v=4');
 
   assert.ok(baseIndex >= 0);
@@ -70,4 +71,11 @@ test('responsive stylesheet has balanced blocks', () => {
     assert.ok(depth >= 0, 'closing brace appeared before an opening brace');
   }
   assert.equal(depth, 0);
+});
+
+test('narrow Atlas and Knowledge controls keep their labels readable', () => {
+  assert.match(styleCss, /#app\[data-view="expression-atlas"\] #page-title/);
+  assert.match(styleCss, /\.learning-question-actions \.btn[\s\S]*?white-space:\s*nowrap/);
+  assert.match(indexHtml, /css\/style\.css\?v=290/);
+  assert.match(serviceWorker, /css\/style\.css\?v=290/);
 });

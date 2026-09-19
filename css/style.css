@@ -12902,11 +12902,34 @@ button.atlas-nuance-map-row:focus-visible {
 .tasks-analysis-btn svg { width: 18px; height: 18px; }
 
 @media (max-width: 520px) {
+  /* 長い表現帳タイトルと3つの共通操作を、狭い端末でも同じ行に収める。 */
+  #app[data-view="expression-atlas"] .header-inner {
+    padding-inline: 8px;
+    gap: 2px;
+  }
+  #app[data-view="expression-atlas"] #page-title {
+    min-width: 0;
+    font-size: 17px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #app[data-view="expression-atlas"] .header-actions { gap: 3px; }
+  #app[data-view="expression-atlas"] .header-actions .btn-icon {
+    width: 36px;
+    height: 36px;
+  }
+
   .learning-page,
   .learning-detail { padding-inline: 12px; }
   .learning-ask { padding: 15px; }
   .learning-toolbar { grid-template-columns: 1fr; }
   .learning-question-actions { align-items: flex-end; }
+  .learning-question-actions .btn {
+    flex-shrink: 0;
+    padding-inline: 14px;
+    white-space: nowrap;
+  }
   .learning-save-note { max-width: 56%; }
   .learning-country-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .learning-browse-heading { grid-template-columns: 70px minmax(0, 1fr) 38px; }
