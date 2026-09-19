@@ -47,14 +47,16 @@ test('新規メモは復習なし', () => {
 ```powershell
 npm run lint
 npm test
+npm run comments:check
 npm run docs:check
 npm run build
 ```
 
 - `lint`: このプロジェクトでは全JavaScriptの構文を確認
 - `test`: `tests/*.test.mjs`をすべて実行
+- `comments:check`: 本番コードの名前付き関数に説明があるか確認
 - `docs:check`: `README.md`、`docs/`、`supabase/`内のローカルリンク切れを確認
-- `build`: 配信前の構文確認とドキュメントリンク確認
+- `build`: 配信前の構文・関数注釈・ドキュメントリンク確認
 
 このアプリはVanilla JavaScriptなので、大規模な変換ビルドはありません。それでも`build`という共通名を
 用意し、Vercelや開発手順から同じ確認を呼べるようにしています。
