@@ -8,6 +8,13 @@
 
 import { getClient, getUserId } from './supabase.js';
 import { generateId } from './utils.js';
+import {
+  escapeMediaAttribute,
+  escapeMediaHtml,
+  isOwnedMediaPath,
+  sanitizeMediaKind,
+  scaledImageDimensions,
+} from './media-model.js';
 
 const BUCKET = 'planner-media';
 const MAX_INPUT_BYTES = 15 * 1024 * 1024;
@@ -35,7 +42,7 @@ export async function uploadPlannerImage(file, kind = 'misc') {
   }
 
   const compressed = await compressImage(file);
-  const safeKind = String(kind || 'misc').replace(/[^a-z0-9_-]/gi, '').slice(0, 32) || 'misc';
+  const safeKind = sanitizeMediaKind(kind);
   const path = `${userId}/${safeKind}/${generateId()}.jpg`;
   const { error } = await client.storage.from(BUCKET).upload(path, compressed.blob, {
     cacheControl: '31536000',
@@ -192,8 +199,8 @@ export async function openPlannerImageViewer({
   viewer.innerHTML = `
     <button type="button" class="media-lightbox-close" aria-label="拡大表示を閉じる">×</button>
     <div class="media-lightbox-stage">
-      <img alt="${escapeAttribute(alt)}">
-      ${caption ? `<div class="media-lightbox-caption">${escapeHtml(caption)}</div>` : ''}
+      <img alt="${escapeMediaAttribute(alt)}">
+      ${caption ? `<div class="media-lightbox-caption">${escapeMediaHtml(caption)}</div>` : ''}
     </div>
   `;
 
@@ -300,7 +307,7 @@ export async function deletePlannerImage(path) {
   if (!cleanPath) return true;
   const client = await getClient();
   const userId = await getUserId();
-  if (!client || !userId || !cleanPath.startsWith(`${userId}/`)) return false;
+  if (!client || !userId || !isOwnedMediaPath(cleanPath, userId)) return false;
   const { error } = await client.storage.from(BUCKET).remove([cleanPath]);
   urlCache.delete(cleanPath);
   revokeCachedBlobUrl(cleanPath);
@@ -397,27 +404,16 @@ function revokeCachedBlobUrl(path) {
   blobUrlCache.delete(path);
 }
 
-function escapeHtml(value) {
-  return String(value || '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
-}
-
-function escapeAttribute(value) {
-  return escapeHtml(value).replaceAll('\n', ' ');
-}
-
 /** 長辺とJPEG品質を抑え、同期速度とStorage使用量を安定させる。 */
 async function compressImage(file) {
   const sourceUrl = URL.createObjectURL(file);
   try {
     const image = await loadImage(sourceUrl);
-    const scale = Math.min(1, MAX_EDGE / Math.max(image.naturalWidth, image.naturalHeight));
-    const width = Math.max(1, Math.round(image.naturalWidth * scale));
-    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const { width, height } = scaledImageDimensions(
+      image.naturalWidth,
+      image.naturalHeight,
+      MAX_EDGE,
+    );
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;

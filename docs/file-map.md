@@ -24,6 +24,7 @@
 - `calendar-gesture.js`: カレンダーのタップと左右スワイプの境界判定
 - `task-planning.js`: AI時間配分JSONの正規化、重複検査、見積時間計算
 - `data-compare.js`: 保存差分と同期競合で使う安定JSON化・版比較
+- `media-model.js`: 画像パスの所有者判定、圧縮寸法、表示用エスケープ
 - `shared-calendar.js`: 共有カレンダーのデータ操作
 - `notion-import.js`: Notion由来データの変換
 - `markdown-shortcuts.js`: メモのMarkdown入力判定
