@@ -22,6 +22,7 @@ import { initSharedCalendar } from './modules/shared-calendar.js';
 import { initTasks }    from './modules/tasks.js';
 import { initGoals }    from './modules/goals.js';
 import { initSettings, initAISettings } from './modules/settings.js';
+import { isHorizontalNavigationGesture, replaceAppRoute } from './navigation-gesture.js';
 import { initToday }    from './modules/today.js';
 import {
   initKnowledge, initKnowledgeDetail, openKnowledgeMemo, backFromKnowledgeDetail,
@@ -305,7 +306,10 @@ export function navigate(view, options = {}) {
   const existingRoute = window.location.hash.replace(/^#/, '');
   const routeHash = options.routeHash
     || (existingRoute && getViewFromHash() === view ? existingRoute : view);
-  window.location.hash = routeHash;
+  // 下部ナビなどのアプリ内移動をブラウザー履歴へ積むと、iOS/Androidの
+  // 画面端スワイプが履歴の「戻る・進む」と解釈され、意図せず別画面へ飛ぶ。
+  // アプリには各詳細画面用の戻る処理があるため、URLだけを置換して履歴は増やさない。
+  replaceAppRoute(window.history, window.location, routeHash);
 
   // Update nav active state
   document.querySelectorAll('#bottom-nav .nav-btn').forEach(btn => {
@@ -898,6 +902,10 @@ async function init() {
   document.getElementById('app-header').classList.remove('hidden');
   document.getElementById('bottom-nav').classList.remove('hidden');
 
+  // 横スワイプが指を離した位置のナビボタンへのclickとして合成される端末がある。
+  // 先に捕捉用リスナーを登録し、明確な横移動の直後だけ画面遷移を抑止する。
+  setupBottomNavigationGestureGuard();
+
   // Wire up bottom nav
   document.querySelectorAll('#bottom-nav .nav-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -984,6 +992,51 @@ async function init() {
       }).catch(() => {});
     }).catch(() => {});
   });
+}
+
+/**
+ * 下部ナビ上で始まったタッチを追跡し、横スワイプ直後の合成clickだけを無効にする。
+ * 縦スクロール、小さな指ぶれ、通常タップは通すため、既存の操作感は変えない。
+ */
+function setupBottomNavigationGestureGuard() {
+  const bottomNav = document.getElementById('bottom-nav');
+  if (!bottomNav || bottomNav.dataset.gestureGuard === 'true') return;
+  bottomNav.dataset.gestureGuard = 'true';
+
+  let gesture = null;
+  let suppressClickUntil = 0;
+
+  bottomNav.addEventListener('touchstart', event => {
+    if (event.touches.length !== 1) {
+      gesture = null;
+      return;
+    }
+    const touch = event.touches[0];
+    gesture = { startX: touch.clientX, startY: touch.clientY };
+  }, { passive: true, capture: true });
+
+  bottomNav.addEventListener('touchend', event => {
+    const touch = event.changedTouches?.[0];
+    if (gesture && touch && isHorizontalNavigationGesture(
+      gesture.startX,
+      gesture.startY,
+      touch.clientX,
+      touch.clientY,
+    )) {
+      suppressClickUntil = Date.now() + 600;
+    }
+    gesture = null;
+  }, { passive: true, capture: true });
+
+  bottomNav.addEventListener('touchcancel', () => {
+    gesture = null;
+  }, { passive: true, capture: true });
+
+  bottomNav.addEventListener('click', event => {
+    if (Date.now() > suppressClickUntil) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, { capture: true });
 }
 
 /** URLの`#calendar`のような部分から、画面名だけを取り出す。 */

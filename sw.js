@@ -39,6 +39,7 @@ const APP_ASSETS = [
   './js/utils.js',
   './js/planning-time.js',
   './js/calendar-gesture.js',
+  './js/navigation-gesture.js',
   './js/task-planning.js',
   './js/data-compare.js',
   './js/media-model.js',
