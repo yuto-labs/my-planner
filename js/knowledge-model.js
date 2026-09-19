@@ -16,6 +16,7 @@ const ALLOWED_MARKS = new Set(['strong', 'highlight-yellow', 'highlight-blue', '
 const KNOWLEDGE_RICH_BLOCK_TYPES = new Set(['list', 'table', 'equation', 'callout', 'flow']);
 const MARKDOWN_NOISE = /(\*\*|__|```|<\/?[a-z][^>]*>)/gi;
 
+/** 検索・重複比較専用に、表記ゆれを除いた小文字キーを作る。表示文字は変えない。 */
 export function normalizeKnowledgeKey(value) {
   return String(value || '')
     .normalize('NFKC')
@@ -27,6 +28,7 @@ export function normalizeKnowledgeKey(value) {
     .replace(/^-+|-+$/g, '');
 }
 
+/** 一覧でタイトルと元質問を両方出す価値があるほど内容が異なるかを判定する。 */
 export function hasDistinctKnowledgeQuestion(title, question) {
   const titleKey = normalizeKnowledgeKey(title).replace(/-/g, '');
   const questionKey = normalizeKnowledgeKey(question).replace(/-/g, '');
@@ -43,6 +45,7 @@ export function hasDistinctKnowledgeQuestion(title, question) {
   return !substantiallyOverlapping;
 }
 
+/** AIが残したMarkdown記号やHTML片を除き、保存・表示できるプレーン文へ直す。 */
 export function cleanKnowledgeText(value) {
   return String(value || '')
     .replace(MARKDOWN_NOISE, '')
@@ -52,10 +55,12 @@ export function cleanKnowledgeText(value) {
     .trim();
 }
 
+// 許可した強調種別だけを残し、同じマークの重複を除く。
 function normalizeMarks(marks) {
   return [...new Set((Array.isArray(marks) ? marks : []).filter(mark => ALLOWED_MARKS.has(mark)))];
 }
 
+/** 文章の断片を{text, marks, conceptKey}の共通形へそろえ、空要素を捨てる。 */
 export function normalizeKnowledgeSegments(segments) {
   const input = Array.isArray(segments) ? segments : [{ text: segments }];
   return input
@@ -67,6 +72,7 @@ export function normalizeKnowledgeSegments(segments) {
     .filter(segment => segment.text);
 }
 
+// 数式はKaTeXへ渡すため、制御文字と過度に長い入力をここで除く。
 function cleanKnowledgeLatex(value) {
   return String(value || '')
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
@@ -74,6 +80,7 @@ function cleanKnowledgeLatex(value) {
     .slice(0, 600);
 }
 
+/** 表・数式・箇条書き等の構造化ブロックを、種類ごとの安全な形へ変換する。 */
 export function normalizeKnowledgeRichBlocks(blocks) {
   return (Array.isArray(blocks) ? blocks : [])
     .slice(0, 4)
@@ -164,6 +171,7 @@ export function normalizeKnowledgeRichBlocks(blocks) {
     .filter(Boolean);
 }
 
+// 検索と内容検証で使えるよう、構造化ブロック内の全テキストを配列にする。
 function richBlockText(block) {
   if (block.type === 'list') {
     return [block.title, ...block.items.flatMap(item => item.map(segment => segment.text))];
@@ -179,6 +187,7 @@ function richBlockText(block) {
   return [];
 }
 
+// 概念リンクを検査できるブロックだけから、強調付き文章断片を取り出す。
 function richBlockSegments(block) {
   if (block.type === 'list') return block.items.flat();
   if (block.type === 'equation') return block.explanation;
@@ -186,6 +195,7 @@ function richBlockSegments(block) {
   return [];
 }
 
+// 概念名、別名、簡潔な説明を同じ形へそろえ、リンク用キーを必ず作る。
 function normalizeConcept(concept) {
   const label = cleanKnowledgeText(concept?.label || concept?.name);
   const key = normalizeKnowledgeKey(concept?.key || label);
@@ -200,6 +210,7 @@ function normalizeConcept(concept) {
   };
 }
 
+// 大分類と中分類の組み合わせが壊れていれば、安全な「学際・その他」へ戻す。
 function normalizeClassification(value = {}) {
   let majorId = String(value.majorId || '');
   let middleId = String(value.middleId || '');
@@ -219,6 +230,7 @@ function normalizeClassification(value = {}) {
   };
 }
 
+// 時代・地域・つながり等の横断検索軸を、重複のない短い配列へそろえる。
 function normalizeFacets(value = {}) {
   const array = key => [...new Set((Array.isArray(value[key]) ? value[key] : [])
     .map(cleanKnowledgeText)
@@ -233,6 +245,7 @@ function normalizeFacets(value = {}) {
   };
 }
 
+// AIの年代値を数値へ直し、無効な範囲は「未分類」として扱う。
 function normalizeTimeline(value = {}) {
   const mode = ['timeless', 'cross_period', 'dated', 'unclassified'].includes(value?.mode)
     ? value.mode
@@ -253,6 +266,7 @@ function normalizeTimeline(value = {}) {
   };
 }
 
+// 国コードを優先して地域階層を導き、世界・地域・国の表示範囲を決める。
 function normalizeGeography(value = {}) {
   const countryCodes = normalizeLearningCountryCodes(value?.countryCodes);
   const regionIds = normalizeLearningRegionIds(value?.regionIds, countryCodes);
@@ -321,10 +335,12 @@ export function normalizeKnowledgeAnswer(raw, question = '') {
   };
 }
 
+/** 保存済み年代情報から、ブラウザ画面で使う時代バケットを返す。 */
 export function getKnowledgeTimelineBucket(entry) {
   return getLearningTimelineBucket(entry?.timeline || {});
 }
 
+/** 構造化回答の全文を、検索索引用の一つの文字列へ平坦化する。 */
 export function knowledgeAnswerText(entry) {
   return [
     ...(entry?.answer?.directAnswer || []).map(segment => segment.text),
@@ -367,6 +383,7 @@ export function validateKnowledgeEntry(entry) {
   return { valid: errors.length === 0, errors };
 }
 
+/** 概念キー・表示名・別名から、その概念を扱うKnowledge項目を逆引きできる索引を作る。 */
 export function buildKnowledgeConceptIndex(entries) {
   const index = new Map();
   (Array.isArray(entries) ? entries : []).forEach(entry => {
@@ -385,6 +402,7 @@ export function buildKnowledgeConceptIndex(entries) {
   return index;
 }
 
+/** 一つの概念に一致する項目を索引から集め、同じIDを一件にまとめる。 */
 export function findKnowledgeConceptMatches(index, concept) {
   const keys = [concept?.key, concept?.label, ...(concept?.aliases || [])]
     .map(normalizeKnowledgeKey)
@@ -394,6 +412,7 @@ export function findKnowledgeConceptMatches(index, concept) {
   return [...matches.values()];
 }
 
+/** 元質問が正規化後に完全一致する項目だけを返し、似ただけの質問は統合しない。 */
 export function findDuplicateKnowledgeEntries(entries, question) {
   const key = normalizeKnowledgeKey(question);
   if (!key) return [];
