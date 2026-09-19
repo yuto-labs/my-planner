@@ -144,7 +144,7 @@ export function getLearningClassificationLabel(classification = {}) {
     .join(' › ');
 }
 
-/** `serializeLearningTaxonomyForAI`: serialize・学習・分類体系・AIに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** `serializeLearningTaxonomyForAI`: 学習分野の階層を、AIへ渡す簡潔な分類一覧へ変換する。 */
 export function serializeLearningTaxonomyForAI() {
   return LEARNING_TAXONOMY.map(group => ({
     id: group.id,

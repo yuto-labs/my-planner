@@ -38,9 +38,14 @@ import {
 } from '../data/learning-geography.js';
 import { esc } from '../utils.js';
 
+/** `nav`: 指定したハッシュ画面へ移動し、必要なら遷移元の状態を引き継ぐ。 */
 const nav = (view, options) => window.AppNav?.navigate(view, options);
+/** `toast`: 短い通知メッセージを画面へ表示する。 */
 const toast = (message, type) => window.AppNav?.showToast(message, type);
 
+// Knowledge一覧と詳細をまたいで保持する画面状態。
+// selectedEntryId/detailHistoryは詳細遷移、listStateは絞り込み条件、
+// questionDraft/generationControllerはAI生成中の入力と中断制御にだけ使う。
 let selectedEntryId = null;
 let detailHistory = [];
 let listState = {
@@ -64,6 +69,7 @@ export function openLearningEntry(id, { remember = true } = {}) {
   }
 }
 
+/** `backFromLearningDetail`: back・から・学習・詳細に関する補助処理を行い、結果を呼び出し元へ返す。 */
 export function backFromLearningDetail() {
   const previous = detailHistory.pop();
   if (previous && getLearningEntryById(previous)) {
@@ -76,6 +82,7 @@ export function backFromLearningDetail() {
   nav('knowledge');
 }
 
+/** `hasActiveKnowledgeWork`: 現在の・Knowledge・Workの条件を確認し、結果を真偽値で返す。 */
 export function hasActiveKnowledgeWork() {
   return !!generationController || !!questionDraft.trim();
 }
@@ -89,6 +96,7 @@ export function initLearningLibrary(container) {
   };
 }
 
+/** `renderLibrary`: 一覧の画面表示またはHTMLを組み立てる。 */
 function renderLibrary(container) {
   const entries = getLearningEntries();
   const query = listState.query.trim().toLocaleLowerCase();
@@ -274,6 +282,7 @@ function resetBrowseTrail() {
   listState.regionId = ''; listState.countryCode = ''; listState.conceptKey = '';
 }
 
+/** `renderEntryCard`: 項目・カードの画面表示またはHTMLを組み立てる。 */
 function renderEntryCard(entry) {
   const classification = getLearningClassificationLabel(entry.classification) || '未分類';
   const preview = (entry.answer?.directAnswer || []).map(segment => segment.text).join('');
@@ -291,6 +300,7 @@ function renderEntryCard(entry) {
   `;
 }
 
+/** `renderKnowledgeBrowse`: Knowledge・Browseの画面表示またはHTMLを組み立てる。 */
 function renderKnowledgeBrowse(entries) {
   const axis = listState.browseAxis;
   const tabs = [['list', 'すべて'], ['domain', '分野'], ['time', '時代'], ['region', '地域'], ['connections', 'つながり']];
@@ -302,6 +312,7 @@ function renderKnowledgeBrowse(entries) {
   return `<section class="learning-browse">${tabHtml}${renderConnectionBrowse(entries)}</section>`;
 }
 
+/** `renderDomainBrowse`: Domain・Browseの画面表示またはHTMLを組み立てる。 */
 function renderDomainBrowse(entries) {
   if (!listState.browseMajorId) {
     return `${renderBrowseIntro('分野から探す', '大分類を選ぶと、中分類へ進みます。')}
@@ -331,6 +342,7 @@ function renderDomainBrowse(entries) {
   return renderBrowseResults(matches, `${group.label} › ${middle.label}`, 'data-learning-domain-major', group.label);
 }
 
+/** `renderTimeBrowse`: 時刻・Browseの画面表示またはHTMLを組み立てる。 */
 function renderTimeBrowse(entries) {
   const buckets = entries.map(entry => ({ entry, bucket: getKnowledgeTimelineBucket(entry) }));
   const special = ['timeless', 'cross_period', 'unclassified'].map(mode => ({
@@ -342,6 +354,7 @@ function renderTimeBrowse(entries) {
     if (!centuries.has(key)) centuries.set(key, { ...item.bucket, entries: [] });
     centuries.get(key).entries.push(item.entry);
   });
+  /** `sortTimeline`: 時代区分を比較し、表示または処理順を決める。 */
   const sortTimeline = (a, b) => {
     if (a[1].era !== b[1].era) return a[1].era === 'bce' ? -1 : 1;
     return a[1].era === 'bce'
@@ -369,6 +382,7 @@ function renderTimeBrowse(entries) {
   return renderBrowseResults(decade?.entries || [], decadeLabel, 'data-learning-time-back', centuryLabel);
 }
 
+/** `renderRegionBrowse`: 地域・Browseの画面表示またはHTMLを組み立てる。 */
 function renderRegionBrowse(entries) {
   if (!listState.regionId) return `${renderBrowseIntro('地域から探す', '世界または地域を選び、必要なときだけ国まで絞り込みます。')}<div class="learning-browse-grid">${LEARNING_REGIONS.map(region => {
     const count = region.id === 'world' ? entries.filter(entry => entry.geography?.scope === 'global').length : entries.filter(entry => (entry.geography?.regionIds || []).includes(region.id)).length;
@@ -383,6 +397,7 @@ function renderRegionBrowse(entries) {
   return renderBrowseResults(entries.filter(entry => (entry.geography?.countryCodes || []).includes(listState.countryCode)), getLearningCountryLabel(listState.countryCode), 'data-learning-region-back', region?.label || '地域');
 }
 
+/** `renderConnectionBrowse`: Connection・Browseの画面表示またはHTMLを組み立てる。 */
 function renderConnectionBrowse(entries) {
   const concepts = new Map();
   entries.forEach(entry => (entry.concepts || []).forEach(concept => {
@@ -397,18 +412,22 @@ function renderConnectionBrowse(entries) {
   return `${renderBrowseIntro('つながりから探す', '複数の解説に登場する概念から、関連する知識を横断します。')}<div class="learning-browse-grid">${[...concepts.entries()].sort((a, b) => b[1].entries.length - a[1].entries.length || a[1].label.localeCompare(b[1].label, 'ja')).slice(0, 48).map(([key, item]) => `<button type="button" data-learning-concept="${esc(key)}"><strong>${esc(item.label)}</strong><b>${item.entries.length}</b></button>`).join('')}</div>`;
 }
 
+/** `renderBrowseIntro`: Browse・Introの画面表示またはHTMLを組み立てる。 */
 function renderBrowseIntro(title, description) {
   return `<div class="learning-browse-intro"><strong>${esc(title)}</strong><span>${esc(description)}</span></div>`;
 }
 
+/** `renderBrowseHeading`: Browse・Headingの画面表示またはHTMLを組み立てる。 */
 function renderBrowseHeading(label, count, backAttribute, backLabel) {
   return `<div class="learning-browse-heading"><button type="button" ${backAttribute}>‹ ${esc(backLabel)}</button><strong>${esc(label)}</strong><span>${count}件</span></div>`;
 }
 
+/** `renderBrowseResults`: Browse・Resultsの画面表示またはHTMLを組み立てる。 */
 function renderBrowseResults(entries, label, backAttribute, backLabel) {
   return `<div class="learning-browse-results">${renderBrowseHeading(label, entries.length, backAttribute, backLabel)}${entries.length ? entries.map(renderEntryCard).join('') : '<p>まだ保存済みの解説はありません。</p>'}</div>`;
 }
 
+/** `renderEmptyState`: Empty・状態の画面表示またはHTMLを組み立てる。 */
 function renderEmptyState(hasEntries) {
   return `
     <div class="learning-empty">
@@ -595,6 +614,7 @@ export function initLearningDetail(container) {
   });
 }
 
+/** `renderSegments`: Segmentsの画面表示またはHTMLを組み立てる。 */
 function renderSegments(segments, conceptIndex, currentId) {
   return (Array.isArray(segments) ? segments : []).map(segment => {
     let content = esc(segment.text || '');
@@ -614,6 +634,7 @@ function renderSegments(segments, conceptIndex, currentId) {
   }).join('');
 }
 
+/** `renderKnowledgeRichBlock`: Knowledge・Rich・ブロックの画面表示またはHTMLを組み立てる。 */
 function renderKnowledgeRichBlock(block, conceptIndex, currentId) {
   if (!block?.type) return '';
 
@@ -686,6 +707,7 @@ function renderKnowledgeRichBlock(block, conceptIndex, currentId) {
   return '';
 }
 
+/** `hydrateLearningEquations`: 学習・Equationsを現在状態へ反映し、必要な表示を更新する。 */
 function hydrateLearningEquations(container, retry = true) {
   const equations = [...container.querySelectorAll('[data-learning-equation]:not([data-equation-ready])')];
   if (!equations.length) return;
@@ -712,6 +734,7 @@ function hydrateLearningEquations(container, retry = true) {
   });
 }
 
+/** `renderConceptChip`: Concept・Chipの画面表示またはHTMLを組み立てる。 */
 function renderConceptChip(concept, conceptIndex, currentId) {
   const matches = findKnowledgeConceptMatches(conceptIndex, concept).filter(match => match.id !== currentId);
   if (!matches.length) return `<span class="learning-concept-chip">${esc(concept.label)}</span>`;
@@ -719,6 +742,7 @@ function renderConceptChip(concept, conceptIndex, currentId) {
     data-concept-key="${esc(concept.key)}" data-concept-label="${esc(concept.label)}">${esc(concept.label)}</button>`;
 }
 
+/** `openConceptMatches`: Concept・一致候補の画面・詳細・ダイアログを表示する。 */
 function openConceptMatches(index, concept, currentId) {
   const matches = findKnowledgeConceptMatches(index, concept).filter(entry => entry.id !== currentId);
   if (matches.length === 1) {
@@ -743,6 +767,7 @@ function openConceptMatches(index, concept, currentId) {
   });
 }
 
+/** `editTitle`: edit・タイトルに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function editTitle(container, entry) {
   const title = container.querySelector('#learning-detail-title');
   if (!title) return;
@@ -753,6 +778,7 @@ function editTitle(container, entry) {
   title.replaceWith(input);
   input.focus();
   input.select();
+  /** `finish`: 非同期処理を完了させ、登録済みの後始末を一度だけ行う。 */
   const finish = () => {
     const value = input.value.trim();
     if (value && value !== entry.title) {
@@ -780,6 +806,7 @@ function editTitle(container, entry) {
   });
 }
 
+/** `formatEntryDate`: 項目・日付を画面表示用の文字列へ整える。 */
 function formatEntryDate(value) {
   if (!value) return '';
   const date = new Date(value);

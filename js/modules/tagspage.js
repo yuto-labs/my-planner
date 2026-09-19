@@ -7,10 +7,12 @@
 import { getTasks, getArchivedTasks, getKnowledgeMemos } from '../storage.js';
 import { esc, formatDate } from '../utils.js';
 
+// タグ一覧の選択状態。画面遷移直前の_pendingTagを、初期化時にtagsStateへ移す。
 let tagsState = { activeTag: null };
 
 // Called externally (e.g. from task/memo card tag chip clicks) before navigating
 let _pendingTag = null;
+/** `setTagFilter`: タグ・絞り込みを保存先または一時状態へ反映する。 */
 export function setTagFilter(tag) { _pendingTag = tag; }
 
 /** 選択タグを持つタスクとメモを横断して一覧表示する。 */
@@ -22,6 +24,7 @@ export function initTagsPage(container) {
   render(container);
 }
 
+/** `render`: 現在の一時状態から、この画面部分のHTMLを描き直す。 */
 function render(container) {
   const tasks    = getTasks();
   const archived = getArchivedTasks();

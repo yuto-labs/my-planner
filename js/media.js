@@ -133,12 +133,12 @@ export async function hydratePlannerImages(root) {
     }
 
     const frame = image.closest('.media-frame');
-    /** `finish`: finishに関する補助処理を行い、結果を呼び出し元へ返す。 */
+    /** `finish`: 非同期処理を完了させ、登録済みの後始末を一度だけ行う。 */
     const finish = () => {
       image.dataset.mediaLoaded = '1';
       frame?.classList.remove('media-frame--loading', 'media-frame--error');
     };
-    /** `fail`: failに関する補助処理を行い、結果を呼び出し元へ返す。 */
+    /** `fail`: 非同期処理を失敗として終了し、呼び出し元へエラーを返す。 */
     const fail = () => {
       image.dataset.mediaLoaded = 'error';
       frame?.classList.remove('media-frame--loading');
@@ -159,7 +159,7 @@ export function wirePlannerImageViewer(root) {
   if (!root?.addEventListener || root.dataset.mediaViewerWired === '1') return;
   root.dataset.mediaViewerWired = '1';
 
-  /** `openFromTarget`: From・Targetの画面・詳細・ダイアログを表示する。 */
+  /** `openFromTarget`: クリックされた画像要素からパスと説明を読み、画像ビューアを開く。 */
   const openFromTarget = target => {
     const image = target?.closest?.('img[data-media-view]');
     if (!image || !root.contains(image)) return false;
@@ -212,7 +212,7 @@ export async function openPlannerImageViewer({
   let closed = false;
   let loadAttempt = 0;
   let loadTimer = null;
-  /** `close`: `close`を安全に終了または削除する。 */
+  /** `close`: 現在開いているモーダルまたはシートを閉じる。 */
   const close = () => {
     if (closed) return;
     closed = true;
@@ -223,7 +223,7 @@ export async function openPlannerImageViewer({
     if (activeViewerClose === close) activeViewerClose = null;
     trigger?.focus?.({ preventScroll: true });
   };
-  /** `onKeyDown`: キー・Downに関する操作またはイベントを受けて処理する。 */
+  /** `onKeyDown`: 画像ビューアのEscape・左右キー操作を処理する。 */
   const onKeyDown = event => {
     if (event.key === 'Escape') close();
   };
@@ -254,7 +254,7 @@ export async function openPlannerImageViewer({
     viewer.classList.remove('media-lightbox--error');
     requestAnimationFrame(() => viewer.classList.add('media-lightbox--open'));
   };
-  /** `fail`: failに関する補助処理を行い、結果を呼び出し元へ返す。 */
+  /** `fail`: 非同期処理を失敗として終了し、呼び出し元へエラーを返す。 */
   const fail = () => {
     clearTimeout(loadTimer);
     viewer.classList.remove('media-lightbox--loading');
@@ -322,7 +322,7 @@ export async function deletePlannerImage(path) {
   return !error;
 }
 
-/** `resolvePersistentImageUrl`: 条件に合うPersistent・画像・URLを探して返す。 */
+/** `resolvePersistentImageUrl`: 条件に合う永続・画像・URLを探して返す。 */
 async function resolvePersistentImageUrl(path) {
   const existingUrl = blobUrlCache.get(path);
   if (existingUrl) return existingUrl;
@@ -339,7 +339,7 @@ async function resolvePersistentImageUrl(path) {
   }
 }
 
-/** `writePersistentImage`: Persistent・画像を保存先または一時状態へ反映する。 */
+/** `writePersistentImage`: 永続・画像を保存先または一時状態へ反映する。 */
 async function writePersistentImage(path, blob) {
   if (!path || !(blob instanceof Blob) || !('caches' in globalThis)) return false;
   try {
@@ -361,7 +361,7 @@ async function writePersistentImage(path, blob) {
   }
 }
 
-/** `prunePersistentHomeImages`: Persistent・Home・Imagesを安全に終了または削除する。 */
+/** `prunePersistentHomeImages`: 永続・Home・Imagesを安全に終了または削除する。 */
 async function prunePersistentHomeImages(cache, currentPath) {
   const parts = String(currentPath).split('/');
   if (parts.length < 3 || parts[1] !== 'home') return;
@@ -382,7 +382,7 @@ async function prunePersistentHomeImages(cache, currentPath) {
   }));
 }
 
-/** `deletePersistentImage`: Persistent・画像を安全に終了または削除する。 */
+/** `deletePersistentImage`: 永続・画像を安全に終了または削除する。 */
 async function deletePersistentImage(path) {
   if (!('caches' in globalThis)) return false;
   try {
@@ -393,7 +393,7 @@ async function deletePersistentImage(path) {
   }
 }
 
-/** `persistentCacheKey`: persistent・キャッシュ・キーに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** `persistentCacheKey`: 永続画像URLを端末キャッシュへ保存するためのキーを作る。 */
 function persistentCacheKey(path) {
   return new Request(
     `${location.origin}/__planner-image-cache__/${encodeURIComponent(path)}`,

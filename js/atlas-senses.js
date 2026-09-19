@@ -161,7 +161,7 @@ function collocationKey(item) {
   return normalized(expression);
 }
 
-/** `mergeAtlasCollocations`: 複数の表現帳・Collocationsを既存情報を失わないよう統合する。 */
+/** `mergeAtlasCollocations`: 複数の表現帳・よく一緒に使う語を既存情報を失わないよう統合する。 */
 function mergeAtlasCollocations(existing, incoming) {
   const merged = [];
   const indexes = new Map();

@@ -10,6 +10,7 @@ import {
 } from '../storage.js';
 import { esc, formatDate, formatTime } from '../utils.js';
 
+/** `nav`: 指定したハッシュ画面へ移動し、必要なら遷移元の状態を引き継ぐ。 */
 const nav = (view) => window.AppNav?.navigate(view);
 
 /** 全機能を横断する検索オーバーレイを開き、入力へフォーカスする。 */
@@ -68,6 +69,7 @@ export function openSearch() {
 
   closeBtn?.addEventListener('click', closeSearch);
 
+  /** `keyH`: 確認ダイアログのキーボード操作を処理する。 */
   const keyH = (e) => {
     if (e.key === 'Escape') {
       closeSearch();
@@ -99,6 +101,7 @@ export function closeSearch() {
   overlay.innerHTML = '';
 }
 
+/** `renderSkeleton`: Skeletonの画面表示またはHTMLを組み立てる。 */
 function renderSkeleton() {
   return `
     <div class="task-skeleton-list">
@@ -207,10 +210,12 @@ function renderResults(q, container) {
   container.innerHTML = html;
 }
 
+/** `matchText`: 一致・文字列に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function matchText(text, lowerQ) {
   return text?.toLowerCase().includes(lowerQ) ?? false;
 }
 
+/** `highlight`: highlightに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function highlight(text, q) {
   const safeText = text || '';
   if (!q) return esc(safeText);

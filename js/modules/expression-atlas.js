@@ -63,7 +63,9 @@ import {
 } from '../data/english-usage-core.js';
 import { esc } from '../utils.js';
 
+/** `nav`: 指定したハッシュ画面へ移動し、必要なら遷移元の状態を引き継ぐ。 */
 const nav = view => window.AppNav?.navigate(view);
+/** `toast`: 短い通知メッセージを画面へ表示する。 */
 const toast = (message, type = 'info') => window.AppNav?.showToast(message, type);
 const ATLAS_RECENT_KEY = 'mp_atlas_recent_entries';
 const MAX_RECENT_ENTRIES = 12;
@@ -141,6 +143,7 @@ export function initExpressionAtlas(container) {
   };
 }
 
+/** `speakButton`: 読み上げ・ボタンに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function speakButton(text) {
   const value = String(text || '').trim();
   if (!value) return '';
@@ -171,11 +174,13 @@ function handleSpeakClick(event) {
   const runId = ++state.speechRunId;
   state.speechText = text;
   button.classList.add('is-speaking');
+  /** `clear`: `clear`を安全に終了または削除する。 */
   const clear = () => {
     if (state.speechRunId !== runId) return;
     state.speechText = '';
     button.classList.remove('is-speaking');
   };
+  /** `play`: 読み上げ対象の英文を音声で再生する。 */
   const play = index => {
     if (state.speechRunId !== runId || index >= chunks.length) {
       clear();
@@ -232,10 +237,12 @@ export function splitAtlasSpeechText(text, maxLength = 180) {
   return chunks.length ? chunks : [String(text || '').trim()];
 }
 
+/** `hasActiveExpressionAtlasWork`: 現在の・表現・表現帳・Workの条件を確認し、結果を真偽値で返す。 */
 export function hasActiveExpressionAtlasWork() {
   return state.generating;
 }
 
+/** `shouldPreserveExpressionAtlasView`: Preserve・表現・表現帳・画面の条件を確認し、結果を真偽値で返す。 */
 export function shouldPreserveExpressionAtlasView() {
   return Boolean(state.container?.isConnected && (
     state.speechText || state.entryId || state.translationId || state.questionId
@@ -243,10 +250,12 @@ export function shouldPreserveExpressionAtlasView() {
   ));
 }
 
+/** `renderIfMounted`: If・Mountedの画面表示またはHTMLを組み立てる。 */
 function renderIfMounted() {
   if (state.container?.isConnected) render();
 }
 
+/** `markGeneratorBusy`: Generator・Busyを保存先または一時状態へ反映する。 */
 function markGeneratorBusy(formSelector, message) {
   const form = state.container?.querySelector(formSelector);
   if (!form) return;
@@ -436,6 +445,7 @@ function renderLibrary() {
   wireModeSwitch();
 }
 
+/** `getLibraryView`: 一覧・画面を取得して呼び出し元へ返す。 */
 function getLibraryView() {
   const entries = getExpressionEntries();
   const query = normalize(state.search);
@@ -456,6 +466,7 @@ function getLibraryView() {
   return { entries, visibleEntries, categories, topics, level, unifiedResults };
 }
 
+/** `expressionPlacements`: 表現・配置先に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function expressionPlacements(entry) {
   const senses = Array.isArray(entry?.senses) && entry.senses.length ? entry.senses : [entry];
   const placements = senses.map(sense => ({
@@ -472,6 +483,7 @@ function expressionPlacements(entry) {
   });
 }
 
+/** `projectExpressionForPlacement`: 表現・Placementを別の処理で使う形式へ変換する。 */
 function projectExpressionForPlacement(entry, category = '', topic = '') {
   const placement = expressionPlacements(entry).find(item => (
     (!category || item.category === category) && (!topic || item.topic === topic)
@@ -489,6 +501,7 @@ function projectExpressionForPlacement(entry, category = '', topic = '') {
   };
 }
 
+/** `wireLibraryShell`: 一覧・Shellの画面操作と処理をイベントで結び付ける。 */
 function wireLibraryShell() {
   state.container.querySelector('#atlas-generate-open')?.addEventListener('click', () => {
     state.screen = 'generate';
@@ -523,6 +536,7 @@ function wireLibraryShell() {
   });
 }
 
+/** `renderModeSwitch`: Mode・Switchの画面表示またはHTMLを組み立てる。 */
 function renderModeSwitch() {
   return `
     <div class="atlas-mode-switch" role="tablist" aria-label="NUANCE ATLASの表示">
@@ -545,6 +559,7 @@ function renderModeSwitch() {
   `;
 }
 
+/** `wireModeSwitch`: Mode・Switchの画面操作と処理をイベントで結び付ける。 */
 function wireModeSwitch() {
   state.container?.querySelectorAll('[data-atlas-mode]').forEach(button => {
     button.addEventListener('click', () => {
@@ -646,6 +661,7 @@ function renderUsageLibrary() {
   });
 }
 
+/** `renderUsageCard`: 用法・カードの画面表示またはHTMLを組み立てる。 */
 function renderUsageCard(entry) {
   return `
     <button class="atlas-morphology-card atlas-usage-card" type="button" data-usage-id="${esc(entry.id)}">
@@ -725,6 +741,7 @@ function renderUsageDetail() {
   });
 }
 
+/** `renderRelationMotion`: 関連・Motionの画面表示またはHTMLを組み立てる。 */
 function renderRelationMotion(entry) {
   const kind = String(entry?.motionKind || '').trim();
   if (!kind) return '';
@@ -778,6 +795,7 @@ function renderRelationMotion(entry) {
   `;
 }
 
+/** `renderUsageMotion`: 用法・Motionの画面表示またはHTMLを組み立てる。 */
 function renderUsageMotion(entry) {
   if (entry.id === 'particle-out') {
     return `
@@ -960,6 +978,7 @@ function renderUsageMotion(entry) {
   return renderRelationMotion(entry);
 }
 
+/** `usageSearchText`: 用法・検索・文字列に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function usageSearchText(entry) {
   return normalize([
     entry.form,
@@ -1051,6 +1070,7 @@ function renderMorphologyLibrary() {
   });
 }
 
+/** `renderMorphologyCard`: 語源要素・カードの画面表示またはHTMLを組み立てる。 */
 function renderMorphologyCard(entry) {
   return `
     <button class="atlas-morphology-card" type="button" data-morpheme-id="${esc(entry.id)}">
@@ -1165,6 +1185,7 @@ function renderMorphologyDetail() {
   });
 }
 
+/** `morphologySection`: 語源要素・セクションに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function morphologySection(title, content, open = false) {
   if (!String(content || '').trim()) return '';
   return `
@@ -1175,6 +1196,7 @@ function morphologySection(title, content, open = false) {
   `;
 }
 
+/** `renderMorphologySources`: 語源要素・入力元の画面表示またはHTMLを組み立てる。 */
 function renderMorphologySources(sourceRefs) {
   if (!Array.isArray(sourceRefs) || !sourceRefs.length) return '';
   return `
@@ -1192,6 +1214,7 @@ function renderMorphologySources(sourceRefs) {
   `;
 }
 
+/** `renderRelatedMorphemes`: Related・Morphemesの画面表示またはHTMLを組み立てる。 */
 function renderRelatedMorphemes(relatedIds) {
   const related = (Array.isArray(relatedIds) ? relatedIds : [])
     .map(getEtymologyCoreEntry)
@@ -1209,6 +1232,7 @@ function renderRelatedMorphemes(relatedIds) {
   `);
 }
 
+/** `morphologySearchText`: 語源要素・検索・文字列に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function morphologySearchText(entry) {
   return normalize([
     entry.form,
@@ -1291,6 +1315,7 @@ function renderTranslationLibrary() {
   });
   const searchInput = state.container.querySelector('#atlas-translation-search');
   let composing = false;
+  /** `applySearch`: 検索を現在状態へ反映し、必要な表示を更新する。 */
   const applySearch = () => {
     state.search = searchInput?.value || '';
     renderTranslationLibrary();
@@ -1328,6 +1353,7 @@ const ENGLISH_QUESTION_STARTERS = [
   ['可算・不可算', 'work と works の違いを、数えられる意味も含めて知りたい。'],
 ];
 
+/** `renderQuestionLibrary`: 質問・一覧の画面表示またはHTMLを組み立てる。 */
 function renderQuestionLibrary() {
   const questions = getEnglishQuestions();
   const query = normalize(state.search);
@@ -1381,6 +1407,7 @@ function renderQuestionLibrary() {
   });
   const search = state.container.querySelector('#atlas-question-search');
   let composing = false;
+  /** `applySearch`: 検索を現在状態へ反映し、必要な表示を更新する。 */
   const applySearch = () => {
     state.search = search?.value || '';
     renderQuestionLibrary();
@@ -1411,6 +1438,7 @@ function renderQuestionLibrary() {
   });
 }
 
+/** `renderQuestionCard`: 質問・カードの画面表示またはHTMLを組み立てる。 */
 function renderQuestionCard(item) {
   const status = item.status === 'ready' ? '回答済み' : item.status === 'failed' ? '再試行できます' : '回答待ち';
   return `<button class="atlas-entry-card atlas-question-card" type="button" data-question-id="${esc(item.id)}">
@@ -1445,6 +1473,7 @@ async function handleEnglishQuestionSubmit(event) {
   await answerEnglishQuestion(saved);
 }
 
+/** `answerEnglishQuestion`: answer・英語・質問に関する補助処理を行い、結果を呼び出し元へ返す。 */
 async function answerEnglishQuestion(question) {
   if (!(await ensureAtlasAiReady())) {
     updateEnglishQuestion(question.id, { status: 'failed', errorMessage: 'AI設定またはログインが必要です' });
@@ -1536,6 +1565,7 @@ function renderQuestionDetail() {
   });
 }
 
+/** `renderTranslationCard`: 英訳・カードの画面表示またはHTMLを組み立てる。 */
 function renderTranslationCard(set) {
   return `
     <button class="atlas-entry-card atlas-translation-card" type="button" data-translation-id="${esc(set.id)}">
@@ -1547,6 +1577,7 @@ function renderTranslationCard(set) {
   `;
 }
 
+/** `openQuestionAtlasConversion`: 質問・表現帳・Conversionの画面・詳細・ダイアログを表示する。 */
 function openQuestionAtlasConversion(question) {
   const relatedTerms = Array.isArray(question.answer?.relatedTerms) ? question.answer.relatedTerms : [];
   state.questionConversionId = question.id;
@@ -1570,6 +1601,7 @@ function openQuestionAtlasConversion(question) {
   scrollMainToTop();
 }
 
+/** `openTranslationGenerator`: 英訳・Generatorの画面・詳細・ダイアログを表示する。 */
 function openTranslationGenerator() {
   state.screen = 'translate';
   state.translationDraft = null;
@@ -1679,6 +1711,7 @@ const TRANSLATION_STYLE_PRESENTATION = [
   { style: 'expressive_polished', labelJa: '洗練した英訳', descriptionJa: '使える自然さを保ちながら、語感と流れを整える' },
 ];
 
+/** `orderedTranslationVariants`: 並べ替え済み・英訳・候補に関する補助処理を行い、結果を呼び出し元へ返す。 */
 export function orderedTranslationVariants(variants) {
   const order = new Map(TRANSLATION_STYLE_PRESENTATION.map((item, index) => [item.style, index]));
   return (Array.isArray(variants) ? variants : [])
@@ -1691,6 +1724,7 @@ export function orderedTranslationVariants(variants) {
     .map(item => item.variant);
 }
 
+/** `renderTranslationStyleGuide`: 英訳・Style・Guideの画面表示またはHTMLを組み立てる。 */
 function renderTranslationStyleGuide() {
   return `
     <div class="atlas-translation-style-guide" aria-label="3つの英訳の違い">
@@ -1704,6 +1738,7 @@ function renderTranslationStyleGuide() {
   `;
 }
 
+/** `renderTranslationVariant`: 英訳・Variantの画面表示またはHTMLを組み立てる。 */
 function renderTranslationVariant(variant, index) {
   const matchedPresentation = TRANSLATION_STYLE_PRESENTATION.find(item => item.style === variant.style);
   const presentation = matchedPresentation || TRANSLATION_STYLE_PRESENTATION[index];
@@ -1746,6 +1781,7 @@ function renderLinkedEnglishText(text, expressionIndex) {
   }).join('');
 }
 
+/** `wireTranslationVocabularyLinks`: 英訳・語彙・リンクの画面操作と処理をイベントで結び付ける。 */
 function wireTranslationVocabularyLinks() {
   state.container?.querySelectorAll('.atlas-vocabulary-toggle').forEach(button => {
     button.addEventListener('click', () => {
@@ -1773,6 +1809,7 @@ function wireTranslationVocabularyLinks() {
   });
 }
 
+/** `openLinkedExpression`: リンク可能な・表現の画面・詳細・ダイアログを表示する。 */
 function openLinkedExpression(entryId) {
   persistCurrentDetailNotes();
   const currentDetail = getCurrentDetailState();
@@ -1791,6 +1828,7 @@ function openLinkedExpression(entryId) {
   scrollMainToTop();
 }
 
+/** `openMorphologyDetail`: 語源要素・詳細の画面・詳細・ダイアログを表示する。 */
 function openMorphologyDetail(morphemeId) {
   if (!morphemeId) return;
   persistCurrentDetailNotes();
@@ -1833,6 +1871,7 @@ function showWordMatchPicker(token, entries) {
     </section>
   `;
   state.container?.appendChild(sheet);
+  /** `close`: 現在開いているモーダルまたはシートを閉じる。 */
   const close = () => sheet.remove();
   sheet.addEventListener('keydown', event => {
     if (event.key === 'Escape') close();
@@ -1884,6 +1923,7 @@ async function handleTranslationGenerate(event) {
   }
 }
 
+/** `syncTranslationInput`: 英訳・入力を現在状態へ反映し、必要な表示を更新する。 */
 function syncTranslationInput() {
   if (!state.container) return;
   state.translationInput = {
@@ -1892,6 +1932,7 @@ function syncTranslationInput() {
   };
 }
 
+/** `syncTranslationClassification`: 英訳・分類を現在状態へ反映し、必要な表示を更新する。 */
 function syncTranslationClassification() {
   if (!state.translationDraft || !state.container) return;
   const category = state.container.querySelector('#atlas-translation-category')?.value.trim();
@@ -1901,6 +1942,7 @@ function syncTranslationClassification() {
   }
 }
 
+/** `collectAtlasTaxonomy`: 関連する表現帳・分類体系を集めて一覧として返す。 */
 function collectAtlasTaxonomy() {
   const expressionEntries = getExpressionEntries();
   const items = [...expressionEntries, ...getTranslationSets()];
@@ -1919,6 +1961,7 @@ function collectAtlasTaxonomy() {
   }));
 }
 
+/** `renderTranslationDetail`: 英訳・詳細の画面表示またはHTMLを組み立てる。 */
 function renderTranslationDetail() {
   const set = getTranslationSets().find(item => item.id === state.translationId);
   if (!set) {
@@ -2013,6 +2056,7 @@ function updateLibraryContent() {
   wireLibraryContent();
 }
 
+/** `wireLibraryContent`: 一覧・内容の画面操作と処理をイベントで結び付ける。 */
 function wireLibraryContent() {
   state.container?.querySelector('[data-atlas-empty-generate]')?.addEventListener('click', () => {
     state.screen = 'generate';
@@ -2185,6 +2229,7 @@ function renderLibraryContent({ level, entries, categories, topics, allEntries, 
   `;
 }
 
+/** `renderEntryCard`: 項目・カードの画面表示またはHTMLを組み立てる。 */
 function renderEntryCard(entry) {
   const intensityLevel = getIntensityLevel(entry);
   const partsOfSpeech = unique((entry.senses || [])
@@ -2212,6 +2257,7 @@ function renderEntryCard(entry) {
   `;
 }
 
+/** `getUnifiedSearchResults`: Unified・検索・Resultsを取得して呼び出し元へ返す。 */
 function getUnifiedSearchResults(query, entries = getExpressionEntries()) {
   if (!query) {
     return { expressions: [], themes: [], translations: [], morphemes: [], usage: [], total: 0 };
@@ -2245,6 +2291,7 @@ function getUnifiedSearchResults(query, entries = getExpressionEntries()) {
   };
 }
 
+/** `renderUnifiedSearchResults`: Unified・検索・Resultsの画面表示またはHTMLを組み立てる。 */
 function renderUnifiedSearchResults(results) {
   if (!results.total) {
     return `
@@ -2254,6 +2301,7 @@ function renderUnifiedSearchResults(results) {
       </div>
     `;
   }
+  /** `group`: グループに関する補助処理を行い、結果を呼び出し元へ返す。 */
   const group = (title, items) => items.length ? `
     <section class="atlas-search-group">
       <h2>${esc(title)} <span>${items.length}</span></h2>
@@ -2285,6 +2333,7 @@ function renderUnifiedSearchResults(results) {
   </div>`;
 }
 
+/** `renderPersonalShelves`: 個人用・Shelvesの画面表示またはHTMLを組み立てる。 */
 function renderPersonalShelves(entries) {
   const pinned = entries.filter(entry => entry.starred).slice(0, 6);
   const byId = new Map(entries.map(entry => [entry.id, entry]));
@@ -2293,6 +2342,7 @@ function renderPersonalShelves(entries) {
     .filter(entry => entry && !entry.starred)
     .slice(0, 6);
   if (!pinned.length && !recent.length) return '';
+  /** `shelf`: 棚に関する補助処理を行い、結果を呼び出し元へ返す。 */
   const shelf = (title, items) => items.length ? `
     <section class="atlas-personal-shelf">
       <h2>${esc(title)}</h2>
@@ -2445,6 +2495,7 @@ function renderDetail() {
   wireCollapsibleDetailSections();
 }
 
+/** `findSameWordInOtherThemes`: 条件に合うSame・単語・In・Other・Themesを探して返す。 */
 function findSameWordInOtherThemes(entry) {
   const entries = getExpressionEntries();
   const matches = findExpressionMatches(entry.lemma || entry.term, buildExpressionIndex(entries));
@@ -2459,6 +2510,7 @@ function findSameWordInOtherThemes(entry) {
   }).sort((a, b) => `${a.category} ${a.topic}`.localeCompare(`${b.category} ${b.topic}`, 'ja'));
 }
 
+/** `sameWordThemeSection`: 二つの単語・テーマ・セクションが同じ内容か判定する。 */
 function sameWordThemeSection(entry, matches) {
   const label = entry.lemma || entry.term;
   const visible = matches.slice(0, 3);
@@ -2652,6 +2704,7 @@ function renderAtlasQueryModeHint(value) {
     : '日本語の意味でも英単語でも、そのまま入力できます。';
 }
 
+/** `updateAtlasQueryModeHint`: 表現帳・検索語・Mode・Hintを現在状態へ反映し、必要な表示を更新する。 */
 function updateAtlasQueryModeHint() {
   const hint = state.container?.querySelector('#atlas-query-mode-hint');
   if (hint) hint.textContent = renderAtlasQueryModeHint(state.generatorInput.learningTarget);
@@ -2739,6 +2792,7 @@ async function handleGenerate(event) {
   }
 }
 
+/** `syncGeneratorInput`: Generator・入力を現在状態へ反映し、必要な表示を更新する。 */
 function syncGeneratorInput() {
   if (!state.container) return;
   const next = {
@@ -2753,6 +2807,7 @@ function syncGeneratorInput() {
   state.generatorInput = next;
 }
 
+/** `updateDraftSelectionUi`: 下書き・選択範囲・Uiを現在状態へ反映し、必要な表示を更新する。 */
 function updateDraftSelectionUi() {
   const count = state.container?.querySelector('#atlas-draft-selected-count');
   const saveButton = state.container?.querySelector('#atlas-save-drafts');
@@ -2764,6 +2819,7 @@ function updateDraftSelectionUi() {
   }
 }
 
+/** `getRecentEntryIds`: 直近の・項目・IDを取得して呼び出し元へ返す。 */
 function getRecentEntryIds() {
   try {
     const value = JSON.parse(localStorage.getItem(ATLAS_RECENT_KEY) || '[]');
@@ -2773,6 +2829,7 @@ function getRecentEntryIds() {
   }
 }
 
+/** `rememberRecentEntry`: 直近の・項目を保存先または一時状態へ反映する。 */
 function rememberRecentEntry(entryId) {
   if (!entryId) return;
   const next = [entryId, ...getRecentEntryIds().filter(id => id !== entryId)]
@@ -2782,10 +2839,12 @@ function rememberRecentEntry(entryId) {
   } catch {}
 }
 
+/** `getMainScrollTop`: Main・Scroll・Topを取得して呼び出し元へ返す。 */
 function getMainScrollTop() {
   return document.getElementById('main-content')?.scrollTop || 0;
 }
 
+/** `restoreMainScroll`: Main・Scrollを現在状態へ反映し、必要な表示を更新する。 */
 function restoreMainScroll(scrollTop = 0) {
   requestAnimationFrame(() => {
     const main = document.getElementById('main-content');
@@ -2794,6 +2853,7 @@ function restoreMainScroll(scrollTop = 0) {
   });
 }
 
+/** `restorePreviousDetail`: Previous・詳細を現在状態へ反映し、必要な表示を更新する。 */
 function restorePreviousDetail() {
   const previous = state.detailTrail.pop();
   if (!previous?.id) return false;
@@ -2822,6 +2882,7 @@ function restorePreviousDetail() {
   return true;
 }
 
+/** `getCurrentDetailState`: 現在の・詳細・状態を取得して呼び出し元へ返す。 */
 function getCurrentDetailState() {
   if (state.entryId) return { kind: 'expression', id: state.entryId };
   if (state.translationId) return { kind: 'translation', id: state.translationId };
@@ -2831,6 +2892,7 @@ function getCurrentDetailState() {
   return null;
 }
 
+/** `pushDetailHistory`: push・詳細・履歴に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function pushDetailHistory(detail = getCurrentDetailState()) {
   if (!detail?.id) return;
   const previous = state.detailTrail.at(-1);
@@ -2839,11 +2901,13 @@ function pushDetailHistory(detail = getCurrentDetailState()) {
   state.detailTrail = state.detailTrail.slice(-20);
 }
 
+/** `persistCurrentDetailNotes`: 現在の・詳細・Notesを保存先または一時状態へ反映する。 */
 function persistCurrentDetailNotes() {
   if (state.entryId) persistOpenPersonalNote();
   if (state.translationId) persistOpenTranslationNote();
 }
 
+/** `wireCollapsibleDetailSections`: Collapsible・詳細・Sectionsの画面操作と処理をイベントで結び付ける。 */
 function wireCollapsibleDetailSections() {
   const detail = getCurrentDetailState();
   const detailKey = `${detail?.kind || 'atlas'}:${detail?.id || 'root'}`;
@@ -2861,6 +2925,7 @@ function wireCollapsibleDetailSections() {
     button.setAttribute('aria-label', `${heading.textContent.trim()}を開閉`);
     button.innerHTML = '<span aria-hidden="true">⌄</span>';
     heading.appendChild(button);
+    /** `apply`: `apply`を現在状態へ反映し、必要な表示を更新する。 */
     const apply = expanded => {
       content.forEach(child => {
         child.dataset.atlasCollapsibleContent = '';
@@ -2900,6 +2965,7 @@ function wireCollapsibleDetailSections() {
   });
 }
 
+/** `returnToLibrary`: returnを一覧へ変換して返す。 */
 function returnToLibrary(category, topic) {
   persistOpenPersonalNote();
   state.entryId = '';
@@ -2911,6 +2977,7 @@ function returnToLibrary(category, topic) {
   scrollMainToTop();
 }
 
+/** `persistOpenPersonalNote`: Open・個人用・ノートを保存先または一時状態へ反映する。 */
 function persistOpenPersonalNote() {
   clearTimeout(state.noteTimer);
   state.noteTimer = null;
@@ -2919,6 +2986,7 @@ function persistOpenPersonalNote() {
   return !!updateExpressionEntry(state.entryId, { personalNote: textarea.value || '' });
 }
 
+/** `persistOpenTranslationNote`: Open・英訳・ノートを保存先または一時状態へ反映する。 */
 function persistOpenTranslationNote() {
   clearTimeout(state.noteTimer);
   state.noteTimer = null;
@@ -2927,6 +2995,7 @@ function persistOpenTranslationNote() {
   return !!updateTranslationSet(state.translationId, { personalNote: textarea.value || '' });
 }
 
+/** `classificationEditor`: 分類・エディタに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function classificationEditor(record, kind) {
   const prefix = kind === 'translation' ? 'atlas-translation-detail' : 'atlas-expression-detail';
   return `
@@ -2942,6 +3011,7 @@ function classificationEditor(record, kind) {
   `;
 }
 
+/** `wireClassificationEditor`: 分類・エディタの画面操作と処理をイベントで結び付ける。 */
 function wireClassificationEditor(record, kind) {
   const prefix = kind === 'translation' ? 'atlas-translation-detail' : 'atlas-expression-detail';
   state.container?.querySelector(`#${prefix}-save`)?.addEventListener('click', () => {
@@ -2999,6 +3069,7 @@ function grammarNotesSection(notes) {
   `;
 }
 
+/** `expressionSensesSection`: 表現・意味・セクションに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function expressionSensesSection(entry, senses) {
   const expressionIndex = buildExpressionIndex(getExpressionEntries());
   const grouped = new Map();
@@ -3007,6 +3078,7 @@ function expressionSensesSection(entry, senses) {
     if (!grouped.has(partOfSpeech)) grouped.set(partOfSpeech, []);
     grouped.get(partOfSpeech).push({ sense, index });
   });
+  /** `senseBody`: 意味・本文に関する補助処理を行い、結果を呼び出し元へ返す。 */
   const senseBody = sense => `
     <div class="atlas-sense-body">
       ${detailSection('中心的な意味', sense.coreMeaningJa)}
@@ -3062,6 +3134,7 @@ function expressionSensesSection(entry, senses) {
   `;
 }
 
+/** `relatedCoreEntries`: related・Core・項目に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function relatedCoreEntries(entry) {
   const explicitIds = new Set(Array.isArray(entry.etymologyLinks) ? entry.etymologyLinks : []);
   const terms = new Set([
@@ -3075,6 +3148,7 @@ function relatedCoreEntries(entry) {
   )).slice(0, 8);
 }
 
+/** `relatedEtymologySection`: related・語源・セクションに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function relatedEtymologySection(entry) {
   const related = relatedCoreEntries(entry);
   if (!related.length) return '';
@@ -3093,6 +3167,7 @@ function relatedEtymologySection(entry) {
   `;
 }
 
+/** `wireRelatedEtymologyLinks`: Related・語源・リンクの画面操作と処理をイベントで結び付ける。 */
 function wireRelatedEtymologyLinks() {
   state.container?.querySelectorAll('[data-related-morpheme]').forEach(button => {
     button.addEventListener('click', () => {
@@ -3101,11 +3176,13 @@ function wireRelatedEtymologyLinks() {
   });
 }
 
+/** `detailSection`: 詳細・セクションに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function detailSection(title, text) {
   if (!String(text || '').trim()) return '';
   return `<section class="atlas-detail-section"><h2>${esc(title)}</h2><p>${esc(text)}</p></section>`;
 }
 
+/** `etymologyCoreSection`: 語源・Core・セクションに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function etymologyCoreSection(entry) {
   const etymology = String(entry?.etymologyJa || '').trim();
   const coreImage = String(entry?.coreImageJa || '').trim();
@@ -3133,6 +3210,7 @@ function etymologyCoreSection(entry) {
   `;
 }
 
+/** `getIntensityLevel`: 強さ・Levelを取得して呼び出し元へ返す。 */
 function getIntensityLevel(entry) {
   const numeric = Number(entry?.intensityLevel);
   if (Number.isFinite(numeric) && numeric >= 1 && numeric <= 5) return Math.round(numeric);
@@ -3140,15 +3218,18 @@ function getIntensityLevel(entry) {
   return match ? Number(match[0]) : null;
 }
 
+/** `intensityStars`: 強さ・星表示に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function intensityStars(level) {
   const safeLevel = Math.min(5, Math.max(1, Number(level) || 1));
   return `${'★'.repeat(safeLevel)}${'☆'.repeat(5 - safeLevel)}`;
 }
 
+/** `getNuanceMapMode`: Nuance・対応表・Modeを取得して呼び出し元へ返す。 */
 function getNuanceMapMode(entry) {
   return entry?.mapMode === 'groups' ? 'groups' : 'scale';
 }
 
+/** `getIntensityRange`: 強さ・Rangeを取得して呼び出し元へ返す。 */
 function getIntensityRange(entry) {
   const fallback = getIntensityLevel(entry);
   if (fallback) return { min: fallback, max: fallback };
@@ -3164,12 +3245,14 @@ function getIntensityRange(entry) {
   return { min: Math.min(min, max), max: Math.max(min, max) };
 }
 
+/** `intensityRangeLabel`: 強さ・Range・表示名に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function intensityRangeLabel(range) {
   if (!range) return '未設定';
   if (range.min === range.max) return intensityStars(range.min);
   return `★${range.min}–${range.max}`;
 }
 
+/** `resolveNuanceMapMeta`: 条件に合うNuance・対応表・Metaを探して返す。 */
 function resolveNuanceMapMeta(entries) {
   const counts = new Map();
   entries.forEach(entry => {
@@ -3195,6 +3278,7 @@ function renderNuanceMap(entries, { interactive = true } = {}) {
     (getIntensityRange(a)?.min ?? 6) - (getIntensityRange(b)?.min ?? 6)
     || String(a.term || '').localeCompare(String(b.term || ''), 'en')
   ));
+  /** `renderRow`: 行の画面表示またはHTMLを組み立てる。 */
   const renderRow = (entry, grouped = false) => {
     const range = getIntensityRange(entry);
     const tagName = interactive && entry.id ? 'button' : 'div';
@@ -3236,6 +3320,7 @@ function renderNuanceMap(entries, { interactive = true } = {}) {
   `;
 }
 
+/** `listSection`: 関連するセクションを集めて一覧として返す。 */
 function listSection(title, items, className = '') {
   if (!Array.isArray(items) || !items.length) return '';
   return `
@@ -3246,6 +3331,7 @@ function listSection(title, items, className = '') {
   `;
 }
 
+/** `normalizeCollocationItem`: よく一緒に使う語・項目を後続処理で扱える安全な形にそろえる。 */
 function normalizeCollocationItem(item) {
   if (typeof item === 'string') {
     return { expression: item.trim(), translationJa: '', usageNoteJa: '', examples: [] };
@@ -3265,6 +3351,7 @@ function normalizeCollocationItem(item) {
   };
 }
 
+/** `collocationsSection`: よく一緒に使う語・セクションに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function collocationsSection(items, expressionIndex = buildExpressionIndex(getExpressionEntries())) {
   if (!Array.isArray(items) || !items.length) return '';
   const collocations = items.map(normalizeCollocationItem).filter(item => item.expression);
@@ -3300,6 +3387,7 @@ function collocationsSection(items, expressionIndex = buildExpressionIndex(getEx
   `;
 }
 
+/** `usagePatternsSection`: 用法・パターン・セクションに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function usagePatternsSection(items) {
   const patterns = (Array.isArray(items) ? items : []).filter(item => (
     String(item?.pattern || '').trim() && String(item?.meaningJa || '').trim()
@@ -3328,6 +3416,7 @@ function usagePatternsSection(items) {
   `;
 }
 
+/** `examplesSection`: 例文・セクションに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function examplesSection(examples) {
   if (!Array.isArray(examples) || !examples.length) return '';
   return `
@@ -3344,6 +3433,7 @@ function examplesSection(examples) {
   `;
 }
 
+/** `translationVocabularySection`: 英訳・語彙・セクションに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function translationVocabularySection(notes, expressionIndex = buildExpressionIndex(getExpressionEntries())) {
   if (!Array.isArray(notes) || !notes.length) return '';
   return `
@@ -3370,6 +3460,7 @@ function translationVocabularySection(notes, expressionIndex = buildExpressionIn
   `;
 }
 
+/** `linkedExpressionTerm`: リンク可能な・表現・用語に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function linkedExpressionTerm(term, expressionIndex) {
   const value = String(term || '').trim();
   if (!value) return '';
@@ -3379,6 +3470,7 @@ function linkedExpressionTerm(term, expressionIndex) {
     data-linked-token="${esc(value)}" data-linked-entries="${esc(matches.map(entry => entry.id).join(','))}">${esc(value)}</button>`;
 }
 
+/** `translationComparisonSection`: 英訳・比較・セクションに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function translationComparisonSection(comparisons, expressionIndex = buildExpressionIndex(getExpressionEntries())) {
   if (!Array.isArray(comparisons) || !comparisons.length) return '';
   return `
@@ -3396,6 +3488,7 @@ function translationComparisonSection(comparisons, expressionIndex = buildExpres
   `;
 }
 
+/** `translationImpression`: 英訳・印象に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function translationImpression(text) {
   if (!String(text || '').trim()) return '';
   return `
@@ -3406,6 +3499,7 @@ function translationImpression(text) {
   `;
 }
 
+/** `translationCautionsSection`: 英訳・注意点・セクションに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function translationCautionsSection(items) {
   if (!Array.isArray(items) || !items.length) return '';
   return `
@@ -3416,6 +3510,7 @@ function translationCautionsSection(items) {
   `;
 }
 
+/** `comparisonsSection`: 比較・セクションに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function comparisonsSection(comparisons, expressionIndex = buildExpressionIndex(getExpressionEntries())) {
   if (!Array.isArray(comparisons) || !comparisons.length) return '';
   return `
@@ -3428,6 +3523,7 @@ function comparisonsSection(comparisons, expressionIndex = buildExpressionIndex(
   `;
 }
 
+/** `searchableText`: 検索用・文字列に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function searchableText(entry) {
   const senseText = (entry.senses || []).flatMap(sense => [
     sense.senseId,
@@ -3496,6 +3592,7 @@ function searchableText(entry) {
   ].filter(Boolean).join(' '));
 }
 
+/** `searchableTranslationText`: 検索用・英訳・文字列に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function searchableTranslationText(set) {
   return normalize([
     set.sourceTextJa,
@@ -3533,6 +3630,7 @@ function searchableTranslationText(set) {
   ].filter(Boolean).join(' '));
 }
 
+/** `applyManualClassification`: Manual・分類を現在状態へ反映し、必要な表示を更新する。 */
 function applyManualClassification(record, category, topic) {
   const current = withStableClassification(record);
   const nextCategory = normalizeAtlasCategory(category, `${topic} ${current.sourceQueryJa || ''}`);
@@ -3564,10 +3662,12 @@ function normalize(value) {
   return String(value || '').trim().toLocaleLowerCase();
 }
 
+/** `unique`: 文字列配列の空要素と重複を除いて返す。 */
 function unique(values) {
   return [...new Set(values)].sort((a, b) => String(a).localeCompare(String(b), 'ja'));
 }
 
+/** `scrollMainToTop`: scroll・MainをTopへ変換して返す。 */
 function scrollMainToTop() {
   requestAnimationFrame(() => {
     document.getElementById('main-content')?.scrollTo({ top: 0, behavior: 'auto' });

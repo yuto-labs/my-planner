@@ -11,6 +11,7 @@ import {
 import { renderBlocksView } from './knowledge.js';
 import { esc, fmtDays } from '../utils.js';
 
+/** `nav`: 指定したハッシュ画面へ移動し、必要なら遷移元の状態を引き継ぐ。 */
 const nav = (view) => window.AppNav?.navigate(view);
 let reviewSession = null;
 
@@ -28,11 +29,13 @@ export function initReview(container) {
   const queue = reviewSession.queueIds.map(getKnowledgeMemoById).filter(Boolean);
   reviewSession.idx = Math.min(reviewSession.idx, queue.length);
 
+  /** `exitReview`: exit・復習に関する補助処理を行い、結果を呼び出し元へ返す。 */
   const exitReview = () => {
     reviewSession = null;
     nav('home');
   };
 
+  /** `render`: 現在の一時状態から、この画面部分のHTMLを描き直す。 */
   function render() {
     if (queue.length === 0) {
       renderEmpty();
@@ -46,6 +49,7 @@ export function initReview(container) {
     else renderFront(queue[reviewSession.idx]);
   }
 
+  /** `header`: headerに関する補助処理を行い、結果を呼び出し元へ返す。 */
   function header() {
     const pct = Math.round((reviewSession.idx / queue.length) * 100);
     return `
@@ -57,6 +61,7 @@ export function initReview(container) {
     `;
   }
 
+  /** `renderEmpty`: Emptyの画面表示またはHTMLを組み立てる。 */
   function renderEmpty() {
     container.innerHTML = `
       <div class="rv-page rv-done">
@@ -68,6 +73,7 @@ export function initReview(container) {
     container.querySelector('#rv-exit')?.addEventListener('click', exitReview);
   }
 
+  /** `renderDone`: 完了の画面表示またはHTMLを組み立てる。 */
   function renderDone() {
     container.innerHTML = `
       <div class="rv-page rv-done">
@@ -79,6 +85,7 @@ export function initReview(container) {
     container.querySelector('#rv-exit')?.addEventListener('click', exitReview);
   }
 
+  /** `renderFront`: Frontの画面表示またはHTMLを組み立てる。 */
   function renderFront(memo) {
     container.innerHTML = `
       <div class="rv-page">
@@ -102,6 +109,7 @@ export function initReview(container) {
     });
   }
 
+  /** `renderBack`: Backの画面表示またはHTMLを組み立てる。 */
   function renderBack(memo) {
     const ivs = previewReviewIntervals(memo.id);
     container.innerHTML = `

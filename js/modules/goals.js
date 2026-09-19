@@ -13,10 +13,12 @@ import { splitGoalToTasks, predictGoalCompletionLocal } from '../ai.js';
 import { openKnowledgeMemo, openNewKnowledgeMemo, getKnowledgeSuggestionsForGoal } from './knowledge.js';
 import { esc, today, formatDate, generateId } from '../utils.js';
 
+/** `toast`: 短い通知メッセージを画面へ表示する。 */
 const toast = (msg, type) => window.AppNav?.showToast(msg, type);
 
 const WEIGHT_LABEL = { large: '大', medium: '中', small: '小' };
 
+// 目標画面の表示状態。選択タブと再描画先だけを保持し、目標データ自体はstorage.jsから読む。
 let state = {
   tab: 'monthly',
   container: null,
@@ -28,6 +30,7 @@ export function initGoals(container) {
   render();
 }
 
+/** `render`: 現在の一時状態から、この画面部分のHTMLを描き直す。 */
 function render() {
   const { tab, container } = state;
 
@@ -81,6 +84,7 @@ function renderGoalList() {
   return goals.map(g => renderGoalItem(g)).join('');
 }
 
+/** `renderGoalItem`: 目標・項目の画面表示またはHTMLを組み立てる。 */
 function renderGoalItem(goal) {
   const tasks = getTasks().filter(t => t.goalId === goal.id);
   const doneTasks = tasks.filter(t => t.completed);
@@ -169,6 +173,7 @@ function renderGoalItem(goal) {
   `;
 }
 
+/** `wireGoalActions`: 目標・Actionsの画面操作と処理をイベントで結び付ける。 */
 function wireGoalActions(container) {
   container.querySelector('#goal-list')?.addEventListener('click', async (e) => {
     // Navigate to knowledge memo (no data-action required)
@@ -202,6 +207,7 @@ function wireGoalActions(container) {
   });
 }
 
+/** `promptDelete`: prompt・削除に関する補助処理を行い、結果を呼び出し元へ返す。 */
 async function promptDelete(goalId) {
   const goal = getGoals().find(g => g.id === goalId);
   return promptConfirm(
@@ -234,6 +240,7 @@ async function handleAISplit(goalId, itemEl) {
   }
 }
 
+/** `showAITaskModal`: AITask・Modalの画面・詳細・ダイアログを表示する。 */
 function showAITaskModal(goal, result) {
   const body = document.createElement('div');
 
@@ -437,6 +444,7 @@ async function handleAIKnowledgeSuggest(goalId, itemEl) {
   }
 }
 
+/** `renderRelatedKnowledgeMemos`: Related・Knowledge・メモの画面表示またはHTMLを組み立てる。 */
 function renderRelatedKnowledgeMemos(goal) {
   const memos = getKnowledgeMemos();
   // Match memos whose tags contain words from the goal title
@@ -476,6 +484,7 @@ function makeBtn(text, cls) {
   return btn;
 }
 
+/** `promptConfirm`: prompt・Confirmに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function promptConfirm(message, opts = {}) {
   return new Promise(resolve => {
     const body = document.createElement('div');
@@ -491,6 +500,7 @@ function promptConfirm(message, opts = {}) {
   });
 }
 
+/** `openModalInline`: Modal・行内装飾の画面・詳細・ダイアログを表示する。 */
 function openModalInline(opts) {
   const overlay = document.getElementById('modal-overlay');
   if (!overlay) return () => {};
@@ -518,9 +528,11 @@ function openModalInline(opts) {
   }
 
   overlay.appendChild(modal);
+  /** `close`: 現在開いているモーダルまたはシートを閉じる。 */
   const close = () => { overlay.classList.add('hidden'); overlay.innerHTML = ''; };
   modal.querySelector('.modal-close').onclick = close;
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  /** `keyH`: 確認ダイアログのキーボード操作を処理する。 */
   const keyH = e => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', keyH); } };
   document.addEventListener('keydown', keyH);
   return close;

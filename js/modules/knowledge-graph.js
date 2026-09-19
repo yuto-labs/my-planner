@@ -8,6 +8,7 @@
 import { getKnowledgeMemos } from '../storage.js';
 import { esc } from '../utils.js';
 
+/** `nav`: 指定したハッシュ画面へ移動し、必要なら遷移元の状態を引き継ぐ。 */
 const nav = (view) => window.AppNav?.navigate(view);
 
 // Module-level: selected tag for filtering
@@ -199,7 +200,9 @@ function renderGraph(container, nodes, edges, allMemos) {
 
   const maxCount = Math.max(...nodes.map(n => n.count), 1);
   const maxW = Math.max(...edges.map(e => e.weight), 1);
+  /** `edgeW`: edge・Wに関する補助処理を行い、結果を呼び出し元へ返す。 */
   const edgeW = e => 1 + (e.weight / maxW) * 3;
+  /** `nodeStrength`: node・Strengthに関する補助処理を行い、結果を呼び出し元へ返す。 */
   const nodeStrength = n => 0.24 + (n.count / maxCount) * 0.5;
 
   const nodeMap = {};
@@ -303,6 +306,7 @@ function renderGraph(container, nodes, edges, allMemos) {
   });
 }
 
+/** `showTagPanel`: タグ・Panelの画面・詳細・ダイアログを表示する。 */
 function showTagPanel(tag, nodes, edges, allMemos, container) {
   const memos   = allMemos.filter(m => (m.tags || []).includes(tag));
   const panel   = container.querySelector('#kg-panel');
@@ -373,6 +377,7 @@ function showTagPanel(tag, nodes, edges, allMemos, container) {
   });
 }
 
+/** `clearHighlight`: Highlightを安全に終了または削除する。 */
 function clearHighlight(container) {
   container.querySelectorAll('.kg-node').forEach(el => {
     el.classList.remove('kg-node--dim', 'kg-node--active');

@@ -55,7 +55,7 @@ function atlasSearchText(entry = {}) {
     ])].filter(Boolean).join(' ').normalize('NFKC').toLocaleLowerCase();
 }
 
-/** `atlasQueryTokens`: 表現帳・検索語・語に関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** `atlasQueryTokens`: 表現帳の検索文を比較可能な単語へ分割し、重複を除いて返す。 */
 function atlasQueryTokens(value) {
   const normalized = String(value || '').normalize('NFKC').toLocaleLowerCase().trim();
   if (!normalized) return [];
@@ -197,7 +197,7 @@ async function callServerAI(
     throw new Error('AIを使うには、AI設定でログインしてください。');
   }
   const controller = new AbortController();
-  /** `abortFromCaller`: From・呼び出し元を安全に終了または削除する。 */
+  /** `abortFromCaller`: から・呼び出し元を安全に終了または削除する。 */
   const abortFromCaller = () => controller.abort();
   const timeoutId = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
   signal?.addEventListener('abort', abortFromCaller, { once: true });
@@ -280,7 +280,7 @@ export async function streamText({ model = FAST_MODEL, system, userContent, maxT
   return full;
 }
 
-/** `streamDailyMessage`: stream・日次・メッセージに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** `streamDailyMessage`: 今日の予定・タスク・目標から短いメッセージを生成し、断片ごとに通知する。 */
 export async function streamDailyMessage(tasks = [], events = [], goals = [], onChunk) {
   const todayStr = today();
   const pending = tasks.filter(t => !t.completed).slice(0, 6);
@@ -373,7 +373,7 @@ export async function parseNaturalLanguageEvent(text, categories = []) {
   return parsed;
 }
 
-/** `analyzeEnergyPatterns`: エネルギー・Patternsを分析して結果を返す。 */
+/** `analyzeEnergyPatterns`: エネルギー・パターンを分析して結果を返す。 */
 export async function analyzeEnergyPatterns(focusLogs) {
   const cacheKey = `energy_${today()}`;
   const cached = getAiCache(cacheKey);
@@ -470,7 +470,7 @@ export async function analyzeHabitCorrelations(habitLogs, focusLogs) {
   return parsed;
 }
 
-/** `pearsonR`: pearson・Rに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** `pearsonR`: 二つの数値列からピアソンの相関係数を計算する。 */
 function pearsonR(xs, ys) {
   const n = xs.length;
   if (n < 2) return 0;
@@ -1215,7 +1215,7 @@ function normalizeStringList(value, maxItems) {
     .slice(0, maxItems);
 }
 
-/** `normalizeCollocations`: Collocationsを後続処理で扱える安全な形にそろえる。 */
+/** `normalizeCollocations`: よく一緒に使う語を後続処理で扱える安全な形にそろえる。 */
 function normalizeCollocations(value, maxItems) {
   return (Array.isArray(value) ? value : [])
     .map(item => {
@@ -1243,7 +1243,7 @@ function normalizeCollocations(value, maxItems) {
     .slice(0, maxItems);
 }
 
-/** `summarizeAndTagText`: summarize・タグ・Textに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** `summarizeAndTagText`: 長いメモ本文をAIで要約し、関連タグと一緒に返す。 */
 export async function summarizeAndTagText(text) {
   const result = await callAPI(
     FAST_MODEL,
@@ -1297,7 +1297,7 @@ export async function suggestUnstudiedTopics(goalTitle, knowledgeTags) {
   return topics;
 }
 
-/** `splitGoalToTasks`: 入力を解析して目標・To・タスクを取り出す。 */
+/** `splitGoalToTasks`: 目標をAIで実行可能な複数タスクへ分解する。 */
 export async function splitGoalToTasks(goal) {
   const cacheKey = `goalsplit_${goal.id}_v3`;
   const cached = getAiCache(cacheKey);

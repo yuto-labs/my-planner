@@ -82,6 +82,7 @@ function pickModel(pref) {
   return fastModel;
 }
 
+/** `pickFallbackModel`: 失敗したAIモデルを除外し、次に試すモデル名を設定順から選ぶ。 */
 function pickFallbackModel(pref) {
   if (process.env.GEMINI_FALLBACK_MODEL) return process.env.GEMINI_FALLBACK_MODEL;
   const raw = String(pref || '').toLowerCase();
@@ -91,14 +92,17 @@ function pickFallbackModel(pref) {
   return 'gemini-2.5-flash';
 }
 
+/** `nullableString`: 値が文字列なら採用し、それ以外はnullとして扱う検証規則を作る。 */
 function nullableString(description) {
   return { type: 'STRING', nullable: true, description };
 }
 
+/** `stringArray`: 文字列だけを要素に持つ配列の検証規則を作る。 */
 function stringArray(description) {
   return { type: 'ARRAY', description, items: { type: 'STRING' } };
 }
 
+/** `getTaskIdsFromPrompt`: AIへの依頼文に含まれるタスクIDを抽出して返す。 */
 function getTaskIdsFromPrompt(userText) {
   try {
     const payload = JSON.parse(String(userText || ''));
@@ -765,11 +769,13 @@ function pickResponseSchema(actionType, body) {
   return null;
 }
 
+/** `extractText`: 入力を解析して文字列を取り出す。 */
 function extractText(data) {
   const parts = data?.candidates?.[0]?.content?.parts || [];
   return parts.map(part => part?.text || '').join('').trim();
 }
 
+/** `extractGeminiIssue`: Geminiの失敗応答から、利用者へ示せる原因情報を取り出す。 */
 function extractGeminiIssue(data) {
   const blockReason = data?.promptFeedback?.blockReason;
   if (blockReason) return `Gemini blocked the request: ${blockReason}`;
@@ -795,6 +801,7 @@ function parseStructuredResponse(text) {
   }
 }
 
+/** `hasCompleteTranslationResponse`: 完全な・英訳・応答の条件を確認し、結果を真偽値で返す。 */
 function hasCompleteTranslationResponse(text) {
   const parsed = parseStructuredResponse(text);
   const variants = Array.isArray(parsed?.variants) ? parsed.variants : [];
@@ -830,6 +837,7 @@ function hasCompleteTranslationResponse(text) {
     ));
 }
 
+/** `isCompleteNuanceEntry`: 完全な・Nuance・項目の条件を確認し、結果を真偽値で返す。 */
 function isCompleteNuanceEntry(entry, mapMode, minimumComparisons = 2) {
   const intensityLevel = Number(entry?.intensityLevel);
   const intensityMin = Number(entry?.intensityMin);
@@ -872,6 +880,7 @@ function isCompleteNuanceEntry(entry, mapMode, minimumComparisons = 2) {
   );
 }
 
+/** `hasCompleteNuanceResponse`: 完全な・Nuance・応答の条件を確認し、結果を真偽値で返す。 */
 function hasCompleteNuanceResponse(text) {
   const parsed = parseStructuredResponse(text);
   const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
@@ -897,6 +906,7 @@ function hasCompleteNuanceResponse(text) {
     && entries.every(entry => isCompleteNuanceEntry(entry, mapMode, minimumComparisons));
 }
 
+/** `nuanceResponseIncludesRequestedHeadword`: 表現帳のAI応答に、依頼した英語見出し語が含まれるか確認する。 */
 function nuanceResponseIncludesRequestedHeadword(text, userText) {
   let request = null;
   try { request = JSON.parse(String(userText || '')); } catch {}
@@ -905,6 +915,7 @@ function nuanceResponseIncludesRequestedHeadword(text, userText) {
   if (!requested.length) return true;
   const parsed = parseStructuredResponse(text);
   const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
+  /** `normalize`: `normalize`を後続処理で扱える安全な形にそろえる。 */
   const normalize = value => String(value || '').normalize('NFKC').trim().toLocaleLowerCase();
   const requestedKeys = new Set(requested.flatMap(item => (
     [item?.lemma, item?.term, ...(Array.isArray(item?.aliases) ? item.aliases : [])].map(normalize)
@@ -912,6 +923,7 @@ function nuanceResponseIncludesRequestedHeadword(text, userText) {
   return entries.some(entry => requestedKeys.has(normalize(entry?.lemma || entry?.term)));
 }
 
+/** `hasRequiredNuanceEntryCount`: Required・Nuance・項目・Countの条件を確認し、結果を真偽値で返す。 */
 function hasRequiredNuanceEntryCount(text, userText, { allowPartialSalvage = false } = {}) {
   const parsed = parseStructuredResponse(text);
   let request = null;
@@ -928,6 +940,7 @@ function hasRequiredNuanceEntryCount(text, userText, { allowPartialSalvage = fal
     || (allowPartialSalvage && entries.length >= 3 && discarded >= 1);
 }
 
+/** `mergeNuanceResponses`: 複数のNuance・Responsesを既存情報を失わないよう統合する。 */
 function mergeNuanceResponses(baseText, supplementText) {
   const base = parseStructuredResponse(baseText);
   const supplement = parseStructuredResponse(supplementText);
@@ -950,6 +963,7 @@ function mergeNuanceResponses(baseText, supplementText) {
   }));
 }
 
+/** `hasSafeNuanceEnrichmentResponse`: 安全な・Nuance・Enrichment・応答の条件を確認し、結果を真偽値で返す。 */
 function hasSafeNuanceEnrichmentResponse(text, userText) {
   const parsed = parseStructuredResponse(text);
   let request = null;
@@ -979,6 +993,7 @@ function hasSafeNuanceEnrichmentResponse(text, userText) {
   });
 }
 
+/** `normalizeStructuredResponse`: 構造化された・応答を後続処理で扱える安全な形にそろえる。 */
 function normalizeStructuredResponse(actionType, text) {
   const parsed = parseStructuredResponse(text);
   if (!parsed) return text;
@@ -1006,6 +1021,7 @@ function normalizeStructuredResponse(actionType, text) {
             .split(/[。！？\n]/)[0]
             .slice(0, 18) || 'その他')
           : '');
+      /** `normalizeTextList`: 文字列・一覧を後続処理で扱える安全な形にそろえる。 */
       const normalizeTextList = value => (Array.isArray(value) ? value : [])
         .map(item => String(
           typeof item === 'string'
@@ -1096,7 +1112,9 @@ function normalizeStructuredResponse(actionType, text) {
         return;
       }
       const previous = mergedEntries[index].entry;
+      /** `richer`: 情報量の多い方に関する補助処理を行い、結果を呼び出し元へ返す。 */
       const richer = (left, right) => String(right || '').length > String(left || '').length ? right : left;
+      /** `uniqueObjects`: Objectsから重複を除いて返す。 */
       const uniqueObjects = (left, right) => {
         const seen = new Set();
         return [...(Array.isArray(left) ? left : []), ...(Array.isArray(right) ? right : [])]
@@ -1136,9 +1154,11 @@ function normalizeStructuredResponse(actionType, text) {
       parsed?.primaryConcept?.key,
       ...(Array.isArray(parsed?.concepts) ? parsed.concepts.map(concept => concept?.key) : []),
     ].map(value => String(value || '').trim()).filter(Boolean));
+    /** `cleanText`: 文字列を後続処理で扱える安全な形にそろえる。 */
     const cleanText = value => String(value || '')
       .replace(/(\*\*|__|```|<\/?[a-z][^>]*>)/gi, '')
       .trim();
+    /** `cleanSegment`: Segmentを後続処理で扱える安全な形にそろえる。 */
     const cleanSegment = segment => ({
       ...segment,
       text: cleanText(segment?.text),
@@ -1146,9 +1166,11 @@ function normalizeStructuredResponse(actionType, text) {
         ? String(segment.conceptKey).trim()
         : '',
     });
+    /** `cleanSegments`: Segmentsを後続処理で扱える安全な形にそろえる。 */
     const cleanSegments = value => (Array.isArray(value) ? value : [])
       .map(cleanSegment)
       .filter(segment => segment.text);
+    /** `cleanRichBlock`: Rich・ブロックを後続処理で扱える安全な形にそろえる。 */
     const cleanRichBlock = block => {
       const type = String(block?.type || '').trim();
       if (!['list', 'table', 'equation', 'callout', 'flow'].includes(type)) return null;
@@ -1224,6 +1246,7 @@ function normalizeStructuredResponse(actionType, text) {
   return JSON.stringify(parsed);
 }
 
+/** `logStructuredValidationFailure`: 構造化AI応答が不正だった理由を、内容を漏らしすぎない形でサーバーログへ残す。 */
 function logStructuredValidationFailure(actionType, text, stage) {
   const parsed = parseStructuredResponse(text);
   if (!parsed) {
@@ -1339,6 +1362,7 @@ function logStructuredValidationFailure(actionType, text, stage) {
   });
 }
 
+/** `hasCompleteEnglishQuestionResponse`: 完全な・英語・質問・応答の条件を確認し、結果を真偽値で返す。 */
 function hasCompleteEnglishQuestionResponse(text) {
   const parsed = parseStructuredResponse(text);
   const examples = Array.isArray(parsed?.examples) ? parsed.examples : [];
@@ -1353,6 +1377,7 @@ function hasCompleteEnglishQuestionResponse(text) {
   );
 }
 
+/** `hasCompleteKnowledgeResponse`: 完全な・Knowledge・応答の条件を確認し、結果を真偽値で返す。 */
 function hasCompleteKnowledgeResponse(text) {
   const parsed = parseStructuredResponse(text);
   const sections = Array.isArray(parsed?.answer?.sections) ? parsed.answer.sections : [];
@@ -1417,6 +1442,7 @@ function hasCompleteKnowledgeResponse(text) {
   );
 }
 
+/** `hasCompleteStructuredResponse`: 完全な・構造化された・応答の条件を確認し、結果を真偽値で返す。 */
 function hasCompleteStructuredResponse(actionType, text) {
   const parsed = parseStructuredResponse(text);
   if (!parsed) return false;
@@ -1425,12 +1451,15 @@ function hasCompleteStructuredResponse(actionType, text) {
   if (actionType === 'english_question') return hasCompleteEnglishQuestionResponse(text);
   if (actionType === 'knowledge_answer') return hasCompleteKnowledgeResponse(text);
   if (actionType === 'event_parse') {
+    /** `dateTime`: 日付・時刻に関する補助処理を行い、結果を呼び出し元へ返す。 */
     const dateTime = value => value === null || /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:00$/.test(value);
     return Boolean(String(parsed.title || '').trim() && dateTime(parsed.start) && dateTime(parsed.end));
   }
   if (actionType === 'planner_action') {
     const actions = new Set(['task', 'event', 'schedule', 'memo', 'database', 'delete_event', 'delete_task', 'delete_memo']);
+    /** `date`: 日付に関する補助処理を行い、結果を呼び出し元へ返す。 */
     const date = value => value === null || /^\d{4}-\d{2}-\d{2}$/.test(value);
+    /** `time`: 時刻に関する補助処理を行い、結果を呼び出し元へ返す。 */
     const time = value => value === null || /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
     if (!actions.has(parsed.action) || !date(parsed.date) || !date(parsed.dueDate)
       || !time(parsed.startTime) || !time(parsed.endTime) || !time(parsed.dueTime)) return false;
@@ -1464,6 +1493,7 @@ const RETRYABLE_GEMINI_STATUSES = new Set([500, 502, 503, 504]);
 const FALLBACK_GEMINI_STATUSES = new Set([404, 429, ...RETRYABLE_GEMINI_STATUSES]);
 const GEMINI_REQUEST_TIMEOUT_MS = 120_000;
 
+/** `delay`: 指定ミリ秒だけ待機するPromiseを返す。 */
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 // ---- Gemini通信とフォールバック ----
@@ -1495,6 +1525,7 @@ async function requestGeminiOnce(key, model, payload, timeoutMs = 50_000) {
   }
 }
 
+/** `requestGemini`: 指定モデルと生成設定でGemini APIを呼び、本文または失敗理由を返す。 */
 async function requestGemini(key, model, payload, timeoutMs = 50_000) {
   const startedAt = Date.now();
   const first = await requestGeminiOnce(key, model, payload, timeoutMs);
@@ -1525,6 +1556,7 @@ async function requestGeminiResilient(key, model, fallbackModel, payload, timeou
   return { ...fallback, model: fallbackModel };
 }
 
+/** `logGeminiFailure`: Gemini APIの失敗状態を診断用ログへ記録する。 */
 function logGeminiFailure({ upstream, data, model, actionType }) {
   const message = String(data?.error?.message || '').replace(/\s+/g, ' ').slice(0, 320);
   console.error('[ai] Gemini request failed', {
@@ -1551,6 +1583,7 @@ const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3Mi
 const HANDLER_BUDGET_MS = 285_000;
 const NETWORK_SAFETY_MS = 5_000;
 
+/** `getBearerToken`: Bearer・語を取得して呼び出し元へ返す。 */
 function getBearerToken(req) {
   const header = req.headers.authorization || req.headers.Authorization || '';
   const match = String(header).match(/^Bearer\s+(.+)$/i);
@@ -1567,6 +1600,7 @@ function getSupabaseConfig() {
   };
 }
 
+/** `requireAuthenticatedUser`: Supabaseの認証情報を検証し、ログイン中のユーザーを返す。 */
 async function requireAuthenticatedUser(token, timeoutMs) {
   const cfg = getSupabaseConfig();
   if (!token) throw Object.assign(new Error('AIを使うにはログインしてください。'), { status: 401 });
@@ -1589,6 +1623,7 @@ async function requireAuthenticatedUser(token, timeoutMs) {
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   const startedAt = Date.now();
+  /** `remainingTimeMs`: サーバー処理の期限まで残っているミリ秒を返す。 */
   const remainingTimeMs = (minimum = 0) => Math.max(0, HANDLER_BUDGET_MS - (Date.now() - startedAt) - minimum);
 
   // 1. このAPIは生成内容をbodyで受け取るPOSTだけを許可する。

@@ -14,7 +14,9 @@ import {
 import { esc, today, formatDate, getEventsForDate, addDays, toDateStr } from '../utils.js';
 import { openNewKnowledgeMemo, getStudyPromptForBlock } from './knowledge.js';
 
+/** `nav`: 指定したハッシュ画面へ移動し、必要なら遷移元の状態を引き継ぐ。 */
 const nav   = (view) => window.AppNav?.navigate(view);
+/** `toast`: 短い通知メッセージを画面へ表示する。 */
 const toast = (msg, type) => window.AppNav?.showToast(msg, type);
 let selectedDateStr = today();
 
@@ -142,11 +144,13 @@ function renderPage(container) {
   if (isRealToday) renderStudyPromptIfNeeded(schedItems, nowMin, container);
 }
 
+/** `updateTodayHeaderTitle`: 今日・Header・タイトルを現在状態へ反映し、必要な表示を更新する。 */
 function updateTodayHeaderTitle() {
   const titleEl = document.getElementById('page-title');
   if (titleEl) titleEl.textContent = dayHeaderTitle(selectedDateStr || today());
 }
 
+/** `dayHeaderTitle`: 日・Header・タイトルに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function dayHeaderTitle(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
   const wd = ['日','月','火','水','木','金','土'][d.getDay()];
@@ -156,6 +160,7 @@ function dayHeaderTitle(dateStr) {
   return `${d.getMonth() + 1}/${d.getDate()}(${wd})`;
 }
 
+/** `dayLabel`: 日・表示名に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function dayLabel(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
   const wd = ['日','月','火','水','木','金','土'][d.getDay()];
@@ -165,7 +170,9 @@ function dayLabel(dateStr) {
   return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}(${wd})`;
 }
 
+/** `wireDateNav`: 日付・Navの画面操作と処理をイベントで結び付ける。 */
 function wireDateNav(container) {
+  /** `move`: 移動に関する補助処理を行い、結果を呼び出し元へ返す。 */
   const move = days => {
     const base = new Date((selectedDateStr || today()) + 'T00:00:00');
     selectedDateStr = toDateStr(addDays(base, days));
@@ -226,6 +233,7 @@ function findNextEvent(events, schedItems, nowMin) {
   return all.length > 0 ? { status: 'done' } : { status: 'empty' };
 }
 
+/** `renderNextBanner`: Next・Bannerの画面表示またはHTMLを組み立てる。 */
 function renderNextBanner(info) {
   if (!info || info.status === 'empty') {
     return `<div class="next-banner next-banner-empty">
@@ -283,10 +291,12 @@ function renderSwipeTaskHTML(task) {
     </li>`;
 }
 
+/** `wireTaskList`: タスク・一覧の画面操作と処理をイベントで結び付ける。 */
 function wireTaskList(container, allTasks) {
   const lists = container.querySelectorAll('.today-task-list');
   if (!lists.length) return;
 
+  /** `onClick`: Clickに関する操作またはイベントを受けて処理する。 */
   const onClick = e => {
     const btn = e.target.closest('[data-action="toggle"]');
     if (!btn) return;
@@ -312,6 +322,7 @@ function wireTaskList(container, allTasks) {
   });
 }
 
+/** `wireTaskMoreToggle`: タスク・More・Toggleの画面操作と処理をイベントで結び付ける。 */
 function wireTaskMoreToggle(container) {
   const btn = container.querySelector('#today-task-more-toggle');
   const list = container.querySelector('#today-task-extra-list');
@@ -383,6 +394,7 @@ function attachSwipe(item, container) {
   });
 }
 
+/** `updateProgressUI`: Progress・UIを現在状態へ反映し、必要な表示を更新する。 */
 function updateProgressUI(container) {
   const items = container.querySelectorAll('.today-task-item');
   const total = items.length;
@@ -404,7 +416,9 @@ function updateProgressUI(container) {
 function buildTimeline(events, schedItems) {
   const items = [];
 
+  /** `hh`: hhに関する補助処理を行い、結果を呼び出し元へ返す。 */
   const hh = (d) => String(d.getHours()).padStart(2, '0');
+  /** `mm`: mmに関する補助処理を行い、結果を呼び出し元へ返す。 */
   const mm = (d) => String(d.getMinutes()).padStart(2, '0');
 
   events.forEach(e => {
@@ -469,6 +483,7 @@ function buildTimeline(events, schedItems) {
   return items.sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
 }
 
+/** `renderTimelineHTML`: 時代区分・HTMLの画面表示またはHTMLを組み立てる。 */
 function renderTimelineHTML(items, nowMin = null) {
   if (items.length === 0) {
     return `<div class="empty-state" style="padding:16px 0">
@@ -494,6 +509,7 @@ function renderTimelineHTML(items, nowMin = null) {
   return html;
 }
 
+/** `nowLineHTML`: now・行・HTMLに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function nowLineHTML() {
   const now = new Date();
   const hh  = String(now.getHours()).padStart(2, '0');
@@ -504,6 +520,7 @@ function nowLineHTML() {
   </div>`;
 }
 
+/** `timelineCardHTML`: 時代区分・カード・HTMLに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function timelineCardHTML(item, nowMin) {
   const showNowState = typeof nowMin === 'number';
   const isPast    = showNowState && item.endMin   <= nowMin;
@@ -669,6 +686,7 @@ export function openScheduleItemModal({ dateStr = today(), item = null, onSaved 
 
   overlay.appendChild(modal);
 
+  /** `close`: 現在開いているモーダルまたはシートを閉じる。 */
   const close = () => {
     document.removeEventListener('keydown', keyH);
     overlay.classList.add('hidden');
@@ -676,6 +694,7 @@ export function openScheduleItemModal({ dateStr = today(), item = null, onSaved 
   };
   modal.querySelector('.modal-close').onclick = close;
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  /** `keyH`: 確認ダイアログのキーボード操作を処理する。 */
   const keyH = e => { if (e.key === 'Escape') close(); };
   document.addEventListener('keydown', keyH);
 

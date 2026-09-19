@@ -24,8 +24,11 @@ import {
   normalizeSchedulePlan,
 } from '../task-planning.js';
 
+/** `toast`: 短い通知メッセージを画面へ表示する。 */
 const toast     = (msg, type) => window.AppNav?.showToast(msg, type);
+/** `undoToast`: 取り消し操作付きの通知を表示し、選ばれたら復元処理を実行する。 */
 const undoToast = (msg, cb)   => window.AppNav?.showUndoToast(msg, cb);
+/** `nav`: 指定したハッシュ画面へ移動し、必要なら遷移元の状態を引き継ぐ。 */
 const nav       = (view)      => window.AppNav?.navigate(view);
 
 let openPlannerHandler = null;
@@ -64,6 +67,7 @@ const TASK_HIGHLIGHT_OPTIONS = [
   { value: '#32D49A', label: '緑', color: '#32D49A' },
 ];
 
+/** `loadLastTaskTags`: 最後の・タスク・タグを取得して呼び出し元へ返す。 */
 function loadLastTaskTags() {
   try {
     const parsed = JSON.parse(localStorage.getItem(TASK_TAG_DEFAULTS_KEY) || '[]');
@@ -73,6 +77,7 @@ function loadLastTaskTags() {
   }
 }
 
+/** `saveLastTaskTags`: 最後の・タスク・タグを保存先または一時状態へ反映する。 */
 function saveLastTaskTags(tags) {
   try {
     localStorage.setItem(TASK_TAG_DEFAULTS_KEY, JSON.stringify(Array.isArray(tags) ? tags : []));
@@ -221,6 +226,7 @@ function render() {
     addForm.parentNode.insertBefore(controls, addForm);
     analyticsButton.addEventListener('click', () => nav('analytics'));
 
+    /** `applyAddFormVisibility`: Add・フォーム・表示状態を現在状態へ反映し、必要な表示を更新する。 */
     const applyAddFormVisibility = () => {
       addForm.style.display = state.addFormOpen ? '' : 'none';
       addExtras.style.display = state.addFormOpen ? '' : 'none';
@@ -265,11 +271,13 @@ function render() {
   const _dueTimeBtn = container.querySelector('#task-due-time-btn');
   const _estimateBtn = container.querySelector('#task-estimate-btn');
 
+  /** `_updateDueDateBtn`: Due・日付・Btnを現在状態へ反映し、必要な表示を更新する。 */
   const _updateDueDateBtn = () => {
     if (!_dueDateBtn) return;
     _dueDateBtn.textContent = state.addDueDate ? formatPickerDate(state.addDueDate) : '📅 日付';
     _dueDateBtn.classList.toggle('dp-trigger--set', !!state.addDueDate);
   };
+  /** `_updateDueTimeBtn`: Due・時刻・Btnを現在状態へ反映し、必要な表示を更新する。 */
   const _updateDueTimeBtn = () => {
     if (!_dueTimeBtn) return;
     _dueTimeBtn.textContent = state.addDueTime ? '🕐 ' + state.addDueTime : '🕐 時刻';
@@ -291,6 +299,7 @@ function render() {
     });
   });
 
+  /** `_updateEstimateBtn`: 所要時間・Btnを現在状態へ反映し、必要な表示を更新する。 */
   const _updateEstimateBtn = () => {
     if (!_estimateBtn) return;
     _estimateBtn.textContent = state.addEstimate ? `⏱ ${formatDuration(state.addEstimate)}` : '⏱ 工数';
@@ -326,6 +335,7 @@ function render() {
     `<button class="task-tag-preset${state.addTags.includes(tag) ? ' active' : ''}" type="button" data-preset-tag="${esc(tag)}">${esc(tag)}</button>`
   ).join('');
 
+  /** `_renderAddTagChips`: Add・タグ・Chipsの画面表示またはHTMLを組み立てる。 */
   const _renderAddTagChips = () => {
     if (!_tagChipsEl) return;
     _tagChipsEl.innerHTML = state.addTags.map(t =>
@@ -340,6 +350,7 @@ function render() {
   };
   _renderAddTagChips();
 
+  /** `_applyCustomTagInputVisibility`: 独自・タグ・入力・表示状態を現在状態へ反映し、必要な表示を更新する。 */
   const _applyCustomTagInputVisibility = () => {
     if (!_tagInputWrap) return;
     _tagInputWrap.classList.toggle('open', state.addCustomTagOpen);
@@ -431,6 +442,7 @@ function getTaskCounts() {
   };
 }
 
+/** `renderFiltersHTML`: Filters・HTMLの画面表示またはHTMLを組み立てる。 */
 function renderFiltersHTML() {
   const counts = getTaskCounts();
   return [
@@ -450,6 +462,7 @@ function renderFiltersHTML() {
     : '');
 }
 
+/** `wireFilters`: Filtersの画面操作と処理をイベントで結び付ける。 */
 function wireFilters(container) {
   container.querySelectorAll('.filter-btn[data-filter]').forEach(btn =>
     btn.addEventListener('click', () => {
@@ -475,6 +488,7 @@ function wireFilters(container) {
   });
 }
 
+/** `updateFilterBar`: 絞り込み・Barを現在状態へ反映し、必要な表示を更新する。 */
 function updateFilterBar() {
   const filters = state.container?.querySelector('.tasks-filters');
   if (!filters) return;
@@ -540,6 +554,7 @@ function renderCodexPlannerPanel() {
   `;
 }
 
+/** `wireCodexPlannerPanel`: Codex・Planner・Panelの画面操作と処理をイベントで結び付ける。 */
 function wireCodexPlannerPanel(container) {
   const startDateBtn = container.querySelector('#codex-start-date-btn');
   const endDateBtn   = container.querySelector('#codex-end-date-btn');
@@ -587,6 +602,7 @@ function wireCodexPlannerPanel(container) {
   });
 }
 
+/** `openCodexTimePicker`: Codex・時刻・選択画面の画面・詳細・ダイアログを表示する。 */
 function openCodexTimePicker(key, btn, label, allowClear = false) {
   openTimePicker({
     value: state[key],
@@ -646,6 +662,7 @@ function buildCodexPayload() {
   };
 }
 
+/** `copyCodexPayload`: copy・Codex・内容に関する補助処理を行い、結果を呼び出し元へ返す。 */
 async function copyCodexPayload(container) {
   const payload = buildCodexPayload();
   const text = JSON.stringify({
@@ -773,21 +790,25 @@ function applyCodexPlan(container, options = {}) {
   toast(`${options.sourceLabel || 'AI案'}: ${blocks.length}件をマイスケジュールに反映しました`, 'success');
 }
 
+/** `isNormalTask`: タスクの条件を確認し、結果を真偽値で返す。 */
 function isNormalTask(task) {
   return !task.taskType || task.taskType === 'normal';
 }
 
+/** `taskInPlanningPeriod`: タスク・In・計画・Periodに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function taskInPlanningPeriod(task, startDate, endDate) {
   if (!task.dueDate) return true;
   return task.dueDate >= startDate && task.dueDate <= endDate;
 }
 
+/** `dateInPlanningPeriod`: 日付・In・計画・Periodに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function dateInPlanningPeriod(dateStr) {
   const startDate = state.codexStartDate || today();
   const endDate = state.codexEndDate || startDate;
   return dateStr >= startDate && dateStr <= endDate;
 }
 
+/** `blockOutsidePlanningWindow`: ブロック・範囲外・計画・時間枠に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function blockOutsidePlanningWindow(block) {
   const startMin = clockTimeToMinutes(block.startTime);
   const endMin = clockTimeToMinutes(block.endTime);
@@ -799,12 +820,14 @@ function blockOutsidePlanningWindow(block) {
   return !dateInPlanningPeriod(block.date);
 }
 
+/** `blockOverlapsBreak`: ブロック・重複・休憩に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function blockOverlapsBreak(block) {
   const breaks = getCodexDailyBreaks();
   if (!breaks.length) return false;
   return breaks.some(b => timeRangesOverlap(block.startTime, block.endTime, b.start, b.end));
 }
 
+/** `blockOverlapsExistingSchedule`: ブロック・重複・既存の・スケジュールに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function blockOverlapsExistingSchedule(block) {
   return getScheduleItems().some(item => {
     if (item.source === 'codex-plan') return false;
@@ -813,6 +836,7 @@ function blockOverlapsExistingSchedule(block) {
   });
 }
 
+/** `blockOverlapsCalendar`: ブロック・重複・カレンダーに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function blockOverlapsCalendar(block) {
   const startMin = clockTimeToMinutes(block.startTime);
   const endMin = clockTimeToMinutes(block.endTime);
@@ -834,10 +858,12 @@ function blockOverlapsCalendar(block) {
   });
 }
 
+/** `timeRangesOverlap`: 時刻・Ranges・重複に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function timeRangesOverlap(aStart, aEnd, bStart, bEnd) {
   return clockRangesOverlapConservatively(aStart, aEnd, bStart, bEnd);
 }
 
+/** `getCodexDailyBreaks`: Codex・日次・Breaksを取得して呼び出し元へ返す。 */
 function getCodexDailyBreaks() {
   if (!state.codexBreakStart || !state.codexBreakEnd) return [];
   const start = clockTimeToMinutes(state.codexBreakStart);
@@ -854,6 +880,7 @@ function _timeStrToMin(t) {
   return h * 60 + m;
 }
 
+/** `_breakDeduction`: 休憩・Deductionに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function _breakDeduction(breaks, slotStart, slotEnd) {
   return (breaks || []).reduce((sum, b) => {
     if (!b.start || !b.end) return sum;
@@ -863,6 +890,7 @@ function _breakDeduction(breaks, slotStart, slotEnd) {
   }, 0);
 }
 
+/** `_dayAvailMin`: 日・空き時間・分に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function _dayAvailMin(dateStr, activeStart, activeEnd, breaks, todayFirstSlot) {
   const startMin = dateStr === today() && todayFirstSlot
     ? Math.max(_timeStrToMin(todayFirstSlot), _timeStrToMin(activeStart))
@@ -872,6 +900,7 @@ function _dayAvailMin(dateStr, activeStart, activeEnd, breaks, todayFirstSlot) {
   return Math.max(0, endMin - startMin - _breakDeduction(breaks, startMin, endMin));
 }
 
+/** `_availForPeriod`: 空き時間・Periodに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function _availForPeriod(fromDate, toDate, activeStart, activeEnd, breaks, todayFirstSlot) {
   let total = 0;
   let d = new Date(fromDate + 'T00:00:00');
@@ -883,6 +912,7 @@ function _availForPeriod(fromDate, toDate, activeStart, activeEnd, breaks, today
   return total;
 }
 
+/** `adjustTasksForOverflow`: adjust・タスク・Overflowに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function adjustTasksForOverflow(tasks, periodStart, periodEnd, activeStart, activeEnd, breaks, todayFirstSlot) {
   // Step 1: global scale if total needed > total available
   const totalAvail = _availForPeriod(periodStart, periodEnd, activeStart, activeEnd, breaks, todayFirstSlot);
@@ -923,6 +953,7 @@ function adjustTasksForOverflow(tasks, periodStart, periodEnd, activeStart, acti
   return scaled.map(t => updated.get(t.id) || t);
 }
 
+/** `nextHalfHour`: next・30分・時間に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function nextHalfHour() {
   const now = new Date();
   const totalMin = now.getHours() * 60 + now.getMinutes();
@@ -932,10 +963,12 @@ function nextHalfHour() {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
+/** `formatEstimate`: 所要時間を画面表示用の文字列へ整える。 */
 function formatEstimate(minutes) {
   return formatDuration(minutes);
 }
 
+/** `getEventsInPlanningPeriod`: 予定・In・計画・Periodを取得して呼び出し元へ返す。 */
 function getEventsInPlanningPeriod(startDate, endDate) {
   const all = getEvents();
   const byId = new Map();
@@ -955,6 +988,7 @@ function getEventsInPlanningPeriod(startDate, endDate) {
   return [...byId.values()];
 }
 
+/** `getScheduleItemsInPlanningPeriod`: スケジュール・Items・In・計画・Periodを取得して呼び出し元へ返す。 */
 function getScheduleItemsInPlanningPeriod(startDate, endDate) {
   return getScheduleItems()
     .filter(s => s.source !== 'codex-plan')
@@ -970,6 +1004,7 @@ function getScheduleItemsInPlanningPeriod(startDate, endDate) {
     }));
 }
 
+/** `forEachDateInRange`: Each・日付・In・Rangeに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function forEachDateInRange(startDate, endDate, fn) {
   let d = new Date(startDate + 'T00:00:00');
   const end = new Date(endDate + 'T00:00:00');
@@ -979,6 +1014,7 @@ function forEachDateInRange(startDate, endDate, fn) {
   }
 }
 
+/** `toDateStrLocal`: 日付・文字列・端末内を別の処理で使う形式へ変換する。 */
 function toDateStrLocal(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
@@ -1002,6 +1038,7 @@ function getSortedFilteredTasks() {
 /** 未完了を中心に、期限日時が近い順へ安定して並べる。 */
 export function sortTasksByDeadline(tasks) {
   const wo = { large: 0, medium: 1, small: 2 };
+  /** `dueSortValue`: due・Sort・値に関する補助処理を行い、結果を呼び出し元へ返す。 */
   const dueSortValue = (task) => {
     if (!task.dueDate) return Number.POSITIVE_INFINITY;
     const value = new Date(`${task.dueDate}T${task.dueTime || '23:59'}:00`).getTime();
@@ -1020,6 +1057,7 @@ export function sortTasksByDeadline(tasks) {
   });
 }
 
+/** `renderTaskItem`: タスク・項目の画面表示またはHTMLを組み立てる。 */
 function renderTaskItem(task) {
   const tdStr   = today();
   const overdue = task.dueDate && task.dueDate < tdStr && !task.completed;
@@ -1093,6 +1131,7 @@ function renderTaskItem(task) {
   `;
 }
 
+/** `renderListInto`: 一覧・内側の画面表示またはHTMLを組み立てる。 */
 function renderListInto(listEl) {
   if (!listEl) return;
   const tasks = getSortedFilteredTasks();
@@ -1336,6 +1375,7 @@ function handleToggle(taskId, li) {
   }
 }
 
+/** `handleDelete`: 削除に関する操作またはイベントを受けて処理する。 */
 function handleDelete(taskId, li) {
   const tasks = getTasks();
   const task  = tasks.find(t => t.id === taskId);
@@ -1365,6 +1405,7 @@ function handleDelete(taskId, li) {
   setTimeout(() => refreshTaskUi(true), 200);
 }
 
+/** `handleAbandon`: 保留に関する操作またはイベントを受けて処理する。 */
 function handleAbandon(taskId, li) {
   const task = getTasks().find(t => t.id === taskId);
   if (!task || task.completed) return;
@@ -1383,6 +1424,7 @@ function handleAbandon(taskId, li) {
   }, 220);
 }
 
+/** `handleUnabandon`: 保留解除に関する操作またはイベントを受けて処理する。 */
 function handleUnabandon(taskId, li) {
   const task = getTasks().find(t => t.id === taskId);
   if (!task) return;
@@ -1504,6 +1546,7 @@ function startTitleEdit(li, taskId) {
 
   let _vvCleanup = null;
   if (window.visualViewport) {
+    /** `_onVVResize`: VVResizeに関する操作またはイベントを受けて処理する。 */
     const _onVVResize = () => {
       const vvH = window.visualViewport.height;
       modal.style.maxHeight = `${vvH - 20}px`;
@@ -1516,6 +1559,7 @@ function startTitleEdit(li, taskId) {
     modal.querySelector('#edit-task-title')?.focus({ preventScroll: true });
   });
 
+  /** `_renderSubs`: Subsの画面表示またはHTMLを組み立てる。 */
   const _renderSubs = () => {
     const list = modal.querySelector('#edit-subtask-list');
     const countEl = modal.querySelector('#edit-sub-count');
@@ -1553,6 +1597,7 @@ function startTitleEdit(li, taskId) {
 
   const newSubInput = modal.querySelector('#edit-new-sub');
   const addSubBtn = modal.querySelector('#add-sub-btn');
+  /** `_doAddSub`: do・Add・Subに関する補助処理を行い、結果を呼び出し元へ返す。 */
   const _doAddSub = () => {
     const title = newSubInput?.value?.trim();
     if (!title) return;
@@ -1568,6 +1613,7 @@ function startTitleEdit(li, taskId) {
     }
   });
 
+  /** `_renderTags`: タグの画面表示またはHTMLを組み立てる。 */
   const _renderTags = () => {
     const chips = modal.querySelector('#edit-tag-chips');
     if (!chips) return;
@@ -1609,14 +1655,17 @@ function startTitleEdit(li, taskId) {
   const timeBtn = modal.querySelector('#edit-task-time-btn');
   const estimateBtn = modal.querySelector('#edit-task-estimate-btn');
 
+  /** `_updDate`: upd・日付に関する補助処理を行い、結果を呼び出し元へ返す。 */
   const _updDate = () => {
     dateBtn.textContent = editDueDate ? formatPickerDate(editDueDate) : '📅 日付';
     dateBtn.classList.toggle('dp-trigger--set', !!editDueDate);
   };
+  /** `_updTime`: upd・時刻に関する補助処理を行い、結果を呼び出し元へ返す。 */
   const _updTime = () => {
     timeBtn.textContent = editDueTime ? '🕐 ' + editDueTime : '🕐 時刻';
     timeBtn.classList.toggle('dp-trigger--set', !!editDueTime);
   };
+  /** `_updEstimate`: upd・所要時間に関する補助処理を行い、結果を呼び出し元へ返す。 */
   const _updEstimate = () => {
     estimateBtn.textContent = editEstimate ? `⏱ ${formatDuration(editEstimate)}` : '⏱ 工数';
     estimateBtn.classList.toggle('dp-trigger--set', !!editEstimate);
@@ -1644,12 +1693,14 @@ function startTitleEdit(li, taskId) {
     });
   });
 
+  /** `close`: 現在開いているモーダルまたはシートを閉じる。 */
   const close = () => {
     _vvCleanup?.();
     overlay.classList.add('hidden');
     overlay.innerHTML = '';
   };
 
+  /** `save`: `save`を保存先または一時状態へ反映する。 */
   const save = () => {
     const newTitle = titleInput.value.trim();
     if (!newTitle) {

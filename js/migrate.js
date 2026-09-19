@@ -50,7 +50,7 @@ function _ls(key, fb = []) {
   try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fb; } catch { return fb; }
 }
 
-/** `_upsert`: upsertに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** `_upsert`: Supabaseへ行を追加または更新し、失敗時は呼び出し元へ例外を返す。 */
 async function _upsert(client, table, rows, conflict = 'id') {
   if (!rows.length) return;
   const { error } = await client.from(table).upsert(rows, { onConflict: conflict });
@@ -139,7 +139,7 @@ async function _uploadReviewSchedule(client, userId) {
 const _now = () => new Date().toISOString();
 const EVENT_HIDE_FROM_MONTH_TAG = '__mp_hide_from_month';
 
-/** `_eventTagsFromLocal`: 予定・タグ・From・端末内に関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** `_eventTagsFromLocal`: 端末内の予定から、共有同期へ渡すタグ情報を取り出す。 */
 function _eventTagsFromLocal(event) {
   const tags = Array.isArray(event.tags)
     ? event.tags.filter(tag => tag && tag !== EVENT_HIDE_FROM_MONTH_TAG)
@@ -147,7 +147,7 @@ function _eventTagsFromLocal(event) {
   return event.hideFromMonth ? [...new Set([...tags, EVENT_HIDE_FROM_MONTH_TAG])] : tags;
 }
 
-/** `_eventTagsFromRow`: 予定・タグ・From・行に関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** `_eventTagsFromRow`: Supabaseの予定行から、アプリ内で使うタグ情報を復元する。 */
 function _eventTagsFromRow(row) {
   return Array.isArray(row.tags)
     ? row.tags.filter(tag => tag && tag !== EVENT_HIDE_FROM_MONTH_TAG)

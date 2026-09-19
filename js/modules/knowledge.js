@@ -35,8 +35,11 @@ import {
   sortMemosForList,
 } from '../memo-model.js';
 
+/** `nav`: 指定したハッシュ画面へ移動し、必要なら遷移元の状態を引き継ぐ。 */
 const nav       = (view, options = {}) => window.AppNav?.navigate(view, options);
+/** `toast`: 短い通知メッセージを画面へ表示する。 */
 const toast     = (msg, type) => window.AppNav?.showToast(msg, type);
+/** `undoToast`: 取り消し操作付きの通知を表示し、選ばれたら復元処理を実行する。 */
 const undoToast = (msg, cb)   => window.AppNav?.showUndoToast(msg, cb);
 
 // ============================================================
@@ -91,6 +94,7 @@ export function openKnowledgeMemo(id) {
   if (fromDetail && main) main.scrollTop = 0;
 }
 
+/** `backFromKnowledgeDetail`: back・から・Knowledge・詳細に関する補助処理を行い、結果を呼び出し元へ返す。 */
 export function backFromKnowledgeDetail() {
   if (!confirmDiscardKnowledgeChanges()) return;
   const prev = _knHistory.pop();
@@ -111,6 +115,7 @@ export function backFromKnowledgeDetail() {
   }
 }
 
+/** `editorSnapshot`: エディタ・退避データに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function editorSnapshot() {
   return JSON.stringify({
     title: edState.title,
@@ -122,10 +127,12 @@ function editorSnapshot() {
   });
 }
 
+/** `markEditorBaseline`: エディタ・Baselineを保存先または一時状態へ反映する。 */
 function markEditorBaseline() {
   editorBaseline = editorSnapshot();
 }
 
+/** `editorHistorySnapshot`: エディタ・履歴・退避データに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function editorHistorySnapshot() {
   return {
     title: edState.title,
@@ -138,6 +145,7 @@ function editorHistorySnapshot() {
   };
 }
 
+/** `resetEditorHistory`: 初期化・エディタ・履歴に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function resetEditorHistory() {
   editorUndoHistory = [];
   editorRedoHistory = [];
@@ -146,6 +154,7 @@ function resetEditorHistory() {
   editorTypingHistoryTimer = null;
 }
 
+/** `updateEditorHistoryControls`: エディタ・履歴・Controlsを現在状態へ反映し、必要な表示を更新する。 */
 function updateEditorHistoryControls(container) {
   const undo = container?.querySelector('#kn-undo-btn');
   const redo = container?.querySelector('#kn-redo-btn');
@@ -157,6 +166,7 @@ function updateEditorHistoryControls(container) {
   }
 }
 
+/** `recordEditorHistory`: 保存レコード・エディタ・履歴に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function recordEditorHistory(container) {
   if (!edState.isEdit || editorHistoryRestoring) return;
   editorTypingHistoryOpen = false;
@@ -170,6 +180,7 @@ function recordEditorHistory(container) {
   updateEditorHistoryControls(container);
 }
 
+/** `beginEditorTextHistory`: begin・エディタ・文字列・履歴に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function beginEditorTextHistory(container) {
   if (!editorTypingHistoryOpen) recordEditorHistory(container);
   editorTypingHistoryOpen = true;
@@ -180,6 +191,7 @@ function beginEditorTextHistory(container) {
   }, 700);
 }
 
+/** `restoreEditorHistory`: エディタ・履歴を現在状態へ反映し、必要な表示を更新する。 */
 function restoreEditorHistory(container, direction) {
   const from = direction === 'undo' ? editorUndoHistory : editorRedoHistory;
   const to = direction === 'undo' ? editorRedoHistory : editorUndoHistory;
@@ -230,10 +242,12 @@ function restoreEditorHistory(container, direction) {
   });
 }
 
+/** `hasUnsavedKnowledgeChanges`: 未保存の・Knowledge・Changesの条件を確認し、結果を真偽値で返す。 */
 export function hasUnsavedKnowledgeChanges() {
   return !!edState?.isEdit && editorSnapshot() !== editorBaseline;
 }
 
+/** `confirmDiscardKnowledgeChanges`: confirm・破棄・Knowledge・Changesに関する補助処理を行い、結果を呼び出し元へ返す。 */
 export function confirmDiscardKnowledgeChanges() {
   return !hasUnsavedKnowledgeChanges()
     || window.confirm('未保存の変更があります。破棄して移動しますか？');
@@ -241,12 +255,14 @@ export function confirmDiscardKnowledgeChanges() {
 
 const knBack = backFromKnowledgeDetail;
 
+/** `openNewKnowledgeMemo`: 新規・Knowledge・メモの画面・詳細・ダイアログを表示する。 */
 export function openNewKnowledgeMemo(opts = {}) {
   currentMemoId  = null;
   pendingNewOpts = opts;
   nav('knowledge-detail', { routeHash: 'knowledge-detail?new=1' });
 }
 
+/** `resolveNewMemoReviewEnabled`: 条件に合う新規・メモ・復習・有効状態を探して返す。 */
 export function resolveNewMemoReviewEnabled(opts) {
   return opts?.reviewEnabled === true;
 }
@@ -393,6 +409,7 @@ export function initKnowledge(container) {
   });
 }
 
+/** `restoreKnowledgeListPosition`: Knowledge・一覧・位置を現在状態へ反映し、必要な表示を更新する。 */
 function restoreKnowledgeListPosition() {
   const targetTop = _pendingListScrollTop;
   const anchorId = _pendingListAnchorId;
@@ -512,6 +529,7 @@ function renderList() {
   const searchEl = container.querySelector('#kn-search');
   let searchTimer = null;
   let composing = false;
+  /** `applySearch`: 検索を現在状態へ反映し、必要な表示を更新する。 */
   const applySearch = () => {
     if (!searchEl) return;
     listState.search = searchEl.value;
@@ -586,6 +604,7 @@ function renderList() {
   });
 }
 
+/** `renderMemoCard`: メモ・カードの画面表示またはHTMLを組み立てる。 */
 function renderMemoCard(m) {
   const preview = renderMemoCardPreview(m.blocks || [], 1);
   const dateStr = formatDate(m.updatedAt || m.createdAt, 'short');
@@ -617,10 +636,12 @@ function renderMemoCard(m) {
   `;
 }
 
+/** `renderMemoCardPreview`: メモ・カード・プレビューの画面表示またはHTMLを組み立てる。 */
 export function renderMemoCardPreview(blocks, maxBlocks = 7) {
   const rows = [];
   let rendered = 0;
 
+  /** `renderLevel`: Levelの画面表示またはHTMLを組み立てる。 */
   const renderLevel = (items, depth = 0) => {
     let numbered = 0;
     for (const block of (items || [])) {
@@ -674,6 +695,7 @@ export function renderMemoCardPreview(blocks, maxBlocks = 7) {
   return rows.join('');
 }
 
+/** `memoSearchText`: メモ・検索・文字列に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function memoSearchText(memo) {
   const version = [
     memo.updatedAt || memo.createdAt || '',
@@ -693,6 +715,7 @@ function memoSearchText(memo) {
   return text;
 }
 
+/** `pruneMemoSearchIndex`: メモ・検索・Indexを安全に終了または削除する。 */
 function pruneMemoSearchIndex(memos) {
   if (memoSearchIndex.size <= memos.length) return;
   const activeIds = new Set(memos.map(memo => memo.id));
@@ -714,6 +737,7 @@ export function openKnowledgeAiOrganizer() {
   openAIInputSheet();
 }
 
+/** `openAIInputSheet`: AIInput・シートの画面・詳細・ダイアログを表示する。 */
 function openAIInputSheet() {
   document.querySelector('.kn-ai-sheet')?.remove();
   const hasApi = isAiAvailable();
@@ -779,6 +803,7 @@ function openAIInputSheet() {
   let activeRequest = null;
   let slowNoticeTimer = null;
 
+  /** `close`: 現在開いているモーダルまたはシートを閉じる。 */
   const close = () => {
     activeRequest?.abort();
     clearTimeout(slowNoticeTimer);
@@ -789,6 +814,7 @@ function openAIInputSheet() {
   sheet.querySelector('.kn-ai-sheet-close').onclick = close;
   sheet.addEventListener('click', e => { if (e.target === sheet) close(); });
 
+  /** `returnToInput`: returnを入力へ変換して返す。 */
   const returnToInput = () => {
     activeRequest?.abort();
     activeRequest = null;
@@ -943,6 +969,7 @@ function openAIInputSheet() {
   });
 }
 
+/** `_renderAITags`: AITagsの画面表示またはHTMLを組み立てる。 */
 function _renderAITags(sheet, tags) {
   const wrap = sheet.querySelector('#kn-ai-preview-tags');
   if (!wrap) return;
@@ -960,6 +987,7 @@ function _renderAITags(sheet, tags) {
   });
 }
 
+/** `showTemplatePicker`: Template・選択画面の画面・詳細・ダイアログを表示する。 */
 function showTemplatePicker() {
   const overlay = document.getElementById('modal-overlay');
   if (!overlay) { startNewMemo(null); return; }
@@ -992,6 +1020,7 @@ function showTemplatePicker() {
   `;
   overlay.appendChild(modal);
 
+  /** `close`: 現在開いているモーダルまたはシートを閉じる。 */
   const close = () => { overlay.classList.add('hidden'); overlay.innerHTML = ''; };
   modal.querySelector('.modal-close').onclick = close;
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
@@ -1004,6 +1033,7 @@ function showTemplatePicker() {
   });
 }
 
+/** `startNewMemo`: 開始・新規・メモに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function startNewMemo(templateKey) {
   currentMemoId  = null;
   pendingNewOpts = templateKey
@@ -1108,6 +1138,7 @@ export function initKnowledgeDetail(container) {
   };
 }
 
+/** `setupKnowledgeSwipeBack`: Knowledge・Swipe・Backの画面操作と処理をイベントで結び付ける。 */
 function setupKnowledgeSwipeBack(container) {
   let startX = 0;
   let startY = 0;
@@ -1115,9 +1146,12 @@ function setupKnowledgeSwipeBack(container) {
   let tracking = false;
   let committing = false;
 
+  /** `page`: pageに関する補助処理を行い、結果を呼び出し元へ返す。 */
   const page = () => container.querySelector('.kn-view-page');
+  /** `canBack`: Backの条件を確認し、結果を真偽値で返す。 */
   const canBack = () => !committing && !edState?.isEdit && _knHistory.length > 0;
 
+  /** `reset`: 初期化に関する補助処理を行い、結果を呼び出し元へ返す。 */
   const reset = () => {
     const view = page();
     if (view) {
@@ -1130,6 +1164,7 @@ function setupKnowledgeSwipeBack(container) {
     dx = 0;
   };
 
+  /** `updateDrag`: ドラッグを現在状態へ反映し、必要な表示を更新する。 */
   const updateDrag = (distance) => {
     dx = Math.max(0, distance);
     const view = page();
@@ -1139,6 +1174,7 @@ function setupKnowledgeSwipeBack(container) {
     view.style.transform = `translate3d(${Math.min(dx, window.innerWidth * 0.96)}px,0,0)`;
   };
 
+  /** `onTouchStart`: タッチ・開始に関する操作またはイベントを受けて処理する。 */
   const onTouchStart = e => {
     if (!canBack()) return;
     startX = e.touches[0].clientX;
@@ -1147,6 +1183,7 @@ function setupKnowledgeSwipeBack(container) {
     tracking = false;
   };
 
+  /** `onTouchMove`: タッチ・移動に関する操作またはイベントを受けて処理する。 */
   const onTouchMove = e => {
     if (!canBack()) return;
     const curX = e.touches[0].clientX;
@@ -1164,6 +1201,7 @@ function setupKnowledgeSwipeBack(container) {
     updateDrag(moveX);
   };
 
+  /** `onTouchEnd`: タッチ・終了に関する操作またはイベントを受けて処理する。 */
   const onTouchEnd = e => {
     if (!canBack() && !tracking) return;
     const endX = e.changedTouches?.[0]?.clientX ?? startX;
@@ -1190,6 +1228,7 @@ function setupKnowledgeSwipeBack(container) {
     if (shouldBack) {
       view.style.transform = `translate3d(${window.innerWidth}px,0,0)`;
       let finished = false;
+      /** `finish`: 非同期処理を完了させ、登録済みの後始末を一度だけ行う。 */
       const finish = () => {
         if (finished) return;
         finished = true;
@@ -1201,6 +1240,7 @@ function setupKnowledgeSwipeBack(container) {
     } else {
       view.style.transform = 'translate3d(0,0,0)';
       let resetDone = false;
+      /** `finishReset`: 完了・初期化に関する補助処理を行い、結果を呼び出し元へ返す。 */
       const finishReset = () => {
         if (resetDone) return;
         resetDone = true;
@@ -1225,6 +1265,7 @@ function setupKnowledgeSwipeBack(container) {
   };
 }
 
+/** `restoreDetailScroll`: 詳細・Scrollを現在状態へ反映し、必要な表示を更新する。 */
 function restoreDetailScroll(top) {
   const main = document.getElementById('main-content');
   if (!main || top <= 0) return;
@@ -1234,6 +1275,7 @@ function restoreDetailScroll(top) {
   });
 }
 
+/** `renderDetail`: 詳細の画面表示またはHTMLを組み立てる。 */
 function renderDetail(container, options = {}) {
   const restoreScrollTop = options.preserveScroll
     ? document.getElementById('main-content')?.scrollTop || 0
@@ -1478,6 +1520,7 @@ function renderViewMode(container) {
   });
 }
 
+/** `renderBlocksView`: ブロック・画面の画面表示またはHTMLを組み立てる。 */
 export function renderBlocksView(blocks, indent = 0) {
   if (!blocks || !blocks.length) return '';
   let html = '';
@@ -1494,6 +1537,7 @@ export function renderBlocksView(blocks, indent = 0) {
   return html;
 }
 
+/** `renderBlockView`: ブロック・画面の画面表示またはHTMLを組み立てる。 */
 function renderBlockView(block, numCounter = 0, indent = 0) {
   const color = block.color || '';
   const styles = [color ? `color:${color}` : '', indent > 0 ? `margin-left:${indent * 20}px` : ''].filter(Boolean);
@@ -1575,11 +1619,13 @@ function renderInlineMarkdown(text) {
     .replace(/\[(.+?)\]\((https?:\/\/.+?)\)/g, '<a href="$2" target="_blank" rel="noopener" class="kn-inline-link">$1</a>');
 }
 
+/** `getBlockRichHtml`: ブロック・Rich・HTMLを取得して呼び出し元へ返す。 */
 function getBlockRichHtml(block) {
   if (block.html) return sanitizeBlockHtml(block.html);
   return renderInlineMarkdown(esc(block.text || ''));
 }
 
+/** `renderAllKaTeX`: すべての・Ka・Te・Xの画面表示またはHTMLを組み立てる。 */
 function renderAllKaTeX(container) {
   if (typeof katex === 'undefined') return;
   container.querySelectorAll('.kn-view-math').forEach(el => {
@@ -1599,6 +1645,7 @@ function setupTermSelection(contentEl, rootContainer) {
   if (!contentEl) return;
   let floatingBtn = null;
 
+  /** `removeBtn`: Btnを安全に終了または削除する。 */
   const removeBtn = () => { floatingBtn?.remove(); floatingBtn = null; };
 
   contentEl.addEventListener('pointerup', e => {
@@ -1655,6 +1702,7 @@ function setupTermSelection(contentEl, rootContainer) {
   }, true);
 }
 
+/** `showTermPopup`: 用語・Popupの画面・詳細・ダイアログを表示する。 */
 function showTermPopup(term, text, anchorEl, rootContainer) {
   // Remove any existing popup
   rootContainer.querySelector('.kn-term-popup')?.remove();
@@ -1908,6 +1956,7 @@ function renderBlocksEdit(blocks) {
   }).join('');
 }
 
+/** `renderBlockEdit`: ブロック・Editの画面表示またはHTMLを組み立てる。 */
 function renderBlockEdit(block, idx, listNumber = 0) {
   const colorStyle = block.color ? `style="color:${block.color}"` : '';
   const typeClass  = `kn-block--${block.type}`;
@@ -2031,17 +2080,20 @@ function renderBlockEdit(block, idx, listNumber = 0) {
     ${insertRow}`;
 }
 
+/** `renderBlockInsertRow`: ブロック・Insert・行の画面表示またはHTMLを組み立てる。 */
 function renderBlockInsertRow(blockId) {
   // One add control is enough. Per-row buttons were easy to leave behind after a block was removed.
   return '';
 }
 
+/** `renderBlockTypeOptions`: ブロック・種類・Optionsの画面表示またはHTMLを組み立てる。 */
 function renderBlockTypeOptions(currentType) {
   return BLOCK_TYPES
     .map(bt => `<option value="${esc(bt.type)}"${bt.type === currentType ? ' selected' : ''}>${esc(bt.label)}</option>`)
     .join('');
 }
 
+/** `caretIsAtEditableEnd`: caret・Is・位置・Editable・終了に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function caretIsAtEditableEnd(editable) {
   const selection = window.getSelection();
   if (!selection?.rangeCount || !selection.isCollapsed) return false;
@@ -2053,6 +2105,7 @@ function caretIsAtEditableEnd(editable) {
   return after.toString().replace(/\u200B|\r?\n/g, '') === '';
 }
 
+/** `convertMarkdownBlockShortcut`: Markdown・ブロック・Shortcutを別の処理で使う形式へ変換する。 */
 function convertMarkdownBlockShortcut(editable, container, afterSpace = false) {
   if (editorCompositionActive || !caretIsAtEditableEnd(editable)) return false;
   if ([...editable.querySelectorAll('*')].some(node => !['BR', 'DIV'].includes(node.tagName))) return false;
@@ -2089,6 +2142,7 @@ function convertMarkdownBlockShortcut(editable, container, afterSpace = false) {
   return true;
 }
 
+/** `convertInlineMarkdownShortcut`: 行内装飾・Markdown・Shortcutを別の処理で使う形式へ変換する。 */
 function convertInlineMarkdownShortcut(editable, container) {
   if (!caretIsAtEditableEnd(editable)) return false;
   editable.normalize();
@@ -2130,6 +2184,7 @@ function convertInlineMarkdownShortcut(editable, container) {
   return true;
 }
 
+/** `wireBlocksEdit`: ブロック・Editの画面操作と処理をイベントで結び付ける。 */
 function wireBlocksEdit(container) {
   const wrap = container.querySelector('#kn-blocks-wrap');
   if (!wrap) return;
@@ -2350,17 +2405,21 @@ function wireBlocksEdit(container) {
   renderMathPreviews(container);
 }
 
+/** `wireBlockDrag`: ブロック・ドラッグの画面操作と処理をイベントで結び付ける。 */
 function wireBlockDrag(container, wrap) {
   let dragState = null;
   let holdTimer = null;
+  /** `clearHoldTimer`: Hold・Timerを安全に終了または削除する。 */
   const clearHoldTimer = () => {
     clearTimeout(holdTimer);
     holdTimer = null;
   };
+  /** `clearIndicators`: Indicatorsを安全に終了または削除する。 */
   const clearIndicators = () => {
     wrap.querySelectorAll('.kn-block--drop-before, .kn-block--drop-after, .kn-block--drop-inside')
       .forEach(el => el.classList.remove('kn-block--drop-before', 'kn-block--drop-after', 'kn-block--drop-inside'));
   };
+  /** `finishDrag`: 完了・ドラッグに関する補助処理を行い、結果を呼び出し元へ返す。 */
   const finishDrag = (cancelled = false) => {
     clearHoldTimer();
     if (!dragState) return;
@@ -2484,9 +2543,11 @@ function wireBlockDrag(container, wrap) {
   });
 }
 
+/** `wireEditorImageLongPress`: エディタ・画像・Long・Pressの画面操作と処理をイベントで結び付ける。 */
 function wireEditorImageLongPress(container, wrap) {
   let press = null;
   let suppressClickUntil = 0;
+  /** `clear`: `clear`を安全に終了または削除する。 */
   const clear = () => {
     if (press?.timer) clearTimeout(press.timer);
     press = null;
@@ -2532,6 +2593,7 @@ function wireEditorImageLongPress(container, wrap) {
   });
 }
 
+/** `removeEditorImageBlock`: エディタ・画像・ブロックを安全に終了または削除する。 */
 function removeEditorImageBlock(blockId, container) {
   const block = findBlockInAllBlocks(edState.blocks, blockId);
   if (!block || block.type !== 'image') return false;
@@ -2546,6 +2608,7 @@ function removeEditorImageBlock(blockId, container) {
   return true;
 }
 
+/** `resolveBlockDropPlacement`: 条件に合うブロック・ドロップ・Placementを探して返す。 */
 function resolveBlockDropPlacement(targetEl, clientX, clientY) {
   const targetId = targetEl.dataset.blockId;
   const target = findBlockInAllBlocks(edState.blocks, targetId);
@@ -2561,6 +2624,7 @@ function resolveBlockDropPlacement(targetEl, clientX, clientY) {
   return clientY < rect.top + rect.height / 2 ? 'before' : 'after';
 }
 
+/** `renderMathPreviews`: 数式・プレビューの画面表示またはHTMLを組み立てる。 */
 function renderMathPreviews(container) {
   requestAnimationFrame(() => {
     container.querySelectorAll('.kn-block--math .kn-block-math-input').forEach(ta => {
@@ -2631,6 +2695,7 @@ function handleBlockKeydown(e, blockId, container) {
   }
 }
 
+/** `openToggleForEditing`: Toggle・Editingの画面・詳細・ダイアログを表示する。 */
 function openToggleForEditing(blockId, container) {
   recordEditorHistory(container);
   syncFocusedEditableBlock(container, blockId);
@@ -2644,6 +2709,7 @@ function openToggleForEditing(blockId, container) {
   focusBlock(childId, container);
 }
 
+/** `toggleEditorBlock`: toggle・エディタ・ブロックに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function toggleEditorBlock(blockId, container) {
   recordEditorHistory(container);
   syncFocusedEditableBlock(container, blockId);
@@ -2660,6 +2726,7 @@ function toggleEditorBlock(blockId, container) {
   openToggleForEditing(blockId, container);
 }
 
+/** `splitEditableAtCaret`: 入力を解析してEditable・位置・Caretを取り出す。 */
 function splitEditableAtCaret(editable) {
   const selection = window.getSelection();
   if (!editable || !selection?.rangeCount) return null;
@@ -2670,6 +2737,7 @@ function splitEditableAtCaret(editable) {
     caret.collapse(true);
   }
 
+  /** `extract`: 入力を解析して`extract`を取り出す。 */
   const extract = range => {
     const holder = document.createElement('div');
     holder.appendChild(range.cloneContents());
@@ -2687,6 +2755,7 @@ function splitEditableAtCaret(editable) {
   return { before: extract(beforeRange), after: extract(afterRange) };
 }
 
+/** `continueListFromBlock`: continue・一覧・から・ブロックに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function continueListFromBlock(blockId, container, editable = null) {
   syncFocusedEditableBlock(container, blockId);
   const loc = findBlockLocation(blockId);
@@ -2720,6 +2789,7 @@ function continueListFromBlock(blockId, container, editable = null) {
   focusBlock(nextBlock.id, container);
 }
 
+/** `insertBlockLineBreak`: 受け取った情報からブロック・行・休憩を作る。 */
 function insertBlockLineBreak(editable) {
   const selection = window.getSelection();
   if (!selection?.rangeCount) return;
@@ -2738,6 +2808,7 @@ function insertBlockLineBreak(editable) {
   selection.addRange(range);
 }
 
+/** `syncEditableBlock`: Editable・ブロックを現在状態へ反映し、必要な表示を更新する。 */
 function syncEditableBlock(blockId, editable) {
   const block = findBlockInAllBlocks(edState.blocks, blockId);
   if (!block) return;
@@ -2745,6 +2816,7 @@ function syncEditableBlock(blockId, editable) {
   block.html = sanitizeBlockHtml(editable.innerHTML).replace(/\u200B/g, '');
 }
 
+/** `wireToolbar`: Toolbarの画面操作と処理をイベントで結び付ける。 */
 function wireToolbar(container) {
   let savedHighlightSelection = null;
   const rangeSelectButton = container.querySelector('#kn-range-select-btn');
@@ -2753,12 +2825,14 @@ function wireToolbar(container) {
   });
   const blockMenuToggle = container.querySelector('#kn-block-actions-toggle');
   const blockMenu = container.querySelector('.kn-toolbar-block-actions');
+  /** `placeBlockMenu`: place・ブロック・Menuに関する補助処理を行い、結果を呼び出し元へ返す。 */
   const placeBlockMenu = () => {
     if (!blockMenuToggle || !blockMenu) return;
     const rect = blockMenuToggle.getBoundingClientRect();
     blockMenu.style.top = `${Math.round(rect.bottom + 6)}px`;
     blockMenu.style.right = `${Math.max(10, Math.round(window.innerWidth - rect.right))}px`;
   };
+  /** `closeBlockMenu`: ブロック・Menuを安全に終了または削除する。 */
   const closeBlockMenu = () => {
     blockMenu?.classList.remove('is-open');
     blockMenuToggle?.setAttribute('aria-expanded', 'false');
@@ -2920,6 +2994,7 @@ function wireToolbar(container) {
   });
 }
 
+/** `setCrossBlockSelectionMode`: Cross・ブロック・選択範囲・Modeを保存先または一時状態へ反映する。 */
 function setCrossBlockSelectionMode(container, enabled) {
   const editPage = container.querySelector('.kn-edit-page');
   const wrap = container.querySelector('#kn-blocks-wrap');
@@ -2943,11 +3018,13 @@ function setCrossBlockSelectionMode(container, enabled) {
   if (enabled && wrap.contains(document.activeElement)) document.activeElement.blur();
 }
 
+/** `getFocusedBlockId`: Focused・ブロック・IDを取得して呼び出し元へ返す。 */
 function getFocusedBlockId(container) {
   const el = container.querySelector('.kn-block-focusable:focus');
   return el?.dataset.blockId || null;
 }
 
+/** `resolveActiveEditorBlockId`: 条件に合う現在の・エディタ・ブロック・IDを探して返す。 */
 function resolveActiveEditorBlockId(container) {
   const candidate = getFocusedBlockId(container) || activeEditorBlockId;
   if (candidate && findBlockInAllBlocks(edState.blocks, candidate)) return candidate;
@@ -2955,11 +3032,13 @@ function resolveActiveEditorBlockId(container) {
   return activeEditorBlockId;
 }
 
+/** `highlightToolbarType`: highlight・Toolbar・種類に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function highlightToolbarType(container, type) {
   const select = container.querySelector('#kn-toolbar-type-select');
   if (select) select.value = type;
 }
 
+/** `changeBlockType`: 変更・ブロック・種類に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function changeBlockType(blockId, type, container) {
   const loc = findBlockLocation(blockId);
   const block = loc?.blocks[loc.idx];
@@ -3003,6 +3082,7 @@ function changeBlockType(blockId, type, container) {
   focusBlock(blockId, container, true);
 }
 
+/** `insertBlockAfter`: 受け取った情報からブロック・Afterを作る。 */
 function insertBlockAfter(blockId, type = 'paragraph') {
   const loc = findBlockLocation(blockId);
   if (!loc) return null;
@@ -3012,10 +3092,12 @@ function insertBlockAfter(blockId, type = 'paragraph') {
   return newBlock;
 }
 
+/** `clipboardBlocksFromHtml`: クリップボード・ブロック・から・HTMLに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function clipboardBlocksFromHtml(html) {
   const template = document.createElement('template');
   template.innerHTML = String(html || '');
   const blocks = [];
+  /** `fontSizeInPixels`: font・Size・In・ピクセルに関する補助処理を行い、結果を呼び出し元へ返す。 */
   const fontSizeInPixels = value => {
     const raw = String(value || '').trim().toLowerCase();
     const numeric = Number.parseFloat(raw);
@@ -3024,6 +3106,7 @@ function clipboardBlocksFromHtml(html) {
     if (raw.endsWith('em') || raw.endsWith('rem')) return numeric * 16;
     return numeric;
   };
+  /** `inferredTextBlockType`: inferred・文字列・ブロック・種類に関する補助処理を行い、結果を呼び出し元へ返す。 */
   const inferredTextBlockType = element => {
     const tag = element?.tagName;
     if (tag === 'H1') return 'h1';
@@ -3048,12 +3131,14 @@ function clipboardBlocksFromHtml(html) {
     }
     return 'paragraph';
   };
+  /** `addTextBlock`: 受け取った情報から文字列・ブロックを作る。 */
   const addTextBlock = (element, type = 'paragraph') => {
     const text = String(element?.textContent || '').replace(/\u200B/g, '').trim();
     const inlineHtml = sanitizeBlockHtml(element?.innerHTML || '').replace(/\u200B/g, '').trim();
     if (!text && !inlineHtml) return;
     blocks.push({ id: generateId(), type: type === 'paragraph' ? inferredTextBlockType(element) : type, text, html: inlineHtml, color: null });
   };
+  /** `addTable`: 受け取った情報から表を作る。 */
   const addTable = table => {
     const rows = [...table.querySelectorAll('tr')].map(row => (
       [...row.querySelectorAll('th,td')].map(cell => String(cell.textContent || '').trim())
@@ -3072,6 +3157,7 @@ function clipboardBlocksFromHtml(html) {
       },
     });
   };
+  /** `visit`: visitに関する補助処理を行い、結果を呼び出し元へ返す。 */
   const visit = node => {
     if (node.nodeType === Node.TEXT_NODE) {
       if (node.textContent.trim()) addTextBlock({ textContent: node.textContent, innerHTML: esc(node.textContent) });
@@ -3110,6 +3196,7 @@ function clipboardBlocksFromHtml(html) {
   return blocks;
 }
 
+/** `hasStructuredClipboardHtml`: 構造化された・クリップボード・HTMLの条件を確認し、結果を真偽値で返す。 */
 function hasStructuredClipboardHtml(html) {
   const template = document.createElement('template');
   template.innerHTML = String(html || '');
@@ -3118,6 +3205,7 @@ function hasStructuredClipboardHtml(html) {
   ));
 }
 
+/** `clipboardImageFiles`: クリップボード・画像・ファイルに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function clipboardImageFiles(clipboard) {
   const files = [...(clipboard?.files || [])].filter(file => file.type.startsWith('image/'));
   for (const item of [...(clipboard?.items || [])]) {
@@ -3130,6 +3218,7 @@ function clipboardImageFiles(clipboard) {
   return files;
 }
 
+/** `clipboardImageSources`: クリップボード・画像・入力元に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function clipboardImageSources(html) {
   const template = document.createElement('template');
   template.innerHTML = String(html || '');
@@ -3138,6 +3227,7 @@ function clipboardImageSources(html) {
     .filter(Boolean);
 }
 
+/** `clipboardImageSourceToFile`: クリップボード・画像・入力元をファイルへ変換して返す。 */
 async function clipboardImageSourceToFile(source, index) {
   try {
     const response = await fetch(source);
@@ -3150,6 +3240,7 @@ async function clipboardImageSourceToFile(source, index) {
   }
 }
 
+/** `insertRichClipboardBlocks`: 受け取った情報からRich・クリップボード・ブロックを作る。 */
 function insertRichClipboardBlocks(blockId, editable, blocks, container) {
   const loc = findBlockLocation(blockId);
   if (!loc || !blocks.length) return false;
@@ -3234,6 +3325,7 @@ function handleEditorPaste(event, container) {
   insertRichClipboardBlocks(editable.dataset.blockId, editable, blocks, container);
 }
 
+/** `insertMediaBlock`: 受け取った情報から画像データ・ブロックを作る。 */
 function insertMediaBlock(blockId, media) {
   const block = {
     id: generateId(),
@@ -3251,6 +3343,7 @@ function insertMediaBlock(blockId, media) {
   return block;
 }
 
+/** `insertMemoImageFile`: 受け取った情報からメモ・画像・ファイルを作る。 */
 async function insertMemoImageFile(file, container, button = null) {
   if (!(file instanceof File) || !file.type.startsWith('image/')) return false;
   const previous = button?.textContent;
@@ -3288,12 +3381,14 @@ async function insertMemoImageFile(file, container, button = null) {
   }
 }
 
+/** `wireKnowledgeImageInputs`: Knowledge・画像・Inputsの画面操作と処理をイベントで結び付ける。 */
 function wireKnowledgeImageInputs(container) {
   const photoInput = container.querySelector('#kn-photo-input');
   const cameraInput = container.querySelector('#kn-camera-input');
   container.querySelector('#kn-photo-btn')?.addEventListener('click', () => photoInput?.click());
   container.querySelector('#kn-camera-btn')?.addEventListener('click', () => cameraInput?.click());
 
+  /** `handleFile`: ファイルに関する操作またはイベントを受けて処理する。 */
   const handleFile = async event => {
     const file = event.target.files?.[0];
     event.target.value = '';
@@ -3307,6 +3402,7 @@ function wireKnowledgeImageInputs(container) {
   cameraInput?.addEventListener('change', handleFile);
 }
 
+/** `syncFocusedEditableBlock`: Focused・Editable・ブロックを現在状態へ反映し、必要な表示を更新する。 */
 function syncFocusedEditableBlock(container, blockId) {
   const el = container.querySelector(`.kn-block-focusable[data-block-id="${blockId}"]`);
   const block = findBlockInAllBlocks(edState.blocks, blockId);
@@ -3315,6 +3411,7 @@ function syncFocusedEditableBlock(container, blockId) {
   block.html = sanitizeBlockHtml(el.innerHTML);
 }
 
+/** `findBlockLocation`: 条件に合うブロック・Locationを探して返す。 */
 function findBlockLocation(blockId, blocks = edState.blocks, parent = null) {
   const idx = blocks.findIndex(block => block.id === blockId);
   if (idx >= 0) return { blocks, idx, parent };
@@ -3327,6 +3424,7 @@ function findBlockLocation(blockId, blocks = edState.blocks, parent = null) {
   return null;
 }
 
+/** `collectBlockIds`: 関連するブロック・IDを集めて一覧として返す。 */
 function collectBlockIds(block, ids = new Set()) {
   if (!block) return ids;
   ids.add(block.id);
@@ -3334,6 +3432,7 @@ function collectBlockIds(block, ids = new Set()) {
   return ids;
 }
 
+/** `collectToggleTargets`: 関連するToggle・Targetsを集めて一覧として返す。 */
 function collectToggleTargets(blocks, excludedIds, currentParentId, depth = 0, result = []) {
   for (const block of blocks || []) {
     if (block.type === 'toggle' && !excludedIds.has(block.id) && block.id !== currentParentId) {
@@ -3350,6 +3449,7 @@ function collectToggleTargets(blocks, excludedIds, currentParentId, depth = 0, r
   return result;
 }
 
+/** `showToggleTargetPicker`: Toggle・Target・選択画面の画面・詳細・ダイアログを表示する。 */
 function showToggleTargetPicker(container, blockId) {
   syncFocusedEditableBlock(container, blockId);
   const picker = container.querySelector('#kn-toggle-target-picker');
@@ -3397,6 +3497,7 @@ function showToggleTargetPicker(container, blockId) {
   });
 }
 
+/** `moveBlockIntoToggle`: 移動・ブロック・内側・Toggleに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function moveBlockIntoToggle(blockId, targetToggleId) {
   const loc = findBlockLocation(blockId);
   const movingBlock = loc?.blocks[loc.idx];
@@ -3417,6 +3518,7 @@ function moveBlockIntoToggle(blockId, targetToggleId) {
   return true;
 }
 
+/** `moveBlockByDrop`: 移動・ブロック・ドロップに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function moveBlockByDrop(blockId, targetId, placement) {
   if (!blockId || !targetId || blockId === targetId) return false;
   if (placement === 'inside') return moveBlockIntoToggle(blockId, targetId);
@@ -3437,6 +3539,7 @@ function moveBlockByDrop(blockId, targetId, placement) {
   return true;
 }
 
+/** `moveBlock`: 移動・ブロックに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function moveBlock(blockId, action) {
   const loc = findBlockLocation(blockId);
   if (!loc) return false;
@@ -3478,6 +3581,7 @@ function moveBlock(blockId, action) {
   return false;
 }
 
+/** `rerenderBlocks`: rerender・ブロックに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function rerenderBlocks(container) {
   const wrap = container.querySelector('#kn-blocks-wrap');
   if (!wrap) return;
@@ -3494,6 +3598,7 @@ function rerenderBlocks(container) {
   if (activeBlock) highlightToolbarType(container, activeBlock.type);
 }
 
+/** `removeBlockById`: ブロック・IDを安全に終了または削除する。 */
 function removeBlockById(blockId, blocks = edState.blocks) {
   const idx = blocks.findIndex(block => block.id === blockId);
   if (idx >= 0) {
@@ -3506,6 +3611,7 @@ function removeBlockById(blockId, blocks = edState.blocks) {
   return false;
 }
 
+/** `removeBlockElement`: ブロック・Elementを安全に終了または削除する。 */
 function removeBlockElement(blockId, container) {
   const blockEl = container.querySelector(`.kn-block[data-block-id="${blockId}"]`);
   if (!blockEl) return;
@@ -3513,6 +3619,7 @@ function removeBlockElement(blockId, container) {
   setTimeout(() => blockEl.remove(), 120);
 }
 
+/** `focusBlock`: フォーカス・ブロックに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function focusBlock(id, container, atEnd = false) {
   requestAnimationFrame(() => {
     const el = container.querySelector(`.kn-block-focusable[data-block-id="${id}"]`);
@@ -3534,6 +3641,7 @@ function focusBlock(id, container, atEnd = false) {
   });
 }
 
+/** `focusLastBlock`: フォーカス・最後の・ブロックに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function focusLastBlock(container) {
   const last = edState.blocks[edState.blocks.length - 1];
   if (last) focusBlock(last.id, container);
@@ -3566,6 +3674,7 @@ async function handleAITagSuggest(container) {
   }
 }
 
+/** `showTagSuggestions`: タグ・候補の画面・詳細・ダイアログを表示する。 */
 function showTagSuggestions(suggested, container) {
   const existing = new Set(edState.tags);
   const newOnes  = suggested.filter(t => !existing.has(t));
@@ -3596,12 +3705,14 @@ function showTagSuggestions(suggested, container) {
   });
 }
 
+/** `focusEditableWithoutScroll`: フォーカス・Editable・せずに・Scrollに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function focusEditableWithoutScroll(el) {
   if (!el) return;
   try { el.focus({ preventScroll: true }); }
   catch { el.focus(); }
 }
 
+/** `getKnowledgeTagRecency`: Knowledge・タグ・Recencyを取得して呼び出し元へ返す。 */
 function getKnowledgeTagRecency() {
   try {
     const tags = JSON.parse(localStorage.getItem(KNOWLEDGE_TAG_RECENCY_KEY) || '[]');
@@ -3611,6 +3722,7 @@ function getKnowledgeTagRecency() {
   }
 }
 
+/** `touchKnowledgeTag`: Knowledge・タグを保存先または一時状態へ反映する。 */
 function touchKnowledgeTag(tag) {
   const trimmed = String(tag || '').trim();
   if (!trimmed) return;
@@ -3618,6 +3730,7 @@ function touchKnowledgeTag(tag) {
   try { localStorage.setItem(KNOWLEDGE_TAG_RECENCY_KEY, JSON.stringify(next)); } catch {}
 }
 
+/** `collectExistingKnowledgeTags`: 関連する既存の・Knowledge・タグを集めて一覧として返す。 */
 function collectExistingKnowledgeTags() {
   const tags = new Set(getTags());
   const lastUsed = new Map();
@@ -3640,6 +3753,7 @@ function collectExistingKnowledgeTags() {
   });
 }
 
+/** `addKnowledgeTagToEdit`: 受け取った情報からKnowledge・タグ・To・Editを作る。 */
 function addKnowledgeTagToEdit(tag, container) {
   const trimmed = String(tag || '').trim();
   if (!trimmed || edState.tags.includes(trimmed)) return false;
@@ -3651,6 +3765,7 @@ function addKnowledgeTagToEdit(tag, container) {
   return true;
 }
 
+/** `syncKnowledgeTagSuggestions`: Knowledge・タグ・候補を現在状態へ反映し、必要な表示を更新する。 */
 function syncKnowledgeTagSuggestions(container) {
   const row = container.querySelector('#kn-tag-suggestions');
   const input = container.querySelector('#kn-tag-input');
@@ -3733,6 +3848,7 @@ function wireTagInput(container) {
   if (!input) return;
   const suggestions = container.querySelector('#kn-tag-suggestions');
 
+  /** `addCurrentInputTag`: 受け取った情報から現在の・入力・タグを作る。 */
   const addCurrentInputTag = () => {
     const tag = input.value.trim().replace(/,$/, '');
     if (tag) addKnowledgeTagToEdit(tag, container);
@@ -3744,6 +3860,7 @@ function wireTagInput(container) {
   input.addEventListener('input', () => syncKnowledgeTagSuggestions(container));
   input.addEventListener('blur', () => setTimeout(() => syncKnowledgeTagSuggestions(container), 0));
 
+  /** `chooseSuggestion`: 条件に合うSuggestionを探して返す。 */
   const chooseSuggestion = event => {
     const btn = event.target.closest('[data-existing-tag]');
     if (!btn || !suggestions?.contains(btn)) return;
@@ -3787,6 +3904,7 @@ function wireTagInput(container) {
   syncKnowledgeTagSuggestions(container);
 }
 
+/** `renderTagDisplay`: タグ・Displayの画面表示またはHTMLを組み立てる。 */
 function renderTagDisplay(container) {
   const display = container.querySelector('#kn-tag-display');
   if (!display) return;
@@ -3833,6 +3951,7 @@ function syncEditorDomToState(container) {
   });
 }
 
+/** `settleEditorInput`: settle・エディタ・入力に関する補助処理を行い、結果を呼び出し元へ返す。 */
 async function settleEditorInput(container) {
   const active = document.activeElement;
   if (active && container.contains(active) && active.matches?.('input, textarea, [contenteditable="true"]')) {
@@ -3860,6 +3979,7 @@ async function saveMemo(container) {
   }
 }
 
+/** `persistMemo`: メモを保存先または一時状態へ反映する。 */
 async function persistMemo(container) {
   // Blur and wait one frame so mobile IME composition reaches the DOM before
   // the final snapshot is written to local storage and queued for sync.
@@ -3891,6 +4011,7 @@ async function persistMemo(container) {
     starred: edState.starred,
     summary: blocksToText(edState.blocks, 200),
   };
+  /** `editableSignature`: editable・Signatureに関する補助処理を行い、結果を呼び出し元へ返す。 */
   const editableSignature = memo => JSON.stringify({
     title: memo?.title || '',
     blocks: memo?.blocks || [],
@@ -3962,6 +4083,7 @@ async function persistMemo(container) {
   }
 }
 
+/** `confirmDelete`: confirm・削除に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function confirmDelete(memoId, container) {
   const overlay = document.getElementById('modal-overlay');
   if (!overlay) return;
@@ -3982,6 +4104,7 @@ function confirmDelete(memoId, container) {
     </div>
   `;
   overlay.appendChild(modal);
+  /** `close`: 現在開いているモーダルまたはシートを閉じる。 */
   const close = () => { overlay.classList.add('hidden'); overlay.innerHTML = ''; };
   modal.querySelector('.modal-close').onclick = close;
   modal.querySelector('#del-cancel').onclick = close;
@@ -4016,10 +4139,12 @@ function defaultBlock(type = 'paragraph') {
   return block;
 }
 
+/** `createDefaultTable`: 受け取った情報からDefault・表を作る。 */
 function createDefaultTable() {
   return { headers: ['項目', '内容'], rows: [['', '']] };
 }
 
+/** `changeTableShape`: 変更・表・形状に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function changeTableShape(blockId, action, container) {
   const block = findBlockInAllBlocks(edState.blocks, blockId);
   if (!block || block.type !== 'table') return;
@@ -4041,23 +4166,27 @@ function changeTableShape(blockId, action, container) {
   container.querySelector(`[data-block-id="${blockId}"] .kn-table-input`)?.focus();
 }
 
+/** `cleanupPendingImageUploads`: cleanup・保留中・画像・アップロードに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function cleanupPendingImageUploads() {
   const paths = [...pendingImageUploads];
   pendingImageUploads.clear();
   if (paths.length) Promise.allSettled(paths.map(deletePlannerImage));
 }
 
+/** `getBlockEditorHtml`: ブロック・エディタ・HTMLを取得して呼び出し元へ返す。 */
 function getBlockEditorHtml(block) {
   if (block.html) return sanitizeBlockHtml(block.html);
   return esc(block.text || '');
 }
 
+/** `sanitizeBlockHtml`: ブロック・HTMLを後続処理で扱える安全な形にそろえる。 */
 function sanitizeBlockHtml(html) {
   const template = document.createElement('template');
   template.innerHTML = String(html || '');
   const allowedTags = new Set(['BR', 'DIV', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'SPAN', 'MARK', 'CODE', 'A', 'FONT']);
   const allowedStyles = new Set(['color', 'background-color']);
 
+  /** `cleanNode`: Nodeを後続処理で扱える安全な形にそろえる。 */
   const cleanNode = (node) => {
     [...node.childNodes].forEach(child => {
       if (child.nodeType === Node.TEXT_NODE) return;
@@ -4110,14 +4239,17 @@ function sanitizeBlockHtml(html) {
   return template.innerHTML;
 }
 
+/** `deepClone`: 編集前の値へ影響しないよう、データを再帰的に複製する。 */
 function deepClone(obj) {
   return JSON.parse(JSON.stringify(obj));
 }
 
+/** `findBlockById`: 条件に合うブロック・IDを探して返す。 */
 function findBlockById(blocks, id) {
   return blocks.find(b => b.id === id) || null;
 }
 
+/** `findBlockInAllBlocks`: 条件に合うブロック・In・すべての・ブロックを探して返す。 */
 function findBlockInAllBlocks(blocks, id) {
   for (const b of blocks) {
     if (b.id === id) return b;
@@ -4129,6 +4261,7 @@ function findBlockInAllBlocks(blocks, id) {
   return null;
 }
 
+/** `getRelatedMemos`: Related・メモを取得して呼び出し元へ返す。 */
 function getRelatedMemos(currentId, tags) {
   if (!tags?.length) return [];
   return getKnowledgeMemos()

@@ -27,8 +27,11 @@ import {
 } from '../media.js';
 import { flushPendingSync } from '../sync.js';
 
+/** `nav`: 指定したハッシュ画面へ移動し、必要なら遷移元の状態を引き継ぐ。 */
 const nav   = (view) => window.AppNav?.navigate(view);
+/** `toast`: 短い通知メッセージを画面へ表示する。 */
 const toast = (msg, type) => window.AppNav?.showToast(msg, type);
+/** `undoToast`: 取り消し操作付きの通知を表示し、選ばれたら復元処理を実行する。 */
 const undoToast = (msg, cb) => window.AppNav?.showUndoToast(msg, cb);
 let nlBusy = false;
 
@@ -199,6 +202,7 @@ export function initHome(container) {
   container.querySelector('#goto-review')?.addEventListener('click', () => nav('review'));
 
   container.querySelectorAll('[data-edit-schedule-id]').forEach(card => {
+    /** `openEditor`: エディタの画面・詳細・ダイアログを表示する。 */
     const openEditor = () => {
       const item = todayMySchedule.find(entry => entry.id === card.dataset.editScheduleId);
       if (!item) return;
@@ -279,6 +283,7 @@ function wireHomeCover(container, currentCover) {
     let startY = 0;
     let suppressNextClick = false;
     let suppressResetTimer = null;
+    /** `cancelPress`: Pressを安全に終了または削除する。 */
     const cancelPress = () => {
       clearTimeout(pressTimer);
       pressTimer = null;
@@ -316,6 +321,7 @@ function wireHomeCover(container, currentCover) {
     });
   }
 
+  /** `handleFile`: ファイルに関する操作またはイベントを受けて処理する。 */
   const handleFile = async event => {
     const file = event.target.files?.[0];
     event.target.value = '';
@@ -393,6 +399,7 @@ function openHomeCoverEditor(container, currentCover) {
   const preview = body.querySelector('.home-cover-editor-preview img');
   const xInput = body.querySelector('[data-cover-x]');
   const yInput = body.querySelector('[data-cover-y]');
+  /** `updatePreview`: プレビューを現在状態へ反映し、必要な表示を更新する。 */
   const updatePreview = () => {
     positionX = Number(xInput.value);
     positionY = Number(yInput.value);
@@ -446,11 +453,13 @@ function openHomeCoverEditor(container, currentCover) {
   });
 }
 
+/** `clampCoverPosition`: Cover・位置を後続処理で扱える安全な形にそろえる。 */
 function clampCoverPosition(value) {
   const number = Number(value);
   return Number.isFinite(number) ? Math.min(100, Math.max(0, number)) : 50;
 }
 
+/** `renderGreetingIcon`: あいさつ・Iconの画面表示またはHTMLを組み立てる。 */
 function renderGreetingIcon(period) {
   if (period === 'morning') {
     return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -559,10 +568,12 @@ function renderScheduleItem(event) {
   `;
 }
 
+/** `compareHomeScheduleItems`: Home・スケジュール・Itemsを比較し、表示または処理順を決める。 */
 function compareHomeScheduleItems(a, b) {
   return homeScheduleStartMin(a) - homeScheduleStartMin(b);
 }
 
+/** `homeScheduleStartMin`: home・スケジュール・開始・分に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function homeScheduleStartMin(item) {
   if (item._homeType === 'mySchedule') return timeToMinutes(item.startTime) ?? 1440;
   if (item._isAllDay) return 0;
@@ -572,6 +583,7 @@ function homeScheduleStartMin(item) {
   return d.getHours() * 60 + d.getMinutes();
 }
 
+/** `timeToMinutes`: 時刻をMinutesへ変換して返す。 */
 function timeToMinutes(t) {
   if (!/^\d{2}:\d{2}$/.test(t || '')) return null;
   const [h, m] = t.split(':').map(Number);
@@ -714,6 +726,7 @@ function resolveAiDeletion(parsed) {
   return { ambiguous: false, item: items[0], remove };
 }
 
+/** `normalizeSearchText`: 検索・文字列を後続処理で扱える安全な形にそろえる。 */
 function normalizeSearchText(value) {
   return String(value || '')
     .normalize('NFKC')
@@ -734,6 +747,7 @@ function buildMemoBlocksFromInput(rawText, memo, isDatabase, fields, rows) {
   return blocks;
 }
 
+/** `reinit`: `reinit`を現在状態へ反映し、必要な表示を更新する。 */
 function reinit(container) {
   container.innerHTML = '';
   initHome(container);

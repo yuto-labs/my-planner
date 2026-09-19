@@ -568,7 +568,7 @@ export function addToPendingAIQueue(item) {
   save(KEY.AI_QUEUE, queue);
 }
 
-/** `removeFromPendingAIQueue`: From・保留中・AIQueueを安全に終了または削除する。 */
+/** `removeFromPendingAIQueue`: から・保留中・AIQueueを安全に終了または削除する。 */
 export function removeFromPendingAIQueue(id, type) {
   const queue = getPendingAIQueue().filter(q => !(q.id === id && q.type === type));
   save(KEY.AI_QUEUE, queue);
@@ -590,7 +590,7 @@ export function getBatchSettings() {
   });
 }
 
-/** `saveBatchSettings`: 一括処理・Settingsを保存先または一時状態へ反映する。 */
+/** `saveBatchSettings`: 一括処理・設定を保存先または一時状態へ反映する。 */
 export function saveBatchSettings(patch) {
   const current = getBatchSettings();
   save(KEY.BATCH_CFG, { ...current, ...patch });
@@ -788,7 +788,7 @@ export function scheduleFirstReview(memoId) {
   saveReviewSchedule(schedule);
 }
 
-/** `isMemoReviewEnabled`: 復習・Enabledの条件を確認し、結果を真偽値で返す。 */
+/** `isMemoReviewEnabled`: 復習・有効状態の条件を確認し、結果を真偽値で返す。 */
 export function isMemoReviewEnabled(memoId) {
   return getReviewSchedule()[memoId]?.stage !== REVIEW_DISABLED_STAGE;
 }
@@ -895,7 +895,7 @@ const LEARNING_ENTRY_BLOCK_TYPE = 'learning-entry-data';
 const APP_MEDIA_PREFS_TAG = '__app_media_preferences__';
 const APP_MEDIA_PREFS_BLOCK_TYPE = 'app-media-preferences';
 
-/** `getAllKnowledgeRecords`: All・Knowledge・Recordsを取得して呼び出し元へ返す。 */
+/** `getAllKnowledgeRecords`: すべての・Knowledge・Recordsを取得して呼び出し元へ返す。 */
 function getAllKnowledgeRecords() {
   const records = load(KNOWLEDGE_KEY, []);
   return Array.isArray(records) ? records : [];
@@ -948,7 +948,7 @@ function isTranslationSetRecord(record) {
     && record.blocks.some(block => block?.type === TRANSLATION_SET_BLOCK_TYPE);
 }
 
-/** `isEnglishQuestionRecord`: Question・保存レコードの条件を確認し、結果を真偽値で返す。 */
+/** `isEnglishQuestionRecord`: 質問・保存レコードの条件を確認し、結果を真偽値で返す。 */
 function isEnglishQuestionRecord(record) {
   return isExpressionAtlasRecord(record)
     && record.blocks.some(block => block?.type === ENGLISH_QUESTION_BLOCK_TYPE);
@@ -967,7 +967,7 @@ function expressionRecordToEntry(record) {
   });
 }
 
-/** `expressionEntryKey`: 表現・項目・キーに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** `expressionEntryKey`: 表現項目を重複判定するための安定したキーを返す。 */
 function expressionEntryKey(entry) {
   const stable = withStableClassification(entry);
   return [
@@ -978,7 +978,7 @@ function expressionEntryKey(entry) {
   ].join('|');
 }
 
-/** `expressionHeadwordKey`: 表現・見出し語・キーに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** `expressionHeadwordKey`: 英語見出し語を品詞に依存しない比較キーへ正規化する。 */
 function expressionHeadwordKey(entry) {
   return [
     String(entry?.language || 'English').trim().toLocaleLowerCase(),
@@ -986,13 +986,13 @@ function expressionHeadwordKey(entry) {
   ].join('|');
 }
 
-/** `expressionSenses`: 表現・意味に関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** `expressionSenses`: 新旧どちらの保存形式からも、表現の意味一覧を取り出す。 */
 function expressionSenses(entry = {}) {
   const stored = Array.isArray(entry.senses) ? entry.senses.filter(Boolean) : [];
   return stored.length ? stored.map(atlasSenseFromEntry) : [atlasSenseFromEntry(entry)];
 }
 
-/** `mergeUniqueArray`: 複数のUnique・Arrayを既存情報を失わないよう統合する。 */
+/** `mergeUniqueArray`: 複数のUnique・配列を既存情報を失わないよう統合する。 */
 function mergeUniqueArray(existing, incoming) {
   return mergeAtlasList(existing, incoming);
 }
@@ -1090,7 +1090,7 @@ function isRepeatedExpressionQuery(existing, incoming) {
   return [...incomingQueries].some(query => existingQueries.has(query));
 }
 
-/** `atlasRecordIsUnchanged`: 表現帳・保存レコード・Is・Unchangedに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** `atlasRecordIsUnchanged`: 表現帳レコードの学習内容が更新前後で同じか判定する。 */
 function atlasRecordIsUnchanged(existing, blockType, title, summary, data) {
   if (!existing) return false;
   const previousData = existing.blocks?.find(block => block?.type === blockType)?.data;
@@ -1220,7 +1220,7 @@ function translationRecordToSet(record) {
   });
 }
 
-/** `translationSetKey`: 英訳・Set・キーに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** `translationSetKey`: 英訳セットを元の日本語文に基づく重複判定キーへ変換する。 */
 function translationSetKey(set) {
   return [
     String(set?.language || 'English').trim().toLocaleLowerCase(),
@@ -1282,7 +1282,7 @@ function translationSetToRecord(set, existing = null) {
   };
 }
 
-/** `englishQuestionRecordToEntry`: 英語・Question・保存レコードを項目へ変換して返す。 */
+/** `englishQuestionRecordToEntry`: 英語・質問・保存レコードを項目へ変換して返す。 */
 function englishQuestionRecordToEntry(record) {
   const data = record?.blocks?.find(block => block?.type === ENGLISH_QUESTION_BLOCK_TYPE)?.data;
   if (!data || typeof data !== 'object') return null;
@@ -1294,7 +1294,7 @@ function englishQuestionRecordToEntry(record) {
   };
 }
 
-/** `englishQuestionToRecord`: 英語・Questionを保存レコードへ変換して返す。 */
+/** `englishQuestionToRecord`: 英語・質問を保存レコードへ変換して返す。 */
 function englishQuestionToRecord(question, existing = null) {
   const now = new Date().toISOString();
   const id = question.id || existing?.id || generateId();
@@ -1716,7 +1716,7 @@ export function getTranslationSets() {
     .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
 }
 
-/** `getEnglishQuestions`: 英語・Questionsを取得して呼び出し元へ返す。 */
+/** `getEnglishQuestions`: 英語・質問を取得して呼び出し元へ返す。 */
 export function getEnglishQuestions() {
   return getAllKnowledgeRecords()
     .filter(isEnglishQuestionRecord)
@@ -1800,7 +1800,7 @@ export function addEnglishQuestion(question) {
   return englishQuestionRecordToEntry(record);
 }
 
-/** `updateEnglishQuestion`: 英語・Questionを現在状態へ反映し、必要な表示を更新する。 */
+/** `updateEnglishQuestion`: 英語・質問を現在状態へ反映し、必要な表示を更新する。 */
 export function updateEnglishQuestion(id, updates) {
   const records = getAllKnowledgeRecords();
   const existing = records.find(record => record.id === id && isEnglishQuestionRecord(record));
@@ -1819,7 +1819,7 @@ export function updateEnglishQuestion(id, updates) {
   });
 }
 
-/** `deleteEnglishQuestion`: 英語・Questionを安全に終了または削除する。 */
+/** `deleteEnglishQuestion`: 英語・質問を安全に終了または削除する。 */
 export function deleteEnglishQuestion(id) {
   const records = getAllKnowledgeRecords();
   const target = records.find(record => record.id === id && isEnglishQuestionRecord(record));
@@ -2513,7 +2513,7 @@ export function pushUndo(action) {
   if (_undo.length > UNDO_MAX) _undo.shift();
 }
 
-/** `popUndo`: pop・取り消し履歴に関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** `popUndo`: 最後に登録した取り消し操作を履歴から取り出す。 */
 export function popUndo() {
   return _undo.length ? _undo.pop() : null;
 }

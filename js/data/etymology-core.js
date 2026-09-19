@@ -561,7 +561,7 @@ export const ETYMOLOGY_CORE_STATS = Object.freeze({
   total: ETYMOLOGY_CORE.length,
 });
 
-/** `getEtymologyCoreEntry`: Etymology・Core・項目を取得して呼び出し元へ返す。 */
+/** `getEtymologyCoreEntry`: 語源・Core・項目を取得して呼び出し元へ返す。 */
 export function getEtymologyCoreEntry(id) {
   return ETYMOLOGY_CORE.find(entry => entry.id === id) || null;
 }

@@ -12,14 +12,17 @@ import {
 import { generateAnalyticsSummary } from '../ai.js';
 import { esc, today } from '../utils.js';
 
+/** `toast`: 短い通知メッセージを画面へ表示する。 */
 const toast = (msg, type) => window.AppNav?.showToast(msg, type);
 const WEIGHT = { large: 3, medium: 2, small: 1 };
+/** `wt`: wtに関する補助処理を行い、結果を呼び出し元へ返す。 */
 const wt = t => WEIGHT[t.weight] || 1;
 
 /* ---- Date helpers ---- */
 function ds(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
+/** `weekBounds`: 指定日を含む週の開始日と終了日を返す。 */
 function weekBounds(offsetWeeks = 0) {
   const now = new Date();
   const dow = now.getDay();
@@ -31,6 +34,7 @@ function weekBounds(offsetWeeks = 0) {
   sun.setHours(23, 59, 59, 999);
   return { s: ds(mon), e: ds(sun) };
 }
+/** `monthBounds`: 指定日を含む月の開始日と終了日を返す。 */
 function monthBounds(offsetMonths = 0) {
   const now = new Date();
   const d1 = new Date(now.getFullYear(), now.getMonth() + offsetMonths, 1);
@@ -38,6 +42,7 @@ function monthBounds(offsetMonths = 0) {
   const yyyymm = `${d1.getFullYear()}-${String(d1.getMonth()+1).padStart(2,'0')}`;
   return { s: ds(d1), e: ds(d2), label: yyyymm.replace('-', '/'), yyyymm };
 }
+/** `allTasks`: 通常タスクとアーカイブ済みタスクをまとめて分析用に返す。 */
 function allTasks() { return [...getTasks(), ...getArchivedTasks()]; }
 
 /* ---- Task calculations ---- */
@@ -55,6 +60,7 @@ function calcWeekScore() {
   };
 }
 
+/** `calcMonthlyTrend`: 月次・Trendに必要な数値を計算して返す。 */
 function calcMonthlyTrend() {
   const tasks = allTasks();
   return Array.from({ length: 6 }, (_, i) => {
@@ -67,6 +73,7 @@ function calcMonthlyTrend() {
   });
 }
 
+/** `calcWeightCompletion`: Weight・完了予測に必要な数値を計算して返す。 */
 function calcWeightCompletion() {
   const mb = monthBounds();
   const labels = { large: '大', medium: '中', small: '小' };
@@ -84,6 +91,7 @@ function calcWeightCompletion() {
   });
 }
 
+/** `calcPlanAccuracy`: 計画・Accuracyに必要な数値を計算して返す。 */
 function calcPlanAccuracy(mode = 'week') {
   const tasks = allTasks().filter(t => t.dueDate);
   let filtered;
@@ -112,6 +120,7 @@ function calcFieldBalance() {
     .map(([tag, cnt]) => ({ tag, cnt, pct: Math.round(cnt / total * 100) }));
 }
 
+/** `calcReviewSpeed`: 復習・Speedに必要な数値を計算して返す。 */
 function calcReviewSpeed() {
   const log = getReviewLog();
   const weeks = Array.from({ length: 8 }, (_, i) => {
@@ -125,6 +134,7 @@ function calcReviewSpeed() {
   return { weeks, thisWeek, lastWeek, monthAvg };
 }
 
+/** `calcReviewByField`: 復習・項目に必要な数値を計算して返す。 */
 function calcReviewByField() {
   const log = getReviewLog();
   const mb = monthBounds();
@@ -138,6 +148,7 @@ function calcReviewByField() {
     .map(([tag, cnt]) => ({ tag, cnt, pct: Math.round(cnt / total * 100) }));
 }
 
+/** `calcReviewRate`: 復習・Rateに必要な数値を計算して返す。 */
 function calcReviewRate() {
   const schedule = getReviewSchedule();
   const entries  = Object.values(schedule).filter(e => e.stage < MASTERY_STAGE);
@@ -148,6 +159,7 @@ function calcReviewRate() {
   return { rate: Math.round(done / entries.length * 100), done, total: entries.length };
 }
 
+/** `calcLearningStages`: 学習・Stagesに必要な数値を計算して返す。 */
 function calcLearningStages() {
   const memos = getKnowledgeMemos();
   const schedule = getReviewSchedule();
@@ -165,6 +177,7 @@ function calcLearningStages() {
 const noData = (msg = 'まだデータが足りません') =>
   `<div class="analytics-info-box">${esc(msg)}</div>`;
 
+/** `renderLineChart`: 行・Chartの画面表示またはHTMLを組み立てる。 */
 function renderLineChart(data) {
   const active = data.filter(d => d.plannedPts > 0);
   if (active.length < 2) {
@@ -201,6 +214,7 @@ function renderLineChart(data) {
     </svg>`;
 }
 
+/** `renderAccuracyContent`: Accuracy・内容の画面表示またはHTMLを組み立てる。 */
 function renderAccuracyContent(acc) {
   if (acc.rate === null) return noData('この期間に期限付き完了タスクがありません');
   const color = acc.rate >= 80 ? 'var(--success)' : acc.rate >= 50 ? 'var(--warning)' : 'var(--danger)';
@@ -458,6 +472,7 @@ async function maybeGenerateSummary(container, currentMonth) {
   }
 }
 
+/** `appendSummarySection`: 受け取った情報から要約・セクションを作る。 */
 function appendSummarySection(container, summary, monthStr) {
   const sec = document.createElement('div');
   sec.className = 'analytics-section';

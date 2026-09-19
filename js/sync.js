@@ -445,7 +445,7 @@ async function _upsertRowsCompat(client, dbTable, rows, conflict) {
   };
 }
 
-/** `_missingColumnFromError`: 不足・列・From・エラーに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** `_missingColumnFromError`: Supabaseエラー文から、不足している列名を取り出す。 */
 function _missingColumnFromError(error) {
   const text = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`;
   const quoted = text.match(/'([^']+)'\s+column/i);
@@ -847,13 +847,13 @@ async function _pullMemos(client, userId, forceReplace = false) {
   return _writeCollectionAfterSync('mp_knowledge', local, next, userId, 'knowledge_memos');
 }
 
-/** `learningData`: 学習・データに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** `learningData`: 同期対象レコードから学習データ本体を取り出す。 */
 function learningData(record) {
   if (!Array.isArray(record?.tags) || !record.tags.includes('__learning_library__')) return null;
   return record.blocks?.find(block => block?.type === 'learning-entry-data')?.data || null;
 }
 
-/** `fieldVersion`: 項目・更新版に関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** `fieldVersion`: 同期対象の特定項目について、最後の変更時刻を数値で返す。 */
 function fieldVersion(data, field) {
   return timestampOrZero(data?.fieldUpdatedAt?.[field]);
 }
@@ -927,7 +927,7 @@ export function mergeLearningRecordsForSync(local, remote) {
   return { items, pushCandidates };
 }
 
-/** `atlasRecordData`: 表現帳・保存レコード・データに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** `atlasRecordData`: 表現帳の同期レコードから、比較・統合するデータ本体を取り出す。 */
 function atlasRecordData(record) {
   if (!Array.isArray(record?.tags) || !record.tags.includes('__expression_atlas__')) return null;
   const block = record.blocks?.find(item => [
@@ -1430,7 +1430,7 @@ function _isStillPresent(entry) {
   return _hasId(lsKey, entry.id);
 }
 
-/** `_reviewEntryTs`: 復習・項目・Tsに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** `_reviewEntryTs`: 復習項目の更新時刻を、比較できる数値で返す。 */
 function _reviewEntryTs(entry) {
   const lastReview = new Date(entry?.lastReview || 0).getTime();
   if (Number.isFinite(lastReview) && lastReview > 0) return lastReview;
@@ -1443,7 +1443,7 @@ export function reviewEntryVersion(entry) {
   return _reviewEntryVersion(entry);
 }
 
-/** `_reviewEntryVersion`: 復習・項目・更新版に関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** `_reviewEntryVersion`: 復習項目の明示バージョンまたは更新時刻を返す。 */
 function _reviewEntryVersion(entry) {
   const rawStage = Number(entry?.stage);
   const stage = Math.max(-1, Math.min(9, Number.isFinite(rawStage) ? rawStage : 0));
@@ -1475,7 +1475,7 @@ function _syncVersion(item) {
   return recordVersion(item);
 }
 
-/** `_schedulePushRetry`: スケジュール・Push・再試行に関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** `_schedulePushRetry`: 同期送信に失敗したデータを、待機時間を置いて再送するタイマーへ登録する。 */
 function _schedulePushRetry(tableKey) {
   clearTimeout(_timers[tableKey]);
   _timers[tableKey] = setTimeout(() => {
@@ -1779,7 +1779,7 @@ function _recordSyncError(table, error, type = 'push') {
   localStorage.setItem(SYNC_STATUS_KEY, JSON.stringify(next));
 }
 
-/** `_ls`: lsに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** `_ls`: 同期処理が使う端末保存領域を安全に読み書きする窓口を返す。 */
 function _ls(key, fb) {
   try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fb; }
   catch { return fb; }

@@ -17,10 +17,15 @@ import {
 } from '../shared-calendar.js';
 import { esc, formatDate, formatTime, getEventsForDate, today, toDateStr } from '../utils.js';
 
+/** `toast`: 短い通知メッセージを画面へ表示する。 */
 const toast = (msg, type) => window.AppNav?.showToast(msg, type);
+/** `openModal`: Modalの画面・詳細・ダイアログを表示する。 */
 const openModal = (opts) => window.AppNav?.openModal(opts);
+/** `nav`: 指定したハッシュ画面へ移動し、必要なら遷移元の状態を引き継ぐ。 */
 const nav = (view) => window.AppNav?.navigate(view);
 
+// 共有カレンダー画面だけで使う一時状態。groups/eventsは通信結果の写しであり、
+// ここを書き換えただけでは保存されない。cursorとgroupIdが現在の表示条件になる。
 let state = {
   container: null,
   cursor: new Date(),
@@ -49,6 +54,7 @@ export function initSharedCalendar(container) {
   };
 }
 
+/** `handleInviteFromUrl`: 招待・から・URLに関する操作またはイベントを受けて処理する。 */
 async function handleInviteFromUrl() {
   const url = new URL(window.location.href);
   const token = url.searchParams.get('shareInvite');
@@ -64,6 +70,7 @@ async function handleInviteFromUrl() {
   toast('共有グループに参加しました', 'success');
 }
 
+/** `refresh`: `refresh`を現在状態へ反映し、必要な表示を更新する。 */
 async function refresh() {
   state.loading = true;
   render();
@@ -76,11 +83,13 @@ async function refresh() {
   return !state.error;
 }
 
+/** `moveMonth`: 移動・月に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function moveMonth(delta) {
   state.cursor = new Date(state.cursor.getFullYear(), state.cursor.getMonth() + delta, 1);
   render();
 }
 
+/** `render`: 現在の一時状態から、この画面部分のHTMLを描き直す。 */
 function render() {
   const container = state.container;
   if (!container) return;
@@ -137,6 +146,7 @@ function render() {
   container.querySelector('#shared-personal-btn')?.addEventListener('click', () => nav('calendar'));
 }
 
+/** `renderMonth`: 月の画面表示またはHTMLを組み立てる。 */
 function renderMonth() {
   if (!state.groups.length) {
     return `
@@ -177,6 +187,7 @@ function renderMonth() {
   return `${html}</div></div>`;
 }
 
+/** `renderChip`: Chipの画面表示またはHTMLを組み立てる。 */
 function renderChip(event) {
   const label = event.isOwn ? '自分' : (event.shareVisibility === 'shared_busy' ? '予定あり' : '共有');
   return `
@@ -188,6 +199,7 @@ function renderChip(event) {
   `;
 }
 
+/** `openSharedCalendarSettings`: 共有・カレンダー・設定の画面・詳細・ダイアログを表示する。 */
 export async function openSharedCalendarSettings() {
   state.groups = await loadSharedGroups().catch(() => state.groups || []);
 
@@ -367,6 +379,7 @@ export async function openSharedCalendarSettings() {
   });
 }
 
+/** `confirmBulkShare`: confirm・Bulk・共有に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function confirmBulkShare({ groupId, groupName, scope, visibility, count, parentClose }) {
   const body = document.createElement('div');
   const scopeLabel = scope === 'all' ? 'すべての予定' : '今日以降の予定';
@@ -399,6 +412,7 @@ function confirmBulkShare({ groupId, groupName, scope, visibility, count, parent
   };
 }
 
+/** `confirmDeleteGroup`: confirm・削除・グループに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function confirmDeleteGroup(groupId, groupName, parentClose) {
   const body = document.createElement('div');
   body.innerHTML = `

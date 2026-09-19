@@ -25,7 +25,9 @@ import { getSyncStatus, pullAll, startRealtimeSync, flushPendingSync, resetSyncF
 import { consumePendingSharedInvite } from '../shared-calendar.js';
 import { openSharedCalendarSettings } from './shared-calendar.js';
 
+/** `toast`: 短い通知メッセージを画面へ表示する。 */
 const toast = (msg, type) => window.AppNav?.showToast(msg, type);
+/** `nav`: 指定したハッシュ画面へ移動し、必要なら遷移元の状態を引き継ぐ。 */
 const nav = (view) => window.AppNav?.navigate(view);
 
 /** 一般設定、外観、アカウント、同期状態を表示する。 */
@@ -266,6 +268,7 @@ function renderAISettings(container) {
   wireAccount(container, { hideWhenSignedIn: false, sectionId: 'ai-account-section' });
 }
 
+/** `renderCategoryRow`: カテゴリ・行の画面表示またはHTMLを組み立てる。 */
 function renderCategoryRow(cat) {
   return `
     <div class="cat-row" data-cat-id="${esc(cat.id)}" style="display:flex;align-items:center;gap:10px">
@@ -331,6 +334,7 @@ function renderAccountSection() {
   `;
 }
 
+/** `safeCloudHost`: 安全な・Cloud・Hostに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function safeCloudHost(url) {
   try {
     return new URL(url).hostname;
@@ -349,12 +353,14 @@ function renderSyncStatus(status) {
   return `最終送信: ${esc(lastPush)} / 最終取得: ${esc(lastPull)}${error}`;
 }
 
+/** `formatSyncTime`: Sync・時刻を画面表示用の文字列へ整える。 */
 function formatSyncTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value || '');
   return date.toLocaleString();
 }
 
+/** `wireAppearance`: Appearanceの画面操作と処理をイベントで結び付ける。 */
 function wireAppearance(container) {
   container.querySelector('#my-schedule-color-input')?.addEventListener('input', e => {
     const color = e.target.value || '#60A5FA';
@@ -373,6 +379,7 @@ function wireAppearance(container) {
     'tune-accent-vividness',
   ].map(id => container.querySelector(`#${id}`)).filter(Boolean);
 
+  /** `syncAccentPreview`: Accent・プレビューを現在状態へ反映し、必要な表示を更新する。 */
   const syncAccentPreview = (rgb) => {
     const safe = normalizeAccentRgb(rgb);
     const preview = container.querySelector('#accent-preview-card');
@@ -387,6 +394,7 @@ function wireAppearance(container) {
     if (bVal) bVal.textContent = String(safe.b);
   };
 
+  /** `applyAccent`: Accentを現在状態へ反映し、必要な表示を更新する。 */
   const applyAccent = (rgb) => {
     const safe = normalizeAccentRgb(rgb);
     saveSettings({ accentRgb: safe });
@@ -394,6 +402,7 @@ function wireAppearance(container) {
     syncAccentPreview(safe);
   };
 
+  /** `syncThemeTuningPreview`: テーマ・Tuning・プレビューを現在状態へ反映し、必要な表示を更新する。 */
   const syncThemeTuningPreview = (tuning) => {
     const safe = normalizeThemeTuning(tuning);
     const items = [
@@ -408,6 +417,7 @@ function wireAppearance(container) {
     });
   };
 
+  /** `applyThemeTuning`: テーマ・Tuningを現在状態へ反映し、必要な表示を更新する。 */
   const applyThemeTuning = (tuning) => {
     const safe = normalizeThemeTuning(tuning);
     saveSettings({ themeTuning: safe });
@@ -468,6 +478,7 @@ function wireAppearance(container) {
   });
 }
 
+/** `renderRgbSlider`: Rgb・Sliderの画面表示またはHTMLを組み立てる。 */
 function renderRgbSlider(label, id, value) {
   return `
     <label class="accent-rgb-item" for="${id}">
@@ -480,6 +491,7 @@ function renderRgbSlider(label, id, value) {
   `;
 }
 
+/** `renderThemeSlider`: テーマ・Sliderの画面表示またはHTMLを組み立てる。 */
 function renderThemeSlider(label, id, value) {
   return `
     <label class="accent-rgb-item" for="${id}">
@@ -492,7 +504,9 @@ function renderThemeSlider(label, id, value) {
   `;
 }
 
+/** `normalizeAccentRgb`: Accent・Rgbを後続処理で扱える安全な形にそろえる。 */
 function normalizeAccentRgb(rgb) {
+  /** `clamp`: `clamp`を後続処理で扱える安全な形にそろえる。 */
   const clamp = (v, fallback) => {
     const n = Number(v);
     if (!Number.isFinite(n)) return fallback;
@@ -505,7 +519,9 @@ function normalizeAccentRgb(rgb) {
   };
 }
 
+/** `normalizeThemeTuning`: テーマ・Tuningを後続処理で扱える安全な形にそろえる。 */
 function normalizeThemeTuning(tuning) {
+  /** `clamp`: `clamp`を後続処理で扱える安全な形にそろえる。 */
   const clamp = (v, fallback) => {
     const n = Number(v);
     if (!Number.isFinite(n)) return fallback;
@@ -519,7 +535,9 @@ function normalizeThemeTuning(tuning) {
   };
 }
 
+/** `wireCategories`: カテゴリの画面操作と処理をイベントで結び付ける。 */
 function wireCategories(container) {
+  /** `saveCats`: Catsを保存先または一時状態へ反映する。 */
   const saveCats = () => {
     const rows = container.querySelectorAll('.cat-row');
     const cats = [];
@@ -572,6 +590,7 @@ function wireCategories(container) {
   });
 }
 
+/** `wireAISettings`: AISettingsの画面操作と処理をイベントで結び付ける。 */
 function wireAISettings(container) {
   container.querySelector('#ai-enabled-toggle')?.addEventListener('change', e => {
     saveSettings({ aiEnabled: e.target.checked, aiVisibilityConfigured: true });
@@ -622,6 +641,7 @@ function wireAISettings(container) {
   });
 }
 
+/** `wireBackup`: バックアップの画面操作と処理をイベントで結び付ける。 */
 function wireBackup(container) {
   container.querySelector('#export-btn')?.addEventListener('click', () => {
     const json = exportBackup();
@@ -656,6 +676,7 @@ function wireBackup(container) {
   });
 }
 
+/** `wireAccount`: Accountの画面操作と処理をイベントで結び付ける。 */
 function wireAccount(container, options = {}) {
   container.querySelector('#sb-sync-now-btn')?.addEventListener('click', async () => {
     const btn = container.querySelector('#sb-sync-now-btn');
@@ -838,6 +859,7 @@ function wireAccount(container, options = {}) {
   refreshAccountStatus(container, options);
 }
 
+/** `refreshAccountStatus`: Account・状態を現在状態へ反映し、必要な表示を更新する。 */
 async function refreshAccountStatus(container, options = {}) {
   const section = options.sectionId ? container.querySelector(`#${options.sectionId}`) : null;
   const statusEl = container.querySelector('#sb-status');

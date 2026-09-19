@@ -40,31 +40,31 @@ export function isMigrated() {
   return localStorage.getItem(MIGRATE_KEY) === 'true';
 }
 
-/** `setMigrated`: Migratedを保存先または一時状態へ反映する。 */
+/** `setMigrated`: 移行済みを保存先または一時状態へ反映する。 */
 export function setMigrated() {
   localStorage.setItem(MIGRATE_KEY, 'true');
 }
 
-/** `isMigratedForCurrentUser`: Current・ユーザーの条件を確認し、結果を真偽値で返す。 */
+/** `isMigratedForCurrentUser`: 現在の・ユーザーの条件を確認し、結果を真偽値で返す。 */
 export async function isMigratedForCurrentUser() {
   const userId = await getUserId();
   if (!userId) return isMigrated();
   return localStorage.getItem(`${MIGRATE_KEY}:${userId}`) === 'true';
 }
 
-/** `setMigratedForCurrentUser`: Migrated・Current・ユーザーを保存先または一時状態へ反映する。 */
+/** `setMigratedForCurrentUser`: 移行済み・現在の・ユーザーを保存先または一時状態へ反映する。 */
 export async function setMigratedForCurrentUser() {
   const userId = await getUserId();
   if (userId) localStorage.setItem(`${MIGRATE_KEY}:${userId}`, 'true');
   localStorage.setItem(MIGRATE_KEY, 'true');
 }
 
-/** `getActiveUserId`: Active・ユーザー・IDを取得して呼び出し元へ返す。 */
+/** `getActiveUserId`: 現在の・ユーザー・IDを取得して呼び出し元へ返す。 */
 export function getActiveUserId() {
   return localStorage.getItem(ACTIVE_USER_KEY) || null;
 }
 
-/** `setActiveUserId`: Active・ユーザー・IDを保存先または一時状態へ反映する。 */
+/** `setActiveUserId`: 現在の・ユーザー・IDを保存先または一時状態へ反映する。 */
 export function setActiveUserId(userId) {
   if (userId) localStorage.setItem(ACTIVE_USER_KEY, userId);
   else localStorage.removeItem(ACTIVE_USER_KEY);
@@ -205,7 +205,7 @@ export async function getUserId() {
   return session?.user?.id ?? null;
 }
 
-/** `getUserEmail`: ユーザー・Emailを取得して呼び出し元へ返す。 */
+/** `getUserEmail`: ユーザー・メールを取得して呼び出し元へ返す。 */
 export async function getUserEmail() {
   const session = await getSession();
   return session?.user?.email ?? null;

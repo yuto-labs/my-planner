@@ -40,7 +40,9 @@ import {
   isCalendarHorizontalDrag,
 } from '../calendar-gesture.js';
 
+/** `toast`: 短い通知メッセージを画面へ表示する。 */
 const toast     = (msg, type) => window.AppNav?.showToast(msg, type);
+/** `undoToast`: 取り消し操作付きの通知を表示し、選ばれたら復元処理を実行する。 */
 const undoToast = (msg, cb)   => window.AppNav?.showUndoToast(msg, cb);
 const SHARE_DEFAULTS_KEY = 'mp_calendar_share_defaults';
 const EVENT_TITLE_HISTORY_KEY = 'mp_calendar_event_title_history';
@@ -74,14 +76,18 @@ export function initCalendar(container) {
     state.cursor = new Date();
   }
   const cleanupSwipe = _setupSwipe(container); // register touch listeners for this mount only
+  /** `onGroupsChanged`: グループ・変更に関する操作またはイベントを受けて処理する。 */
   const onGroupsChanged = () => loadCalendarShareGroups();
+  /** `refreshSharedData`: 共有・データを現在状態へ反映し、必要な表示を更新する。 */
   const refreshSharedData = () => {
     if (document.hidden || state.container !== container) return;
     refreshCalendarBackground().catch(() => {});
   };
+  /** `onVisibilityChange`: 表示状態・変更に関する操作またはイベントを受けて処理する。 */
   const onVisibilityChange = () => {
     if (!document.hidden) refreshSharedData();
   };
+  /** `onRemoteChange`: クラウド側・変更に関する操作またはイベントを受けて処理する。 */
   const onRemoteChange = event => {
     if (!event?.detail?.table || event.detail.table === 'events') refreshSharedData();
   };
@@ -147,7 +153,9 @@ function _setupSwipe(container) {
   let _tracking = false;
   let _settling = false;
   let _allowSwipe = false;
+  /** `isActiveCalendar`: カレンダーの条件を確認し、結果を真偽値で返す。 */
   const isActiveCalendar = () => container.dataset.view === 'calendar' && state.container === container;
+  /** `view`: 画面に関する補助処理を行い、結果を呼び出し元へ返す。 */
   const view = () => container.querySelector('#cal-view');
   const SWIPE_BLOCK_SELECTOR = [
     '.cal-day-sheet',
@@ -160,6 +168,7 @@ function _setupSwipe(container) {
     'select',
     '[contenteditable="true"]',
   ].join(',');
+  /** `clearDrag`: ドラッグを安全に終了または削除する。 */
   const clearDrag = () => {
     const v = view();
     if (v) {
@@ -173,6 +182,7 @@ function _setupSwipe(container) {
     _settling = false;
     _allowSwipe = false;
   };
+  /** `hasSwipeBlocker`: Swipe・Blockerの条件を確認し、結果を真偽値で返す。 */
   const hasSwipeBlocker = () => {
     if (document.querySelector('.cal-day-sheet')) return true;
     const modalOverlay = document.getElementById('modal-overlay');
@@ -181,6 +191,7 @@ function _setupSwipe(container) {
     if (pickerOverlay && !pickerOverlay.classList.contains('hidden') && pickerOverlay.children.length) return true;
     return false;
   };
+  /** `onTouchStart`: タッチ・開始に関する操作またはイベントを受けて処理する。 */
   const onTouchStart = e => {
     if (!isActiveCalendar()) return;
     if (hasSwipeBlocker()) return;
@@ -194,6 +205,7 @@ function _setupSwipe(container) {
     _dx = 0;
     _tracking = false;
   };
+  /** `onTouchMove`: タッチ・移動に関する操作またはイベントを受けて処理する。 */
   const onTouchMove = e => {
     if (!isActiveCalendar()) return;
     if (hasSwipeBlocker()) { clearDrag(); return; }
@@ -221,6 +233,7 @@ function _setupSwipe(container) {
     v.style.transform = `translate3d(${clamped}px,0,0)`;
     v.style.opacity = String(1 - progress * 0.14);
   };
+  /** `onTouchEnd`: タッチ・終了に関する操作またはイベントを受けて処理する。 */
   const onTouchEnd = e => {
     if (!isActiveCalendar()) return;
     if (hasSwipeBlocker()) { clearDrag(); return; }
@@ -247,6 +260,7 @@ function _setupSwipe(container) {
       v.style.transition = 'transform 0.14s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.14s ease';
       v.style.transform = 'translate3d(0,0,0)';
       v.style.opacity = '1';
+      /** `done`: 完了に関する補助処理を行い、結果を呼び出し元へ返す。 */
       const done = () => clearDrag();
       v.addEventListener('transitionend', done, { once: true });
       setTimeout(done, 180);
@@ -359,6 +373,7 @@ function render() {
   }
 }
 
+/** `getViewTitle`: 画面・タイトルを取得して呼び出し元へ返す。 */
 function getViewTitle() {
   const { mode, cursor } = state;
   if (mode === 'month') return formatDate(cursor, 'month');
@@ -370,6 +385,7 @@ function getViewTitle() {
   return formatDate(cursor, 'medium');
 }
 
+/** `loadCalendarShareGroups`: カレンダー・共有・グループを取得して呼び出し元へ返す。 */
 async function loadCalendarShareGroups() {
   try {
     state.shareGroups = await loadSharedGroups();
@@ -402,6 +418,7 @@ let sharedRefreshPromise = null;
 let sharedRefreshGroupId = '';
 let sharedRefreshVersion = 0;
 
+/** `sharedCalendarFingerprint`: 共有・カレンダー・意味特徴に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function sharedCalendarFingerprint() {
   return JSON.stringify({
     groups: (state.shareGroups || []).map(group => [group.id, group.name, group.updated_at]),
@@ -432,6 +449,7 @@ async function refreshCalendarBackground() {
   } catch {}
 }
 
+/** `refreshCalendarSharedEvents`: カレンダー・共有・予定を現在状態へ反映し、必要な表示を更新する。 */
 async function refreshCalendarSharedEvents({ silent = false } = {}) {
   if (state.source === 'personal') return;
 
@@ -486,6 +504,7 @@ async function refreshCalendarSharedEvents({ silent = false } = {}) {
   return sharedRefreshPromise;
 }
 
+/** `isSharedSource`: 共有・入力元の条件を確認し、結果を真偽値で返す。 */
 function isSharedSource() {
   return state.source !== 'personal' && !!state.groupId;
 }
@@ -495,14 +514,17 @@ function getVisibleEvents() {
   return isSharedSource() ? state.sharedEvents : getEvents();
 }
 
+/** `getMonthVisibleEvents`: 月・Visible・予定を取得して呼び出し元へ返す。 */
 function getMonthVisibleEvents() {
   return getVisibleEvents().filter(event => !event.hideFromMonth);
 }
 
+/** `getEventDisplayTitle`: 予定・Display・タイトルを取得して呼び出し元へ返す。 */
 function getEventDisplayTitle(event) {
   return event.visibleTitle || event.title || '予定';
 }
 
+/** `appendSharedPreviewEvent`: 受け取った情報から共有・プレビュー・予定を作る。 */
 function appendSharedPreviewEvent(event) {
   if (!isSharedSource() || !event?.id) return;
   const groupIds = Array.isArray(event.sharedGroupIds) ? event.sharedGroupIds : [];
@@ -521,6 +543,7 @@ function appendSharedPreviewEvent(event) {
   ].sort((a, b) => new Date(a.start) - new Date(b.start));
 }
 
+/** `redrawAfterEventChange`: redraw・After・予定・変更に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function redrawAfterEventChange(removedId = '') {
   if (removedId) state.sharedEvents = state.sharedEvents.filter(event => event.id !== removedId);
   render();
@@ -529,6 +552,7 @@ function redrawAfterEventChange(removedId = '') {
   }
 }
 
+/** `getWeekStartDate`: 週・開始・日付を取得して呼び出し元へ返す。 */
 function getWeekStartDate(fallbackDate = state.cursor) {
   const d = state.weekStartDate
     ? new Date(`${state.weekStartDate}T00:00:00`)
@@ -851,6 +875,7 @@ function openYearMonthPicker() {
     requestAnimationFrame(() => el.classList.add('cal-ymp--open'));
   });
 
+  /** `getSelected`: Selectedを取得して呼び出し元へ返す。 */
   const getSelected = (drum) => {
     const items = drum.querySelectorAll('.cal-ymp-item');
     const idx   = Math.round(drum.scrollTop / ITEM_H);
@@ -858,6 +883,7 @@ function openYearMonthPicker() {
     return parseInt(items[clamped]?.dataset.val ?? '0');
   };
 
+  /** `close`: 現在開いているモーダルまたはシートを閉じる。 */
   const close = () => {
     el.classList.remove('cal-ymp--open');
     setTimeout(() => el.remove(), 260);
@@ -940,6 +966,7 @@ function openDaySheet(dateStr) {
   // Double RAF: first frame paints the element, second triggers the transition (iOS Safari fix)
   requestAnimationFrame(() => requestAnimationFrame(() => sheet.classList.add('cal-day-sheet--open')));
 
+  /** `closeSheet`: シートを安全に終了または削除する。 */
   const closeSheet = () => {
     sheet.classList.remove('cal-day-sheet--open');
     sheet.style.pointerEvents = 'none';
@@ -965,6 +992,7 @@ function openDaySheet(dateStr) {
   };
 }
 
+/** `renderTimedEvent`: 時刻付き・予定の画面表示またはHTMLを組み立てる。 */
 function renderTimedEvent(event, slotH) {
   if (event._scheduleItem) return renderTimedScheduleItem(event, slotH);
 
@@ -994,6 +1022,7 @@ function renderTimedEvent(event, slotH) {
   </div>`;
 }
 
+/** `displayDateTimeToMinutes`: display・日付・時刻をMinutesへ変換して返す。 */
 function displayDateTimeToMinutes(value) {
   if (!value) return 0;
   if (typeof value === 'string' && value.includes('T24:00')) return 24 * 60;
@@ -1002,6 +1031,7 @@ function displayDateTimeToMinutes(value) {
   return d.getHours() * 60 + d.getMinutes();
 }
 
+/** `scheduleItemToTimedEvent`: スケジュール・項目を時刻付き・予定へ変換して返す。 */
 function scheduleItemToTimedEvent(item) {
   return {
     ...item,
@@ -1011,10 +1041,12 @@ function scheduleItemToTimedEvent(item) {
   };
 }
 
+/** `compareTimedItems`: 時刻付き・Itemsを比較し、表示または処理順を決める。 */
 function compareTimedItems(a, b) {
   return getTimedItemStartMin(a) - getTimedItemStartMin(b);
 }
 
+/** `getTimedItemStartMin`: 時刻付き・項目・開始・分を取得して呼び出し元へ返す。 */
 function getTimedItemStartMin(item) {
   if (item._scheduleItem) return clockTimeToMinutes(item.startTime) ?? 1440;
   if (item._isAllDay) return 0;
@@ -1024,6 +1056,7 @@ function getTimedItemStartMin(item) {
   return d.getHours() * 60 + d.getMinutes();
 }
 
+/** `renderTimedScheduleItem`: 時刻付き・スケジュール・項目の画面表示またはHTMLを組み立てる。 */
 function renderTimedScheduleItem(item, slotH) {
   const startMin = clockTimeToMinutes(item.startTime) ?? 0;
   const endMin = clockTimeToMinutes(item.endTime) ?? (startMin + 60);
@@ -1042,6 +1075,7 @@ function renderTimedScheduleItem(item, slotH) {
   </div>`;
 }
 
+/** `getCurrentShareDefaults`: 現在の・共有・既定値を取得して呼び出し元へ返す。 */
 function getCurrentShareDefaults() {
   if (!isSharedSource()) return {};
   return {
@@ -1051,6 +1085,7 @@ function getCurrentShareDefaults() {
   };
 }
 
+/** `loadShareDefaults`: 共有・既定値を取得して呼び出し元へ返す。 */
 function loadShareDefaults() {
   try {
     return JSON.parse(localStorage.getItem(SHARE_DEFAULTS_KEY) || 'null') || {};
@@ -1059,6 +1094,7 @@ function loadShareDefaults() {
   }
 }
 
+/** `saveShareDefaults`: 共有・既定値を保存先または一時状態へ反映する。 */
 function saveShareDefaults(visibility, groupIds) {
   try {
     localStorage.setItem(SHARE_DEFAULTS_KEY, JSON.stringify({
@@ -1068,6 +1104,7 @@ function saveShareDefaults(visibility, groupIds) {
   } catch {}
 }
 
+/** `loadEventTitleHistory`: 予定・タイトル・履歴を取得して呼び出し元へ返す。 */
 function loadEventTitleHistory() {
   try {
     const raw = JSON.parse(localStorage.getItem(EVENT_TITLE_HISTORY_KEY) || '[]');
@@ -1077,12 +1114,14 @@ function loadEventTitleHistory() {
   }
 }
 
+/** `saveEventTitleHistory`: 予定・タイトル・履歴を保存先または一時状態へ反映する。 */
 function saveEventTitleHistory(history) {
   try {
     localStorage.setItem(EVENT_TITLE_HISTORY_KEY, JSON.stringify(history.slice(0, EVENT_TITLE_HISTORY_MAX)));
   } catch {}
 }
 
+/** `rememberEventTitle`: 予定・タイトルを保存先または一時状態へ反映する。 */
 function rememberEventTitle({ title, start, end, categoryId, updatedAt, createdAt } = {}) {
   const cleanTitle = String(title || '').trim();
   if (!cleanTitle || !start || !end) return;
@@ -1090,6 +1129,7 @@ function rememberEventTitle({ title, start, end, categoryId, updatedAt, createdA
   const ed = new Date(end);
   if (Number.isNaN(sd.getTime()) || Number.isNaN(ed.getTime())) return;
 
+  /** `pad`: 数値を日付・時刻表示用の2桁文字列へそろえる。 */
   const pad = n => String(n).padStart(2, '0');
   const startTime = `${pad(sd.getHours())}:${pad(sd.getMinutes())}`;
   const endTime = `${pad(ed.getHours())}:${pad(ed.getMinutes())}`;
@@ -1099,6 +1139,7 @@ function rememberEventTitle({ title, start, end, categoryId, updatedAt, createdA
   saveEventTitleHistory([{ key, title: cleanTitle, startTime, endTime, categoryId: categoryId || '', latest, count: 1 }, ...rest]);
 }
 
+/** `seedEventTitleHistoryFromExistingEvents`: seed・予定・タイトル・履歴・から・既存の・予定に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function seedEventTitleHistoryFromExistingEvents() {
   const existing = loadEventTitleHistory();
   const byKey = new Map(existing.map(item => [item.key, item]));
@@ -1111,6 +1152,7 @@ function seedEventTitleHistoryFromExistingEvents() {
     const ed = new Date(ev.end);
     if (Number.isNaN(sd.getTime()) || Number.isNaN(ed.getTime())) return;
 
+    /** `pad`: 数値を日付・時刻表示用の2桁文字列へそろえる。 */
     const pad = n => String(n).padStart(2, '0');
     const startTime = `${pad(sd.getHours())}:${pad(sd.getMinutes())}`;
     const endTime = `${pad(ed.getHours())}:${pad(ed.getMinutes())}`;
@@ -1134,6 +1176,7 @@ function seedEventTitleHistoryFromExistingEvents() {
   }
 }
 
+/** `openCalendarEvent`: カレンダー・予定の画面・詳細・ダイアログを表示する。 */
 function openCalendarEvent(event) {
   if (!event) return;
   if (event.isOwn === false) {
@@ -1144,6 +1187,7 @@ function openCalendarEvent(event) {
   openEventModal(local, null);
 }
 
+/** `openReadOnlySharedEvent`: 閲覧・専用・共有・予定の画面・詳細・ダイアログを表示する。 */
 function openReadOnlySharedEvent(event) {
   const body = document.createElement('div');
   body.innerHTML = `
@@ -1225,6 +1269,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
     || options.defaultShareVisibility
     || (!isEdit && savedShareDefaults.visibility)
     || (!isEdit && selectedShareGroups.size ? 'shared_detail' : 'private');
+  /** `findRememberedCategoryId`: 条件に合うRemembered・カテゴリ・IDを探して返す。 */
   const findRememberedCategoryId = (title = '') => {
     const q = String(title || '').trim().toLowerCase();
     if (!q) return '';
@@ -1243,9 +1288,11 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
     ? event.end
     : new Date(new Date(defStart).getTime() + 3600000).toISOString());
 
+  /** `_dtParts`: dt・構成要素に関する補助処理を行い、結果を呼び出し元へ返す。 */
   const _dtParts = (iso) => {
     if (!iso) return { date: '', time: '' };
     const d = new Date(iso);
+    /** `pad`: 数値を日付・時刻表示用の2桁文字列へそろえる。 */
     const pad = n => String(n).padStart(2, '0');
     return {
       date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
@@ -1449,6 +1496,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
   suggWrap.className = 'ev-title-sugg-wrap';
   body.querySelector('#ev-title')?.insertAdjacentElement('afterend', suggWrap);
 
+  /** `renderAttachments`: Attachmentsの画面表示またはHTMLを組み立てる。 */
   const renderAttachments = () => {
     const list = body.querySelector('#ev-photo-list');
     if (!list) return;
@@ -1478,6 +1526,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
   const cameraInput = body.querySelector('#ev-camera-input');
   body.querySelector('#ev-photo-btn')?.addEventListener('click', () => photoInput?.click());
   body.querySelector('#ev-camera-btn')?.addEventListener('click', () => cameraInput?.click());
+  /** `handlePhoto`: Photoに関する操作またはイベントを受けて処理する。 */
   const handlePhoto = async eventInput => {
     const file = eventInput.target.files?.[0];
     eventInput.target.value = '';
@@ -1507,6 +1556,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
   photoInput?.addEventListener('change', handlePhoto);
   cameraInput?.addEventListener('change', handlePhoto);
 
+  /** `_syncHidden`: Hiddenを現在状態へ反映し、必要な表示を更新する。 */
   const _syncHidden = () => {
     const sh = body.querySelector('#ev-start');
     const eh = body.querySelector('#ev-end');
@@ -1514,6 +1564,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
     if (eh) eh.value = evEnd.date && evEnd.time ? `${evEnd.date}T${evEnd.time}` : '';
   };
 
+  /** `selectEventCategory`: 条件に合う予定・カテゴリを探して返す。 */
   const selectEventCategory = (categoryId) => {
     if (!categoryId || !cats.some(c => c.id === categoryId)) return;
     body.querySelectorAll('.event-cat-btn').forEach(b => {
@@ -1522,6 +1573,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
   };
 
   const titleInput = body.querySelector('#ev-title');
+  /** `renderTitleSuggestions`: タイトル・候補の画面表示またはHTMLを組み立てる。 */
   const renderTitleSuggestions = () => {
     const q = titleInput?.value.trim().toLowerCase() || '';
     suggWrap.innerHTML = '';
@@ -1565,6 +1617,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
     });
   });
 
+  /** `ensureShareGroupSelection`: 共有・グループ・選択範囲を利用できる状態にする。 */
   const ensureShareGroupSelection = () => {
     const selectedVisibility = body.querySelector('[name="ev-share-visibility"]:checked')?.value || 'private';
     if (selectedVisibility === 'private') return;
@@ -1592,6 +1645,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
     const recSel = body.querySelector('#ev-recurring');
     const recEndWrap = body.querySelector('#ev-recurring-end-wrap');
     const startLabel = body.querySelector('#ev-recurring-start-label');
+    /** `refreshRecurringStartLabel`: Recurring・開始・表示名を現在状態へ反映し、必要な表示を更新する。 */
     const refreshRecurringStartLabel = () => {
       if (startLabel) startLabel.textContent = evStart.date ? formatPickerDate(evStart.date) : '開始日未設定';
     };
@@ -1746,6 +1800,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
 
   cancelBtn.onclick = close;
 
+  /** `showConflictWarning`: 重複・警告の画面・詳細・ダイアログを表示する。 */
   const showConflictWarning = (conflicts, onContinue) => {
     const warning = body.querySelector('#ev-conflict-warning');
     if (!warning) return false;
@@ -1769,6 +1824,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
     return true;
   };
 
+  /** `saveEvent`: 予定を保存先または一時状態へ反映する。 */
   const saveEvent = async (allowOverlap = false) => {
     const title = body.querySelector('#ev-title').value.trim();
     if (!title) {
@@ -1948,7 +2004,9 @@ function createRecurringEvents(eventData, recurType, endDateStr, excludeWeekdays
     .map(Number)
     .filter(day => Number.isInteger(day) && day >= 0 && day <= 6));
 
+  /** `lastDayOfMonth`: 最後の・日・月に関する補助処理を行い、結果を呼び出し元へ返す。 */
   const lastDayOfMonth = (year, month) => new Date(year, month + 1, 0).getDate();
+  /** `addMonthsClamped`: 受け取った情報からMonths・Clampedを作る。 */
   const addMonthsClamped = (monthOffset) => {
     const targetMonthIndex = startDate.getMonth() + monthOffset;
     const targetYear = startDate.getFullYear() + Math.floor(targetMonthIndex / 12);
@@ -1963,6 +2021,7 @@ function createRecurringEvents(eventData, recurType, endDateStr, excludeWeekdays
       startDate.getMilliseconds()
     );
   };
+  /** `estimateIterations`: 繰り返し回数に必要な数値を計算して返す。 */
   const estimateIterations = () => {
     const ms = Math.max(0, endDate - startDate);
     if (recurType === 'daily') return Math.ceil(ms / 86400000) + 2;
@@ -2013,10 +2072,12 @@ function createRecurringEvents(eventData, recurType, endDateStr, excludeWeekdays
 function getEventTitleSuggestions(query, excludeId = null) {
   const q = String(query || '').trim().toLowerCase();
   if (!q) return [];
+  /** `pad`: 数値を日付・時刻表示用の2桁文字列へそろえる。 */
   const pad = n => String(n).padStart(2, '0');
   const suggestions = new Map();
   seedEventTitleHistoryFromExistingEvents();
 
+  /** `addSuggestion`: 受け取った情報からSuggestionを作る。 */
   const addSuggestion = ({ title, startTime, endTime, categoryId = '', latest = 0, count = 1 }) => {
     const cleanTitle = String(title || '').trim();
     if (!cleanTitle || !startTime || !endTime) return;
@@ -2193,6 +2254,7 @@ function openModalGlobal(opts) {
   overlay.appendChild(modal);
 
   let closed = false;
+  /** `close`: 現在開いているモーダルまたはシートを閉じる。 */
   const close = () => {
     if (closed) return;
     closed = true;
@@ -2205,18 +2267,21 @@ function openModalGlobal(opts) {
   modal.querySelector('.modal-close').onclick = close;
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
 
+  /** `keyH`: 確認ダイアログのキーボード操作を処理する。 */
   const keyH = e => { if (e.key === 'Escape') close(); };
   document.addEventListener('keydown', keyH);
 
   return close;
 }
 
+/** `closeModalGlobal`: Modal・Globalを安全に終了または削除する。 */
 function closeModalGlobal() {
   const overlay = document.getElementById('modal-overlay');
   overlay?.classList.add('hidden');
   if (overlay) overlay.innerHTML = '';
 }
 
+/** `confirmGlobal`: confirm・Globalに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function confirmGlobal(message, opts = {}) {
   return new Promise(resolve => {
     const body = document.createElement('div');

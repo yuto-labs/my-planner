@@ -13,6 +13,7 @@ import {
 } from '../storage.js';
 import { esc, formatDate } from '../utils.js';
 
+/** `toast`: 短い通知メッセージを画面へ表示する。 */
 const toast = (msg, type) => window.AppNav?.showToast(msg, type);
 
 const TYPE_META = {
@@ -100,6 +101,7 @@ function render(container) {
   });
 }
 
+/** `renderMonthBlock`: 月・ブロックの画面表示またはHTMLを組み立てる。 */
 function renderMonthBlock(ym, items) {
   const sorted = [...items].sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || ''));
   return `
@@ -151,12 +153,14 @@ function renderTrashItem(item) {
   `;
 }
 
+/** `monthLabel`: 月・表示名に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function monthLabel(ym) {
   const [year, month] = String(ym || '').split('-');
   if (!year || !month) return 'Unknown';
   return `${year}年${parseInt(month, 10)}月`;
 }
 
+/** `formatDeletedAt`: 削除済み・位置を画面表示用の文字列へ整える。 */
 function formatDeletedAt(iso) {
   if (!iso) return '';
   const day = formatDate(iso.slice(0, 10), 'short');

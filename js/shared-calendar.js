@@ -12,7 +12,7 @@ import { rowToEvent } from './migrate.js';
 const CACHE_KEY = 'mp_shared_calendar_groups';
 const PENDING_INVITE_KEY = 'mp_pending_shared_calendar_invite';
 
-/** `ls`: lsに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** `ls`: 共有カレンダー用の端末保存領域を安全に読み書きする窓口を返す。 */
 function ls(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback; } catch { return fallback; }
 }
@@ -49,7 +49,7 @@ function mergeGroupInCache(group) {
   notifyGroupsChanged();
 }
 
-/** `rpcNeedsSqlRefresh`: データベース関数・Needs・SQL・Refreshに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** `rpcNeedsSqlRefresh`: Supabase関数のエラーが、古いSQL定義の更新を必要とする内容か判定する。 */
 function rpcNeedsSqlRefresh(error, functionName) {
   const message = `${error?.message || ''} ${error?.details || ''}`;
   return new RegExp(`function .*${functionName}|schema cache|not found|does not exist|ambiguous`, 'i')

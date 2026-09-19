@@ -223,6 +223,7 @@ function deferSyncWhileEditing({ needsPull = false } = {}) {
  * beforeunloadでは未保存メモを閉じる直前にもブラウザの警告を出します。
  */
 function setupEditActivityGuard() {
+  /** `markAndDefer`: Deferを保存先または一時状態へ反映する。 */
   const markAndDefer = () => {
     markUserEditing();
     scheduleDeferredSyncWork();
@@ -452,6 +453,7 @@ export function openModal({ title, body, footer, onClose, wide = false }) {
 
   overlay.appendChild(modal);
 
+  /** `close`: 現在開いているモーダルまたはシートを閉じる。 */
   const close = () => {
     if (overlay.classList.contains('hidden')) return;
     overlay.classList.add('hidden');
@@ -464,9 +466,11 @@ export function openModal({ title, body, footer, onClose, wide = false }) {
   modalClose = close;
 
   modal.querySelector('.modal-close').addEventListener('click', close);
+  /** `overlayHandler`: モーダル外側のクリックを受け、許可されていればモーダルを閉じる。 */
   const overlayHandler = e => { if (e.target === overlay) close(); };
   overlay.addEventListener('click', overlayHandler);
 
+  /** `keyHandler`: モーダル表示中のEscapeキーを受け、許可されていれば閉じる。 */
   const keyHandler = e => {
     if (e.key === 'Escape') {
       e.preventDefault();
@@ -636,6 +640,7 @@ function hslToRgb(h, s, l) {
   if (s === 0) {
     r = g = b = l;
   } else {
+    /** `hue2rgb`: HSL色の色相区間をRGB成分へ変換する。 */
     const hue2rgb = (p, q, t) => {
       let tt = t;
       if (tt < 0) tt += 1;
@@ -667,6 +672,7 @@ function rgbToCss(rgb, alpha = 1) {
 
 /** 背景色の明るさに応じて、読みやすい黒または白の文字色を返す。 */
 function contrastTextForRgb(rgb) {
+  /** `channelLuminance`: RGBの一成分を相対輝度計算用の線形値へ変換する。 */
   const channelLuminance = value => {
     const normalized = value / 255;
     return normalized <= 0.04045
@@ -991,6 +997,7 @@ function getViewFromHash() {
  */
 async function setupServiceWorkerAutoUpdate() {
   const registration = await navigator.serviceWorker.register('./sw.js');
+  /** `markWaitingWorker`: Waiting・Workerを保存先または一時状態へ反映する。 */
   const markWaitingWorker = (worker) => {
     if (!worker) return;
     worker.postMessage({ type: 'SKIP_WAITING' });
@@ -1012,6 +1019,7 @@ async function setupServiceWorkerAutoUpdate() {
     if (swReloading) return;
     swReloading = true;
     showToast('Updated to the latest version.', 'success');
+    /** `reloadWhenSafe`: 編集中やAI生成中でない時点を待ち、更新済みアプリを再読み込みする。 */
     const reloadWhenSafe = () => {
       if (isUserEditing() || hasPendingSyncWork()) {
         setTimeout(reloadWhenSafe, 1000);
@@ -1045,6 +1053,7 @@ window.AppTags = { open: (tag) => { setTagFilter(tag); navigate('tags'); } };
  * 復帰時はAI待機キューを処理し、Supabaseの最新データも取得します。
  */
 function setupConnectivityMonitor() {
+  /** `inject`: 現在のページへ必要なスタイルまたは補助要素を一度だけ挿入する。 */
   const inject = () => {
     // Inject offline indicator if not already there
     if (!document.getElementById('offline-indicator')) {
@@ -1062,6 +1071,7 @@ function setupConnectivityMonitor() {
     }
   };
 
+  /** `updateStatus`: 状態を現在状態へ反映し、必要な表示を更新する。 */
   const updateStatus = async () => {
     inject();
     const indicator = document.getElementById('offline-indicator');
