@@ -20,6 +20,7 @@ import {
   expressionLookupKeys,
 } from './atlas-model.js';
 import { atlasSenseFromEntry, mergeAtlasSenseArrays } from './atlas-senses.js';
+import { getFriendlyAiError, tryParseAIJSON as tryParseJSON } from './ai-response.js';
 import {
   canonicalTopicKey,
   detectAtlasQueryMode,
@@ -264,20 +265,6 @@ async function callAPI(
   return callServerAI(modelPreference, systemText, userText, maxTokens, responseFormat, actionType, options);
 }
 
-function getFriendlyAiError(status, message) {
-  const raw = String(message || '');
-  if (/[ぁ-んァ-ヶ一-龠]/.test(raw)) return raw;
-  if (status === 401) return 'AIを使うにはログインしてください。';
-  if (status === 403) return 'このアカウントではAIを利用できません。';
-  if (status === 429) return 'AIの利用が集中しています。少し時間を置いてもう一度お試しください。';
-  if (status === 503) {
-    const detail = raw && !/^AI Error \d+$/.test(raw) ? ` (${raw.slice(0, 180)})` : '';
-    return `AIサーバーを利用できません。Gemini側の一時的な障害または設定エラーの可能性があります。${detail}`;
-  }
-  if (status >= 500) return 'AIから正常な応答を受け取れませんでした。もう一度お試しください。';
-  return raw || `AIエラー (${status})`;
-}
-
 /** 短い文章生成を呼び、互換用に一度だけonChunkへ完成文を渡す。 */
 export async function streamText({ model = FAST_MODEL, system, userContent, maxTokens = 200, onChunk }) {
   const full = await callAPI(model, system || '', userContent, maxTokens, 'text', 'daily_message');
@@ -306,23 +293,6 @@ export async function streamDailyMessage(tasks = [], events = [], goals = [], on
     maxTokens: 120,
     onChunk,
   });
-}
-
-// JSONがコードブロック付きで返っても読めるようにする。
-function tryParseJSON(text) {
-  const cleaned = String(text || '').trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
-  try { return JSON.parse(cleaned); } catch {}
-  const firstObject = cleaned.indexOf('{');
-  const lastObject = cleaned.lastIndexOf('}');
-  if (firstObject >= 0 && lastObject > firstObject) {
-    try { return JSON.parse(cleaned.slice(firstObject, lastObject + 1)); } catch {}
-  }
-  const firstArray = cleaned.indexOf('[');
-  const lastArray = cleaned.lastIndexOf(']');
-  if (firstArray >= 0 && lastArray > firstArray) {
-    try { return JSON.parse(cleaned.slice(firstArray, lastArray + 1)); } catch {}
-  }
-  return null;
 }
 
 export async function getDailyMessage(tasks = [], events = [], goals = []) {

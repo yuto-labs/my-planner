@@ -16,6 +16,7 @@
 - `supabase.js`: Supabaseクライアントと認証状態
 - `migrate.js`: 既存ローカルデータの初回移行
 - `ai.js`: ブラウザからAIサーバーを呼ぶ共通処理
+- `ai-response.js`: AIのJSON応答読取と通信エラー表示
 - `media.js`: 画像のアップロード、取得、キャッシュ、拡大表示
 - `datepicker.js`: 日付選択UI
 - `holidays.js`: 日本の祝日判定
