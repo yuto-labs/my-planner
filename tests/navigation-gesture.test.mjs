@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {
   isHorizontalNavigationGesture,
   replaceAppRoute,
+  shouldRestoreActiveRoute,
 } from '../js/navigation-gesture.js';
 
 test('treats a clear horizontal move as a navigation-blocking swipe', () => {
@@ -42,4 +43,17 @@ test('does not rewrite the URL when the requested app route is already active', 
 
   assert.equal(replaceAppRoute(historyApi, { hash: '#memo' }, '#memo'), false);
   assert.equal(called, false);
+});
+
+test('restores the active route when old browser history points at another screen', () => {
+  assert.equal(shouldRestoreActiveRoute('calendar', '#tasks'), true);
+  assert.equal(shouldRestoreActiveRoute('knowledge', '#knowledge'), false);
+});
+
+test('also protects detail routes from an old entry for another item', () => {
+  assert.equal(
+    shouldRestoreActiveRoute('knowledge-detail?id=current', '#knowledge-detail?id=old'),
+    true,
+  );
+  assert.equal(shouldRestoreActiveRoute('', '#tasks'), false);
 });

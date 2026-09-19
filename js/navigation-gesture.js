@@ -34,3 +34,14 @@ export function replaceAppRoute(historyApi, locationApi, routeHash) {
   historyApi.replaceState(historyApi.state ?? null, '', nextHash);
   return true;
 }
+
+/**
+ * 履歴から来たURLが、実際に表示中のルートと異なるか判定する。
+ * 画面名だけでなくクエリも比べることで、同じ詳細画面の別項目へ
+ * 画面端スワイプだけで切り替わることも防ぐ。
+ */
+export function shouldRestoreActiveRoute(activeRouteHash, incomingLocationHash) {
+  const active = String(activeRouteHash || '').replace(/^#/, '');
+  const incoming = String(incomingLocationHash || '').replace(/^#/, '');
+  return active.length > 0 && incoming !== active;
+}

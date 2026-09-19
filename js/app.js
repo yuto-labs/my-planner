@@ -22,7 +22,11 @@ import { initSharedCalendar } from './modules/shared-calendar.js';
 import { initTasks }    from './modules/tasks.js';
 import { initGoals }    from './modules/goals.js';
 import { initSettings, initAISettings } from './modules/settings.js';
-import { isHorizontalNavigationGesture, replaceAppRoute } from './navigation-gesture.js';
+import {
+  isHorizontalNavigationGesture,
+  replaceAppRoute,
+  shouldRestoreActiveRoute,
+} from './navigation-gesture.js';
 import { initToday }    from './modules/today.js';
 import {
   initKnowledge, initKnowledgeDetail, openKnowledgeMemo, backFromKnowledgeDetail,
@@ -83,6 +87,10 @@ let isComposingText = false;
 let pendingSyncRefresh = false;
 let pendingForcedPull = false;
 let archiveReturnRoute = null;
+// 現在表示している完全なルートを別に保持する。
+// 旧版がブラウザー履歴へ積んだ #tasks などが端末の横スワイプで再生されても、
+// その古いURLを画面遷移として採用せず、今いる画面へ戻すために使う。
+let currentRouteHash = '';
 
 /** ゴミ箱を開く直前の画面へ戻す。戻り先が不明な場合はTasksへ戻す。 */
 function backFromArchive() {
@@ -310,6 +318,7 @@ export function navigate(view, options = {}) {
   // 画面端スワイプが履歴の「戻る・進む」と解釈され、意図せず別画面へ飛ぶ。
   // アプリには各詳細画面用の戻る処理があるため、URLだけを置換して履歴は増やさない。
   replaceAppRoute(window.history, window.location, routeHash);
+  currentRouteHash = routeHash;
 
   // Update nav active state
   document.querySelectorAll('#bottom-nav .nav-btn').forEach(btn => {
@@ -902,9 +911,9 @@ async function init() {
   document.getElementById('app-header').classList.remove('hidden');
   document.getElementById('bottom-nav').classList.remove('hidden');
 
-  // 横スワイプが指を離した位置のナビボタンへのclickとして合成される端末がある。
-  // 先に捕捉用リスナーを登録し、明確な横移動の直後だけ画面遷移を抑止する。
-  setupBottomNavigationGestureGuard();
+  // 一部のスマートフォンは横スワイプを、指を離した位置へのclickとして合成する。
+  // ナビ以外から始めたスワイプもあるため画面全体を追跡し、その直後のclickだけ止める。
+  setupHorizontalSwipeClickGuard();
 
   // Wire up bottom nav
   document.querySelectorAll('#bottom-nav .nav-btn').forEach(btn => {
@@ -942,10 +951,17 @@ async function init() {
   const hash = getViewFromHash();
   navigate(MODULES[hash] ? hash : 'home');
 
-  // Handle hash changes (back/forward)
+  // アプリ内の戻る操作は各画面のボタンで管理しており、通常の navigate() は
+  // 履歴を増やさない。ここへ来る別ルートへの変更は、主に旧版で残った履歴を
+  // 端末の画面端スワイプが再生したものなので、表示中のルートへ戻して無視する。
+  // これを画面遷移として扱うと、本文を横に払っただけでTasks等へ飛んでしまう。
   window.addEventListener('hashchange', () => {
-    const h = getViewFromHash();
-    if (h !== currentView) navigate(MODULES[h] ? h : 'home');
+    if (!shouldRestoreActiveRoute(currentRouteHash, window.location.hash)) return;
+    replaceAppRoute(
+      window.history,
+      window.location,
+      currentRouteHash || currentView || 'home',
+    );
   });
 
   // Pull latest data when returning to foreground so schedule differences appear quickly.
@@ -995,18 +1011,18 @@ async function init() {
 }
 
 /**
- * 下部ナビ上で始まったタッチを追跡し、横スワイプ直後の合成clickだけを無効にする。
- * 縦スクロール、小さな指ぶれ、通常タップは通すため、既存の操作感は変えない。
+ * 画面全体のタッチを追跡し、横スワイプ直後にブラウザーが合成するclickを一度だけ無効にする。
+ * タッチ開始地点を下部ナビに限定すると、本文からナビ上へ指を動かした場合を
+ * 見逃す端末がある。縦スクロール、小さな指ぶれ、通常タップは通す。
  */
-function setupBottomNavigationGestureGuard() {
-  const bottomNav = document.getElementById('bottom-nav');
-  if (!bottomNav || bottomNav.dataset.gestureGuard === 'true') return;
-  bottomNav.dataset.gestureGuard = 'true';
+function setupHorizontalSwipeClickGuard() {
+  if (document.documentElement.dataset.gestureGuard === 'true') return;
+  document.documentElement.dataset.gestureGuard = 'true';
 
   let gesture = null;
   let suppressClickUntil = 0;
 
-  bottomNav.addEventListener('touchstart', event => {
+  document.addEventListener('touchstart', event => {
     if (event.touches.length !== 1) {
       gesture = null;
       return;
@@ -1015,7 +1031,7 @@ function setupBottomNavigationGestureGuard() {
     gesture = { startX: touch.clientX, startY: touch.clientY };
   }, { passive: true, capture: true });
 
-  bottomNav.addEventListener('touchend', event => {
+  document.addEventListener('touchend', event => {
     const touch = event.changedTouches?.[0];
     if (gesture && touch && isHorizontalNavigationGesture(
       gesture.startX,
@@ -1028,12 +1044,15 @@ function setupBottomNavigationGestureGuard() {
     gesture = null;
   }, { passive: true, capture: true });
 
-  bottomNav.addEventListener('touchcancel', () => {
+  document.addEventListener('touchcancel', () => {
     gesture = null;
   }, { passive: true, capture: true });
 
-  bottomNav.addEventListener('click', event => {
+  document.addEventListener('click', event => {
     if (Date.now() > suppressClickUntil) return;
+    // 合成clickは一度だけ発生するため、止めた時点で解除する。
+    // 直後にユーザーが意図して行う通常タップまで塞がないための処理です。
+    suppressClickUntil = 0;
     event.preventDefault();
     event.stopImmediatePropagation();
   }, { capture: true });
