@@ -445,6 +445,7 @@ async function _upsertRowsCompat(client, dbTable, rows, conflict) {
   };
 }
 
+/** `_missingColumnFromError`: 不足・列・From・エラーに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function _missingColumnFromError(error) {
   const text = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`;
   const quoted = text.match(/'([^']+)'\s+column/i);
@@ -569,6 +570,7 @@ async function _pullEvents(client, userId, forceReplace = false) {
   return _writeCollectionAfterSync('mp_events', local, next, userId, 'events');
 }
 
+/** `_getPersonalCalendarRows`: 個人用・カレンダー・行を取得して呼び出し元へ返す。 */
 async function _getPersonalCalendarRows(client) {
   const v2 = await client.rpc('get_personal_calendar_events_v2');
   if (!v2.error) return v2;
@@ -845,21 +847,25 @@ async function _pullMemos(client, userId, forceReplace = false) {
   return _writeCollectionAfterSync('mp_knowledge', local, next, userId, 'knowledge_memos');
 }
 
+/** `learningData`: 学習・データに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function learningData(record) {
   if (!Array.isArray(record?.tags) || !record.tags.includes('__learning_library__')) return null;
   return record.blocks?.find(block => block?.type === 'learning-entry-data')?.data || null;
 }
 
+/** `fieldVersion`: 項目・更新版に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function fieldVersion(data, field) {
   return timestampOrZero(data?.fieldUpdatedAt?.[field]);
 }
 
+/** `mergeLearningRecord`: 複数の学習・保存レコードを既存情報を失わないよう統合する。 */
 function mergeLearningRecord(local, remote) {
   const localData = learningData(local);
   const remoteData = learningData(remote);
   if (!localData || !remoteData) return remote;
   const newerRecord = _syncVersion(local) > _syncVersion(remote) ? local : remote;
   const newerData = newerRecord === local ? localData : remoteData;
+  /** `pickFieldData`: 条件に合う項目・データを探して返す。 */
   const pickFieldData = field => {
     const localVersion = fieldVersion(localData, field);
     const remoteVersion = fieldVersion(remoteData, field);
@@ -921,6 +927,7 @@ export function mergeLearningRecordsForSync(local, remote) {
   return { items, pushCandidates };
 }
 
+/** `atlasRecordData`: 表現帳・保存レコード・データに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function atlasRecordData(record) {
   if (!Array.isArray(record?.tags) || !record.tags.includes('__expression_atlas__')) return null;
   const block = record.blocks?.find(item => [
@@ -933,6 +940,7 @@ function atlasRecordData(record) {
     : null;
 }
 
+/** `mergeAtlasList`: 複数の表現帳・一覧を既存情報を失わないよう統合する。 */
 function mergeAtlasList(left, right) {
   const seen = new Set();
   return [...(Array.isArray(left) ? left : []), ...(Array.isArray(right) ? right : [])]
@@ -944,6 +952,7 @@ function mergeAtlasList(left, right) {
     });
 }
 
+/** `mergeAtlasRecord`: 複数の表現帳・保存レコードを既存情報を失わないよう統合する。 */
 function mergeAtlasRecord(local, remote) {
   const localAtlas = atlasRecordData(local);
   const remoteAtlas = atlasRecordData(remote);
@@ -951,6 +960,7 @@ function mergeAtlasRecord(local, remote) {
   const newerRecord = _syncVersion(local) > _syncVersion(remote) ? local : remote;
   const newerData = newerRecord === local ? localAtlas.data : remoteAtlas.data;
   const contentField = localAtlas.block.type === 'expression-atlas-data' ? 'answer' : 'content';
+  /** `pickData`: 条件に合うデータを探して返す。 */
   const pickData = field => {
     const localVersion = fieldVersion(localAtlas.data, field);
     const remoteVersion = fieldVersion(remoteAtlas.data, field);
@@ -1231,10 +1241,12 @@ async function _executeDelete(scopedPayload, epoch = _syncEpoch) {
   }
 }
 
+/** `_deleteKey`: キーを安全に終了または削除する。 */
 function _deleteKey({ table, id, name }) {
   return `${table}:${id || name || ''}`;
 }
 
+/** `_isStillDeleted`: 削除済みの条件を確認し、結果を真偽値で返す。 */
 function _isStillDeleted({ table, id, name }) {
   if (table === 'tags') {
     return !_ls('mp_tags', []).includes(name);
@@ -1259,10 +1271,12 @@ function _isStillDeleted({ table, id, name }) {
   return !_hasId(lsKey, id);
 }
 
+/** `_hasId`: IDの条件を確認し、結果を真偽値で返す。 */
 function _hasId(key, id) {
   return _ls(key, []).some(item => item?.id === id);
 }
 
+/** `_getPendingDeletes`: 保留中・削除記録を取得して呼び出し元へ返す。 */
 function _getPendingDeletes() {
   const activeUserId = getActiveUserId();
   const all = _ls(DELETE_TOMBSTONE_KEY, []);
@@ -1278,10 +1292,12 @@ function _getPendingDeletes() {
   return filtered;
 }
 
+/** `_savePendingDeletes`: 保留中・削除記録を保存先または一時状態へ反映する。 */
 function _savePendingDeletes(entries) {
   localStorage.setItem(DELETE_TOMBSTONE_KEY, JSON.stringify(entries));
 }
 
+/** `_markPendingDelete`: 保留中・削除を保存先または一時状態へ反映する。 */
 function _markPendingDelete(payload) {
   const entries = _getPendingDeletes();
   const key = _deleteKey(payload);
@@ -1298,12 +1314,14 @@ function _markPendingDelete(payload) {
   _savePendingDeletes(entries);
 }
 
+/** `_clearPendingDelete`: 保留中・削除を安全に終了または削除する。 */
 function _clearPendingDelete(payload) {
   const key = _deleteKey(payload);
   const entries = _getPendingDeletes().filter(entry => _deleteKey(entry) !== key);
   _savePendingDeletes(entries);
 }
 
+/** `_filterPendingDeletes`: 保留中・削除記録から条件に合うものだけを返す。 */
 function _filterPendingDeletes(table, items) {
   const deletedIds = new Set(
     _getPendingDeletes()
@@ -1314,6 +1332,7 @@ function _filterPendingDeletes(table, items) {
   return items.filter(item => !deletedIds.has(item.id));
 }
 
+/** `_filterPendingTagDeletes`: 保留中・タグ・削除記録から条件に合うものだけを返す。 */
 function _filterPendingTagDeletes(tags) {
   const deletedNames = new Set(
     _getPendingDeletes()
@@ -1324,6 +1343,7 @@ function _filterPendingTagDeletes(tags) {
   return tags.filter(name => !deletedNames.has(name));
 }
 
+/** `_getRecentUpserts`: 直近の・更新記録を取得して呼び出し元へ返す。 */
 function _getRecentUpserts() {
   const now = Date.now();
   const activeUserId = getActiveUserId();
@@ -1341,10 +1361,12 @@ function _getRecentUpserts() {
   return filtered;
 }
 
+/** `_saveRecentUpserts`: 直近の・更新記録を保存先または一時状態へ反映する。 */
 function _saveRecentUpserts(entries) {
   localStorage.setItem(RECENT_UPSERT_KEY, JSON.stringify(entries));
 }
 
+/** `_markRecentUpserts`: 直近の・更新記録を保存先または一時状態へ反映する。 */
 function _markRecentUpserts(tableKey) {
   const entries = _getRecentUpserts();
   const userId = getActiveUserId() || null;
@@ -1395,6 +1417,7 @@ function _markRecentUpserts(tableKey) {
   _saveRecentUpserts(survivors);
 }
 
+/** `_isStillPresent`: 存在中の条件を確認し、結果を真偽値で返す。 */
 function _isStillPresent(entry) {
   if (entry.table === 'tags') {
     return _ls('mp_tags', []).includes(entry.name);
@@ -1407,6 +1430,7 @@ function _isStillPresent(entry) {
   return _hasId(lsKey, entry.id);
 }
 
+/** `_reviewEntryTs`: 復習・項目・Tsに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function _reviewEntryTs(entry) {
   const lastReview = new Date(entry?.lastReview || 0).getTime();
   if (Number.isFinite(lastReview) && lastReview > 0) return lastReview;
@@ -1419,12 +1443,14 @@ export function reviewEntryVersion(entry) {
   return _reviewEntryVersion(entry);
 }
 
+/** `_reviewEntryVersion`: 復習・項目・更新版に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function _reviewEntryVersion(entry) {
   const rawStage = Number(entry?.stage);
   const stage = Math.max(-1, Math.min(9, Number.isFinite(rawStage) ? rawStage : 0));
   return (_reviewEntryTs(entry) * 16) + stage + 1;
 }
 
+/** `reviewEntryToRow`: 復習・項目を行へ変換して返す。 */
 function reviewEntryToRow(memoId, entry, userId) {
   return {
     user_id: userId,
@@ -1435,6 +1461,7 @@ function reviewEntryToRow(memoId, entry, userId) {
   };
 }
 
+/** `rowToReviewEntry`: 行を復習・項目へ変換して返す。 */
 function rowToReviewEntry(row) {
   return [row.memo_id, {
     stage: row.stage ?? 0,
@@ -1443,10 +1470,12 @@ function rowToReviewEntry(row) {
   }];
 }
 
+/** `_syncVersion`: 更新版を現在状態へ反映し、必要な表示を更新する。 */
 function _syncVersion(item) {
   return recordVersion(item);
 }
 
+/** `_schedulePushRetry`: スケジュール・Push・再試行に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function _schedulePushRetry(tableKey) {
   clearTimeout(_timers[tableKey]);
   _timers[tableKey] = setTimeout(() => {
@@ -1455,10 +1484,12 @@ function _schedulePushRetry(tableKey) {
   }, PUSH_RETRY_MS);
 }
 
+/** `_syncEntryToken`: 項目・語を現在状態へ反映し、必要な表示を更新する。 */
 function _syncEntryToken(entry) {
   return `${entry?.table || ''}:${entry?.id || entry?.name || ''}:${entry?.version ?? 'legacy'}`;
 }
 
+/** `_clearSentUpserts`: 送信済み・更新記録を安全に終了または削除する。 */
 function _clearSentUpserts(tableKey, sentEntries) {
   if (!LS_KEYS[tableKey] && tableKey !== 'tags') return;
   const sent = new Set((sentEntries || []).map(_syncEntryToken));
@@ -1468,15 +1499,18 @@ function _clearSentUpserts(tableKey, sentEntries) {
   _saveRecentUpserts(entries);
 }
 
+/** `_eventRemoteSnapshotKey`: 予定・クラウド側・退避データ・キーに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function _eventRemoteSnapshotKey(userId) {
   return `mp_event_remote_snapshot_v${EVENT_REMOTE_SNAPSHOT_VERSION}:${userId}`;
 }
 
+/** `_remoteSnapshotKey`: クラウド側・退避データ・キーに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function _remoteSnapshotKey(collectionKey, userId) {
   if (collectionKey === 'events') return _eventRemoteSnapshotKey(userId);
   return `mp_sync_remote_snapshot_v${SYNC_SNAPSHOT_VERSION}:${collectionKey}:${userId}`;
 }
 
+/** `_remoteMissingStateKey`: クラウド側・不足・状態・キーに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function _remoteMissingStateKey(collectionKey, userId) {
   return `mp_sync_remote_missing_v${REMOTE_MISSING_STATE_VERSION}:${collectionKey}:${userId}`;
 }
@@ -1555,6 +1589,7 @@ function _trackRemoteMissingItems({
   return result.protectedIds;
 }
 
+/** `_syncBackupKey`: バックアップ・キーを現在状態へ反映し、必要な表示を更新する。 */
 function _syncBackupKey(collectionKey, userId) {
   if (collectionKey === 'events') return `mp_event_sync_backups:${userId}`;
   return `mp_sync_backups:${collectionKey}:${userId}`;
@@ -1699,6 +1734,7 @@ export function mergeFreshLocalCollection(key, previous, fresh, pulled) {
   return [...byId.values()];
 }
 
+/** `_dedupeById`: IDを後続処理で扱える安全な形にそろえる。 */
 function _dedupeById(items) {
   return dedupeNewestById(items);
 }
@@ -1743,6 +1779,7 @@ function _recordSyncError(table, error, type = 'push') {
   localStorage.setItem(SYNC_STATUS_KEY, JSON.stringify(next));
 }
 
+/** `_ls`: lsに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function _ls(key, fb) {
   try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fb; }
   catch { return fb; }

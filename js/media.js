@@ -133,10 +133,12 @@ export async function hydratePlannerImages(root) {
     }
 
     const frame = image.closest('.media-frame');
+    /** `finish`: finishに関する補助処理を行い、結果を呼び出し元へ返す。 */
     const finish = () => {
       image.dataset.mediaLoaded = '1';
       frame?.classList.remove('media-frame--loading', 'media-frame--error');
     };
+    /** `fail`: failに関する補助処理を行い、結果を呼び出し元へ返す。 */
     const fail = () => {
       image.dataset.mediaLoaded = 'error';
       frame?.classList.remove('media-frame--loading');
@@ -157,6 +159,7 @@ export function wirePlannerImageViewer(root) {
   if (!root?.addEventListener || root.dataset.mediaViewerWired === '1') return;
   root.dataset.mediaViewerWired = '1';
 
+  /** `openFromTarget`: From・Targetの画面・詳細・ダイアログを表示する。 */
   const openFromTarget = target => {
     const image = target?.closest?.('img[data-media-view]');
     if (!image || !root.contains(image)) return false;
@@ -209,6 +212,7 @@ export async function openPlannerImageViewer({
   let closed = false;
   let loadAttempt = 0;
   let loadTimer = null;
+  /** `close`: `close`を安全に終了または削除する。 */
   const close = () => {
     if (closed) return;
     closed = true;
@@ -219,6 +223,7 @@ export async function openPlannerImageViewer({
     if (activeViewerClose === close) activeViewerClose = null;
     trigger?.focus?.({ preventScroll: true });
   };
+  /** `onKeyDown`: キー・Downに関する操作またはイベントを受けて処理する。 */
   const onKeyDown = event => {
     if (event.key === 'Escape') close();
   };
@@ -249,11 +254,13 @@ export async function openPlannerImageViewer({
     viewer.classList.remove('media-lightbox--error');
     requestAnimationFrame(() => viewer.classList.add('media-lightbox--open'));
   };
+  /** `fail`: failに関する補助処理を行い、結果を呼び出し元へ返す。 */
   const fail = () => {
     clearTimeout(loadTimer);
     viewer.classList.remove('media-lightbox--loading');
     viewer.classList.add('media-lightbox--error');
   };
+  /** `loadSource`: 入力元を取得して呼び出し元へ返す。 */
   const loadSource = async (candidate, { allowRefresh = true } = {}) => {
     if (closed) return;
     const attempt = ++loadAttempt;
@@ -315,6 +322,7 @@ export async function deletePlannerImage(path) {
   return !error;
 }
 
+/** `resolvePersistentImageUrl`: 条件に合うPersistent・画像・URLを探して返す。 */
 async function resolvePersistentImageUrl(path) {
   const existingUrl = blobUrlCache.get(path);
   if (existingUrl) return existingUrl;
@@ -331,6 +339,7 @@ async function resolvePersistentImageUrl(path) {
   }
 }
 
+/** `writePersistentImage`: Persistent・画像を保存先または一時状態へ反映する。 */
 async function writePersistentImage(path, blob) {
   if (!path || !(blob instanceof Blob) || !('caches' in globalThis)) return false;
   try {
@@ -352,6 +361,7 @@ async function writePersistentImage(path, blob) {
   }
 }
 
+/** `prunePersistentHomeImages`: Persistent・Home・Imagesを安全に終了または削除する。 */
 async function prunePersistentHomeImages(cache, currentPath) {
   const parts = String(currentPath).split('/');
   if (parts.length < 3 || parts[1] !== 'home') return;
@@ -372,6 +382,7 @@ async function prunePersistentHomeImages(cache, currentPath) {
   }));
 }
 
+/** `deletePersistentImage`: Persistent・画像を安全に終了または削除する。 */
 async function deletePersistentImage(path) {
   if (!('caches' in globalThis)) return false;
   try {
@@ -382,6 +393,7 @@ async function deletePersistentImage(path) {
   }
 }
 
+/** `persistentCacheKey`: persistent・キャッシュ・キーに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function persistentCacheKey(path) {
   return new Request(
     `${location.origin}/__planner-image-cache__/${encodeURIComponent(path)}`,
@@ -389,6 +401,7 @@ function persistentCacheKey(path) {
   );
 }
 
+/** `createCachedBlobUrl`: 受け取った情報からCached・一時画像・URLを作る。 */
 function createCachedBlobUrl(path, blob) {
   const existing = blobUrlCache.get(path);
   if (existing) return existing;
@@ -397,6 +410,7 @@ function createCachedBlobUrl(path, blob) {
   return url;
 }
 
+/** `revokeCachedBlobUrl`: Cached・一時画像・URLを安全に終了または削除する。 */
 function revokeCachedBlobUrl(path) {
   const url = blobUrlCache.get(path);
   if (!url) return;
@@ -433,6 +447,7 @@ async function compressImage(file) {
   }
 }
 
+/** `loadImage`: 画像を取得して呼び出し元へ返す。 */
 function loadImage(url) {
   return new Promise((resolve, reject) => {
     const image = new Image();

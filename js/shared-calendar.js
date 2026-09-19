@@ -12,26 +12,32 @@ import { rowToEvent } from './migrate.js';
 const CACHE_KEY = 'mp_shared_calendar_groups';
 const PENDING_INVITE_KEY = 'mp_pending_shared_calendar_invite';
 
+/** `ls`: lsに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function ls(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback; } catch { return fallback; }
 }
 
+/** `saveGroups`: グループを保存先または一時状態へ反映する。 */
 function saveGroups(groups) {
   try { localStorage.setItem(CACHE_KEY, JSON.stringify(groups || [])); } catch {}
 }
 
+/** `savePendingInvite`: 保留中・招待を保存先または一時状態へ反映する。 */
 function savePendingInvite(token) {
   try { localStorage.setItem(PENDING_INVITE_KEY, String(token || '')); } catch {}
 }
 
+/** `clearPendingInvite`: 保留中・招待を安全に終了または削除する。 */
 function clearPendingInvite() {
   try { localStorage.removeItem(PENDING_INVITE_KEY); } catch {}
 }
 
+/** `notifyGroupsChanged`: グループ・変更が変わったことを他の処理へ通知する。 */
 function notifyGroupsChanged() {
   try { document.dispatchEvent(new CustomEvent('shared-calendar:groups-changed')); } catch {}
 }
 
+/** `mergeGroupInCache`: 複数のグループ・In・キャッシュを既存情報を失わないよう統合する。 */
 function mergeGroupInCache(group) {
   if (!group?.id) return;
   const groups = getShareGroupsForEventForm();
@@ -43,12 +49,14 @@ function mergeGroupInCache(group) {
   notifyGroupsChanged();
 }
 
+/** `rpcNeedsSqlRefresh`: データベース関数・Needs・SQL・Refreshに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function rpcNeedsSqlRefresh(error, functionName) {
   const message = `${error?.message || ''} ${error?.details || ''}`;
   return new RegExp(`function .*${functionName}|schema cache|not found|does not exist|ambiguous`, 'i')
     .test(message);
 }
 
+/** `callCreateGroupRpc`: Create・グループ・データベース関数を呼び出し、応答を返す。 */
 async function callCreateGroupRpc(client, group) {
   const attempts = [
     { p_group_id: group.id, p_group_name: group.name },
@@ -65,6 +73,7 @@ async function callCreateGroupRpc(client, group) {
   throw lastError;
 }
 
+/** `callDeleteGroupRpc`: 削除・グループ・データベース関数を呼び出し、応答を返す。 */
 async function callDeleteGroupRpc(client, groupId) {
   const attempts = [
     { p_group_id: groupId },
@@ -80,6 +89,7 @@ async function callDeleteGroupRpc(client, groupId) {
   throw lastError;
 }
 
+/** `callCreateInviteRpc`: Create・招待・データベース関数を呼び出し、応答を返す。 */
 async function callCreateInviteRpc(client, payload) {
   const attempts = [
     {
@@ -107,6 +117,7 @@ async function callCreateInviteRpc(client, payload) {
   throw lastError;
 }
 
+/** `normalizeGroup`: グループを後続処理で扱える安全な形にそろえる。 */
 function normalizeGroup(group) {
   return {
     id: group.id,
@@ -118,6 +129,7 @@ function normalizeGroup(group) {
   };
 }
 
+/** `mapSharedEvent`: 共有・予定を別の処理で使う形式へ変換する。 */
 function mapSharedEvent(row, userId) {
   const event = rowToEvent(row);
   event.ownerId = row.user_id;
@@ -130,6 +142,7 @@ function mapSharedEvent(row, userId) {
   return event;
 }
 
+/** `mapLocalSharedEvent`: 端末内・共有・予定を別の処理で使う形式へ変換する。 */
 function mapLocalSharedEvent(event, userId) {
   return {
     ...event,
@@ -141,12 +154,14 @@ function mapLocalSharedEvent(event, userId) {
   };
 }
 
+/** `isEventSharedToGroups`: 予定が選択した共有グループのいずれかへ公開されているか判定する。 */
 function isEventSharedToGroups(event, groupIds) {
   if (!event || event.shareVisibility === 'private') return false;
   const ids = Array.isArray(event.sharedGroupIds) ? event.sharedGroupIds : [];
   return ids.some(id => groupIds.includes(id));
 }
 
+/** `getShareGroupsForEventForm`: 共有・グループ・予定・フォームを取得して呼び出し元へ返す。 */
 export function getShareGroupsForEventForm() {
   return ls(CACHE_KEY, []);
 }
@@ -219,6 +234,7 @@ export async function createSharedGroup(name) {
   return created;
 }
 
+/** `deleteSharedGroup`: 共有・グループを安全に終了または削除する。 */
 export async function deleteSharedGroup(groupId) {
   const client = await getClient();
   const userId = await getUserId();
@@ -297,10 +313,12 @@ export async function acceptSharedInvite(token) {
   return data;
 }
 
+/** `getPendingSharedInvite`: 保留中・共有・招待を取得して呼び出し元へ返す。 */
 export function getPendingSharedInvite() {
   try { return localStorage.getItem(PENDING_INVITE_KEY) || ''; } catch { return ''; }
 }
 
+/** `consumePendingSharedInvite`: 保留中・共有・招待を一度だけ読み取り、保留状態から取り除く。 */
 export async function consumePendingSharedInvite() {
   const token = getPendingSharedInvite();
   if (!token) return null;
@@ -352,6 +370,7 @@ export async function collectSharedCalendarEvents(groupId = '') {
   return { groups, events, userId };
 }
 
+/** `countShareableLocalEvents`: 共有可能な・端末内・予定に必要な数値を計算して返す。 */
 export function countShareableLocalEvents(groupId = '', scope = 'future') {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
@@ -386,12 +405,14 @@ export function bulkShareLocalEvents({ groupId, visibility = 'shared_detail', sc
   return count;
 }
 
+/** `updateOwnSharedEvent`: 自分の・共有・予定を現在状態へ反映し、必要な表示を更新する。 */
 export async function updateOwnSharedEvent(eventId, updates) {
   const local = getEvents().find(ev => ev.id === eventId);
   if (!local) throw new Error('自分の予定だけ編集できます');
   return updateEvent(eventId, updates);
 }
 
+/** `deleteOwnSharedEvent`: 自分の・共有・予定を安全に終了または削除する。 */
 export async function deleteOwnSharedEvent(eventId) {
   const local = getEvents().find(ev => ev.id === eventId);
   if (!local) throw new Error('自分の予定だけ削除できます');

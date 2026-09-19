@@ -50,53 +50,63 @@ function _ls(key, fb = []) {
   try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fb; } catch { return fb; }
 }
 
+/** `_upsert`: upsertに関する補助処理を行い、結果を呼び出し元へ返す。 */
 async function _upsert(client, table, rows, conflict = 'id') {
   if (!rows.length) return;
   const { error } = await client.from(table).upsert(rows, { onConflict: conflict });
   if (error) throw error;
 }
 
+/** `_uploadTasks`: タスクをクラウドへ送信する。 */
 async function _uploadTasks(client, userId) {
   const rows = _ls('mp_tasks', []).map(t => taskToRow(t, userId, false));
   await _upsert(client, 'tasks', rows);
 }
 
+/** `_uploadArchivedTasks`: アーカイブ済み・タスクをクラウドへ送信する。 */
 async function _uploadArchivedTasks(client, userId) {
   const rows = _ls('mp_task_archive', []).map(t => taskToRow(t, userId, true));
   await _upsert(client, 'tasks', rows);
 }
 
+/** `_uploadEvents`: 予定をクラウドへ送信する。 */
 async function _uploadEvents(client, userId) {
   const rows = _ls('mp_events', []).map(e => eventToRow(e, userId));
   await _upsert(client, 'events', rows);
 }
 
+/** `_uploadGoals`: 目標をクラウドへ送信する。 */
 async function _uploadGoals(client, userId) {
   const rows = _ls('mp_goals', []).map(g => goalToRow(g, userId));
   await _upsert(client, 'goals', rows);
 }
 
+/** `_uploadMemos`: メモをクラウドへ送信する。 */
 async function _uploadMemos(client, userId) {
   const rows = _ls('mp_knowledge', []).map(m => memoToRow(m, userId));
   await _upsert(client, 'knowledge_memos', rows);
 }
 
+/** `_uploadTrash`: ゴミ箱をクラウドへ送信する。 */
 async function _uploadTrash(client, userId) {
   const rows = _ls('mp_trash', []).map(item => trashToRow(item, userId));
   await _upsert(client, 'trash_items', rows);
 }
 
+/** `_uploadSchedule`: スケジュールをクラウドへ送信する。 */
 async function _uploadSchedule(client, userId) {
   const rows = _ls('mp_schedule', []).map(i => schedItemToRow(i, userId));
   await _upsert(client, 'schedule_items', rows);
 }
 
+/** `_uploadTags`: タグをクラウドへ送信する。 */
 async function _uploadTags(client, userId) {
   const names = _ls('mp_tags', []);
   const rows  = names.map(name => ({ user_id: userId, name }));
   await _upsert(client, 'tags', rows, 'user_id,name');
 }
 
+/** `_uploadHabitLogs`: 習慣・ログをクラウドへ送信する。 */
 async function _uploadHabitLogs(client, userId) {
   const logs = _ls('mp_habit_logs', {});
   const rows = Object.entries(logs).map(([date, d]) => ({
@@ -109,6 +119,7 @@ async function _uploadHabitLogs(client, userId) {
   await _upsert(client, 'habit_logs', rows, 'user_id,date');
 }
 
+/** `_uploadReviewSchedule`: 復習・スケジュールをクラウドへ送信する。 */
 async function _uploadReviewSchedule(client, userId) {
   const schedule = _ls('mp_reviews', {});
   const rows = Object.entries(schedule).map(([memoId, e]) => ({
@@ -128,6 +139,7 @@ async function _uploadReviewSchedule(client, userId) {
 const _now = () => new Date().toISOString();
 const EVENT_HIDE_FROM_MONTH_TAG = '__mp_hide_from_month';
 
+/** `_eventTagsFromLocal`: 予定・タグ・From・端末内に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function _eventTagsFromLocal(event) {
   const tags = Array.isArray(event.tags)
     ? event.tags.filter(tag => tag && tag !== EVENT_HIDE_FROM_MONTH_TAG)
@@ -135,6 +147,7 @@ function _eventTagsFromLocal(event) {
   return event.hideFromMonth ? [...new Set([...tags, EVENT_HIDE_FROM_MONTH_TAG])] : tags;
 }
 
+/** `_eventTagsFromRow`: 予定・タグ・From・行に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function _eventTagsFromRow(row) {
   return Array.isArray(row.tags)
     ? row.tags.filter(tag => tag && tag !== EVENT_HIDE_FROM_MONTH_TAG)
@@ -241,6 +254,7 @@ export function rowToEvent(row) {
   };
 }
 
+/** `goalToRow`: 目標を行へ変換して返す。 */
 export function goalToRow(goal, userId) {
   return {
     id:          goal.id,
@@ -255,6 +269,7 @@ export function goalToRow(goal, userId) {
   };
 }
 
+/** `rowToGoal`: 行を目標へ変換して返す。 */
 export function rowToGoal(row) {
   return {
     id:          row.id,
@@ -299,6 +314,7 @@ export function rowToMemo(row) {
   };
 }
 
+/** `trashToRow`: ゴミ箱を行へ変換して返す。 */
 export function trashToRow(item, userId) {
   return {
     id:          item.id,
@@ -312,6 +328,7 @@ export function trashToRow(item, userId) {
   };
 }
 
+/** `rowToTrash`: 行をゴミ箱へ変換して返す。 */
 export function rowToTrash(row) {
   return {
     id:         row.id,
@@ -324,6 +341,7 @@ export function rowToTrash(row) {
   };
 }
 
+/** `schedItemToRow`: スケジュール・項目を行へ変換して返す。 */
 export function schedItemToRow(item, userId) {
   return {
     id:         item.id,
@@ -340,6 +358,7 @@ export function schedItemToRow(item, userId) {
   };
 }
 
+/** `rowToSchedItem`: 行をスケジュール・項目へ変換して返す。 */
 export function rowToSchedItem(row) {
   return {
     id:        row.id,

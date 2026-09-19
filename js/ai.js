@@ -55,6 +55,7 @@ function atlasSearchText(entry = {}) {
     ])].filter(Boolean).join(' ').normalize('NFKC').toLocaleLowerCase();
 }
 
+/** `atlasQueryTokens`: 表現帳・検索語・語に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function atlasQueryTokens(value) {
   const normalized = String(value || '').normalize('NFKC').toLocaleLowerCase().trim();
   if (!normalized) return [];
@@ -172,6 +173,7 @@ async function callServerAI(
   actionType = 'ai_request',
   { signal } = {}
 ) {
+  /** `readSession`: ログイン状態を取得して呼び出し元へ返す。 */
   const readSession = async () => {
     let timeoutId;
     try {
@@ -195,6 +197,7 @@ async function callServerAI(
     throw new Error('AIを使うには、AI設定でログインしてください。');
   }
   const controller = new AbortController();
+  /** `abortFromCaller`: From・呼び出し元を安全に終了または削除する。 */
   const abortFromCaller = () => controller.abort();
   const timeoutId = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
   signal?.addEventListener('abort', abortFromCaller, { once: true });
@@ -253,6 +256,7 @@ async function callServerAI(
   return text;
 }
 
+/** `callAPI`: APIを呼び出し、応答を返す。 */
 async function callAPI(
   modelPreference,
   systemText,
@@ -276,6 +280,7 @@ export async function streamText({ model = FAST_MODEL, system, userContent, maxT
   return full;
 }
 
+/** `streamDailyMessage`: stream・日次・メッセージに関する補助処理を行い、結果を呼び出し元へ返す。 */
 export async function streamDailyMessage(tasks = [], events = [], goals = [], onChunk) {
   const todayStr = today();
   const pending = tasks.filter(t => !t.completed).slice(0, 6);
@@ -295,6 +300,7 @@ export async function streamDailyMessage(tasks = [], events = [], goals = [], on
   });
 }
 
+/** `getDailyMessage`: 日次・メッセージを取得して呼び出し元へ返す。 */
 export async function getDailyMessage(tasks = [], events = [], goals = []) {
   const cacheKey = `daily_${today()}`;
   const cached = getAiCache(cacheKey);
@@ -367,6 +373,7 @@ export async function parseNaturalLanguageEvent(text, categories = []) {
   return parsed;
 }
 
+/** `analyzeEnergyPatterns`: エネルギー・Patternsを分析して結果を返す。 */
 export async function analyzeEnergyPatterns(focusLogs) {
   const cacheKey = `energy_${today()}`;
   const cached = getAiCache(cacheKey);
@@ -395,6 +402,7 @@ export async function analyzeEnergyPatterns(focusLogs) {
   return parsed;
 }
 
+/** `predictGoalCompletionLocal`: 目標・完了予測・端末内を現在データから予測する。 */
 export function predictGoalCompletionLocal(goal, allTasks) {
   const goalTasks = allTasks.filter(t => t.goalId === goal.id);
   const done = goalTasks.filter(t => t.completed);
@@ -421,6 +429,7 @@ export function predictGoalCompletionLocal(goal, allTasks) {
   return { status: 'on_track', label, predictedDateStr: label, daysLate: 0 };
 }
 
+/** `analyzeHabitCorrelations`: 習慣・相関を分析して結果を返す。 */
 export async function analyzeHabitCorrelations(habitLogs, focusLogs) {
   const cacheKey = `habit_corr_${today()}`;
   const cached = getAiCache(cacheKey);
@@ -461,6 +470,7 @@ export async function analyzeHabitCorrelations(habitLogs, focusLogs) {
   return parsed;
 }
 
+/** `pearsonR`: pearson・Rに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function pearsonR(xs, ys) {
   const n = xs.length;
   if (n < 2) return 0;
@@ -477,10 +487,12 @@ function pearsonR(xs, ys) {
   return Math.sqrt(dx * dy) < 1e-10 ? 0 : num / Math.sqrt(dx * dy);
 }
 
+/** `avg`: `avg`に必要な数値を計算して返す。 */
 function avg(arr) {
   return arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : 0;
 }
 
+/** `generateMonthlyReport`: 受け取った情報から月次・レポートを作る。 */
 export async function generateMonthlyReport(prevMonth, data) {
   const result = await callAPI(
     QUALITY_MODEL,
@@ -500,6 +512,7 @@ export async function generateMonthlyReport(prevMonth, data) {
   };
 }
 
+/** `generateAnalyticsSummary`: 受け取った情報から分析・要約を作る。 */
 export async function generateAnalyticsSummary(monthStr, data) {
   const text = await callAPI(
     FAST_MODEL,
@@ -534,6 +547,7 @@ export async function suggestKnowledgeTags(title, textPreview) {
   return tags;
 }
 
+/** `explainTerm`: 用語の説明を取得して返す。 */
 export async function explainTerm(term, context = '') {
   const result = await callAPI(
     FAST_MODEL,
@@ -1201,6 +1215,7 @@ function normalizeStringList(value, maxItems) {
     .slice(0, maxItems);
 }
 
+/** `normalizeCollocations`: Collocationsを後続処理で扱える安全な形にそろえる。 */
 function normalizeCollocations(value, maxItems) {
   return (Array.isArray(value) ? value : [])
     .map(item => {
@@ -1228,6 +1243,7 @@ function normalizeCollocations(value, maxItems) {
     .slice(0, maxItems);
 }
 
+/** `summarizeAndTagText`: summarize・タグ・Textに関する補助処理を行い、結果を呼び出し元へ返す。 */
 export async function summarizeAndTagText(text) {
   const result = await callAPI(
     FAST_MODEL,
@@ -1261,6 +1277,7 @@ export async function detectKnowledgeGaps(goalTitle, existingTags) {
   return gaps;
 }
 
+/** `suggestUnstudiedTopics`: 未学習・テーマの候補を作って返す。 */
 export async function suggestUnstudiedTopics(goalTitle, knowledgeTags) {
   const cacheKey = `unstudied_${goalTitle}_${[...knowledgeTags].sort().join(',')}`;
   const cached = getAiCache(cacheKey);
@@ -1280,6 +1297,7 @@ export async function suggestUnstudiedTopics(goalTitle, knowledgeTags) {
   return topics;
 }
 
+/** `splitGoalToTasks`: 入力を解析して目標・To・タスクを取り出す。 */
 export async function splitGoalToTasks(goal) {
   const cacheKey = `goalsplit_${goal.id}_v3`;
   const cached = getAiCache(cacheKey);
@@ -1301,6 +1319,7 @@ export async function splitGoalToTasks(goal) {
   return parsed;
 }
 
+/** `processBatchQueue`: 一括処理・キューを順番に処理する。 */
 export async function processBatchQueue(onProgress) {
   const queue = getPendingAIQueue();
   if (!queue.length) return { processed: 0, total: 0 };
@@ -1395,7 +1414,9 @@ export async function interpretPlannerInput(text, context = {}) {
     && !String(parsed.targetTitle || parsed.title || '').trim()) {
     throw new Error('削除対象を特定できなかったため、何も削除していません。');
   }
+  /** `validDate`: 日付の条件を確認し、結果を真偽値で返す。 */
   const validDate = value => value == null || /^\d{4}-\d{2}-\d{2}$/.test(String(value));
+  /** `validTime`: 時刻の条件を確認し、結果を真偽値で返す。 */
   const validTime = value => value == null || /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(value));
   if (!validDate(parsed.date) || !validDate(parsed.dueDate)
     || !validTime(parsed.startTime) || !validTime(parsed.endTime) || !validTime(parsed.dueTime)) {
@@ -1413,6 +1434,7 @@ export async function interpretPlannerInput(text, context = {}) {
   return parsed;
 }
 
+/** `applyExplicitTimes`: 明示された・時刻を現在状態へ反映し、必要な表示を更新する。 */
 function applyExplicitTimes(parsed, text) {
   const times = parseJapaneseTimes(text);
   if (!times.length) return;
@@ -1428,6 +1450,7 @@ function applyExplicitTimes(parsed, text) {
   }
 }
 
+/** `addDaysToDateString`: YYYY-MM-DD形式の日付へ指定日数を加えた文字列を返す。 */
 function addDaysToDateString(dateString, days) {
   const date = new Date(`${dateString}T12:00:00`);
   date.setDate(date.getDate() + days);
@@ -1437,6 +1460,7 @@ function addDaysToDateString(dateString, days) {
   return `${year}-${month}-${day}`;
 }
 
+/** `resolveRelativeDate`: 条件に合うRelative・日付を探して返す。 */
 function resolveRelativeDate(text, localToday) {
   const value = String(text || '');
   if (value.includes('明後日')) return addDaysToDateString(localToday, 2);

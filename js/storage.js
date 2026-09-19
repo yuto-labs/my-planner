@@ -68,17 +68,29 @@ const USER_CONTENT_KEYS = [
 
 // 定数の初期化順に依存せず USER_CONTENT_KEYS から参照するため関数にしている。
 function SCHED_KEY_SAFE() { return 'mp_schedule'; }
+/** `FOCUS_LOG_KEY_SAFE`: 現在のユーザーに対応するフォーカスログ保存キーを返す。 */
 function FOCUS_LOG_KEY_SAFE() { return 'mp_focus_logs'; }
+/** `HABIT_LOG_KEY_SAFE`: 現在のユーザーに対応する習慣ログ保存キーを返す。 */
 function HABIT_LOG_KEY_SAFE() { return 'mp_habit_logs'; }
+/** `ENERGY_INSIGHT_KEY_SAFE`: 現在のユーザーに対応するエネルギー分析保存キーを返す。 */
 function ENERGY_INSIGHT_KEY_SAFE() { return 'mp_energy_insight'; }
+/** `MONTHLY_REPORT_KEY_SAFE`: 現在のユーザーに対応する月次レポート保存キーを返す。 */
 function MONTHLY_REPORT_KEY_SAFE() { return 'mp_monthly_reports'; }
+/** `REVIEW_KEY_SAFE`: 現在のユーザーに対応する復習予定保存キーを返す。 */
 function REVIEW_KEY_SAFE() { return 'mp_reviews'; }
+/** `KNOWLEDGE_KEY_SAFE`: 現在のユーザーに対応するメモ・学習データ保存キーを返す。 */
 function KNOWLEDGE_KEY_SAFE() { return 'mp_knowledge'; }
+/** `REVIEW_LOG_KEY_SAFE`: 現在のユーザーに対応する復習履歴保存キーを返す。 */
 function REVIEW_LOG_KEY_SAFE() { return 'mp_knowledge_review_log'; }
+/** `ARCHIVE_KEY_SAFE`: 現在のユーザーに対応するアーカイブ保存キーを返す。 */
 function ARCHIVE_KEY_SAFE() { return 'mp_task_archive'; }
+/** `TRASH_KEY_SAFE`: 現在のユーザーに対応するゴミ箱保存キーを返す。 */
 function TRASH_KEY_SAFE() { return 'mp_trash'; }
+/** `TAGS_KEY_SAFE`: 現在のユーザーに対応するタグ保存キーを返す。 */
 function TAGS_KEY_SAFE() { return 'mp_tags'; }
+/** `HABITS_KEY_SAFE`: 現在のユーザーに対応する習慣保存キーを返す。 */
 function HABITS_KEY_SAFE() { return 'mp_habits2'; }
+/** `HABIT_DONE_KEY_SAFE`: 現在のユーザーに対応する習慣完了履歴の保存キーを返す。 */
 function HABIT_DONE_KEY_SAFE() { return 'mp_habit2_done'; }
 
 // ---- Sync hooks (wired by sync.js at startup) ----
@@ -93,9 +105,11 @@ export function registerSyncHook(fn)       { _syncHook       = fn; }
 /** 削除後に呼ぶリモート削除処理を sync.js から登録する。 */
 export function registerSyncDeleteHook(fn) { _syncDeleteHook = fn; }
 
+/** `_notifySync`: Syncが変わったことを他の処理へ通知する。 */
 function _notifySync(tableKey) {
   if (_syncHook) _syncHook(tableKey);
 }
+/** `_notifyDelete`: 削除が変わったことを他の処理へ通知する。 */
 function _notifyDelete(payload) {
   if (_syncDeleteHook) _syncDeleteHook(payload);
 }
@@ -152,6 +166,7 @@ function save(key, value) {
 // 配列全体を保存した後に同期へ通知する。個別操作は必ず updatedAt を更新する。
 
 export function getEvents() { return load(KEY.EVENTS, []); }
+/** `saveEvents`: 予定を保存先または一時状態へ反映する。 */
 export function saveEvents(events) {
   if (!save(KEY.EVENTS, events)) return false;
   _notifySync('events');
@@ -225,6 +240,7 @@ export function deleteFutureRecurring(recurringId, fromDateISO) {
 // 完了・放棄・並び順・繰り返し生成を一か所で整え、画面ごとの挙動差を防ぐ。
 
 export function getTasks() { return load(KEY.TASKS, []); }
+/** `saveTasks`: タスクを保存先または一時状態へ反映する。 */
 export function saveTasks(tasks) {
   if (!save(KEY.TASKS, tasks)) return false;
   _notifySync('tasks');
@@ -381,6 +397,7 @@ function calcNextDueDate(currentDueDate, recurrence) {
 // 目標は関連タスクから計算する進捗とは別に、題名・期限・説明を保存する。
 
 export function getGoals() { return load(KEY.GOALS, []); }
+/** `saveGoals`: 目標を保存先または一時状態へ反映する。 */
 export function saveGoals(goals) {
   if (!save(KEY.GOALS, goals)) return false;
   _notifySync('goals');
@@ -407,6 +424,7 @@ export function addGoal(goal) {
   return newGoal;
 }
 
+/** `updateGoal`: 目標を現在状態へ反映し、必要な表示を更新する。 */
 export function updateGoal(id, updates) {
   const goals = getGoals();
   const idx = goals.findIndex(g => g.id === id);
@@ -431,14 +449,17 @@ export function deleteGoal(id) {
 // 予定はカテゴリIDだけを持ち、表示名と色はこの一覧から引く。
 
 export function getCategories() { return load(KEY.CATS, DEFAULT_CATEGORIES); }
+/** `saveCategories`: カテゴリを保存先または一時状態へ反映する。 */
 export function saveCategories(cats) { save(KEY.CATS, cats); }
 
+/** `getCategoryById`: カテゴリ・IDを取得して呼び出し元へ返す。 */
 export function getCategoryById(id) {
   return getCategories().find(c => c.id === id)
     || DEFAULT_CATEGORIES.find(c => c.id === id)
     || DEFAULT_CATEGORIES[4]; // fallback to 'other'
 }
 
+/** `getCategoryColor`: カテゴリ・色を取得して呼び出し元へ返す。 */
 export function getCategoryColor(id) {
   return getCategoryById(id)?.color || '#6b7280';
 }
@@ -479,20 +500,25 @@ export function getSettings() {
 /** 指定された設定だけを更新し、他の設定項目を保持する。 */
 export function saveSettings(s) { save(KEY.SETS, { ...getSettings(), ...s }); }
 
+/** `getApiKey`: API・キーを取得して呼び出し元へ返す。 */
 export function getApiKey() { return getSettings().apiKey || ''; }
+/** `getAiRuntime`: AI・実行状態を取得して呼び出し元へ返す。 */
 export function getAiRuntime() {
   const runtime = { ...DEFAULT_AI_RUNTIME, ...load(KEY.AI_RUNTIME, {}) };
   return { ...runtime, limits: null, usage: null };
 }
+/** `saveAiRuntime`: AI・実行状態を保存先または一時状態へ反映する。 */
 export function saveAiRuntime(patch) {
   const runtime = { ...getAiRuntime(), ...patch };
   save(KEY.AI_RUNTIME, { ...runtime, limits: null, usage: null });
 }
+/** `isAiAvailable`: AI・利用可否の条件を確認し、結果を真偽値で返す。 */
 export function isAiAvailable() {
   const settings = getSettings();
   const runtime = getAiRuntime();
   return settings.aiEnabled === true && runtime.configured === true;
 }
+/** `getMyScheduleColor`: My・スケジュール・色を取得して呼び出し元へ返す。 */
 export function getMyScheduleColor() { return getSettings().myScheduleColor || DEFAULT_SETTINGS.myScheduleColor; }
 
 // ---- AI Result Cache ----
@@ -518,6 +544,7 @@ export function setAiCache(key, val, ttlMs = 86_400_000) {
   save(KEY.CACHE, cache);
 }
 
+/** `clearAiCache`: AI・キャッシュを安全に終了または削除する。 */
 export function clearAiCache() {
   save(KEY.CACHE, {});
 }
@@ -541,11 +568,13 @@ export function addToPendingAIQueue(item) {
   save(KEY.AI_QUEUE, queue);
 }
 
+/** `removeFromPendingAIQueue`: From・保留中・AIQueueを安全に終了または削除する。 */
 export function removeFromPendingAIQueue(id, type) {
   const queue = getPendingAIQueue().filter(q => !(q.id === id && q.type === type));
   save(KEY.AI_QUEUE, queue);
 }
 
+/** `clearPendingAIQueue`: 保留中・AIQueueを安全に終了または削除する。 */
 export function clearPendingAIQueue() {
   save(KEY.AI_QUEUE, []);
 }
@@ -561,6 +590,7 @@ export function getBatchSettings() {
   });
 }
 
+/** `saveBatchSettings`: 一括処理・Settingsを保存先または一時状態へ反映する。 */
 export function saveBatchSettings(patch) {
   const current = getBatchSettings();
   save(KEY.BATCH_CFG, { ...current, ...patch });
@@ -571,7 +601,9 @@ export function saveBatchSettings(patch) {
 
 const SCHED_KEY = 'mp_schedule';
 
+/** `getScheduleItems`: スケジュール・Itemsを取得して呼び出し元へ返す。 */
 export function getScheduleItems() { return load(SCHED_KEY, []); }
+/** `saveScheduleItems`: スケジュール・Itemsを保存先または一時状態へ反映する。 */
 export function saveScheduleItems(items) {
   if (!save(SCHED_KEY, items)) return false;
   _notifySync('schedule_items');
@@ -596,6 +628,7 @@ export function addScheduleItem(item) {
   return saveScheduleItems(items) ? newItem : null;
 }
 
+/** `updateScheduleItem`: スケジュール・項目を現在状態へ反映し、必要な表示を更新する。 */
 export function updateScheduleItem(id, updates) {
   const items = getScheduleItems();
   const idx = items.findIndex(i => i.id === id);
@@ -643,6 +676,7 @@ export function replaceScheduleItems(predicate, replacements) {
   return created;
 }
 
+/** `getScheduleItemsForDate`: スケジュール・Items・日付を取得して呼び出し元へ返す。 */
 export function getScheduleItemsForDate(dateStr) {
   return getScheduleItems().filter(i => !i.date || i.date === dateStr);
 }
@@ -650,8 +684,11 @@ export function getScheduleItemsForDate(dateStr) {
 // ---- Focus Logs (Energy Pattern) ----
 // Shape: [{id, taskId, taskTitle, focusLevel:'high'|'medium'|'low', hour:0-23, dayOfWeek:0-6, timestamp}]
 const FOCUS_LOG_KEY = 'mp_focus_logs';
+/** `getFocusLogs`: フォーカス・ログを取得して呼び出し元へ返す。 */
 export function getFocusLogs()           { return load(FOCUS_LOG_KEY, []); }
+/** `saveFocusLogs`: フォーカス・ログを保存先または一時状態へ反映する。 */
 export function saveFocusLogs(logs)      { save(FOCUS_LOG_KEY, logs); }
+/** `addFocusLog`: 受け取った情報からフォーカス・ログを作る。 */
 export function addFocusLog(entry) {
   const logs = getFocusLogs();
   const newEntry = { ...entry, id: entry.id || generateId(), timestamp: new Date().toISOString() };
@@ -662,6 +699,7 @@ export function addFocusLog(entry) {
   return newEntry; // return so caller can store ID for undo
 }
 
+/** `removeFocusLogById`: フォーカス・ログ・IDを安全に終了または削除する。 */
 export function removeFocusLogById(id) {
   saveFocusLogs(getFocusLogs().filter(l => l.id !== id));
 }
@@ -673,6 +711,7 @@ export function removeFocusLogsAfter(taskId, afterIso) {
     !(l.taskId === taskId && new Date(l.timestamp).getTime() >= t)
   ));
 }
+/** `getFocusLogsForDays`: フォーカス・ログ・Daysを取得して呼び出し元へ返す。 */
 export function getFocusLogsForDays(days) {
   const cutoff = Date.now() - days * 86400000;
   return getFocusLogs().filter(l => new Date(l.timestamp).getTime() > cutoff);
@@ -681,8 +720,11 @@ export function getFocusLogsForDays(days) {
 // ---- Habit Logs (sleep, exercise per day) ----
 // Shape: { 'YYYY-MM-DD': { sleep: number, exercise: boolean, note: '' } }
 const HABIT_LOG_KEY = 'mp_habit_logs';
+/** `getHabitLogs`: 習慣・ログを取得して呼び出し元へ返す。 */
 export function getHabitLogs()                    { return load(HABIT_LOG_KEY, {}); }
+/** `getHabitLogForDate`: 習慣・ログ・日付を取得して呼び出し元へ返す。 */
 export function getHabitLogForDate(dateStr)        { return getHabitLogs()[dateStr] || null; }
+/** `setHabitLog`: 習慣・ログを保存先または一時状態へ反映する。 */
 export function setHabitLog(dateStr, data) {
   const logs = getHabitLogs();
   logs[dateStr] = { ...logs[dateStr], ...data };
@@ -691,12 +733,16 @@ export function setHabitLog(dateStr, data) {
 
 // ---- Energy Insight Cache (AI-generated) ----
 const ENERGY_INSIGHT_KEY = 'mp_energy_insight';
+/** `getEnergyInsight`: エネルギー・分析を取得して呼び出し元へ返す。 */
 export function getEnergyInsight()    { return load(ENERGY_INSIGHT_KEY, null); }
+/** `setEnergyInsight`: エネルギー・分析を保存先または一時状態へ反映する。 */
 export function setEnergyInsight(d)   { save(ENERGY_INSIGHT_KEY, d); }
 
 // ---- Monthly Reports ----
 const MONTHLY_REPORT_KEY = 'mp_monthly_reports';
+/** `getMonthlyReport`: 月次・レポートを取得して呼び出し元へ返す。 */
 export function getMonthlyReport(yyyymm)        { return (load(MONTHLY_REPORT_KEY, {}))[yyyymm] || null; }
+/** `setMonthlyReport`: 月次・レポートを保存先または一時状態へ反映する。 */
 export function setMonthlyReport(yyyymm, report) {
   const all = load(MONTHLY_REPORT_KEY, {});
   all[yyyymm] = { ...report, generatedAt: new Date().toISOString() };
@@ -725,7 +771,9 @@ const RATING_INTERVALS = {
 // Stage delta per rating (easy = +1 stage but with longer interval than good)
 const STAGE_DELTA = { again: -2, hard: 0, good: +1, easy: +1 };
 
+/** `getReviewSchedule`: 復習・スケジュールを取得して呼び出し元へ返す。 */
 export function getReviewSchedule()              { return load(REVIEW_KEY, {}); }
+/** `saveReviewSchedule`: 復習・スケジュールを保存先または一時状態へ反映する。 */
 export function saveReviewSchedule(schedule) {
   if (!save(REVIEW_KEY, schedule)) return false;
   _notifySync('review_schedule');
@@ -740,6 +788,7 @@ export function scheduleFirstReview(memoId) {
   saveReviewSchedule(schedule);
 }
 
+/** `isMemoReviewEnabled`: 復習・Enabledの条件を確認し、結果を真偽値で返す。 */
 export function isMemoReviewEnabled(memoId) {
   return getReviewSchedule()[memoId]?.stage !== REVIEW_DISABLED_STAGE;
 }
@@ -799,6 +848,7 @@ export function previewReviewIntervals(memoId) {
   };
 }
 
+/** `setReviewStage`: 復習・段階を保存先または一時状態へ反映する。 */
 export function setReviewStage(memoId, stage) {
   const schedule = getReviewSchedule();
   const newStage = Math.max(0, Math.min(stage, MASTERY_STAGE));
@@ -814,12 +864,14 @@ export function setReviewStage(memoId, stage) {
   saveReviewSchedule(schedule);
 }
 
+/** `getReviewsForDate`: 復習・日付を取得して呼び出し元へ返す。 */
 export function getReviewsForDate(dateStr) {
   const schedule = getReviewSchedule();
   return Object.entries(schedule)
     .filter(([, v]) => v.stage >= 0 && v.nextReview && v.nextReview <= dateStr && v.stage < MASTERY_STAGE)
     .map(([memoId, v]) => ({ memoId, ...v }));
 }
+/** `toDateStr_simple`: 日付・文字列・simpleを別の処理で使う形式へ変換する。 */
 function toDateStr_simple(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
@@ -843,11 +895,13 @@ const LEARNING_ENTRY_BLOCK_TYPE = 'learning-entry-data';
 const APP_MEDIA_PREFS_TAG = '__app_media_preferences__';
 const APP_MEDIA_PREFS_BLOCK_TYPE = 'app-media-preferences';
 
+/** `getAllKnowledgeRecords`: All・Knowledge・Recordsを取得して呼び出し元へ返す。 */
 function getAllKnowledgeRecords() {
   const records = load(KNOWLEDGE_KEY, []);
   return Array.isArray(records) ? records : [];
 }
 
+/** `isExpressionAtlasRecord`: 表現帳・保存レコードの条件を確認し、結果を真偽値で返す。 */
 function isExpressionAtlasRecord(record) {
   return Array.isArray(record?.tags)
     && record.tags.includes(EXPRESSION_ATLAS_TAG)
@@ -859,6 +913,7 @@ function isExpressionAtlasRecord(record) {
     ));
 }
 
+/** `isAppMediaPreferencesRecord`: 画像データ・設定・保存レコードの条件を確認し、結果を真偽値で返す。 */
 function isAppMediaPreferencesRecord(record) {
   return Array.isArray(record?.tags)
     && record.tags.includes(APP_MEDIA_PREFS_TAG)
@@ -866,6 +921,7 @@ function isAppMediaPreferencesRecord(record) {
     && record.blocks.some(block => block?.type === APP_MEDIA_PREFS_BLOCK_TYPE);
 }
 
+/** `isLearningLibraryRecord`: 一覧・保存レコードの条件を確認し、結果を真偽値で返す。 */
 function isLearningLibraryRecord(record) {
   return Array.isArray(record?.tags)
     && record.tags.includes(LEARNING_LIBRARY_TAG)
@@ -873,27 +929,32 @@ function isLearningLibraryRecord(record) {
     && record.blocks.some(block => block?.type === LEARNING_ENTRY_BLOCK_TYPE);
 }
 
+/** `isInternalKnowledgeRecord`: Knowledge・保存レコードの条件を確認し、結果を真偽値で返す。 */
 function isInternalKnowledgeRecord(record) {
   return isExpressionAtlasRecord(record)
     || isLearningLibraryRecord(record)
     || isAppMediaPreferencesRecord(record);
 }
 
+/** `isNuanceRecord`: 保存レコードの条件を確認し、結果を真偽値で返す。 */
 function isNuanceRecord(record) {
   return isExpressionAtlasRecord(record)
     && record.blocks.some(block => block?.type === EXPRESSION_ATLAS_BLOCK_TYPE);
 }
 
+/** `isTranslationSetRecord`: Set・保存レコードの条件を確認し、結果を真偽値で返す。 */
 function isTranslationSetRecord(record) {
   return isExpressionAtlasRecord(record)
     && record.blocks.some(block => block?.type === TRANSLATION_SET_BLOCK_TYPE);
 }
 
+/** `isEnglishQuestionRecord`: Question・保存レコードの条件を確認し、結果を真偽値で返す。 */
 function isEnglishQuestionRecord(record) {
   return isExpressionAtlasRecord(record)
     && record.blocks.some(block => block?.type === ENGLISH_QUESTION_BLOCK_TYPE);
 }
 
+/** `expressionRecordToEntry`: 表現・保存レコードを項目へ変換して返す。 */
 function expressionRecordToEntry(record) {
   const data = record?.blocks?.find(block => block?.type === EXPRESSION_ATLAS_BLOCK_TYPE)?.data;
   if (!data || typeof data !== 'object') return null;
@@ -906,6 +967,7 @@ function expressionRecordToEntry(record) {
   });
 }
 
+/** `expressionEntryKey`: 表現・項目・キーに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function expressionEntryKey(entry) {
   const stable = withStableClassification(entry);
   return [
@@ -916,6 +978,7 @@ function expressionEntryKey(entry) {
   ].join('|');
 }
 
+/** `expressionHeadwordKey`: 表現・見出し語・キーに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function expressionHeadwordKey(entry) {
   return [
     String(entry?.language || 'English').trim().toLocaleLowerCase(),
@@ -923,11 +986,13 @@ function expressionHeadwordKey(entry) {
   ].join('|');
 }
 
+/** `expressionSenses`: 表現・意味に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function expressionSenses(entry = {}) {
   const stored = Array.isArray(entry.senses) ? entry.senses.filter(Boolean) : [];
   return stored.length ? stored.map(atlasSenseFromEntry) : [atlasSenseFromEntry(entry)];
 }
 
+/** `mergeUniqueArray`: 複数のUnique・Arrayを既存情報を失わないよう統合する。 */
 function mergeUniqueArray(existing, incoming) {
   return mergeAtlasList(existing, incoming);
 }
@@ -996,6 +1061,7 @@ function mergeExpressionEntry(existing, incoming) {
   };
 }
 
+/** `normalizedExpressionSourceQueries`: normalized・表現・入力元・Queriesに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function normalizedExpressionSourceQueries(entry) {
   return new Set([
     entry?.sourceQueryJa,
@@ -1007,6 +1073,7 @@ function normalizedExpressionSourceQueries(entry) {
     .filter(Boolean));
 }
 
+/** `isRepeatedExpressionQuery`: 表現・検索語の条件を確認し、結果を真偽値で返す。 */
 function isRepeatedExpressionQuery(existing, incoming) {
   const existingLemma = String(existing?.lemma || existing?.term || '')
     .normalize('NFKC').trim().toLocaleLowerCase();
@@ -1023,6 +1090,7 @@ function isRepeatedExpressionQuery(existing, incoming) {
   return [...incomingQueries].some(query => existingQueries.has(query));
 }
 
+/** `atlasRecordIsUnchanged`: 表現帳・保存レコード・Is・Unchangedに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function atlasRecordIsUnchanged(existing, blockType, title, summary, data) {
   if (!existing) return false;
   const previousData = existing.blocks?.find(block => block?.type === blockType)?.data;
@@ -1031,6 +1099,7 @@ function atlasRecordIsUnchanged(existing, blockType, title, summary, data) {
     && stableJsonStringify(previousData) === stableJsonStringify(data);
 }
 
+/** `expressionEntryToRecord`: 表現・項目を保存レコードへ変換して返す。 */
 function expressionEntryToRecord(entry, existing = null) {
   const now = new Date().toISOString();
   const id = entry.id || existing?.id || generateId();
@@ -1139,6 +1208,7 @@ function expressionEntryToRecord(entry, existing = null) {
   };
 }
 
+/** `translationRecordToSet`: 英訳・保存レコードをSetへ変換して返す。 */
 function translationRecordToSet(record) {
   const data = record?.blocks?.find(block => block?.type === TRANSLATION_SET_BLOCK_TYPE)?.data;
   if (!data || typeof data !== 'object') return null;
@@ -1150,6 +1220,7 @@ function translationRecordToSet(record) {
   });
 }
 
+/** `translationSetKey`: 英訳・Set・キーに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function translationSetKey(set) {
   return [
     String(set?.language || 'English').trim().toLocaleLowerCase(),
@@ -1157,6 +1228,7 @@ function translationSetKey(set) {
   ].join('|');
 }
 
+/** `translationSetToRecord`: 英訳・Setを保存レコードへ変換して返す。 */
 function translationSetToRecord(set, existing = null) {
   const now = new Date().toISOString();
   const id = set.id || existing?.id || generateId();
@@ -1210,6 +1282,7 @@ function translationSetToRecord(set, existing = null) {
   };
 }
 
+/** `englishQuestionRecordToEntry`: 英語・Question・保存レコードを項目へ変換して返す。 */
 function englishQuestionRecordToEntry(record) {
   const data = record?.blocks?.find(block => block?.type === ENGLISH_QUESTION_BLOCK_TYPE)?.data;
   if (!data || typeof data !== 'object') return null;
@@ -1221,6 +1294,7 @@ function englishQuestionRecordToEntry(record) {
   };
 }
 
+/** `englishQuestionToRecord`: 英語・Questionを保存レコードへ変換して返す。 */
 function englishQuestionToRecord(question, existing = null) {
   const now = new Date().toISOString();
   const id = question.id || existing?.id || generateId();
@@ -1256,6 +1330,7 @@ function englishQuestionToRecord(question, existing = null) {
   };
 }
 
+/** `learningRecordToEntry`: 学習・保存レコードを項目へ変換して返す。 */
 function learningRecordToEntry(record) {
   const data = record?.blocks?.find(block => block?.type === LEARNING_ENTRY_BLOCK_TYPE)?.data;
   if (!data || typeof data !== 'object') return null;
@@ -1268,6 +1343,7 @@ function learningRecordToEntry(record) {
   };
 }
 
+/** `learningEntryToRecord`: 学習・項目を保存レコードへ変換して返す。 */
 function learningEntryToRecord(entry, existing = null) {
   const now = new Date().toISOString();
   const id = entry.id || existing?.id || generateId();
@@ -1341,11 +1417,13 @@ export function getKnowledgeMemos() {
  */
 export function normalizeMemoBlockIds(blocks, idFactory = generateId) {
   const seen = new Set();
+  /** `nextId`: next・IDに関する補助処理を行い、結果を呼び出し元へ返す。 */
   const nextId = () => {
     let id = String(idFactory() || '').trim();
     while (!id || seen.has(id)) id = String(idFactory() || '').trim();
     return id;
   };
+  /** `visit`: visitに関する補助処理を行い、結果を呼び出し元へ返す。 */
   const visit = block => {
     const next = { ...(block || {}) };
     const originalId = String(next.id || '').trim();
@@ -1376,12 +1454,14 @@ export function saveKnowledgeMemos(memos) {
   return true;
 }
 
+/** `getAppMediaPreferences`: App・画像データ・設定を取得して呼び出し元へ返す。 */
 export function getAppMediaPreferences() {
   const record = getAllKnowledgeRecords().find(isAppMediaPreferencesRecord);
   const data = record?.blocks?.find(block => block?.type === APP_MEDIA_PREFS_BLOCK_TYPE)?.data;
   return data && typeof data === 'object' ? { ...data } : { homeCover: null };
 }
 
+/** `saveAppMediaPreferences`: App・画像データ・設定を保存先または一時状態へ反映する。 */
 export function saveAppMediaPreferences(updates = {}) {
   const records = getAllKnowledgeRecords();
   const existing = records.find(isAppMediaPreferencesRecord);
@@ -1409,6 +1489,7 @@ export function saveAppMediaPreferences(updates = {}) {
   return data;
 }
 
+/** `getRawExpressionEntries`: 未加工・表現・項目を取得して呼び出し元へ返す。 */
 function getRawExpressionEntries() {
   return getAllKnowledgeRecords()
     .filter(isNuanceRecord)
@@ -1416,6 +1497,7 @@ function getRawExpressionEntries() {
     .filter(Boolean);
 }
 
+/** `getExpressionEntries`: 表現・項目を取得して呼び出し元へ返す。 */
 export function getExpressionEntries() {
   return consolidateExpressionEntries(getRawExpressionEntries())
     .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
@@ -1513,6 +1595,7 @@ export function addExpressionEntriesWithReport(entries) {
   return { entries: saved, ...report };
 }
 
+/** `addExpressionEntries`: 受け取った情報から表現・項目を作る。 */
 export function addExpressionEntries(entries) {
   return addExpressionEntriesWithReport(entries).entries;
 }
@@ -1557,6 +1640,7 @@ export function deleteExpressionEntry(id) {
   return true;
 }
 
+/** `getKnowledgeMemoById`: Knowledge・メモ・IDを取得して呼び出し元へ返す。 */
 export function getKnowledgeMemoById(id) {
   return getKnowledgeMemos().find(m => m.id === id) || null;
 }
@@ -1611,16 +1695,19 @@ export function deleteKnowledgeMemo(id) {
 // payloadへ削除前の完全なオブジェクトを残し、entityTypeで復元先を決める。
 const TRASH_KEY = 'mp_trash';
 
+/** `getTrashItems`: ゴミ箱・Itemsを取得して呼び出し元へ返す。 */
 export function getTrashItems() {
   return load(TRASH_KEY, []);
 }
 
+/** `saveTrashItems`: ゴミ箱・Itemsを保存先または一時状態へ反映する。 */
 export function saveTrashItems(items) {
   if (!save(TRASH_KEY, items)) return false;
   _notifySync('trash_items');
   return true;
 }
 
+/** `getTranslationSets`: 英訳・Setsを取得して呼び出し元へ返す。 */
 export function getTranslationSets() {
   return getAllKnowledgeRecords()
     .filter(isTranslationSetRecord)
@@ -1629,6 +1716,7 @@ export function getTranslationSets() {
     .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
 }
 
+/** `getEnglishQuestions`: 英語・Questionsを取得して呼び出し元へ返す。 */
 export function getEnglishQuestions() {
   return getAllKnowledgeRecords()
     .filter(isEnglishQuestionRecord)
@@ -1637,6 +1725,7 @@ export function getEnglishQuestions() {
     .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
 }
 
+/** `getLearningEntries`: 学習・項目を取得して呼び出し元へ返す。 */
 export function getLearningEntries() {
   return getAllKnowledgeRecords()
     .filter(isLearningLibraryRecord)
@@ -1645,6 +1734,7 @@ export function getLearningEntries() {
     .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
 }
 
+/** `getLearningEntryById`: 学習・項目・IDを取得して呼び出し元へ返す。 */
 export function getLearningEntryById(id) {
   return getLearningEntries().find(entry => entry.id === id) || null;
 }
@@ -1671,6 +1761,7 @@ export function addLearningEntry(entry) {
   return saveLearningEntries([nextEntry, ...current]) ? nextEntry : null;
 }
 
+/** `updateLearningEntry`: 学習・項目を現在状態へ反映し、必要な表示を更新する。 */
 export function updateLearningEntry(id, updates) {
   const entries = getLearningEntries();
   const index = entries.findIndex(entry => entry.id === id);
@@ -1709,6 +1800,7 @@ export function addEnglishQuestion(question) {
   return englishQuestionRecordToEntry(record);
 }
 
+/** `updateEnglishQuestion`: 英語・Questionを現在状態へ反映し、必要な表示を更新する。 */
 export function updateEnglishQuestion(id, updates) {
   const records = getAllKnowledgeRecords();
   const existing = records.find(record => record.id === id && isEnglishQuestionRecord(record));
@@ -1727,6 +1819,7 @@ export function updateEnglishQuestion(id, updates) {
   });
 }
 
+/** `deleteEnglishQuestion`: 英語・Questionを安全に終了または削除する。 */
 export function deleteEnglishQuestion(id) {
   const records = getAllKnowledgeRecords();
   const target = records.find(record => record.id === id && isEnglishQuestionRecord(record));
@@ -1737,6 +1830,7 @@ export function deleteEnglishQuestion(id) {
   return true;
 }
 
+/** `saveTranslationSets`: 英訳・Setsを保存先または一時状態へ反映する。 */
 export function saveTranslationSets(sets) {
   const preservedRecords = getAllKnowledgeRecords().filter(record => !isTranslationSetRecord(record));
   const existingById = new Map(
@@ -1767,6 +1861,7 @@ export function addTranslationSet(set) {
   return saveTranslationSets(next) ? merged : null;
 }
 
+/** `updateTranslationSet`: 英訳・Setを現在状態へ反映し、必要な表示を更新する。 */
 export function updateTranslationSet(id, updates) {
   const sets = getTranslationSets();
   const index = sets.findIndex(set => set.id === id);
@@ -1818,6 +1913,7 @@ export function removeTrashItem(id) {
   return target;
 }
 
+/** `removeTrashItemByEntity`: ゴミ箱・項目・対象を安全に終了または削除する。 */
 export function removeTrashItemByEntity(entityType, entityId) {
   if (!entityType || !entityId) return;
   const items = getTrashItems();
@@ -1915,6 +2011,7 @@ export function restoreTrashItem(id) {
   return item;
 }
 
+/** `normalizeTrashPayload`: ゴミ箱・内容を後続処理で扱える安全な形にそろえる。 */
 function normalizeTrashPayload(payload) {
   if (!payload) return null;
   if (typeof payload === 'object') return payload;
@@ -1927,6 +2024,7 @@ function normalizeTrashPayload(payload) {
   }
 }
 
+/** `deleteTrashItemsByMonth`: ゴミ箱・Items・月を安全に終了または削除する。 */
 export function deleteTrashItemsByMonth(yyyymm) {
   const items = getTrashItems();
   const removed = items.filter(item => item.deletedAt && item.deletedAt.slice(0, 7) === yyyymm);
@@ -1938,8 +2036,10 @@ export function deleteTrashItemsByMonth(yyyymm) {
 // Shape: [{ memoId: 'id', date: 'YYYY-MM-DD', tags: ['tag1', 'tag2'] }]
 const REVIEW_LOG_KEY = 'mp_knowledge_review_log';
 
+/** `getReviewLog`: 復習・ログを取得して呼び出し元へ返す。 */
 export function getReviewLog() { return load(REVIEW_LOG_KEY, []); }
 
+/** `addReviewLog`: 受け取った情報から復習・ログを作る。 */
 export function addReviewLog(memoId, tags) {
   const log = getReviewLog();
   log.push({ memoId, date: toDateStr_simple(new Date()), tags: tags || [] });
@@ -1951,10 +2051,12 @@ export function addReviewLog(memoId, tags) {
 
 export function getTermCache() { return load(TERM_KEY, {}); }
 
+/** `getTermExplanation`: 用語・Explanationを取得して呼び出し元へ返す。 */
 export function getTermExplanation(term) {
   return getTermCache()[term.toLowerCase().trim()] || null;
 }
 
+/** `setTermExplanation`: 用語・Explanationを保存先または一時状態へ反映する。 */
 export function setTermExplanation(term, explanation) {
   const cache = getTermCache();
   cache[term.toLowerCase().trim()] = explanation;
@@ -1967,7 +2069,9 @@ export function setTermExplanation(term, explanation) {
 const ARCHIVE_KEY = 'mp_task_archive';
 const ARCHIVE_AFTER_DAYS = 7;
 
+/** `getArchivedTasks`: アーカイブ済み・タスクを取得して呼び出し元へ返す。 */
 export function getArchivedTasks()         { return load(ARCHIVE_KEY, []); }
+/** `saveArchivedTasks`: アーカイブ済み・タスクを保存先または一時状態へ反映する。 */
 export function saveArchivedTasks(tasks) {
   if (!save(ARCHIVE_KEY, tasks)) return false;
   _notifySync('tasks_archive');
@@ -2027,6 +2131,7 @@ export function addSubtask(taskId, title) {
   return subtask;
 }
 
+/** `updateSubtask`: サブタスクを現在状態へ反映し、必要な表示を更新する。 */
 export function updateSubtask(taskId, subtaskId, changes) {
   const tasks = getTasks();
   const idx   = tasks.findIndex(t => t.id === taskId);
@@ -2041,6 +2146,7 @@ export function updateSubtask(taskId, subtaskId, changes) {
   return subs[si];
 }
 
+/** `deleteSubtask`: サブタスクを安全に終了または削除する。 */
 export function deleteSubtask(taskId, subtaskId) {
   const tasks = getTasks();
   const idx   = tasks.findIndex(t => t.id === taskId);
@@ -2053,7 +2159,9 @@ export function deleteSubtask(taskId, subtaskId) {
 // ---- Global Tags（タスクとメモで候補表示するタグ辞書）----
 const TAGS_KEY = 'mp_tags';
 
+/** `getTags`: タグを取得して呼び出し元へ返す。 */
 export function getTags()             { return load(TAGS_KEY, []); }
+/** `saveTags`: タグを保存先または一時状態へ反映する。 */
 export function saveTags(tags) {
   if (!save(TAGS_KEY, tags)) return false;
   _notifySync('tags');
@@ -2073,6 +2181,7 @@ export function addTag(name) {
   return trimmed;
 }
 
+/** `deleteTag`: タグを安全に終了または削除する。 */
 export function deleteTag(name) {
   const tags = getTags();
   if (!tags.includes(name)) return false;
@@ -2162,6 +2271,7 @@ export function clearUserContentLocal() {
   });
 }
 
+/** `hasUserContentLocal`: ユーザー・内容・端末内の条件を確認し、結果を真偽値で返す。 */
 export function hasUserContentLocal() {
   return USER_CONTENT_KEYS.some(key => {
     try {
@@ -2181,6 +2291,7 @@ const USER_SNAPSHOT_PREFIX = 'mp_user_snapshot:';
 const USER_SNAPSHOT_DB = 'my-planner-user-snapshots';
 const USER_SNAPSHOT_STORE = 'snapshots';
 
+/** `openUserSnapshotDb`: ユーザー・退避データ・データベースの画面・詳細・ダイアログを表示する。 */
 function openUserSnapshotDb() {
   if (typeof indexedDB === 'undefined') return Promise.resolve(null);
   return new Promise((resolve, reject) => {
@@ -2195,6 +2306,7 @@ function openUserSnapshotDb() {
   });
 }
 
+/** `writeUserSnapshot`: ユーザー・退避データを保存先または一時状態へ反映する。 */
 async function writeUserSnapshot(userId, snapshot) {
   const db = await openUserSnapshotDb();
   if (!db) return false;
@@ -2207,6 +2319,7 @@ async function writeUserSnapshot(userId, snapshot) {
   });
 }
 
+/** `readUserSnapshot`: ユーザー・退避データを取得して呼び出し元へ返す。 */
 async function readUserSnapshot(userId) {
   const db = await openUserSnapshotDb();
   if (!db) return null;
@@ -2219,6 +2332,7 @@ async function readUserSnapshot(userId) {
   });
 }
 
+/** `deleteUserSnapshot`: ユーザー・退避データを安全に終了または削除する。 */
 async function deleteUserSnapshot(userId) {
   const db = await openUserSnapshotDb();
   if (!db) return;
@@ -2299,9 +2413,12 @@ export async function restoreUserContentSnapshot(userId) {
 const HABITS_KEY    = 'mp_habits2';
 const HABIT_DONE_KEY = 'mp_habit2_done';
 
+/** `getHabits`: 習慣を取得して呼び出し元へ返す。 */
 export function getHabits()          { return load(HABITS_KEY, []); }
+/** `saveHabits`: 習慣を保存先または一時状態へ反映する。 */
 export function saveHabits(h)        { save(HABITS_KEY, h); }
 
+/** `addHabit`: 受け取った情報から習慣を作る。 */
 export function addHabit(h) {
   const habits = getHabits();
   const newHabit = {
@@ -2315,10 +2432,12 @@ export function addHabit(h) {
   return newHabit;
 }
 
+/** `updateHabit`: 習慣を現在状態へ反映し、必要な表示を更新する。 */
 export function updateHabit(id, updates) {
   saveHabits(getHabits().map(h => h.id === id ? { ...h, ...updates } : h));
 }
 
+/** `deleteHabit`: 習慣を安全に終了または削除する。 */
 export function deleteHabit(id) {
   saveHabits(getHabits().filter(h => h.id !== id));
   const done = load(HABIT_DONE_KEY, {});
@@ -2326,8 +2445,10 @@ export function deleteHabit(id) {
   save(HABIT_DONE_KEY, done);
 }
 
+/** `getHabitDoneMap`: 習慣・完了・対応表を取得して呼び出し元へ返す。 */
 export function getHabitDoneMap()    { return load(HABIT_DONE_KEY, {}); }
 
+/** `isHabitDoneToday`: 完了・今日の条件を確認し、結果を真偽値で返す。 */
 export function isHabitDoneToday(habitId) {
   const todayStr = toDateStr_simple(new Date());
   return (getHabitDoneMap()[habitId] || []).includes(todayStr);
@@ -2350,6 +2471,7 @@ export function toggleHabitToday(habitId) {
   return !wasDone; // new state: true = now done
 }
 
+/** `_calcStreak`: 連続日数に必要な数値を計算して返す。 */
 function _calcStreak(dates) {
   if (!dates.length) return 0;
   let streak = 0;
@@ -2391,10 +2513,12 @@ export function pushUndo(action) {
   if (_undo.length > UNDO_MAX) _undo.shift();
 }
 
+/** `popUndo`: pop・取り消し履歴に関する補助処理を行い、結果を呼び出し元へ返す。 */
 export function popUndo() {
   return _undo.length ? _undo.pop() : null;
 }
 
+/** `hasUndo`: 取り消し履歴の条件を確認し、結果を真偽値で返す。 */
 export function hasUndo() {
   return _undo.length > 0;
 }
