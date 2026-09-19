@@ -29,6 +29,7 @@
 - `notion-import.js`: Notion由来データの変換
 - `markdown-shortcuts.js`: メモのMarkdown入力判定
 - `atlas-model.js`: 表現帳の保存形式と統合
+- `atlas-query.js`: 表現帳の入力種別判定と既存テーマの再利用
 - `atlas-senses.js`: 英単語の意味・品詞・重複判定
 - `knowledge-model.js`: Knowledge回答の表示用正規化
 

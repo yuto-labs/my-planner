@@ -17,13 +17,25 @@ import { parseJapaneseTimes, today } from './utils.js';
 import {
   NUANCE_ATLAS_CATEGORIES,
   normalizeAtlasCategory,
-  normalizeAtlasTopic,
-  isValidAtlasTopic,
   expressionLookupKeys,
 } from './atlas-model.js';
 import { atlasSenseFromEntry, mergeAtlasSenseArrays } from './atlas-senses.js';
+import {
+  canonicalTopicKey,
+  detectAtlasQueryMode,
+  extractRequestedAtlasExpressions,
+  reuseEquivalentAtlasTopic,
+  resolveAtlasTopic,
+} from './atlas-query.js';
 
 export { NUANCE_ATLAS_CATEGORIES };
+// 以前からai.jsを利用している画面やテストを壊さないため、公開口を残す。
+export {
+  canonicalTopicKey,
+  detectAtlasQueryMode,
+  extractRequestedAtlasExpressions,
+  reuseEquivalentAtlasTopic,
+} from './atlas-query.js';
 
 const ATLAS_DETAILED_CATALOG_LIMIT = 24;
 
@@ -607,78 +619,6 @@ export async function formatKnowledgeMemo(rawText, existingMemosCtx = '', option
 }
 
 // ---- 表現帳の分類・英語質問・Knowledge解説 ----
-// canonicalTopicKeyは、表記ゆれで似たテーマが増えるのを抑える比較用キー。
-function normalizedTopicText(value) {
-  return String(value || '')
-    .normalize('NFKC')
-    .toLocaleLowerCase()
-    .replace(/[\s・、】【「」『』()（）!?！？、,./]/g, '');
-}
-
-export function canonicalTopicKey(value) {
-  const text = normalizedTopicText(value);
-  if (/(怖がらせ|恐怖を与|脅|威圧|scare|frighten|intimidat)/.test(text)) return 'intimidation-frightening';
-  if (/(恐怖|恐れ|怖|こわ|不安|anxiety|fear|scare|frighten)/.test(text)) return 'fear-anxiety';
-  if (/(面倒|煩|負担|bother|burden|trouble)/.test(text)) return 'burden-bother';
-  if (/(喜び|嬉し|幸せ|happy|joy|delight)/.test(text)) return 'joy-happiness';
-  if (/(怒り|腹立|苛立|angry|anger|annoy)/.test(text)) return 'anger-irritation';
-  if (/(悲し|寂し|sad|sorrow|lonely)/.test(text)) return 'sadness-loneliness';
-  return text;
-}
-
-export function detectAtlasQueryMode(value) {
-  const text = String(value || '').trim();
-  if (!text) return 'japanese_concept';
-  const hasJapanese = /[\u3040-\u30ff\u3400-\u9fff]/u.test(text);
-  const englishWords = text.match(/[A-Za-z]+(?:['’-][A-Za-z]+)*/g) || [];
-  const onlyEnglishExpression = !hasJapanese
-    && englishWords.length > 0
-    && englishWords.length <= 6
-    && /^[A-Za-z\s'’.,!?-]+$/u.test(text);
-  return onlyEnglishExpression ? 'english_seed' : 'japanese_concept';
-}
-
-export function extractRequestedAtlasExpressions(value) {
-  const text = String(value || '').normalize('NFKC');
-  return [...new Set((text.match(/[A-Za-z]+(?:['’][A-Za-z]+)?(?:\s+[A-Za-z]+(?:['’][A-Za-z]+)?){0,4}/g) || [])
-    .map(term => term.trim())
-    .filter(Boolean))];
-}
-
-export function reuseEquivalentAtlasTopic(existingTaxonomy, category, topic, context = '') {
-  const targetKey = canonicalTopicKey(`${topic} ${context}`);
-  const normalizedCategory = normalizeAtlasCategory(category, `${topic} ${context}`);
-  if (!targetKey) return { category: normalizedCategory, topic };
-  const categories = Array.isArray(existingTaxonomy) ? existingTaxonomy : [];
-  const preferred = categories.filter(item => (
-    normalizeAtlasCategory(item?.category || '', `${topic} ${context}`) === normalizedCategory
-  ));
-  const candidates = [...preferred, ...categories.filter(item => !preferred.includes(item))];
-  for (const item of candidates) {
-    const records = Array.isArray(item?.topicRecords) ? item.topicRecords : [];
-    const match = records.find(record => canonicalTopicKey([
-      record?.label,
-      ...(Array.isArray(record?.aliases) ? record.aliases : []),
-      ...(Array.isArray(record?.terms) ? record.terms : []),
-    ].filter(Boolean).join(' ')) === targetKey);
-    if (match?.label) {
-      return {
-        category: normalizeAtlasCategory(item.category || normalizedCategory, `${topic} ${context}`),
-        topic: match.label,
-      };
-    }
-  }
-  return { category: normalizedCategory, topic };
-}
-
-function resolveAtlasTopic(value, category, fallback = '') {
-  const candidate = normalizeAtlasTopic(value, category);
-  if (isValidAtlasTopic(candidate, category)) return candidate;
-  const fallbackTopic = normalizeAtlasTopic(fallback, category);
-  if (isValidAtlasTopic(fallbackTopic, category)) return fallbackTopic;
-  return '関連表現';
-}
-
 function normalizeNuanceIntensity(value, fallback = '') {
   const numeric = Number(value);
   if (Number.isFinite(numeric) && numeric >= 1 && numeric <= 5) return Math.round(numeric);

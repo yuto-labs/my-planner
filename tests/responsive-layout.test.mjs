@@ -42,6 +42,7 @@ test('offline cache includes the responsive stylesheet', () => {
   assert.match(serviceWorker, /'\.\/js\/task-planning\.js'/);
   assert.match(serviceWorker, /'\.\/js\/data-compare\.js'/);
   assert.match(serviceWorker, /'\.\/js\/media-model\.js'/);
+  assert.match(serviceWorker, /'\.\/js\/atlas-query\.js'/);
 });
 
 test('knowledge layout uses its current learning classes on larger screens', () => {
