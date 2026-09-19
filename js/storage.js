@@ -21,6 +21,7 @@ import {
   mergeAtlasSenseArrays,
   sameAtlasSense,
 } from './atlas-senses.js';
+import { stableJsonStringify } from './data-compare.js';
 
 const KEY = {
   EVENTS:    'mp_events',
@@ -1022,22 +1023,12 @@ function isRepeatedExpressionQuery(existing, incoming) {
   return [...incomingQueries].some(query => existingQueries.has(query));
 }
 
-function stableAtlasJson(value) {
-  if (Array.isArray(value)) return `[${value.map(stableAtlasJson).join(',')}]`;
-  if (value && typeof value === 'object') {
-    return `{${Object.keys(value).sort().map(key => (
-      `${JSON.stringify(key)}:${stableAtlasJson(value[key])}`
-    )).join(',')}}`;
-  }
-  return JSON.stringify(value);
-}
-
 function atlasRecordIsUnchanged(existing, blockType, title, summary, data) {
   if (!existing) return false;
   const previousData = existing.blocks?.find(block => block?.type === blockType)?.data;
   return existing.title === title
     && existing.summary === summary
-    && stableAtlasJson(previousData) === stableAtlasJson(data);
+    && stableJsonStringify(previousData) === stableJsonStringify(data);
 }
 
 function expressionEntryToRecord(entry, existing = null) {
@@ -1443,7 +1434,7 @@ export function saveExpressionEntries(entries) {
     const questionBlock = record.blocks?.find(block => block?.type === ENGLISH_QUESTION_BLOCK_TYPE);
     if (!questionBlock || !Array.isArray(questionBlock.data?.atlasEntryIds)) return record;
     const atlasEntryIds = [...new Set(questionBlock.data.atlasEntryIds.map(id => redirects.get(id) || id))];
-    if (stableAtlasJson(atlasEntryIds) === stableAtlasJson(questionBlock.data.atlasEntryIds)) return record;
+    if (stableJsonStringify(atlasEntryIds) === stableJsonStringify(questionBlock.data.atlasEntryIds)) return record;
     return {
       ...record,
       blocks: record.blocks.map(block => block === questionBlock

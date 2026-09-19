@@ -11,12 +11,14 @@ globalThis.localStorage = {
 };
 
 const {
+  addEnglishQuestion,
   addExpressionEntries,
   addExpressionEntriesWithReport,
   addLearningEntry,
   addTranslationSet,
   deleteLearningEntry,
   getExpressionEntries,
+  getEnglishQuestions,
   getLearningEntries,
   getKnowledgeMemos,
   normalizeMemoBlockIds,
@@ -574,6 +576,26 @@ test('a rich collocation upgrades the same legacy phrase without duplication', (
   assert.equal(saved.senses[0].collocations.length, 1);
   assert.equal(saved.senses[0].collocations[0].examples.length, 1);
   assert.equal(saved.senses[0].collocations[0].usageNoteJa, '時間を追って変化を確認するときに自然です。');
+});
+
+test('consolidating duplicate headwords redirects saved English-question links', () => {
+  addEnglishQuestion({
+    id: 'question-1',
+    questionJa: 'rangeの使い分けは？',
+    answer: { directAnswerJa: '文脈で意味が変わります。' },
+    atlasEntryIds: ['range-duplicate'],
+  });
+
+  assert.equal(saveExpressionEntries([{
+    id: 'range-primary',
+    term: 'range',
+    lemma: 'range',
+    partOfSpeech: 'noun',
+    coreMeaningJa: '範囲',
+    mergedEntryIds: ['range-duplicate'],
+  }]), true);
+
+  assert.deepEqual(getEnglishQuestions()[0].atlasEntryIds, ['range-primary']);
 });
 
 test('learning deletion is recoverable from trash', () => {

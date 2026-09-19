@@ -26,6 +26,7 @@ import {
   schedItemToRow, rowToSchedItem,
 } from './migrate.js';
 import { mergeAtlasSenseArrays as mergeSharedAtlasSenseArrays } from './atlas-senses.js';
+import { dedupeNewestById, recordVersion, stableJsonStringify, timestampOrZero } from './data-compare.js';
 
 // 内部名、localStorageキー、DBテーブル、変換関数を同じ内部名で対応させる。
 // 同期対象を増やす場合は、これらのマップをまとめて更新する。
@@ -850,18 +851,7 @@ function learningData(record) {
 }
 
 function fieldVersion(data, field) {
-  const time = new Date(data?.fieldUpdatedAt?.[field] || 0).getTime();
-  return Number.isFinite(time) ? time : 0;
-}
-
-function stableSyncJson(value) {
-  if (Array.isArray(value)) return `[${value.map(stableSyncJson).join(',')}]`;
-  if (value && typeof value === 'object') {
-    return `{${Object.keys(value).sort().map(key => (
-      `${JSON.stringify(key)}:${stableSyncJson(value[key])}`
-    )).join(',')}}`;
-  }
-  return JSON.stringify(value);
+  return timestampOrZero(data?.fieldUpdatedAt?.[field]);
 }
 
 function mergeLearningRecord(local, remote) {
@@ -902,7 +892,7 @@ function mergeLearningRecord(local, remote) {
       classification: classificationData.fieldUpdatedAt?.classification || '',
     },
   };
-  if (stableSyncJson(mergedData) === stableSyncJson(remoteData)) return remote;
+  if (stableJsonStringify(mergedData) === stableJsonStringify(remoteData)) return remote;
   const block = newerRecord.blocks?.find(item => item?.type === 'learning-entry-data');
   const merged = {
     ...newerRecord,
@@ -947,7 +937,7 @@ function mergeAtlasList(left, right) {
   const seen = new Set();
   return [...(Array.isArray(left) ? left : []), ...(Array.isArray(right) ? right : [])]
     .filter(value => {
-      const key = stableSyncJson(value);
+      const key = stableJsonStringify(value);
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -992,7 +982,7 @@ function mergeAtlasRecord(local, remote) {
     mergedData.sourceQueries = mergeAtlasList(contentData.sourceQueries, otherData.sourceQueries);
     mergedData.aliases = mergeAtlasList(contentData.aliases, otherData.aliases);
   }
-  if (stableSyncJson(mergedData) === stableSyncJson(remoteAtlas.data)) return remote;
+  if (stableJsonStringify(mergedData) === stableJsonStringify(remoteAtlas.data)) return remote;
   const mergedBlock = newerRecord.blocks?.find(item => item?.type === localAtlas.block.type);
   return {
     ...newerRecord,
@@ -1453,14 +1443,8 @@ function rowToReviewEntry(row) {
   }];
 }
 
-function _updatedTs(item) {
-  const ts = new Date(item?.updatedAt || item?.createdAt || 0).getTime();
-  return Number.isFinite(ts) ? ts : 0;
-}
-
 function _syncVersion(item) {
-  const explicit = Number(item?.syncVersion);
-  return Number.isFinite(explicit) ? explicit : _updatedTs(item);
+  return recordVersion(item);
 }
 
 function _schedulePushRetry(tableKey) {
@@ -1716,13 +1700,7 @@ export function mergeFreshLocalCollection(key, previous, fresh, pulled) {
 }
 
 function _dedupeById(items) {
-  const byId = new Map();
-  (items || []).forEach(item => {
-    if (!item?.id) return;
-    const existing = byId.get(item.id);
-    if (!existing || _syncVersion(item) >= _syncVersion(existing)) byId.set(item.id, item);
-  });
-  return [...byId.values()];
+  return dedupeNewestById(items);
 }
 
 /** 最終成功時刻を保存し、該当テーブルのエラー表示を解除する。 */
