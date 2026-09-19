@@ -21,10 +21,12 @@ const FINGERPRINT_LIST_FIELDS = Object.freeze([
   'argumentPatterns', 'typicalObjects', 'implicationTags', 'registerTags',
 ]);
 
+/** `normalized`: 比較前の文字列をUnicode・空白・大文字小文字がそろった形へ直す。 */
 function normalized(value) {
   return String(value || '').normalize('NFKC').trim().toLocaleLowerCase();
 }
 
+/** `stableJson`: オブジェクトのキー順に左右されない比較用JSON文字列を作る。 */
 function stableJson(value) {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
   if (value && typeof value === 'object') {
@@ -39,8 +41,11 @@ const SENSE_LEARNING_FIELDS = Object.freeze([
   'examples', 'comparisons', 'cautionsJa', 'grammarNotes', 'senseFingerprint',
 ]);
 
+/** `bigramSimilarity`: 二つの文字列を2文字ずつの組に分け、表記の近さを0から1で返す。 */
 function bigramSimilarity(left, right) {
+  /** `compact`: 類似度計算の前に、空白と記号を除いた比較文字列を作る。 */
   const compact = value => normalized(value).replace(/[\s\p{P}\p{S}]/gu, '');
+  /** `bigrams`: 文字列から隣り合う2文字の集合を作る。 */
   const bigrams = value => {
     const text = compact(value);
     if (text.length < 2) return new Set(text ? [text] : []);
@@ -53,12 +58,14 @@ function bigramSimilarity(left, right) {
   return (2 * shared) / (a.size + b.size);
 }
 
+/** `normalizedList`: 配列内の文字列を比較用に正規化し、重複を除く。 */
 function normalizedList(value) {
   return [...new Set((Array.isArray(value) ? value : [])
     .map(item => normalized(item))
     .filter(Boolean))];
 }
 
+/** `normalizePhysicality`: 物理的・比喩的という意味分類の表記ゆれを統一する。 */
 function normalizePhysicality(value) {
   const label = normalized(value);
   if (['physical', 'literal', '物理', '物理的', '文字通り'].includes(label)) return 'physical';
@@ -68,11 +75,13 @@ function normalizePhysicality(value) {
   return label;
 }
 
+/** `listsOverlap`: 二つの文字列配列に共通要素があるか判定する。 */
 function listsOverlap(left, right) {
   const a = new Set(normalizedList(left));
   return normalizedList(right).some(value => a.has(value));
 }
 
+/** `normalizeSenseFingerprint`: 意味・意味特徴を後続処理で扱える安全な形にそろえる。 */
 export function normalizeSenseFingerprint(value = {}) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   return {
@@ -86,6 +95,7 @@ export function normalizeSenseFingerprint(value = {}) {
   };
 }
 
+/** `fingerprintHasData`: 意味特徴に比較可能な情報が一つ以上あるか判定する。 */
 function fingerprintHasData(value) {
   const fingerprint = normalizeSenseFingerprint(value);
   return Boolean(
@@ -96,6 +106,7 @@ function fingerprintHasData(value) {
   );
 }
 
+/** `fingerprintConflict`: 二つの意味特徴が、同じ意味として統合できないほど矛盾するか判定する。 */
 function fingerprintConflict(left, right) {
   const a = normalizeSenseFingerprint(left);
   const b = normalizeSenseFingerprint(right);
@@ -112,6 +123,7 @@ function fingerprintConflict(left, right) {
   return Boolean(actionConflict && patternConflict && objectConflict);
 }
 
+/** `fingerprintSupportsMatch`: 意味特徴の一致数を数え、同じ意味として扱えるか判定する。 */
 function fingerprintSupportsMatch(left, right) {
   if (!fingerprintHasData(left) || !fingerprintHasData(right) || fingerprintConflict(left, right)) return false;
   const a = normalizeSenseFingerprint(left);
@@ -131,6 +143,7 @@ function fingerprintSupportsMatch(left, right) {
   return hasMeaningAnchor && signals >= 4;
 }
 
+/** `mergeAtlasList`: 複数の表現帳・一覧を既存情報を失わないよう統合する。 */
 export function mergeAtlasList(existing, incoming) {
   const seen = new Set();
   return [...(Array.isArray(existing) ? existing : []), ...(Array.isArray(incoming) ? incoming : [])]
@@ -142,11 +155,13 @@ export function mergeAtlasList(existing, incoming) {
     });
 }
 
+/** `collocationKey`: コロケーションを重複判定するための正規化キーを返す。 */
 function collocationKey(item) {
   const expression = typeof item === 'string' ? item : item?.expression || item?.text;
   return normalized(expression);
 }
 
+/** `mergeAtlasCollocations`: 複数の表現帳・Collocationsを既存情報を失わないよう統合する。 */
 function mergeAtlasCollocations(existing, incoming) {
   const merged = [];
   const indexes = new Map();
@@ -178,6 +193,7 @@ function mergeAtlasCollocations(existing, incoming) {
   return merged;
 }
 
+/** `atlasSenseFromEntry`: 旧形式の表現項目から、品詞・意味単位のデータだけを取り出す。 */
 export function atlasSenseFromEntry(entry = {}) {
   const sense = Object.fromEntries(ATLAS_SENSE_FIELDS.map(field => [field, entry[field]]));
   sense.partOfSpeech = normalizePartOfSpeech(sense.partOfSpeech);
@@ -221,6 +237,7 @@ export function sameAtlasSense(existing = {}, incoming = {}) {
     && meaningSimilarity >= 0.86;
 }
 
+/** `preferRicherText`: 既存文と新しい文を比べ、情報量が多い方を残す。 */
 function preferRicherText(existing, incoming) {
   const previous = String(existing || '').trim();
   const next = String(incoming || '').trim();
@@ -228,6 +245,7 @@ function preferRicherText(existing, incoming) {
   return next.length >= previous.length ? incoming : existing;
 }
 
+/** `mergeAtlasSense`: 複数の表現帳・意味を既存情報を失わないよう統合する。 */
 export function mergeAtlasSense(existing = {}, incoming = {}) {
   const merged = { ...existing };
   ATLAS_SENSE_FIELDS.forEach(field => {
@@ -276,9 +294,11 @@ export function mergeAtlasSense(existing = {}, incoming = {}) {
   return merged;
 }
 
+/** `atlasSenseAddsLearningContent`: 新しい意味データが、既存解説へ実質的な学習内容を追加するか判定する。 */
 export function atlasSenseAddsLearningContent(existing = {}, incoming = {}) {
   if (!existing || !Object.keys(existing).length) return true;
   const merged = mergeAtlasSense(existing, incoming);
+  /** `project`: 意味データから学習内容の比較に必要な項目だけを取り出す。 */
   const project = sense => Object.fromEntries(SENSE_LEARNING_FIELDS.map(field => [field, sense?.[field]]));
   return stableJson(project(merged)) !== stableJson(project(existing));
 }

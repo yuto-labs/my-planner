@@ -27,6 +27,7 @@ export function today() {
   return toDateStr(new Date());
 }
 
+/** `tomorrow`: 端末の日付を基準に、明日のYYYY-MM-DD文字列を返す。 */
 export function tomorrow() {
   const d = new Date();
   d.setDate(d.getDate() + 1);
@@ -105,6 +106,7 @@ export function parseDate(str) {
   return new Date(y, m - 1, d);
 }
 
+/** `sameDay`: 二つの日付がローカル時間で同じ年月日か判定する。 */
 export function sameDay(a, b) {
   const da = new Date(a);
   const db = new Date(b);
@@ -113,12 +115,14 @@ export function sameDay(a, b) {
     && da.getDate() === db.getDate();
 }
 
+/** `addDays`: 指定日を複製し、日数を加えた新しいDateを返す。 */
 export function addDays(date, n) {
   const d = new Date(date);
   d.setDate(d.getDate() + n);
   return d;
 }
 
+/** `startOfWeek`: 指定日を含む週の月曜日を返す。 */
 export function startOfWeek(date = new Date()) {
   const d = new Date(date);
   const day = d.getDay();
@@ -127,10 +131,12 @@ export function startOfWeek(date = new Date()) {
   return d;
 }
 
+/** `startOfMonth`: 指定月の1日を表すDateを返す。 */
 export function startOfMonth(date = new Date()) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
+/** `endOfMonth`: 指定月の最終日を表すDateを返す。 */
 export function endOfMonth(date = new Date()) {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0);
 }
@@ -155,6 +161,7 @@ export function thisMonthRange() {
 
 const WEEKDAYS_SHORT = ['\u65e5', '\u6708', '\u706b', '\u6c34', '\u6728', '\u91d1', '\u571f'];
 
+/** `formatDate`: 日付を画面表示用の文字列へ整える。 */
 export function formatDate(dateOrStr, style = 'short') {
   const d = new Date(dateOrStr);
   if (isNaN(d)) return '';
@@ -170,6 +177,7 @@ export function formatDate(dateOrStr, style = 'short') {
   return `${m}/${day}`;
 }
 
+/** `formatTime`: 時刻を画面表示用の文字列へ整える。 */
 export function formatTime(isoStr) {
   if (!isoStr) return '';
   if (typeof isoStr === 'string' && isoStr.includes('T24:00')) return '24:00';
@@ -196,6 +204,7 @@ export function getEventsForDate(events, dateStr) {
     .sort((a, b) => (a._displayStart || a.start || '').localeCompare(b._displayStart || b.start || ''));
 }
 
+/** `_effectiveEventEndDateStr`: 日をまたぐ予定について、画面上で含める最後の日付を求める。 */
 function _effectiveEventEndDateStr(ev) {
   if (!ev.end) return toDateStr(new Date(ev.start));
   const startDateStr = toDateStr(new Date(ev.start));
@@ -220,6 +229,7 @@ function _effectiveEventEndDateStr(ev) {
   return toDateStr(end);
 }
 
+/** `_clampEventForDay`: 複数日にまたがる予定の開始・終了を、表示対象日の範囲へ切り詰める。 */
 function _clampEventForDay(ev, dateStr) {
   if (!ev.end) return ev;
   const sd = toDateStr(new Date(ev.start));
@@ -252,6 +262,7 @@ function _clampEventForDay(ev, dateStr) {
   };
 }
 
+/** `getGreeting`: あいさつを取得して呼び出し元へ返す。 */
 export function getGreeting() {
   const h = new Date().getHours();
   if (h < 5) return '\u304a\u3084\u3059\u307f\u306a\u3055\u3044';
@@ -261,6 +272,7 @@ export function getGreeting() {
   return '\u304a\u75b2\u308c\u3055\u307e\u3067\u3059';
 }
 
+/** `getGreetingPeriod`: 現在時刻を朝・昼・夕方・夜の区分で返す。 */
 export function getGreetingPeriod() {
   const h = new Date().getHours();
   if (h < 5) return 'night';

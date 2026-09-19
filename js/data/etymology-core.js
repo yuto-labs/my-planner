@@ -319,6 +319,7 @@ const DEEP_FOCUS = {
   'viv-/vit-': '生きる・生命の核は、vivid の生き生きした印象、survive の生き残ること、vital の生命に不可欠なことへ広がります。',
 };
 
+/** `sourceRefs`: 語源データ行から表示用の出典参照一覧を作る。 */
 function sourceRefs(row, type) {
   const form = row[0];
   const words = type === 'prefix' ? row[6] : row[5];
@@ -337,12 +338,14 @@ function sourceRefs(row, type) {
   ];
 }
 
+/** `naturalList`: 単語配列を読点と「と」でつないだ自然な日本語一覧へ整える。 */
 function naturalList(words = []) {
   if (words.length <= 1) return words[0] || '';
   if (words.length === 2) return `${words[0]} と ${words[1]}`;
   return `${words.slice(0, -1).join('、')} と ${words.at(-1)}`;
 }
 
+/** `buildDeepDive`: 語源の核・意味変化・見分け方をまとめた詳細解説データを作る。 */
 function buildDeepDive({ type, typeLabel, form, meaningJa, originLanguage, originalForm, originalMeaningJa, words, variants }) {
   const examples = naturalList(words);
   const focus = DEEP_FOCUS[form] || `「${meaningJa}」という核が、${examples} の中でどのように形を変えるかを比べて読みます。`;
@@ -388,6 +391,7 @@ function buildDeepDive({ type, typeLabel, form, meaningJa, originLanguage, origi
   };
 }
 
+/** `buildWordLink`: 語源と派生単語のつながりを説明するリンクデータを作る。 */
 function buildWordLink({ type, form, meaningJa, originalMeaningJa, word, wordIndex }) {
   const role = [
     '核が比較的見えやすい入口の例',
@@ -410,6 +414,7 @@ function buildWordLink({ type, form, meaningJa, originalMeaningJa, word, wordInd
   };
 }
 
+/** `expandSeed`: 圧縮された語源初期データを、画面表示用の完全な項目へ展開する。 */
 function expandSeed(row, type, index) {
   const [form, meaningJa, originLanguage, originalForm, originalMeaningJa] = row;
   const variantsRaw = type === 'prefix' ? row[5] : '';
@@ -556,6 +561,7 @@ export const ETYMOLOGY_CORE_STATS = Object.freeze({
   total: ETYMOLOGY_CORE.length,
 });
 
+/** `getEtymologyCoreEntry`: Etymology・Core・項目を取得して呼び出し元へ返す。 */
 export function getEtymologyCoreEntry(id) {
   return ETYMOLOGY_CORE.find(entry => entry.id === id) || null;
 }

@@ -49,6 +49,7 @@ const PART_OF_SPEECH_ALIASES = [
   [/^(?:idiom|熟語|慣用句)$/i, 'idiom'],
 ];
 
+/** `normalizePartOfSpeech`: 品詞を後続処理で扱える安全な形にそろえる。 */
 export function normalizePartOfSpeech(value) {
   const raw = String(value || '').normalize('NFKC').trim();
   if (!raw) return '';
@@ -104,10 +105,12 @@ const CATEGORY_RULES = [
   ['行動・変化', /行動|変化|開始|終了|中断|回避|達成|進行|動作|action|change|start|finish|stop|avoid|achiev|move/],
 ];
 
+/** `classificationContext`: カテゴリ判定に使う候補名と周辺文脈を、比較しやすい一つの文字列へまとめる。 */
 function classificationContext(value, context = '') {
   return `${normalizeAtlasLabel(value)} ${normalizeAtlasLabel(context)}`.toLocaleLowerCase();
 }
 
+/** `normalizeAtlasCategory`: 表現帳カテゴリを後続処理で扱える安全な形にそろえる。 */
 export function normalizeAtlasCategory(value, context = '') {
   const raw = normalizeAtlasLabel(value);
   if (!raw) return '';
@@ -134,6 +137,7 @@ export function normalizeAtlasCategory(value, context = '') {
   return CATEGORY_RULES.find(([, pattern]) => pattern.test(text))?.[0] || '状態・性質';
 }
 
+/** `normalizeAtlasTopic`: 表現帳テーマを後続処理で扱える安全な形にそろえる。 */
 export function normalizeAtlasTopic(value, category = '') {
   const raw = normalizeAtlasLabel(value);
   if (!raw) return '';
@@ -148,6 +152,7 @@ export function normalizeAtlasTopic(value, category = '') {
   return topic;
 }
 
+/** `isValidAtlasTopic`: 表現帳テーマの条件を確認し、結果を真偽値で返す。 */
 export function isValidAtlasTopic(value, category = '') {
   const topic = normalizeAtlasTopic(value, category);
   return Boolean(topic)
@@ -156,10 +161,12 @@ export function isValidAtlasTopic(value, category = '') {
     && !/[。！？!?]/u.test(topic);
 }
 
+/** `normalizeAtlasLabel`: 表現帳の表示名を後続処理で扱える安全な形にそろえる。 */
 export function normalizeAtlasLabel(value) {
   return String(value || '').trim().replace(/\s+/g, ' ');
 }
 
+/** `stableAtlasId`: 同じ種類と表示名から、再実行しても変わらない表現帳IDを作る。 */
 export function stableAtlasId(prefix, value) {
   const normalized = normalizeAtlasLabel(value)
     .normalize('NFKC')
@@ -194,6 +201,7 @@ export function withStableClassification(record = {}) {
   };
 }
 
+/** `collectStableTaxonomy`: 保存済み表現をカテゴリとテーマにまとめ、一覧表示用の分類体系を作る。 */
 export function collectStableTaxonomy(records = []) {
   const categoryMap = new Map();
   records.forEach(raw => {
@@ -229,6 +237,7 @@ export function collectStableTaxonomy(records = []) {
   }));
 }
 
+/** `normalizeEnglishToken`: 英語・語を後続処理で扱える安全な形にそろえる。 */
 export function normalizeEnglishToken(value) {
   return String(value || '')
     .normalize('NFKC')
@@ -237,6 +246,7 @@ export function normalizeEnglishToken(value) {
     .replace(/[’]/g, "'");
 }
 
+/** `toEnglishLemma`: 英語・見出し形を別の処理で使う形式へ変換する。 */
 export function toEnglishLemma(value) {
   const token = normalizeEnglishToken(value);
   if (!token) return '';
@@ -263,6 +273,7 @@ export function toEnglishLemma(value) {
   return token;
 }
 
+/** `toEnglishPhraseLemma`: 英語句の見出し形を別の処理で使う形式へ変換する。 */
 function toEnglishPhraseLemma(value) {
   const token = normalizeEnglishToken(value);
   if (!token || !/[\s-]/.test(token)) return toEnglishLemma(token);
@@ -272,6 +283,7 @@ function toEnglishPhraseLemma(value) {
     .join('');
 }
 
+/** `expressionLookupKeys`: 見出し語・別名・活用形から、同じ表現を検索するためのキーを列挙する。 */
 export function expressionLookupKeys(entry = {}) {
   return uniqueStrings([
     entry.term,
@@ -299,6 +311,7 @@ export function buildExpressionIndex(entries = []) {
   return index;
 }
 
+/** `findExpressionMatches`: 検索語に一致する保存済み表現を、重複なしで返す。 */
 export function findExpressionMatches(value, entriesOrIndex = []) {
   const index = entriesOrIndex instanceof Map
     ? entriesOrIndex
@@ -309,6 +322,7 @@ export function findExpressionMatches(value, entriesOrIndex = []) {
   return [...new Map(matches.map(entry => [entry.id, entry])).values()];
 }
 
+/** `isUsefulLinkedToken`: リンク対象の英単語の条件を確認し、結果を真偽値で返す。 */
 export function isUsefulLinkedToken(value, entriesOrIndex = []) {
   const token = normalizeEnglishToken(value);
   if (!token) return false;
@@ -316,6 +330,7 @@ export function isUsefulLinkedToken(value, entriesOrIndex = []) {
   return matches.length > 0 && (!FUNCTION_WORDS.has(token) || matches.some(entry => entry.linkFunctionWord));
 }
 
+/** `tokenizeEnglishForLinks`: 入力を解析してリンク候補となる英単語を取り出す。 */
 export function tokenizeEnglishForLinks(text, entriesOrIndex = null) {
   const source = String(text || '');
   if (entriesOrIndex) {
@@ -376,6 +391,7 @@ export function tokenizeEnglishForLinks(text, entriesOrIndex = null) {
   }));
 }
 
+/** `uniqueStrings`: 文字列から重複を除いて返す。 */
 export function uniqueStrings(values = []) {
   return [...new Set((Array.isArray(values) ? values : [])
     .map(value => normalizeAtlasLabel(value))

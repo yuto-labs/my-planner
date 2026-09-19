@@ -29,35 +29,42 @@ export function getStoredConfig() {
   }
 }
 
+/** `saveConfig`: 設定を保存先または一時状態へ反映する。 */
 export function saveConfig(cfg) {
   localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg));
   _client = null; // reset cached client
 }
 
+/** `isMigrated`: `isMigrated`の条件を確認し、結果を真偽値で返す。 */
 export function isMigrated() {
   return localStorage.getItem(MIGRATE_KEY) === 'true';
 }
 
+/** `setMigrated`: Migratedを保存先または一時状態へ反映する。 */
 export function setMigrated() {
   localStorage.setItem(MIGRATE_KEY, 'true');
 }
 
+/** `isMigratedForCurrentUser`: Current・ユーザーの条件を確認し、結果を真偽値で返す。 */
 export async function isMigratedForCurrentUser() {
   const userId = await getUserId();
   if (!userId) return isMigrated();
   return localStorage.getItem(`${MIGRATE_KEY}:${userId}`) === 'true';
 }
 
+/** `setMigratedForCurrentUser`: Migrated・Current・ユーザーを保存先または一時状態へ反映する。 */
 export async function setMigratedForCurrentUser() {
   const userId = await getUserId();
   if (userId) localStorage.setItem(`${MIGRATE_KEY}:${userId}`, 'true');
   localStorage.setItem(MIGRATE_KEY, 'true');
 }
 
+/** `getActiveUserId`: Active・ユーザー・IDを取得して呼び出し元へ返す。 */
 export function getActiveUserId() {
   return localStorage.getItem(ACTIVE_USER_KEY) || null;
 }
 
+/** `setActiveUserId`: Active・ユーザー・IDを保存先または一時状態へ反映する。 */
 export function setActiveUserId(userId) {
   if (userId) localStorage.setItem(ACTIVE_USER_KEY, userId);
   else localStorage.removeItem(ACTIVE_USER_KEY);
@@ -192,11 +199,13 @@ export async function signInWithMagicLinkUrl(linkText) {
   throw new Error('リンク内にログイン用の token / code が見つかりません');
 }
 
+/** `getUserId`: ユーザー・IDを取得して呼び出し元へ返す。 */
 export async function getUserId() {
   const session = await getSession();
   return session?.user?.id ?? null;
 }
 
+/** `getUserEmail`: ユーザー・Emailを取得して呼び出し元へ返す。 */
 export async function getUserEmail() {
   const session = await getSession();
   return session?.user?.email ?? null;
@@ -217,6 +226,7 @@ export async function signInWithEmail(email) {
   if (error) throw error;
 }
 
+/** `verifyEmailOtp`: メールへ届いた確認コードをSupabaseへ送り、ログインを確定する。 */
 export async function verifyEmailOtp(email, token) {
   const client = await getClient();
   if (!client) throw new Error('Supabase URL / Anon Key を設定してください');

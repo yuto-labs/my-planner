@@ -107,6 +107,7 @@ export function importNotionPreview(preview, { skipDuplicates = true } = {}) {
   return { imported: imported.length, skipped: skipped.length };
 }
 
+/** `rowToMemo`: 行をメモへ変換して返す。 */
 function rowToMemo(row, mdByTitle) {
   const title = row['名前'] || row.Name || row.title || '';
   if (!title) return null;
@@ -126,6 +127,7 @@ function rowToMemo(row, mdByTitle) {
   });
 }
 
+/** `mdToMemo`: Markdownをメモへ変換して返す。 */
 function mdToMemo({ title, text, sourceId = '', sourceFile = '', parentTitle = '', csvTags = [] }) {
   const metadata = extractMetadata(text);
   const finalTitle = title || extractMarkdownTitle(text) || 'Untitled';
@@ -148,6 +150,7 @@ function mdToMemo({ title, text, sourceId = '', sourceFile = '', parentTitle = '
   };
 }
 
+/** `markdownToBlocks`: Markdownをブロックへ変換して返す。 */
 function markdownToBlocks(text, title) {
   const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
   const blocks = [];
@@ -211,10 +214,12 @@ function markdownToBlocks(text, title) {
   return blocks.length ? blocks : [block('paragraph', '')];
 }
 
+/** `block`: 種類と本文から、新しいメモブロックを作る。 */
 function block(type, text) {
   return { id: generateId(), type, text: text || '' };
 }
 
+/** `extractMetadata`: 入力を解析してメタデータを取り出す。 */
 function extractMetadata(text) {
   const tags = [];
   let parentTitle = '';
@@ -226,14 +231,17 @@ function extractMetadata(text) {
   return { tags: unique(tags), parentTitle };
 }
 
+/** `isMetadataLine`: Notionのタグ・親項目・子項目を表すメタデータ行か判定する。 */
 function isMetadataLine(line) {
   return line.startsWith('タグ:') || line.startsWith('親アイテム:') || line.startsWith('サブアイテム:');
 }
 
+/** `parseRelationTitle`: Notionの関連項目文字列から、末尾のID表記を除いたタイトルを取り出す。 */
 function parseRelationTitle(value) {
   return String(value || '').replace(/\s*\(.+\)\s*$/u, '').trim();
 }
 
+/** `splitTags`: カンマ区切りのタグ文字列を、空要素のない配列へ変換する。 */
 function splitTags(value) {
   return String(value || '')
     .split(',')
@@ -241,12 +249,15 @@ function splitTags(value) {
     .filter(Boolean);
 }
 
+/** `parseCsv`: 引用符と改行を考慮してCSV本文を行データへ変換する。 */
 function parseCsv(text) {
   const rows = [];
   let row = [];
   let cell = '';
   let quoted = false;
+  /** `pushCell`: 解析中のCSVセルを現在行へ追加し、セル用バッファを空にする。 */
   const pushCell = () => { row.push(cell); cell = ''; };
+  /** `pushRow`: 解析中のCSV行を結果へ追加し、行用バッファを空にする。 */
   const pushRow = () => { rows.push(row); row = []; };
 
   for (let i = 0; i < text.length; i++) {
@@ -272,6 +283,7 @@ function parseCsv(text) {
     .map(r => Object.fromEntries(headers.map((h, i) => [h, r[i] || ''])));
 }
 
+/** `cleanInline`: Markdownの装飾記号とリンク表記を外し、通常文字列へ整える。 */
 function cleanInline(text) {
   return String(text || '')
     .replace(/\*\*(.*?)\*\*/g, '$1')
@@ -280,47 +292,57 @@ function cleanInline(text) {
     .trim();
 }
 
+/** `extractMarkdownTitle`: 入力を解析してMarkdownの見出しを取り出す。 */
 function extractMarkdownTitle(text) {
   const line = String(text || '').split(/\r?\n/).find(l => /^#\s+/.test(l.trim()));
   return line ? cleanInline(line.replace(/^#\s+/, '')) : '';
 }
 
+/** `titleFromFile`: Notionのファイル名から拡張子と末尾IDを除き、メモタイトルを作る。 */
 function titleFromFile(name) {
   const base = name.split('/').pop().replace(/\.md$/i, '');
   return base.replace(/\s+[0-9a-f]{32}$/i, '').trim();
 }
 
+/** `extractNotionId`: 入力を解析してNotion IDを取り出す。 */
 function extractNotionId(name) {
   return findFirstId(name);
 }
 
+/** `findFirstId`: 文字列内で最初に見つかるNotion形式のIDを返す。 */
 function findFirstId(value) {
   const decoded = safeDecode(value);
   return (decoded.match(NOTION_ID_RE) || [])[1] || '';
 }
 
+/** `safeDecode`: URLエンコード文字列を復号し、失敗時は元の文字列を返す。 */
 function safeDecode(value) {
   try { return decodeURIComponent(String(value || '')); }
   catch { return String(value || ''); }
 }
 
+/** `normalizeTitle`: タイトルを後続処理で扱える安全な形にそろえる。 */
 function normalizeTitle(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+/** `looksLikeFileRef`: 文字列がMarkdownファイル参照らしい形式か判定する。 */
 function looksLikeFileRef(value) {
   return /\.md$/i.test(value) || /%[0-9a-f]{2}/i.test(value);
 }
 
+/** `unique`: 文字列配列の空要素と重複を除いて返す。 */
 function unique(values) {
   return [...new Set(values.map(v => String(v || '').trim()).filter(Boolean))];
 }
 
+/** `blocksToText`: メモブロックを改行区切りの検索・プレビュー用本文へ変換する。 */
 function blocksToText(blocks, maxLen = 0) {
   const text = (blocks || []).map(b => b.text || '').join('\n').trim();
   return maxLen && text.length > maxLen ? text.slice(0, maxLen) + '…' : text;
 }
 
+/** `ensureJSZip`: Notion ZIPを読むJSZipを取得し、未読込ならスクリプトを読み込む。 */
 async function ensureJSZip() {
   if (window.JSZip) return window.JSZip;
   await new Promise((resolve, reject) => {

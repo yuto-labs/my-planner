@@ -135,6 +135,7 @@ export const LEARNING_MIDDLE_BY_ID = new Map(
   ]))
 );
 
+/** `getLearningClassificationLabel`: 学習・分類・表示名を取得して呼び出し元へ返す。 */
 export function getLearningClassificationLabel(classification = {}) {
   const major = LEARNING_MAJOR_BY_ID.get(classification.majorId);
   const middle = LEARNING_MIDDLE_BY_ID.get(classification.middleId);
@@ -143,6 +144,7 @@ export function getLearningClassificationLabel(classification = {}) {
     .join(' › ');
 }
 
+/** `serializeLearningTaxonomyForAI`: serialize・学習・分類体系・AIに関する補助処理を行い、結果を呼び出し元へ返す。 */
 export function serializeLearningTaxonomyForAI() {
   return LEARNING_TAXONOMY.map(group => ({
     id: group.id,

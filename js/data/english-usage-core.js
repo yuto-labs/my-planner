@@ -8,6 +8,7 @@ const ref = form => [{
   url: `https://www.merriam-webster.com/dictionary/${encodeURIComponent(form)}`,
 }];
 
+/** `item`: 機能語の初期データから、安定IDを持つ表示項目を作る。 */
 function item(type, form, coreImageJa, detailJa, contrastJa, patterns, examples, related = []) {
   return {
     id: `${type}-${form.toLowerCase().replace(/[^a-z]+/g, '-')}`.replace(/-$/, ''),
@@ -191,6 +192,7 @@ export const ENGLISH_USAGE_CORE_STATS = {
   particles: PARTICLES.length,
 };
 
+/** `getEnglishUsageCoreEntry`: 英語・用法・Core・項目を取得して呼び出し元へ返す。 */
 export function getEnglishUsageCoreEntry(id) {
   return ENGLISH_USAGE_CORE.find(entry => entry.id === id) || null;
 }

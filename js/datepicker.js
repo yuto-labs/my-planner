@@ -6,13 +6,16 @@ const DOW = ['日', '月', '火', '水', '木', '金', '土'];
 let previouslyFocused = null;
 let escapeHandler = null;
 
+/** `_pad`: 数値を日付・時刻で使う2桁文字列へそろえる。 */
 function _pad(n) { return String(n).padStart(2, '0'); }
 
+/** `_todayStr`: 端末の今日をローカル日付のYYYY-MM-DD形式で返す。 */
 function _todayStr() {
   const d = new Date();
   return `${d.getFullYear()}-${_pad(d.getMonth()+1)}-${_pad(d.getDate())}`;
 }
 
+/** `_dateStr`: Dateをローカル日付のYYYY-MM-DD形式へ変換する。 */
 function _dateStr(d) {
   return `${d.getFullYear()}-${_pad(d.getMonth()+1)}-${_pad(d.getDate())}`;
 }
@@ -71,6 +74,7 @@ function _getOverlay() {
   return el;
 }
 
+/** `_close`: 開いている日付・時刻選択画面を閉じ、フォーカスを元へ戻す。 */
 function _close() {
   const el = document.getElementById('dp-picker-overlay');
   if (el) { el.classList.add('hidden'); el.innerHTML = ''; }
@@ -80,10 +84,12 @@ function _close() {
   previouslyFocused = null;
 }
 
+/** `closePicker`: 選択画面を安全に終了または削除する。 */
 export function closePicker() {
   _close();
 }
 
+/** `_preparePopup`: 日付・時刻選択画面へダイアログ属性とキーボード操作を設定する。 */
 function _preparePopup(popup, label) {
   popup.setAttribute('role', 'dialog');
   popup.setAttribute('aria-modal', 'true');
@@ -111,6 +117,7 @@ export function openDatePicker({ value, onConfirm, onClear }) {
   const popup = document.createElement('div');
   popup.className = 'dp-popup';
 
+  /** `render`: 現在の一時状態から、この画面部分のHTMLを描き直す。 */
   const render = () => {
     const firstDow    = new Date(viewYear, viewMonth, 1).getDay();
     const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
@@ -198,6 +205,7 @@ export function openTimePicker({ value, onConfirm, onClear }) {
   const popup = document.createElement('div');
   popup.className = 'dp-popup tp-popup';
 
+  /** `render`: 現在の一時状態から、この画面部分のHTMLを描き直す。 */
   const render = () => {
     popup.innerHTML = `
       <div class="dp-header-bar">
@@ -285,6 +293,7 @@ export function openDurationPicker({ value, onConfirm, onClear }) {
   const popup = document.createElement('div');
   popup.className = 'dp-popup tp-popup';
 
+  /** `render`: 現在の一時状態から、この画面部分のHTMLを描き直す。 */
   const render = () => {
     popup.innerHTML = `
       <div class="dp-header-bar">

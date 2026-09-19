@@ -13,6 +13,7 @@ const SPECIAL_HOLIDAYS = {
   '2019-10-22': { name: '即位礼正殿の儀', type: 'special' },
 };
 
+/** `getHolidayInfo`: 指定日の日本の祝日情報を返し、平日ならnullを返す。 */
 export function getHolidayInfo(dateLike) {
   const dateStr = typeof dateLike === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateLike)
     ? dateLike
@@ -21,10 +22,12 @@ export function getHolidayInfo(dateLike) {
   return getHolidayMap(year).get(dateStr) || null;
 }
 
+/** `isHoliday`: `isHoliday`の条件を確認し、結果を真偽値で返す。 */
 export function isHoliday(dateLike) {
   return !!getHolidayInfo(dateLike);
 }
 
+/** `getHolidayMap`: 指定年の祝日を計算し、日付をキーにしたMapで返す。 */
 function getHolidayMap(year) {
   if (YEAR_CACHE.has(year)) return YEAR_CACHE.get(year);
 
@@ -41,6 +44,7 @@ function getHolidayMap(year) {
   return map;
 }
 
+/** `addBaseHolidays`: 固定日・ハッピーマンデー・春秋分の日を指定年の祝日Mapへ加える。 */
 function addBaseHolidays(year, map) {
   addHoliday(map, year, 1, 1, '元日');
   addHoliday(map, year, 1, nthWeekdayOfMonth(year, 0, 1, 2), '成人の日');
@@ -75,6 +79,7 @@ function addBaseHolidays(year, map) {
   addHoliday(map, year, 11, 23, '勤労感謝の日');
 }
 
+/** `addCitizensHolidays`: 祝日に挟まれた平日を国民の休日として祝日Mapへ加える。 */
 function addCitizensHolidays(year, map) {
   const start = new Date(year, 0, 2);
   const end = new Date(year, 11, 30);
@@ -89,6 +94,7 @@ function addCitizensHolidays(year, map) {
   }
 }
 
+/** `addSubstituteHolidays`: 日曜の祝日に対する振替休日を祝日Mapへ加える。 */
 function addSubstituteHolidays(year, map) {
   const holidayDates = [...map.keys()].sort();
   for (const dateStr of holidayDates) {
@@ -104,23 +110,27 @@ function addSubstituteHolidays(year, map) {
   }
 }
 
+/** `addHoliday`: 実在する年月日だけを祝日Mapへ登録する。 */
 function addHoliday(map, year, month, day, name) {
   const date = new Date(year, month - 1, day);
   if (date.getFullYear() !== year || (date.getMonth() + 1) !== month || date.getDate() !== day) return;
   map.set(toDateStr(date), { name, type: 'holiday' });
 }
 
+/** `nthWeekdayOfMonth`: 指定月の第何週・何曜日に当たる日付番号を計算する。 */
 function nthWeekdayOfMonth(year, monthIndex, weekday, nth) {
   const first = new Date(year, monthIndex, 1);
   const offset = (7 + weekday - first.getDay()) % 7;
   return 1 + offset + (nth - 1) * 7;
 }
 
+/** `vernalEquinoxDay`: 指定年の春分の日を近似式で計算する。 */
 function vernalEquinoxDay(year) {
   if (year <= 1979) return Math.floor(20.8357 + 0.242194 * (year - 1980) - Math.floor((year - 1983) / 4));
   return Math.floor(20.8431 + 0.242194 * (year - 1980) - Math.floor((year - 1980) / 4));
 }
 
+/** `autumnEquinoxDay`: 指定年の秋分の日を近似式で計算する。 */
 function autumnEquinoxDay(year) {
   if (year <= 1979) return Math.floor(23.2588 + 0.242194 * (year - 1980) - Math.floor((year - 1983) / 4));
   return Math.floor(23.2488 + 0.242194 * (year - 1980) - Math.floor((year - 1980) / 4));

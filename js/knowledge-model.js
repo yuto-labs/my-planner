@@ -232,6 +232,7 @@ function normalizeClassification(value = {}) {
 
 // 時代・地域・つながり等の横断検索軸を、重複のない短い配列へそろえる。
 function normalizeFacets(value = {}) {
+  /** `array`: 値が配列ならそのまま、違う場合は空配列として扱う。 */
   const array = key => [...new Set((Array.isArray(value[key]) ? value[key] : [])
     .map(cleanKnowledgeText)
     .filter(Boolean))].slice(0, 12);
@@ -250,6 +251,7 @@ function normalizeTimeline(value = {}) {
   const mode = ['timeless', 'cross_period', 'dated', 'unclassified'].includes(value?.mode)
     ? value.mode
     : 'unclassified';
+  /** `number`: 値を数値化し、数値でない場合は指定した既定値を返す。 */
   const number = raw => {
     const parsed = Number(raw);
     return Number.isInteger(parsed) && parsed >= -5000 && parsed <= 3000 && parsed !== 0 ? parsed : null;

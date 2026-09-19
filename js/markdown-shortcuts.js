@@ -22,10 +22,12 @@ const BLOCK_MARKERS = new Map([
   ['```', 'codeblock'],
 ]);
 
+/** `markdownBlockType`: Markdown記号から対応する既存メモブロック種別を返す。 */
 export function markdownBlockType(marker) {
   return markdownBlockShortcut(marker)?.type || null;
 }
 
+/** `markdownBlockShortcut`: 行頭のMarkdown記号を解析し、ブロック変換内容を返す。 */
 export function markdownBlockShortcut(marker) {
   const value = String(marker || '').trim();
   const type = BLOCK_MARKERS.get(value);
@@ -36,6 +38,7 @@ export function markdownBlockShortcut(marker) {
   return null;
 }
 
+/** `completedInlineMarkdown`: 入力済み文字列の末尾に完成したインラインMarkdown装飾があるか解析する。 */
 export function completedInlineMarkdown(text) {
   const value = String(text || '');
   const patterns = [

@@ -35,10 +35,12 @@ const COUNTRY_CODE_SET = new Set(COUNTRY_CODES);
 const regionByCode = new Map();
 Object.entries(REGION_CODES).forEach(([regionId, codes]) => codes.forEach(code => regionByCode.set(code, regionId)));
 
+/** `getLearningCountryCodes`: 学習・国・Codesを取得して呼び出し元へ返す。 */
 export function getLearningCountryCodes() {
   return COUNTRY_CODES;
 }
 
+/** `getLearningCountryLabel`: 学習・国・表示名を取得して呼び出し元へ返す。 */
 export function getLearningCountryLabel(code) {
   const clean = String(code || '').toUpperCase();
   try {
@@ -48,22 +50,26 @@ export function getLearningCountryLabel(code) {
   }
 }
 
+/** `getLearningRegionForCountry`: 学習・地域・国を取得して呼び出し元へ返す。 */
 export function getLearningRegionForCountry(code) {
   return regionByCode.get(String(code || '').toUpperCase()) || 'world';
 }
 
+/** `getLearningCountriesForRegion`: 学習・Countries・地域を取得して呼び出し元へ返す。 */
 export function getLearningCountriesForRegion(regionId) {
   if (regionId === 'world') return getLearningCountryCodes();
   return (REGION_CODES[regionId] || [])
     .sort((a, b) => getLearningCountryLabel(a).localeCompare(getLearningCountryLabel(b), 'ja'));
 }
 
+/** `normalizeLearningCountryCodes`: 学習・国・Codesを後続処理で扱える安全な形にそろえる。 */
 export function normalizeLearningCountryCodes(values) {
   return [...new Set((Array.isArray(values) ? values : [])
     .map(value => String(value || '').toUpperCase())
     .filter(code => COUNTRY_CODE_SET.has(code)))].slice(0, 12);
 }
 
+/** `normalizeLearningRegionIds`: 学習・地域・Idsを後続処理で扱える安全な形にそろえる。 */
 export function normalizeLearningRegionIds(values, countryCodes = []) {
   const allowed = new Set(LEARNING_REGIONS.map(region => region.id));
   const supplied = (Array.isArray(values) ? values : [])
@@ -77,6 +83,7 @@ export function normalizeLearningRegionIds(values, countryCodes = []) {
   return normalized.slice(0, 6);
 }
 
+/** `getLearningTimelineBucket`: 学習・時代区分・Bucketを取得して呼び出し元へ返す。 */
 export function getLearningTimelineBucket(timeline = {}) {
   const mode = ['timeless', 'cross_period', 'dated', 'unclassified'].includes(timeline.mode)
     ? timeline.mode
@@ -92,6 +99,7 @@ export function getLearningTimelineBucket(timeline = {}) {
   return { mode, era, century, decade, startYear, endYear };
 }
 
+/** `getLearningTimelineLabel`: 学習・時代区分・表示名を取得して呼び出し元へ返す。 */
 export function getLearningTimelineLabel(timeline = {}) {
   const bucket = getLearningTimelineBucket(timeline);
   if (bucket.mode === 'timeless') return '恒常';
