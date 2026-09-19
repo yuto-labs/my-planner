@@ -27,7 +27,6 @@ test('normalizes supported plan containers and key aliases', () => {
     taskId: 'task-2', title: '読書', date: '2026-09-19', startTime: '09:05', endTime: '10:15', note: '集中',
   }]);
 });
-
 test('normalizes clock spellings and rejects unsupported text', () => {
   assert.equal(normalizePlanTime('9:05'), '09:05');
   assert.equal(normalizePlanTime('09:05:30'), '09:05');

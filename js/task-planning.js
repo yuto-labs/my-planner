@@ -105,4 +105,3 @@ export function applyPlanningBuffer(minutes, bufferPercent) {
   const buffered = base * (1 + (Number(bufferPercent) || 0) / 100);
   return Math.round(buffered / 10) * 10;
 }
-

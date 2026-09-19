@@ -34,4 +34,3 @@ test('escapes viewer captions and removes newlines from attributes', () => {
   assert.equal(escapeMediaHtml('<b>"photo" & note</b>'), '&lt;b&gt;&quot;photo&quot; &amp; note&lt;/b&gt;');
   assert.equal(escapeMediaAttribute('line 1\nline 2'), 'line 1 line 2');
 });
-

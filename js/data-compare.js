@@ -15,7 +15,6 @@ export function stableJsonStringify(value) {
   }
   return JSON.stringify(value);
 }
-
 /** ISO日時等を比較用ミリ秒に変換し、不正な値は0にする。 */
 export function timestampOrZero(value) {
   const timestamp = new Date(value || 0).getTime();
@@ -46,4 +45,3 @@ export function dedupeNewestById(items) {
   }
   return [...byId.values()];
 }
-

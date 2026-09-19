@@ -43,4 +43,3 @@ export function escapeMediaHtml(value) {
 export function escapeMediaAttribute(value) {
   return escapeMediaHtml(value).replaceAll('\n', ' ');
 }
-
