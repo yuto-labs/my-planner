@@ -28,6 +28,12 @@ import {
 } from '../media.js';
 import { flushPendingSync } from '../sync.js';
 import { markdownBlockShortcut, completedInlineMarkdown } from '../markdown-shortcuts.js';
+import {
+  collectMemoImagePaths as collectImagePaths,
+  memoBlocksToText as blocksToText,
+  normalizeMemoTable as normalizeTableData,
+  sortMemosForList,
+} from '../memo-model.js';
 
 const nav       = (view, options = {}) => window.AppNav?.navigate(view, options);
 const toast     = (msg, type) => window.AppNav?.showToast(msg, type);
@@ -422,11 +428,7 @@ function restoreKnowledgeListPosition() {
 /** 星付き優先・更新順でメモカードを再描画する。 */
 function renderList() {
   const { container, search, filterTag } = listState;
-  const memos = [...getKnowledgeMemos()].sort((a, b) => {
-    const aTime = Date.parse(a.updatedAt || a.createdAt || '') || 0;
-    const bTime = Date.parse(b.updatedAt || b.createdAt || '') || 0;
-    return bTime - aTime;
-  });
+  const memos = sortMemosForList(getKnowledgeMemos());
   const allTags = [...new Set(memos.flatMap(m => m.tags || []))].sort();
   if (search) pruneMemoSearchIndex(memos);
   else memoSearchIndex.clear();
@@ -438,7 +440,7 @@ function renderList() {
     return matchSearch && matchTag;
   });
 
-  const orderedMemos = [...filtered].sort((a, b) => Number(Boolean(b.starred)) - Number(Boolean(a.starred)));
+  const orderedMemos = filtered;
   const visibleMemos = orderedMemos.slice(0, listState.visibleCount);
   const visibleTotal = visibleMemos.length;
   const visibleStarred = visibleMemos.filter(memo => memo.starred);
@@ -4018,18 +4020,6 @@ function createDefaultTable() {
   return { headers: ['項目', '内容'], rows: [['', '']] };
 }
 
-function normalizeTableData(block) {
-  const source = block?.table || {};
-  const headers = Array.isArray(source.headers) ? source.headers.map(value => String(value ?? '')) : [];
-  const width = Math.max(2, headers.length);
-  const normalizedHeaders = Array.from({ length: width }, (_, index) => headers[index] || `列${index + 1}`);
-  const rows = Array.isArray(source.rows) && source.rows.length ? source.rows : [['', '']];
-  return {
-    headers: normalizedHeaders,
-    rows: rows.map(row => Array.from({ length: width }, (_, index) => String((row || [])[index] ?? ''))),
-  };
-}
-
 function changeTableShape(blockId, action, container) {
   const block = findBlockInAllBlocks(edState.blocks, blockId);
   if (!block || block.type !== 'table') return;
@@ -4049,14 +4039,6 @@ function changeTableShape(blockId, action, container) {
   activeEditorBlockId = blockId;
   rerenderBlocks(container);
   container.querySelector(`[data-block-id="${blockId}"] .kn-table-input`)?.focus();
-}
-
-function collectImagePaths(blocks, paths = new Set()) {
-  (blocks || []).forEach(block => {
-    if (block?.type === 'image' && block.path) paths.add(block.path);
-    if (block?.children?.length) collectImagePaths(block.children, paths);
-  });
-  return paths;
 }
 
 function cleanupPendingImageUploads() {
@@ -4145,24 +4127,6 @@ function findBlockInAllBlocks(blocks, id) {
     }
   }
   return null;
-}
-
-function blocksToText(blocks, maxLen = 0) {
-  let text = '';
-  for (const b of (blocks || [])) {
-    if (b.type === 'divider' || b.type === 'math') continue;
-    if (b.type === 'table') {
-      const table = normalizeTableData(b);
-      text += `${table.headers.join(' ')} ${table.rows.map(row => row.join(' ')).join(' ')} `;
-      continue;
-    }
-    text += (b.text || '') + ' ';
-    if (b.children) {
-      for (const c of b.children) text += (c.text || '') + ' ';
-    }
-  }
-  text = text.trim();
-  return maxLen && text.length > maxLen ? text.slice(0, maxLen) + '…' : text;
 }
 
 function getRelatedMemos(currentId, tags) {
