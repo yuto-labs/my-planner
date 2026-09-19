@@ -2,7 +2,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { calendarSwipeDirection, isCalendarHorizontalDrag } from '../js/calendar-gesture.js';
+import {
+  calendarDayTapAction,
+  calendarSwipeDirection,
+  isCalendarHorizontalDrag,
+} from '../js/calendar-gesture.js';
 
 test('starts calendar dragging only after a clearly horizontal movement', () => {
   assert.equal(isCalendarHorizontalDrag(11, 0), false);
@@ -29,3 +33,9 @@ test('caps the swipe threshold between 56 and 96 pixels', () => {
   assert.equal(calendarSwipeDirection(97, 0, 2000), -1);
 });
 
+test('opens a month day only on the second tap of the same date', () => {
+  assert.equal(calendarDayTapAction(null, '2026-09-19'), 'select');
+  assert.equal(calendarDayTapAction('2026-09-18', '2026-09-19'), 'select');
+  assert.equal(calendarDayTapAction('2026-09-19', '2026-09-19'), 'open');
+  assert.equal(calendarDayTapAction('2026-09-19', ''), 'ignore');
+});

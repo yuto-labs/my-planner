@@ -24,3 +24,12 @@ export function calendarSwipeDirection(dx, dy, viewportWidth) {
   return dx > 0 ? -1 : 1;
 }
 
+/**
+ * 月表示の日付タップを、一度目の選択と二度目の一覧表示に分ける。
+ * 予定チップを押しても親の日付セルがこの規則を使うため、直接編集は開かない。
+ */
+export function calendarDayTapAction(selectedDate, tappedDate) {
+  const date = String(tappedDate || '');
+  if (!date) return 'ignore';
+  return String(selectedDate || '') === date ? 'open' : 'select';
+}

@@ -34,7 +34,11 @@ import {
   halfOpenRangesOverlap,
   scheduleRangeForDate,
 } from '../planning-time.js';
-import { calendarSwipeDirection, isCalendarHorizontalDrag } from '../calendar-gesture.js';
+import {
+  calendarDayTapAction,
+  calendarSwipeDirection,
+  isCalendarHorizontalDrag,
+} from '../calendar-gesture.js';
 
 const toast     = (msg, type) => window.AppNav?.showToast(msg, type);
 const undoToast = (msg, cb)   => window.AppNav?.showUndoToast(msg, cb);
@@ -649,9 +653,10 @@ function renderMonth() {
   view.querySelectorAll('.cal-cell').forEach(cell => {
     cell.addEventListener('click', () => {
       const dateStr = cell.dataset.date;
-      if (_selectedDate === dateStr) {
+      const action = calendarDayTapAction(_selectedDate, dateStr);
+      if (action === 'open') {
         openDaySheet(dateStr);
-      } else {
+      } else if (action === 'select') {
         _selectedDate = dateStr;
         view.querySelectorAll('.cal-cell').forEach(c => c.classList.remove('cal-cell--selected'));
         cell.classList.add('cal-cell--selected');
