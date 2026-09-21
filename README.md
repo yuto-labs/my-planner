@@ -53,6 +53,7 @@ JavaScriptやHTMLを初めて読む場合は、まず [`docs/README.md`](docs/RE
 
 - [`docs/start-here.md`](docs/start-here.md) - VS Code、起動、最初の読み方
 - [`docs/html-css-basics.md`](docs/html-css-basics.md) - HTMLとCSSの基礎
+- [`docs/javascript-for-python-learners.md`](docs/javascript-for-python-learners.md) - Python学習者向けのJavaScriptとWeb機能
 - [`docs/javascript-first-course.md`](docs/javascript-first-course.md) - 初めてコードを読む人向けの文法・関数講座
 - [`docs/javascript-basics.md`](docs/javascript-basics.md) - このアプリで使うJavaScript
 - [`docs/javascript-browser-apis.md`](docs/javascript-browser-apis.md) - DOM、イベント、通信、保存、画像処理

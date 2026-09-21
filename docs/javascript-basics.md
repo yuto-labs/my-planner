@@ -2,7 +2,9 @@
 
 この文書は、JavaScriptを初めて読む人がMy Plannerのコードを追えるようになるための入門です。
 記号を暗記するだけでなく、「値がどこから来て、どこへ渡り、いつ処理が動くか」を理解することを
-目標にします。プログラミング自体が初めてなら、先に
+目標にします。Pythonの基礎を学んでいる場合は、先に
+[`javascript-for-python-learners.md`](javascript-for-python-learners.md)でJavaScript固有の記法と
+Webアプリの関数をPythonと対応させてください。プログラミング自体が初めてなら、
 [`javascript-first-course.md`](javascript-first-course.md)で、変数と関数を一行ずつ読む練習をしてください。
 ブラウザー固有の機能は、次に
 [`javascript-browser-apis.md`](javascript-browser-apis.md)を読んでください。

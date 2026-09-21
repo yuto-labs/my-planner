@@ -77,6 +77,7 @@
 - `start-here.md`: VS Codeと最初の操作
 - `html-css-basics.md`: HTML/CSSの基礎
 - `css-reading-guide.md`: 長いCSSから対象規則を探す方法
+- `javascript-for-python-learners.md`: Python学習者向けのJavaScriptとWeb機能
 - `javascript-first-course.md`: 完全な初学者向けの文法・関数講座
 - `javascript-basics.md`: JavaScriptの基礎
 - `javascript-browser-apis.md`: DOM、イベント、通信、端末保存、画像処理

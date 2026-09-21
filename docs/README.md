@@ -10,21 +10,22 @@ JavaScriptやHTMLをまったく触ったことがない人を想定していま
 1. [`start-here.md`](start-here.md) - 開発環境と最初の30分
 2. [`html-css-basics.md`](html-css-basics.md) - 画面の骨組みと見た目
 3. [`css-reading-guide.md`](css-reading-guide.md) - このアプリのCSSを探す方法
-4. [`javascript-first-course.md`](javascript-first-course.md) - 完全な初学者向けの文法・関数講座
-5. [`javascript-basics.md`](javascript-basics.md) - 動作を作る文法を広げる
-6. [`javascript-browser-apis.md`](javascript-browser-apis.md) - DOM、イベント、通信、保存、画像
-7. [`first-walkthrough.md`](first-walkthrough.md) - 起動から画面表示まで実コードを追う
-8. [`architecture.md`](architecture.md) - アプリ全体の設計
-9. [`feature-walkthroughs.md`](feature-walkthroughs.md) - 一機能をファイル横断で追う
-10. [`file-map.md`](file-map.md) - ファイルを探す地図
-11. 小さい画面モジュール（`tagspage.js`、`archive.js`、`search.js`）
-12. [`data-and-sync.md`](data-and-sync.md) - 端末保存と同期
-13. [`database-basics.md`](database-basics.md) - SupabaseとSQL
-14. [`ai-flow.md`](ai-flow.md) - AI回答の生成と保存
-15. [`function-map.md`](function-map.md) - 関数名と一時状態の逆引き
-16. [`debugging-and-tests.md`](debugging-and-tests.md) - 不具合の調べ方
-17. [`glossary.md`](glossary.md) - 分からない単語を引く場所
-18. [`project-config.md`](project-config.md) - package、PWA、Vercel設定
+4. [`javascript-for-python-learners.md`](javascript-for-python-learners.md) - Python経験を足場にJSとWeb機能を学ぶ
+5. [`javascript-browser-apis.md`](javascript-browser-apis.md) - DOM、イベント、通信、保存、画像
+6. [`javascript-basics.md`](javascript-basics.md) - JavaScript文法の範囲を広げる
+7. [`javascript-first-course.md`](javascript-first-course.md) - 一般概念から確認したい時の補助教材
+8. [`first-walkthrough.md`](first-walkthrough.md) - 起動から画面表示まで実コードを追う
+9. [`architecture.md`](architecture.md) - アプリ全体の設計
+10. [`feature-walkthroughs.md`](feature-walkthroughs.md) - 一機能をファイル横断で追う
+11. [`file-map.md`](file-map.md) - ファイルを探す地図
+12. 小さい画面モジュール（`tagspage.js`、`archive.js`、`search.js`）
+13. [`data-and-sync.md`](data-and-sync.md) - 端末保存と同期
+14. [`database-basics.md`](database-basics.md) - SupabaseとSQL
+15. [`ai-flow.md`](ai-flow.md) - AI回答の生成と保存
+16. [`function-map.md`](function-map.md) - 関数名と一時状態の逆引き
+17. [`debugging-and-tests.md`](debugging-and-tests.md) - 不具合の調べ方
+18. [`glossary.md`](glossary.md) - 分からない単語を引く場所
+19. [`project-config.md`](project-config.md) - package、PWA、Vercel設定
 
 ## コード内コメントの読み方
 
