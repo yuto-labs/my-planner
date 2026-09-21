@@ -192,7 +192,7 @@ export const ENGLISH_USAGE_CORE_STATS = {
   particles: PARTICLES.length,
 };
 
-/** `getEnglishUsageCoreEntry`: 英語・用法・Core・項目を取得して呼び出し元へ返す。 */
+/** 前置詞などの見出し語を正規化し、組み込みコアイメージ解説を返す。 */
 export function getEnglishUsageCoreEntry(id) {
   return ENGLISH_USAGE_CORE.find(entry => entry.id === id) || null;
 }

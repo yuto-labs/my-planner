@@ -23,34 +23,34 @@ export function esc(str) {
 
 // ---- Date utilities ----
 
+/** 端末のローカル日付を`YYYY-MM-DD`で返す。UTC日付へずれるのを避けるためtoISOStringは使わない。 */
 export function today() {
   return toDateStr(new Date());
 }
 
-/** `tomorrow`: 端末の日付を基準に、明日のYYYY-MM-DD文字列を返す。 */
+/** 端末の今日を一日進め、ローカル日付の`YYYY-MM-DD`で返す。 */
 export function tomorrow() {
   const d = new Date();
   d.setDate(d.getDate() + 1);
   return toDateStr(d);
 }
 
-/** Returns YYYY-MM-DD */
+/** Dateまたは変換可能な値を、端末のタイムゾーンにおける`YYYY-MM-DD`へ整形する。 */
 export function toDateStr(date) {
   const d = new Date(date);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-/** Returns HH:MM */
+/** Dateまたは変換可能な値から、端末のローカル時刻を24時間制`HH:MM`で返す。 */
 export function toTimeStr(date) {
   const d = new Date(date);
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 /**
- * Extract explicit Japanese clock times without guessing AM/PM.
- * "10時半" => 10:30, while "夜10時半" => 22:30.
+ * 「10時半」「午後3時」「夜10時半」など、入力に明記された時刻をすべて抽出する。
+ * 時間帯がなければ勝手に午前・午後を推測せず、「夜」等がある場合だけ24時間制へ補正する。
  */
-/** 「10時半」「午後3時」などの日本語表現から時刻候補を抽出する。 */
 export function parseJapaneseTimes(input) {
   const value = String(input || '').normalize('NFKC');
   const pattern = /(?:(午前|午後|朝|昼|夕方|夜)\s*の?\s*)?(\d{1,2})(?::(\d{1,2})|時(?:(\d{1,2})分|(半))?)/g;
@@ -80,7 +80,7 @@ export function parseJapaneseTimes(input) {
   return times;
 }
 
-/** Returns value suitable for datetime-local input (in local time) */
+/** ISO日時を、`datetime-local`入力欄へ設定できる端末時刻の文字列へ変換する。 */
 export function toDateTimeLocal(isoStr) {
   if (!isoStr) return '';
   const d = new Date(isoStr);
@@ -93,20 +93,20 @@ export function toDateTimeLocal(isoStr) {
   return `${y}-${mo}-${dd}T${hh}:${mm}`;
 }
 
-/** Parses datetime-local value to ISO string */
+/** `datetime-local`入力値を端末時刻として解釈し、保存用のUTC ISO文字列へ変換する。 */
 export function fromDateTimeLocal(str) {
   if (!str) return '';
   return new Date(str).toISOString();
 }
 
-/** YYYY-MM-DD -> Date object (local midnight) */
+/** `YYYY-MM-DD`をUTCではなく端末の午前0時としてDateへ変換する。 */
 export function parseDate(str) {
   if (!str) return null;
   const [y, m, d] = str.split('-').map(Number);
   return new Date(y, m - 1, d);
 }
 
-/** `sameDay`: 二つの日付がローカル時間で同じ年月日か判定する。 */
+/** 二つの日付を端末時刻へ直し、時刻部分を無視して同じ年月日か判定する。 */
 export function sameDay(a, b) {
   const da = new Date(a);
   const db = new Date(b);
@@ -115,14 +115,14 @@ export function sameDay(a, b) {
     && da.getDate() === db.getDate();
 }
 
-/** `addDays`: 指定日を複製し、日数を加えた新しいDateを返す。 */
+/** 元のDateを変更せず複製し、カレンダー上の日数を加えた新しいDateを返す。 */
 export function addDays(date, n) {
   const d = new Date(date);
   d.setDate(d.getDate() + n);
   return d;
 }
 
-/** `startOfWeek`: 指定日を含む週の月曜日を返す。 */
+/** 指定日を含む週の日曜日午前0時を返す。このアプリの週表示は日曜始まり。 */
 export function startOfWeek(date = new Date()) {
   const d = new Date(date);
   const day = d.getDay();
@@ -131,17 +131,17 @@ export function startOfWeek(date = new Date()) {
   return d;
 }
 
-/** `startOfMonth`: 指定月の1日を表すDateを返す。 */
+/** 指定日と同じ年月の1日午前0時を返す。 */
 export function startOfMonth(date = new Date()) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
-/** `endOfMonth`: 指定月の最終日を表すDateを返す。 */
+/** 翌月0日というDateの繰り上がり規則を使い、指定月の最終日を返す。 */
 export function endOfMonth(date = new Date()) {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0);
 }
 
-/** Get this week's start and end (Sun-Sat) */
+/** 端末の今日を含む日曜0時から土曜23:59:59.999までの範囲を返す。 */
 export function thisWeekRange() {
   const start = startOfWeek();
   const end = addDays(start, 6);
@@ -149,7 +149,7 @@ export function thisWeekRange() {
   return { start, end };
 }
 
-/** This month range */
+/** 端末の今月について、1日0時から最終日23:59:59.999までの範囲を返す。 */
 export function thisMonthRange() {
   const start = startOfMonth();
   const end = endOfMonth();
@@ -161,7 +161,7 @@ export function thisMonthRange() {
 
 const WEEKDAYS_SHORT = ['\u65e5', '\u6708', '\u706b', '\u6c34', '\u6728', '\u91d1', '\u571f'];
 
-/** `formatDate`: 日付を画面表示用の文字列へ整える。 */
+/** 日付を短縮・年月付き・月見出し等、指定styleの日本語表示へ整形する。 */
 export function formatDate(dateOrStr, style = 'short') {
   const d = new Date(dateOrStr);
   if (isNaN(d)) return '';
@@ -177,7 +177,7 @@ export function formatDate(dateOrStr, style = 'short') {
   return `${m}/${day}`;
 }
 
-/** `formatTime`: 時刻を画面表示用の文字列へ整える。 */
+/** ISO日時を端末時刻の`HH:MM`へ変換する。日末表現`T24:00`だけは24:00を保持する。 */
 export function formatTime(isoStr) {
   if (!isoStr) return '';
   if (typeof isoStr === 'string' && isoStr.includes('T24:00')) return '24:00';
@@ -187,11 +187,9 @@ export function formatTime(isoStr) {
 }
 
 /**
- * Get events for a specific date, including multi-day events.
- * Returns events with _displayStart/_displayEnd properties for multi-day cases.
- * Middle days of 3+ day spans are marked _isAllDay = true.
+ * 指定日に重なる予定を抽出し、その日だけを描画する開始・終了情報を付けて時刻順に返す。
+ * 複数日予定の中間日は終日扱い、初日・最終日は元の時刻を保つ。
  */
-/** 単発・複数日・繰り返し予定から、指定日に表示する予定を返す。 */
 export function getEventsForDate(events, dateStr) {
   return events
     .filter((ev) => {
@@ -204,7 +202,10 @@ export function getEventsForDate(events, dateStr) {
     .sort((a, b) => (a._displayStart || a.start || '').localeCompare(b._displayStart || b.start || ''));
 }
 
-/** `_effectiveEventEndDateStr`: 日をまたぐ予定について、画面上で含める最後の日付を求める。 */
+/**
+ * 日をまたぐ予定が実際に占有する最終日を返す。
+ * 翌日0時ちょうどで終わる予定は、空の翌日を含めず前日までとして扱う。
+ */
 function _effectiveEventEndDateStr(ev) {
   if (!ev.end) return toDateStr(new Date(ev.start));
   const startDateStr = toDateStr(new Date(ev.start));
@@ -229,7 +230,7 @@ function _effectiveEventEndDateStr(ev) {
   return toDateStr(end);
 }
 
-/** `_clampEventForDay`: 複数日にまたがる予定の開始・終了を、表示対象日の範囲へ切り詰める。 */
+/** 複数日予定を一日分の表示へ切り分け、初日・中間日・最終日の印を付けたコピーを返す。 */
 function _clampEventForDay(ev, dateStr) {
   if (!ev.end) return ev;
   const sd = toDateStr(new Date(ev.start));
@@ -262,7 +263,7 @@ function _clampEventForDay(ev, dateStr) {
   };
 }
 
-/** `getGreeting`: あいさつを取得して呼び出し元へ返す。 */
+/** 端末の現在時刻を五つの時間帯へ分け、ホームに表示する日本語の挨拶を返す。 */
 export function getGreeting() {
   const h = new Date().getHours();
   if (h < 5) return '\u304a\u3084\u3059\u307f\u306a\u3055\u3044';
@@ -272,7 +273,7 @@ export function getGreeting() {
   return '\u304a\u75b2\u308c\u3055\u307e\u3067\u3059';
 }
 
-/** `getGreetingPeriod`: 現在時刻を朝・昼・夕方・夜の区分で返す。 */
+/** 挨拶と同じ時刻境界を使い、背景・アイコン選択用の英語区分を返す。 */
 export function getGreetingPeriod() {
   const h = new Date().getHours();
   if (h < 5) return 'night';
@@ -285,11 +286,9 @@ export function getGreetingPeriod() {
 // ---- Event generation for recurring events ----
 
 /**
- * Given a master recurring event, generate all instances between start and end dates.
- * Instances list in storage should just be individual events with recurringId set.
- * This is used if you want on-the-fly generation (not used in this v1 - we store individually).
+ * 繰り返し元予定から、指定した表示期間に入る日次・週次・月次インスタンスを計算する。
+ * 現行保存方式は各回を個別保存するため補助用途だが、元予定は変更しない。
  */
-/** 繰り返し設定から、表示期間内に必要な予定インスタンスだけを計算する。 */
 export function getRecurringInstances(masterEvent, windowStart, windowEnd) {
   const instances = [];
   if (!masterEvent.recurring) return instances;
@@ -339,11 +338,13 @@ export function debounce(fn, ms = 300) {
 }
 
 // ---- SRS day formatter ----
+/** 復習までの日数を、日・週・月のうち読みやすい単位へ丸めて表示する。 */
 export function fmtDays(d) {
   return d === 1 ? '1日後' : d < 7 ? `${d}日後` : d < 30 ? `${Math.round(d / 7)}週後` : `${Math.round(d / 30)}ヶ月後`;
 }
 
 // ---- Days elapsed since a date string ('YYYY-MM-DD') ----
+/** 指定日時から現在までの経過時間を24時間単位で切り捨てて返す。 */
 export function daysSince(dateStr) {
   return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
 }

@@ -133,7 +133,7 @@ function editorSnapshot() {
   });
 }
 
-/** `markEditorBaseline`: エディタ・Baselineを保存先または一時状態へ反映する。 */
+/** 現在の編集下書きを「保存済み基準」として記録し、以後の未保存判定に使う。 */
 function markEditorBaseline() {
   editorBaseline = editorSnapshot();
 }
@@ -160,7 +160,7 @@ function resetEditorHistory() {
   editorTypingHistoryTimer = null;
 }
 
-/** `updateEditorHistoryControls`: エディタ・履歴・Controlsを現在状態へ反映し、必要な表示を更新する。 */
+/** Undo・Redo履歴の現在位置から、各ボタンの有効状態だけを更新する。 */
 function updateEditorHistoryControls(container) {
   const undo = container?.querySelector('#kn-undo-btn');
   const redo = container?.querySelector('#kn-redo-btn');
@@ -197,7 +197,7 @@ function beginEditorTextHistory(container) {
   }, 700);
 }
 
-/** `restoreEditorHistory`: エディタ・履歴を現在状態へ反映し、必要な表示を更新する。 */
+/** 履歴位置を一段移動し、その時点の下書きを復元してカーソルと画面位置を保つ。 */
 function restoreEditorHistory(container, direction) {
   const from = direction === 'undo' ? editorUndoHistory : editorRedoHistory;
   const to = direction === 'undo' ? editorRedoHistory : editorUndoHistory;
@@ -248,7 +248,7 @@ function restoreEditorHistory(container, direction) {
   });
 }
 
-/** `hasUnsavedKnowledgeChanges`: 未保存の・Knowledge・Changesの条件を確認し、結果を真偽値で返す。 */
+/** 現在の編集下書きと最後の保存済み基準を安定JSONで比較し、未保存変更の有無を返す。 */
 export function hasUnsavedKnowledgeChanges() {
   return !!edState?.isEdit && editorSnapshot() !== editorBaseline;
 }
@@ -415,7 +415,7 @@ export function initKnowledge(container) {
   });
 }
 
-/** `restoreKnowledgeListPosition`: Knowledge・一覧・位置を現在状態へ反映し、必要な表示を更新する。 */
+/** 詳細画面を開く前に記録したメモ一覧のスクロール位置を、再描画後に戻す。 */
 function restoreKnowledgeListPosition() {
   const targetTop = _pendingListScrollTop;
   const anchorId = _pendingListAnchorId;
@@ -535,7 +535,7 @@ function renderList() {
   const searchEl = container.querySelector('#kn-search');
   let searchTimer = null;
   let composing = false;
-  /** `applySearch`: 検索を現在状態へ反映し、必要な表示を更新する。 */
+  /** 入力中の検索語でメモ索引を絞り込み、一覧だけを再描画する。 */
   const applySearch = () => {
     if (!searchEl) return;
     listState.search = searchEl.value;
@@ -610,7 +610,7 @@ function renderList() {
   });
 }
 
-/** `renderMemoCard`: メモ・カードの画面表示またはHTMLを組み立てる。 */
+/** 一覧用に、題名・一行プレビュー・星・削除操作を含む一件分のカードHTMLを作る。 */
 function renderMemoCard(m) {
   const preview = renderMemoCardPreview(m.blocks || [], 1);
   const dateStr = formatDate(m.updatedAt || m.createdAt, 'short');
@@ -642,12 +642,12 @@ function renderMemoCard(m) {
   `;
 }
 
-/** `renderMemoCardPreview`: メモ・カード・プレビューの画面表示またはHTMLを組み立てる。 */
+/** 保存済みブロック構造を保ちながら、一覧カードへ収まる件数の安全なプレビューHTMLを返す。 */
 export function renderMemoCardPreview(blocks, maxBlocks = 7) {
   const rows = [];
   let rendered = 0;
 
-  /** `renderLevel`: Levelの画面表示またはHTMLを組み立てる。 */
+  /** 入れ子になったブロックをたどり、一覧カードに収まる件数までプレビュー行へ変換する。 */
   const renderLevel = (items, depth = 0) => {
     let numbered = 0;
     for (const block of (items || [])) {
@@ -721,7 +721,7 @@ function memoSearchText(memo) {
   return text;
 }
 
-/** `pruneMemoSearchIndex`: メモ・検索・Indexを安全に終了または削除する。 */
+/** 削除済みメモのIDを検索索引から除き、残存メモのキャッシュだけを保持する。 */
 function pruneMemoSearchIndex(memos) {
   if (memoSearchIndex.size <= memos.length) return;
   const activeIds = new Set(memos.map(memo => memo.id));
@@ -975,7 +975,7 @@ function openAIInputSheet() {
   });
 }
 
-/** `_renderAITags`: AITagsの画面表示またはHTMLを組み立てる。 */
+/** AIが提案したタグを、選択して下書きへ追加できる候補チップとして描画する。 */
 function _renderAITags(sheet, tags) {
   const wrap = sheet.querySelector('#kn-ai-preview-tags');
   if (!wrap) return;
@@ -1152,12 +1152,12 @@ function setupKnowledgeSwipeBack(container) {
   let tracking = false;
   let committing = false;
 
-  /** `page`: pageに関する補助処理を行い、結果を呼び出し元へ返す。 */
+  /** 再描画で要素が交換されるため、スワイプ対象の詳細ページを毎回DOMから取得する。 */
   const page = () => container.querySelector('.kn-view-page');
-  /** `canBack`: Backの条件を確認し、結果を真偽値で返す。 */
+  /** 閲覧中で戻り履歴があり、別の戻り処理が走っていない場合だけスワイプバックを許可する。 */
   const canBack = () => !committing && !edState?.isEdit && _knHistory.length > 0;
 
-  /** `reset`: 初期化に関する補助処理を行い、結果を呼び出し元へ返す。 */
+  /** 指に追従させたtransformと一時フラグを解除し、通常表示へ戻す。 */
   const reset = () => {
     const view = page();
     if (view) {
@@ -1170,7 +1170,7 @@ function setupKnowledgeSwipeBack(container) {
     dx = 0;
   };
 
-  /** `updateDrag`: ドラッグを現在状態へ反映し、必要な表示を更新する。 */
+  /** 指の横移動量をページの右方向オフセットへ反映し、戻る動きをプレビューする。 */
   const updateDrag = (distance) => {
     dx = Math.max(0, distance);
     const view = page();
@@ -1246,7 +1246,7 @@ function setupKnowledgeSwipeBack(container) {
     } else {
       view.style.transform = 'translate3d(0,0,0)';
       let resetDone = false;
-      /** `finishReset`: 完了・初期化に関する補助処理を行い、結果を呼び出し元へ返す。 */
+      /** transitionendが発火しない端末でも一度だけスワイプ状態を解除する。 */
       const finishReset = () => {
         if (resetDone) return;
         resetDone = true;
@@ -1271,7 +1271,7 @@ function setupKnowledgeSwipeBack(container) {
   };
 }
 
-/** `restoreDetailScroll`: 詳細・Scrollを現在状態へ反映し、必要な表示を更新する。 */
+/** 関連メモから戻った際、再描画の直後にも記録済みスクロール位置を復元する。 */
 function restoreDetailScroll(top) {
   const main = document.getElementById('main-content');
   if (!main || top <= 0) return;
@@ -1281,7 +1281,7 @@ function restoreDetailScroll(top) {
   });
 }
 
-/** `renderDetail`: 詳細の画面表示またはHTMLを組み立てる。 */
+/** 現在のメモIDと編集状態を見て、閲覧モードまたは編集モードの詳細画面を再描画する。 */
 function renderDetail(container, options = {}) {
   const restoreScrollTop = options.preserveScroll
     ? document.getElementById('main-content')?.scrollTop || 0
@@ -1526,7 +1526,7 @@ function renderViewMode(container) {
   });
 }
 
-/** `renderBlocksView`: ブロック・画面の画面表示またはHTMLを組み立てる。 */
+/** メモの全ブロックを保存順に閲覧用HTMLへ変換し、トグルの子階層も再帰的に含める。 */
 export function renderBlocksView(blocks, indent = 0) {
   if (!blocks || !blocks.length) return '';
   let html = '';
@@ -1543,7 +1543,7 @@ export function renderBlocksView(blocks, indent = 0) {
   return html;
 }
 
-/** `renderBlockView`: ブロック・画面の画面表示またはHTMLを組み立てる。 */
+/** 一つのブロックを種類別の閲覧HTMLへ変換し、文字装飾・画像・表・トグルを安全に表示する。 */
 function renderBlockView(block, numCounter = 0, indent = 0) {
   const color = block.color || '';
   const styles = [color ? `color:${color}` : '', indent > 0 ? `margin-left:${indent * 20}px` : ''].filter(Boolean);
@@ -1625,13 +1625,13 @@ function renderInlineMarkdown(text) {
     .replace(/\[(.+?)\]\((https?:\/\/.+?)\)/g, '<a href="$2" target="_blank" rel="noopener" class="kn-inline-link">$1</a>');
 }
 
-/** `getBlockRichHtml`: ブロック・Rich・HTMLを取得して呼び出し元へ返す。 */
+/** 保存済みrich HTMLがあれば無害化して使い、なければMarkdown文字列から表示HTMLを作る。 */
 function getBlockRichHtml(block) {
   if (block.html) return sanitizeBlockHtml(block.html);
   return renderInlineMarkdown(esc(block.text || ''));
 }
 
-/** `renderAllKaTeX`: すべての・Ka・Te・Xの画面表示またはHTMLを組み立てる。 */
+/** 詳細画面内の未描画数式をKaTeXへ渡し、失敗した式は原文を残して画面停止を防ぐ。 */
 function renderAllKaTeX(container) {
   if (typeof katex === 'undefined') return;
   container.querySelectorAll('.kn-view-math').forEach(el => {
@@ -1997,7 +1997,7 @@ function renderBlocksEdit(blocks) {
   }).join('');
 }
 
-/** `renderBlockEdit`: ブロック・Editの画面表示またはHTMLを組み立てる。 */
+/** 一つの下書きブロックを、種類選択・編集領域・画像操作を持つ編集用HTMLへ変換する。 */
 function renderBlockEdit(block, idx, listNumber = 0) {
   const colorStyle = block.color ? `style="color:${block.color}"` : '';
   const typeClass  = `kn-block--${block.type}`;
@@ -2110,13 +2110,13 @@ function renderBlockEdit(block, idx, listNumber = 0) {
     ${insertRow}`;
 }
 
-/** `renderBlockInsertRow`: ブロック・Insert・行の画面表示またはHTMLを組み立てる。 */
+/** 既存ブロックの直後へ新しいブロックを差し込むための小さな挿入行HTMLを返す。 */
 function renderBlockInsertRow(blockId) {
   // One add control is enough. Per-row buttons were easy to leave behind after a block was removed.
   return '';
 }
 
-/** `renderBlockTypeOptions`: ブロック・種類・Optionsの画面表示またはHTMLを組み立てる。 */
+/** 本文・見出し・リスト等のブロック種類を、現在値を選択済みにしたoption一覧へ変換する。 */
 function renderBlockTypeOptions(currentType) {
   return BLOCK_TYPES
     .map(bt => `<option value="${esc(bt.type)}"${bt.type === currentType ? ' selected' : ''}>${esc(bt.label)}</option>`)
@@ -2162,7 +2162,7 @@ function caretIsAtEditableEnd(editable) {
   return after.toString().replace(/\u200B|\r?\n/g, '') === '';
 }
 
-/** `convertMarkdownBlockShortcut`: Markdown・ブロック・Shortcutを別の処理で使う形式へ変換する。 */
+/** 行頭Markdown記号を解析し、対応するブロック種類へ変更して記号部分だけを編集文字列から除く。 */
 function convertMarkdownBlockShortcut(editable, container, afterSpace = false) {
   if (editorCompositionActive || !caretIsAtEditableEnd(editable)) return false;
   if ([...editable.querySelectorAll('*')].some(node => !['BR', 'DIV'].includes(node.tagName))) return false;
@@ -2607,7 +2607,7 @@ function wireEditorImageLongPress(container, wrap) {
   });
 }
 
-/** `removeEditorImageBlock`: エディタ・画像・ブロックを安全に終了または削除する。 */
+/** 画像ブロックを下書きから除き、保存済み画像ならStorage削除候補として追跡する。 */
 function removeEditorImageBlock(blockId, container) {
   const block = findBlockInAllBlocks(edState.blocks, blockId);
   if (!block || block.type !== 'image') return false;
@@ -2638,7 +2638,7 @@ function resolveBlockDropPlacement(targetEl, clientX, clientY) {
   return clientY < rect.top + rect.height / 2 ? 'before' : 'after';
 }
 
-/** `renderMathPreviews`: 数式・プレビューの画面表示またはHTMLを組み立てる。 */
+/** 編集中の数式ブロックをKaTeXでプレビューし、入力値やカーソル位置には触れない。 */
 function renderMathPreviews(container) {
   requestAnimationFrame(() => {
     container.querySelectorAll('.kn-block--math .kn-block-math-input').forEach(ta => {
@@ -2805,7 +2805,7 @@ function continueListFromBlock(blockId, container, editable = null) {
   focusBlock(nextBlock.id, container);
 }
 
-/** `insertBlockLineBreak`: 受け取った情報からブロック・行・休憩を作る。 */
+/** 現在ブロック内のカーソル位置へ改行を挿入し、新しいブロックには分割しない。 */
 function insertBlockLineBreak(editable) {
   const selection = window.getSelection();
   if (!selection?.rangeCount) return;
@@ -2824,7 +2824,7 @@ function insertBlockLineBreak(editable) {
   selection.addRange(range);
 }
 
-/** `syncEditableBlock`: Editable・ブロックを現在状態へ反映し、必要な表示を更新する。 */
+/** contenteditableに見えているMarkdown文字列を、対応する下書きブロックへ取り込む。 */
 function syncEditableBlock(blockId, editable) {
   applyMarkdownSourceToBlock(blockId, readEditableMarkdownSource(editable));
 }
@@ -3117,7 +3117,7 @@ function copyWholeMemoSelection(event) {
   return true;
 }
 
-/** `setCrossBlockSelectionMode`: Cross・ブロック・選択範囲・Modeを保存先または一時状態へ反映する。 */
+/** 複数ブロックをまたぐ文字選択中かをCSS状態へ反映し、通常のドラッグ操作と競合させない。 */
 function setCrossBlockSelectionMode(container, enabled) {
   const editPage = container.querySelector('.kn-edit-page');
   const wrap = container.querySelector('#kn-blocks-wrap');
@@ -3141,7 +3141,7 @@ function setCrossBlockSelectionMode(container, enabled) {
   if (enabled && wrap.contains(document.activeElement)) document.activeElement.blur();
 }
 
-/** `getFocusedBlockId`: Focused・ブロック・IDを取得して呼び出し元へ返す。 */
+/** 現在フォーカス中のcontenteditableを囲むブロックから、保存IDを返す。 */
 function getFocusedBlockId(container) {
   const el = container.querySelector('.kn-block-focusable:focus');
   return el?.dataset.blockId || null;
@@ -3319,7 +3319,7 @@ function clipboardBlocksFromHtml(html) {
   return blocks;
 }
 
-/** `hasStructuredClipboardHtml`: 構造化された・クリップボード・HTMLの条件を確認し、結果を真偽値で返す。 */
+/** 貼り付けHTMLに見出し・リスト・表・画像等があり、プレーン一段落へ潰すべきでないか判定する。 */
 function hasStructuredClipboardHtml(html) {
   const template = document.createElement('template');
   template.innerHTML = String(html || '');
@@ -3601,7 +3601,7 @@ function wireKnowledgeImageInputs(container) {
   cameraInput?.addEventListener('change', handleFile);
 }
 
-/** `syncFocusedEditableBlock`: Focused・Editable・ブロックを現在状態へ反映し、必要な表示を更新する。 */
+/** 指定ブロックが編集中なら、DOMに残る未反映入力を再描画前に下書きへ取り込む。 */
 function syncFocusedEditableBlock(container, blockId) {
   const el = container.querySelector(`.kn-block-focusable[data-block-id="${blockId}"]`);
   const block = findBlockInAllBlocks(edState.blocks, blockId);
@@ -3796,7 +3796,7 @@ function rerenderBlocks(container) {
   if (activeBlock) highlightToolbarType(container, activeBlock.type);
 }
 
-/** `removeBlockById`: ブロック・IDを安全に終了または削除する。 */
+/** 入れ子のトグルを含む下書き配列から指定IDを探し、該当ブロック一件を取り除く。 */
 function removeBlockById(blockId, blocks = edState.blocks) {
   const idx = blocks.findIndex(block => block.id === blockId);
   if (idx >= 0) {
@@ -3809,7 +3809,7 @@ function removeBlockById(blockId, blocks = edState.blocks) {
   return false;
 }
 
-/** `removeBlockElement`: ブロック・Elementを安全に終了または削除する。 */
+/** 編集中DOMと下書きの両方からブロックを削除し、空になれば編集可能な本文を一つ補う。 */
 function removeBlockElement(blockId, container) {
   const blockEl = container.querySelector(`.kn-block[data-block-id="${blockId}"]`);
   if (!blockEl) return;
@@ -3910,7 +3910,7 @@ function focusEditableWithoutScroll(el) {
   catch { el.focus(); }
 }
 
-/** `getKnowledgeTagRecency`: Knowledge・タグ・Recencyを取得して呼び出し元へ返す。 */
+/** タグ候補を直近使用順に並べるため、タグ名ごとの最終使用時刻を端末から読む。 */
 function getKnowledgeTagRecency() {
   try {
     const tags = JSON.parse(localStorage.getItem(KNOWLEDGE_TAG_RECENCY_KEY) || '[]');
@@ -3920,7 +3920,7 @@ function getKnowledgeTagRecency() {
   }
 }
 
-/** `touchKnowledgeTag`: Knowledge・タグを保存先または一時状態へ反映する。 */
+/** 選択または入力されたタグの最終使用時刻を更新し、次回の候補順へ反映する。 */
 function touchKnowledgeTag(tag) {
   const trimmed = String(tag || '').trim();
   if (!trimmed) return;
@@ -3963,7 +3963,7 @@ function addKnowledgeTagToEdit(tag, container) {
   return true;
 }
 
-/** `syncKnowledgeTagSuggestions`: Knowledge・タグ・候補を現在状態へ反映し、必要な表示を更新する。 */
+/** 入力文字と最近の使用順からタグ候補を絞り、候補パネルの内容と開閉を更新する。 */
 function syncKnowledgeTagSuggestions(container) {
   const row = container.querySelector('#kn-tag-suggestions');
   const input = container.querySelector('#kn-tag-input');
@@ -4102,7 +4102,7 @@ function wireTagInput(container) {
   syncKnowledgeTagSuggestions(container);
 }
 
-/** `renderTagDisplay`: タグ・Displayの画面表示またはHTMLを組み立てる。 */
+/** 下書きのタグを削除可能なチップへ描画し、入力欄の候補状態も更新する。 */
 function renderTagDisplay(container) {
   const display = container.querySelector('#kn-tag-display');
   if (!display) return;
@@ -4176,7 +4176,7 @@ async function saveMemo(container) {
   }
 }
 
-/** `persistMemo`: メモを保存先または一時状態へ反映する。 */
+/** 正規化済み下書きを新規追加または既存更新し、画像削除・復習設定・編集基準も確定する。 */
 async function persistMemo(container) {
   // Blur and wait one frame so mobile IME composition reaches the DOM before
   // the final snapshot is written to local storage and queued for sync.
@@ -4502,14 +4502,14 @@ function applyMarkdownSourceToBlock(blockId, source) {
   return parsed;
 }
 
-/** `sanitizeBlockHtml`: ブロック・HTMLを後続処理で扱える安全な形にそろえる。 */
+/** メモで許可した行内装飾と改行だけを残し、貼り付け由来の危険・不要なHTMLを除去する。 */
 function sanitizeBlockHtml(html) {
   const template = document.createElement('template');
   template.innerHTML = String(html || '');
   const allowedTags = new Set(['BR', 'DIV', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'SPAN', 'MARK', 'CODE', 'A', 'FONT']);
   const allowedStyles = new Set(['color', 'background-color']);
 
-  /** `cleanNode`: Nodeを後続処理で扱える安全な形にそろえる。 */
+  /** 許可タグだけを複製し、危険な属性を落としながら子ノードを再帰的に掃除する。 */
   const cleanNode = (node) => {
     [...node.childNodes].forEach(child => {
       if (child.nodeType === Node.TEXT_NODE) return;
@@ -4584,7 +4584,7 @@ function findBlockInAllBlocks(blocks, id) {
   return null;
 }
 
-/** `getRelatedMemos`: Related・メモを取得して呼び出し元へ返す。 */
+/** 現在メモを除き、共有タグ数の多い通常メモを関連候補として上位三件返す。 */
 function getRelatedMemos(currentId, tags) {
   if (!tags?.length) return [];
   return getKnowledgeMemos()

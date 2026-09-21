@@ -232,7 +232,7 @@ function deferSyncWhileEditing({ needsPull = false } = {}) {
  * beforeunloadでは未保存メモを閉じる直前にもブラウザの警告を出します。
  */
 function setupEditActivityGuard() {
-  /** `markAndDefer`: Deferを保存先または一時状態へ反映する。 */
+  /** 入力開始を記録し、同期や再描画を編集が落ち着いた後へ延期する。 */
   const markAndDefer = () => {
     markUserEditing();
     scheduleDeferredSyncWork();
@@ -1069,7 +1069,7 @@ function getViewFromHash() {
  */
 async function setupServiceWorkerAutoUpdate() {
   const registration = await navigator.serviceWorker.register('./sw.js');
-  /** `markWaitingWorker`: Waiting・Workerを保存先または一時状態へ反映する。 */
+  /** 待機中のService Workerへ新版への切替要求を送る。 */
   const markWaitingWorker = (worker) => {
     if (!worker) return;
     worker.postMessage({ type: 'SKIP_WAITING' });
@@ -1143,7 +1143,7 @@ function setupConnectivityMonitor() {
     }
   };
 
-  /** `updateStatus`: 状態を現在状態へ反映し、必要な表示を更新する。 */
+  /** オンライン表示を更新し、復帰時はAI状態確認・待機キュー処理・同期を再開する。 */
   const updateStatus = async () => {
     inject();
     const indicator = document.getElementById('offline-indicator');

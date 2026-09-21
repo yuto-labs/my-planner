@@ -570,7 +570,7 @@ async function _pullEvents(client, userId, forceReplace = false) {
   return _writeCollectionAfterSync('mp_events', local, next, userId, 'events');
 }
 
-/** `_getPersonalCalendarRows`: 個人用・カレンダー・行を取得して呼び出し元へ返す。 */
+/** 個人予定の新RPCを優先して取得し、未導入環境では旧RPCへ互換フォールバックする。 */
 async function _getPersonalCalendarRows(client) {
   const v2 = await client.rpc('get_personal_calendar_events_v2');
   if (!v2.error) return v2;
@@ -1246,7 +1246,7 @@ function _deleteKey({ table, id, name }) {
   return `${table}:${id || name || ''}`;
 }
 
-/** `_isStillDeleted`: 削除済みの条件を確認し、結果を真偽値で返す。 */
+/** 削除送信待ちの項目がローカル上でもまだ削除状態かを種類別に確認する。 */
 function _isStillDeleted({ table, id, name }) {
   if (table === 'tags') {
     return !_ls('mp_tags', []).includes(name);
@@ -1271,12 +1271,12 @@ function _isStillDeleted({ table, id, name }) {
   return !_hasId(lsKey, id);
 }
 
-/** `_hasId`: IDの条件を確認し、結果を真偽値で返す。 */
+/** localStorage配列に指定IDの項目が残っているかを確認する。 */
 function _hasId(key, id) {
   return _ls(key, []).some(item => item?.id === id);
 }
 
-/** `_getPendingDeletes`: 保留中・削除記録を取得して呼び出し元へ返す。 */
+/** 現ユーザーの未送信削除だけを読み、復元済み・期限切れの記録を同時に掃除する。 */
 function _getPendingDeletes() {
   const activeUserId = getActiveUserId();
   const all = _ls(DELETE_TOMBSTONE_KEY, []);
@@ -1292,12 +1292,12 @@ function _getPendingDeletes() {
   return filtered;
 }
 
-/** `_savePendingDeletes`: 保留中・削除記録を保存先または一時状態へ反映する。 */
+/** クラウド送信待ちの削除記録一覧を端末へ保存する。 */
 function _savePendingDeletes(entries) {
   localStorage.setItem(DELETE_TOMBSTONE_KEY, JSON.stringify(entries));
 }
 
-/** `_markPendingDelete`: 保留中・削除を保存先または一時状態へ反映する。 */
+/** 削除対象をユーザー付きtombstoneとして追加または更新し、再送可能にする。 */
 function _markPendingDelete(payload) {
   const entries = _getPendingDeletes();
   const key = _deleteKey(payload);
@@ -1343,7 +1343,7 @@ function _filterPendingTagDeletes(tags) {
   return tags.filter(name => !deletedNames.has(name));
 }
 
-/** `_getRecentUpserts`: 直近の・更新記録を取得して呼び出し元へ返す。 */
+/** 直近に端末で更新した項目を読み、期限切れ・削除済み・別ユーザー分を除外する。 */
 function _getRecentUpserts() {
   const now = Date.now();
   const activeUserId = getActiveUserId();
@@ -1361,12 +1361,12 @@ function _getRecentUpserts() {
   return filtered;
 }
 
-/** `_saveRecentUpserts`: 直近の・更新記録を保存先または一時状態へ反映する。 */
+/** 同期完了までクラウドの古い値で上書きさせない直近更新記録を端末へ保存する。 */
 function _saveRecentUpserts(entries) {
   localStorage.setItem(RECENT_UPSERT_KEY, JSON.stringify(entries));
 }
 
-/** `_markRecentUpserts`: 直近の・更新記録を保存先または一時状態へ反映する。 */
+/** 指定コレクションの最近更新された項目を、期限付きの送信保護記録へ追加する。 */
 function _markRecentUpserts(tableKey) {
   const entries = _getRecentUpserts();
   const userId = getActiveUserId() || null;
@@ -1417,7 +1417,7 @@ function _markRecentUpserts(tableKey) {
   _saveRecentUpserts(survivors);
 }
 
-/** `_isStillPresent`: 存在中の条件を確認し、結果を真偽値で返す。 */
+/** 直近更新として保護中の項目が、現在もローカルデータに存在するか確認する。 */
 function _isStillPresent(entry) {
   if (entry.table === 'tags') {
     return _ls('mp_tags', []).includes(entry.name);
@@ -1470,7 +1470,7 @@ function rowToReviewEntry(row) {
   }];
 }
 
-/** `_syncVersion`: 更新版を現在状態へ反映し、必要な表示を更新する。 */
+/** 通常レコードから同期競合比較に使うバージョン値を取り出す。 */
 function _syncVersion(item) {
   return recordVersion(item);
 }
@@ -1484,7 +1484,7 @@ function _schedulePushRetry(tableKey) {
   }, PUSH_RETRY_MS);
 }
 
-/** `_syncEntryToken`: 項目・語を現在状態へ反映し、必要な表示を更新する。 */
+/** テーブル・ID・バージョンを連結し、送信済み更新を一意に照合できる文字列へする。 */
 function _syncEntryToken(entry) {
   return `${entry?.table || ''}:${entry?.id || entry?.name || ''}:${entry?.version ?? 'legacy'}`;
 }
@@ -1589,7 +1589,7 @@ function _trackRemoteMissingItems({
   return result.protectedIds;
 }
 
-/** `_syncBackupKey`: バックアップ・キーを現在状態へ反映し、必要な表示を更新する。 */
+/** ユーザーとコレクションを分離した同期バックアップ用localStorageキーを返す。 */
 function _syncBackupKey(collectionKey, userId) {
   if (collectionKey === 'events') return `mp_event_sync_backups:${userId}`;
   return `mp_sync_backups:${collectionKey}:${userId}`;
@@ -1734,7 +1734,7 @@ export function mergeFreshLocalCollection(key, previous, fresh, pulled) {
   return [...byId.values()];
 }
 
-/** `_dedupeById`: IDを後続処理で扱える安全な形にそろえる。 */
+/** 同じIDの候補が複数ある場合、更新日時が最も新しい一件へ統合する。 */
 function _dedupeById(items) {
   return dedupeNewestById(items);
 }

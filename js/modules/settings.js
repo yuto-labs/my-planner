@@ -268,7 +268,7 @@ function renderAISettings(container) {
   wireAccount(container, { hideWhenSignedIn: false, sectionId: 'ai-account-section' });
 }
 
-/** `renderCategoryRow`: カテゴリ・行の画面表示またはHTMLを組み立てる。 */
+/** 予定カテゴリ一件を、色・名前の編集と削除ができる設定行へ変換する。 */
 function renderCategoryRow(cat) {
   return `
     <div class="cat-row" data-cat-id="${esc(cat.id)}" style="display:flex;align-items:center;gap:10px">
@@ -379,7 +379,7 @@ function wireAppearance(container) {
     'tune-accent-vividness',
   ].map(id => container.querySelector(`#${id}`)).filter(Boolean);
 
-  /** `syncAccentPreview`: Accent・プレビューを現在状態へ反映し、必要な表示を更新する。 */
+  /** RGB値を設定画面の色見本と各数値ラベルへ反映する。 */
   const syncAccentPreview = (rgb) => {
     const safe = normalizeAccentRgb(rgb);
     const preview = container.querySelector('#accent-preview-card');
@@ -394,7 +394,7 @@ function wireAppearance(container) {
     if (bVal) bVal.textContent = String(safe.b);
   };
 
-  /** `applyAccent`: Accentを現在状態へ反映し、必要な表示を更新する。 */
+  /** RGB値を設定へ保存し、全体テーマと設定画面の見本を更新する。 */
   const applyAccent = (rgb) => {
     const safe = normalizeAccentRgb(rgb);
     saveSettings({ accentRgb: safe });
@@ -402,7 +402,7 @@ function wireAppearance(container) {
     syncAccentPreview(safe);
   };
 
-  /** `syncThemeTuningPreview`: テーマ・Tuning・プレビューを現在状態へ反映し、必要な表示を更新する。 */
+  /** 背景の濃さ・カード差・光彩・鮮やかさの現在値を設定画面へ表示する。 */
   const syncThemeTuningPreview = (tuning) => {
     const safe = normalizeThemeTuning(tuning);
     const items = [
@@ -417,7 +417,7 @@ function wireAppearance(container) {
     });
   };
 
-  /** `applyThemeTuning`: テーマ・Tuningを現在状態へ反映し、必要な表示を更新する。 */
+  /** テーマ微調整値を保存し、CSSテーマと設定画面を即時更新する。 */
   const applyThemeTuning = (tuning) => {
     const safe = normalizeThemeTuning(tuning);
     saveSettings({ themeTuning: safe });
@@ -478,7 +478,7 @@ function wireAppearance(container) {
   });
 }
 
-/** `renderRgbSlider`: Rgb・Sliderの画面表示またはHTMLを組み立てる。 */
+/** 0〜255のRGB一成分を調整するラベル付きスライダーHTMLを返す。 */
 function renderRgbSlider(label, id, value) {
   return `
     <label class="accent-rgb-item" for="${id}">
@@ -491,7 +491,7 @@ function renderRgbSlider(label, id, value) {
   `;
 }
 
-/** `renderThemeSlider`: テーマ・Sliderの画面表示またはHTMLを組み立てる。 */
+/** 0〜100のテーマ微調整値を操作するラベル付きスライダーHTMLを返す。 */
 function renderThemeSlider(label, id, value) {
   return `
     <label class="accent-rgb-item" for="${id}">
@@ -504,9 +504,9 @@ function renderThemeSlider(label, id, value) {
   `;
 }
 
-/** `normalizeAccentRgb`: Accent・Rgbを後続処理で扱える安全な形にそろえる。 */
+/** RGB各成分を整数0〜255へ収め、欠損値を既定色で補う。 */
 function normalizeAccentRgb(rgb) {
-  /** `clamp`: `clamp`を後続処理で扱える安全な形にそろえる。 */
+  /** RGB一成分を整数0〜255へ収め、数値でなければ既定値を返す。 */
   const clamp = (v, fallback) => {
     const n = Number(v);
     if (!Number.isFinite(n)) return fallback;
@@ -519,9 +519,9 @@ function normalizeAccentRgb(rgb) {
   };
 }
 
-/** `normalizeThemeTuning`: テーマ・Tuningを後続処理で扱える安全な形にそろえる。 */
+/** テーマ微調整の各値を整数0〜100へ収め、欠損値を既定値で補う。 */
 function normalizeThemeTuning(tuning) {
-  /** `clamp`: `clamp`を後続処理で扱える安全な形にそろえる。 */
+  /** 微調整値を整数0〜100へ収め、数値でなければ既定値を返す。 */
   const clamp = (v, fallback) => {
     const n = Number(v);
     if (!Number.isFinite(n)) return fallback;
@@ -537,7 +537,7 @@ function normalizeThemeTuning(tuning) {
 
 /** `wireCategories`: カテゴリの画面操作と処理をイベントで結び付ける。 */
 function wireCategories(container) {
-  /** `saveCats`: Catsを保存先または一時状態へ反映する。 */
+  /** 設定画面の全カテゴリ行を読み直し、名前と色をまとめて保存する。 */
   const saveCats = () => {
     const rows = container.querySelectorAll('.cat-row');
     const cats = [];
@@ -859,7 +859,7 @@ function wireAccount(container, options = {}) {
   refreshAccountStatus(container, options);
 }
 
-/** `refreshAccountStatus`: Account・状態を現在状態へ反映し、必要な表示を更新する。 */
+/** Supabaseセッションを確認し、ログイン・ログアウト・移行案内の表示を切り替える。 */
 async function refreshAccountStatus(container, options = {}) {
   const section = options.sectionId ? container.querySelector(`#${options.sectionId}`) : null;
   const statusEl = container.querySelector('#sb-status');

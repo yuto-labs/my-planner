@@ -144,7 +144,7 @@ function renderPage(container) {
   if (isRealToday) renderStudyPromptIfNeeded(schedItems, nowMin, container);
 }
 
-/** `updateTodayHeaderTitle`: 今日・Header・タイトルを現在状態へ反映し、必要な表示を更新する。 */
+/** 選択日が今日か別日かに応じて、Today画面の見出し日付を更新する。 */
 function updateTodayHeaderTitle() {
   const titleEl = document.getElementById('page-title');
   if (titleEl) titleEl.textContent = dayHeaderTitle(selectedDateStr || today());
@@ -233,7 +233,7 @@ function findNextEvent(events, schedItems, nowMin) {
   return all.length > 0 ? { status: 'done' } : { status: 'empty' };
 }
 
-/** `renderNextBanner`: Next・Bannerの画面表示またはHTMLを組み立てる。 */
+/** 現在時刻の次に始まる予定またはスケジュールを、時刻付きバナーとして返す。 */
 function renderNextBanner(info) {
   if (!info || info.status === 'empty') {
     return `<div class="next-banner next-banner-empty">
@@ -394,7 +394,7 @@ function attachSwipe(item, container) {
   });
 }
 
-/** `updateProgressUI`: Progress・UIを現在状態へ反映し、必要な表示を更新する。 */
+/** 今日の完了タスク数から進捗率を計算し、バーと件数表示を更新する。 */
 function updateProgressUI(container) {
   const items = container.querySelectorAll('.today-task-item');
   const total = items.length;
@@ -483,7 +483,7 @@ function buildTimeline(events, schedItems) {
   return items.sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
 }
 
-/** `renderTimelineHTML`: 時代区分・HTMLの画面表示またはHTMLを組み立てる。 */
+/** 今日の予定とMy Scheduleを時刻順へ並べ、空き時間を含むタイムラインHTMLにする。 */
 function renderTimelineHTML(items, nowMin = null) {
   if (items.length === 0) {
     return `<div class="empty-state" style="padding:16px 0">

@@ -67,7 +67,7 @@ const TASK_HIGHLIGHT_OPTIONS = [
   { value: '#32D49A', label: '緑', color: '#32D49A' },
 ];
 
-/** `loadLastTaskTags`: 最後の・タスク・タグを取得して呼び出し元へ返す。 */
+/** 新規タスクへ初期表示する、前回使用タグの配列を端末から読み出す。 */
 function loadLastTaskTags() {
   try {
     const parsed = JSON.parse(localStorage.getItem(TASK_TAG_DEFAULTS_KEY) || '[]');
@@ -77,7 +77,7 @@ function loadLastTaskTags() {
   }
 }
 
-/** `saveLastTaskTags`: 最後の・タスク・タグを保存先または一時状態へ反映する。 */
+/** 今回使用したタグを、次の新規タスクの初期値として端末へ保存する。 */
 function saveLastTaskTags(tags) {
   try {
     localStorage.setItem(TASK_TAG_DEFAULTS_KEY, JSON.stringify(Array.isArray(tags) ? tags : []));
@@ -226,7 +226,7 @@ function render() {
     addForm.parentNode.insertBefore(controls, addForm);
     analyticsButton.addEventListener('click', () => nav('analytics'));
 
-    /** `applyAddFormVisibility`: Add・フォーム・表示状態を現在状態へ反映し、必要な表示を更新する。 */
+    /** state.addFormOpenに合わせて新規タスクフォームと開閉ボタンをまとめて更新する。 */
     const applyAddFormVisibility = () => {
       addForm.style.display = state.addFormOpen ? '' : 'none';
       addExtras.style.display = state.addFormOpen ? '' : 'none';
@@ -271,13 +271,13 @@ function render() {
   const _dueTimeBtn = container.querySelector('#task-due-time-btn');
   const _estimateBtn = container.querySelector('#task-estimate-btn');
 
-  /** `_updateDueDateBtn`: Due・日付・Btnを現在状態へ反映し、必要な表示を更新する。 */
+  /** 選択中の締切日をボタン文言と設定済みスタイルへ反映する。 */
   const _updateDueDateBtn = () => {
     if (!_dueDateBtn) return;
     _dueDateBtn.textContent = state.addDueDate ? formatPickerDate(state.addDueDate) : '📅 日付';
     _dueDateBtn.classList.toggle('dp-trigger--set', !!state.addDueDate);
   };
-  /** `_updateDueTimeBtn`: Due・時刻・Btnを現在状態へ反映し、必要な表示を更新する。 */
+  /** 選択中の締切時刻をボタン文言と設定済みスタイルへ反映する。 */
   const _updateDueTimeBtn = () => {
     if (!_dueTimeBtn) return;
     _dueTimeBtn.textContent = state.addDueTime ? '🕐 ' + state.addDueTime : '🕐 時刻';
@@ -299,7 +299,7 @@ function render() {
     });
   });
 
-  /** `_updateEstimateBtn`: 所要時間・Btnを現在状態へ反映し、必要な表示を更新する。 */
+  /** 選択中の見積時間を読みやすい表記へ変え、工数ボタンへ反映する。 */
   const _updateEstimateBtn = () => {
     if (!_estimateBtn) return;
     _estimateBtn.textContent = state.addEstimate ? `⏱ ${formatDuration(state.addEstimate)}` : '⏱ 工数';
@@ -335,7 +335,7 @@ function render() {
     `<button class="task-tag-preset${state.addTags.includes(tag) ? ' active' : ''}" type="button" data-preset-tag="${esc(tag)}">${esc(tag)}</button>`
   ).join('');
 
-  /** `_renderAddTagChips`: Add・タグ・Chipsの画面表示またはHTMLを組み立てる。 */
+  /** 新規タスクで選択中のタグを削除可能なチップとして描画し、プリセット表示も同期する。 */
   const _renderAddTagChips = () => {
     if (!_tagChipsEl) return;
     _tagChipsEl.innerHTML = state.addTags.map(t =>
@@ -350,7 +350,7 @@ function render() {
   };
   _renderAddTagChips();
 
-  /** `_applyCustomTagInputVisibility`: 独自・タグ・入力・表示状態を現在状態へ反映し、必要な表示を更新する。 */
+  /** 独自タグ入力欄の開閉状態と「+ Tag」ボタンの表示を揃える。 */
   const _applyCustomTagInputVisibility = () => {
     if (!_tagInputWrap) return;
     _tagInputWrap.classList.toggle('open', state.addCustomTagOpen);
@@ -442,7 +442,7 @@ function getTaskCounts() {
   };
 }
 
-/** `renderFiltersHTML`: Filters・HTMLの画面表示またはHTMLを組み立てる。 */
+/** 状態別件数を含むタスク絞り込みボタン一式のHTMLを作る。 */
 function renderFiltersHTML() {
   const counts = getTaskCounts();
   return [
@@ -488,7 +488,7 @@ function wireFilters(container) {
   });
 }
 
-/** `updateFilterBar`: 絞り込み・Barを現在状態へ反映し、必要な表示を更新する。 */
+/** 完了数などの変化を絞り込みバーへ反映し、新しいボタンへイベントを結び直す。 */
 function updateFilterBar() {
   const filters = state.container?.querySelector('.tasks-filters');
   if (!filters) return;
@@ -790,7 +790,7 @@ function applyCodexPlan(container, options = {}) {
   toast(`${options.sourceLabel || 'AI案'}: ${blocks.length}件をマイスケジュールに反映しました`, 'success');
 }
 
-/** `isNormalTask`: タスクの条件を確認し、結果を真偽値で返す。 */
+/** 特殊種別が付いていない通常タスクかどうかを判定する。 */
 function isNormalTask(task) {
   return !task.taskType || task.taskType === 'normal';
 }
@@ -863,7 +863,7 @@ function timeRangesOverlap(aStart, aEnd, bStart, bEnd) {
   return clockRangesOverlapConservatively(aStart, aEnd, bStart, bEnd);
 }
 
-/** `getCodexDailyBreaks`: Codex・日次・Breaksを取得して呼び出し元へ返す。 */
+/** AI再分配で除外するユーザー指定の休憩時間を、時間帯配列として返す。 */
 function getCodexDailyBreaks() {
   if (!state.codexBreakStart || !state.codexBreakEnd) return [];
   const start = clockTimeToMinutes(state.codexBreakStart);
@@ -968,7 +968,7 @@ function formatEstimate(minutes) {
   return formatDuration(minutes);
 }
 
-/** `getEventsInPlanningPeriod`: 予定・In・計画・Periodを取得して呼び出し元へ返す。 */
+/** 計画期間に重なるカレンダー予定を集め、複数日に現れる同一予定をIDで一件にまとめる。 */
 function getEventsInPlanningPeriod(startDate, endDate) {
   const all = getEvents();
   const byId = new Map();
@@ -988,7 +988,7 @@ function getEventsInPlanningPeriod(startDate, endDate) {
   return [...byId.values()];
 }
 
-/** `getScheduleItemsInPlanningPeriod`: スケジュール・Items・In・計画・Periodを取得して呼び出し元へ返す。 */
+/** 計画期間のMy Schedule項目を取得し、AIが作った旧計画枠を除いて必要項目だけ返す。 */
 function getScheduleItemsInPlanningPeriod(startDate, endDate) {
   return getScheduleItems()
     .filter(s => s.source !== 'codex-plan')
@@ -1057,7 +1057,7 @@ export function sortTasksByDeadline(tasks) {
   });
 }
 
-/** `renderTaskItem`: タスク・項目の画面表示またはHTMLを組み立てる。 */
+/** 期限超過・繰り返し・タグ・ハイライトを含むタスク1件の一覧HTMLを作る。 */
 function renderTaskItem(task) {
   const tdStr   = today();
   const overdue = task.dueDate && task.dueDate < tdStr && !task.completed;
@@ -1131,7 +1131,7 @@ function renderTaskItem(task) {
   `;
 }
 
-/** `renderListInto`: 一覧・内側の画面表示またはHTMLを組み立てる。 */
+/** 現在の絞り込みと期限順に従って、指定領域へタスク一覧を描画する。 */
 function renderListInto(listEl) {
   if (!listEl) return;
   const tasks = getSortedFilteredTasks();
@@ -1559,7 +1559,7 @@ function startTitleEdit(li, taskId) {
     modal.querySelector('#edit-task-title')?.focus({ preventScroll: true });
   });
 
-  /** `_renderSubs`: Subsの画面表示またはHTMLを組み立てる。 */
+  /** 編集中タスクのサブタスクを、完了切替と削除が可能な行として再描画する。 */
   const _renderSubs = () => {
     const list = modal.querySelector('#edit-subtask-list');
     const countEl = modal.querySelector('#edit-sub-count');
@@ -1613,7 +1613,7 @@ function startTitleEdit(li, taskId) {
     }
   });
 
-  /** `_renderTags`: タグの画面表示またはHTMLを組み立てる。 */
+  /** 編集中タスクのタグを削除可能なチップとして再描画する。 */
   const _renderTags = () => {
     const chips = modal.querySelector('#edit-tag-chips');
     if (!chips) return;
@@ -1700,7 +1700,7 @@ function startTitleEdit(li, taskId) {
     overlay.innerHTML = '';
   };
 
-  /** `save`: `save`を保存先または一時状態へ反映する。 */
+  /** 詳細画面の入力値を既存タスクへ反映し、保存後に一覧へ戻る。 */
   const save = () => {
     const newTitle = titleInput.value.trim();
     if (!newTitle) {

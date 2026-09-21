@@ -49,7 +49,7 @@ const PART_OF_SPEECH_ALIASES = [
   [/^(?:idiom|熟語|慣用句)$/i, 'idiom'],
 ];
 
-/** `normalizePartOfSpeech`: 品詞を後続処理で扱える安全な形にそろえる。 */
+/** 日本語・英語・略記が混ざる品詞名を、詳細トグルで使う英語表記へ統一する。 */
 export function normalizePartOfSpeech(value) {
   const raw = String(value || '').normalize('NFKC').trim();
   if (!raw) return '';
@@ -110,7 +110,10 @@ function classificationContext(value, context = '') {
   return `${normalizeAtlasLabel(value)} ${normalizeAtlasLabel(context)}`.toLocaleLowerCase();
 }
 
-/** `normalizeAtlasCategory`: 表現帳カテゴリを後続処理で扱える安全な形にそろえる。 */
+/**
+ * AIや旧データのカテゴリ名を固定カテゴリへ割り当てる。
+ * 名前だけで決まらない場合は、テーマ・入力文・見出し語を含むcontextから最も近い棚を選ぶ。
+ */
 export function normalizeAtlasCategory(value, context = '') {
   const raw = normalizeAtlasLabel(value);
   if (!raw) return '';
@@ -137,7 +140,7 @@ export function normalizeAtlasCategory(value, context = '') {
   return CATEGORY_RULES.find(([, pattern]) => pattern.test(text))?.[0] || '状態・性質';
 }
 
-/** `normalizeAtlasTopic`: 表現帳テーマを後続処理で扱える安全な形にそろえる。 */
+/** AIが付けがちな「〜を表す表現」等の冗長な末尾を除き、カテゴリと同名なら空へ戻す。 */
 export function normalizeAtlasTopic(value, category = '') {
   const raw = normalizeAtlasLabel(value);
   if (!raw) return '';
@@ -152,7 +155,7 @@ export function normalizeAtlasTopic(value, category = '') {
   return topic;
 }
 
-/** `isValidAtlasTopic`: 表現帳テーマの条件を確認し、結果を真偽値で返す。 */
+/** 正規化後のテーマが短い名詞句として使える長さで、文章記号を含まないか検証する。 */
 export function isValidAtlasTopic(value, category = '') {
   const topic = normalizeAtlasTopic(value, category);
   return Boolean(topic)
@@ -161,7 +164,7 @@ export function isValidAtlasTopic(value, category = '') {
     && !/[。！？!?]/u.test(topic);
 }
 
-/** `normalizeAtlasLabel`: 表現帳の表示名を後続処理で扱える安全な形にそろえる。 */
+/** 表示名の前後空白を除き、途中の連続空白を一つへまとめる。 */
 export function normalizeAtlasLabel(value) {
   return String(value || '').trim().replace(/\s+/g, ' ');
 }
@@ -237,7 +240,7 @@ export function collectStableTaxonomy(records = []) {
   }));
 }
 
-/** `normalizeEnglishToken`: 英語・語を後続処理で扱える安全な形にそろえる。 */
+/** 英語検索用に全半角・大文字小文字・曲がったアポストロフィを統一する。 */
 export function normalizeEnglishToken(value) {
   return String(value || '')
     .normalize('NFKC')
@@ -246,7 +249,7 @@ export function normalizeEnglishToken(value) {
     .replace(/[’]/g, "'");
 }
 
-/** `toEnglishLemma`: 英語・見出し形を別の処理で使う形式へ変換する。 */
+/** 不規則形と代表的な複数形・過去形・進行形を、検索照合用の見出し形へ近似変換する。 */
 export function toEnglishLemma(value) {
   const token = normalizeEnglishToken(value);
   if (!token) return '';
@@ -273,7 +276,7 @@ export function toEnglishLemma(value) {
   return token;
 }
 
-/** `toEnglishPhraseLemma`: 英語句の見出し形を別の処理で使う形式へ変換する。 */
+/** 空白とハイフンを保ったまま、句を構成する各英単語を見出し形へ近似変換する。 */
 function toEnglishPhraseLemma(value) {
   const token = normalizeEnglishToken(value);
   if (!token || !/[\s-]/.test(token)) return toEnglishLemma(token);
@@ -322,7 +325,7 @@ export function findExpressionMatches(value, entriesOrIndex = []) {
   return [...new Map(matches.map(entry => [entry.id, entry])).values()];
 }
 
-/** `isUsefulLinkedToken`: リンク対象の英単語の条件を確認し、結果を真偽値で返す。 */
+/** 保存済み解説へ接続できる語か確認し、頻出機能語は明示許可された場合だけリンク対象にする。 */
 export function isUsefulLinkedToken(value, entriesOrIndex = []) {
   const token = normalizeEnglishToken(value);
   if (!token) return false;

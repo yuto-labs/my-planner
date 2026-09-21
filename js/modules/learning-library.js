@@ -82,7 +82,7 @@ export function backFromLearningDetail() {
   nav('knowledge');
 }
 
-/** `hasActiveKnowledgeWork`: 現在の・Knowledge・Workの条件を確認し、結果を真偽値で返す。 */
+/** Knowledgeの質問生成または保存処理が進行中かを確認し、画面遷移時の状態保持に使う。 */
 export function hasActiveKnowledgeWork() {
   return !!generationController || !!questionDraft.trim();
 }
@@ -96,7 +96,7 @@ export function initLearningLibrary(container) {
   };
 }
 
-/** `renderLibrary`: 一覧の画面表示またはHTMLを組み立てる。 */
+/** 保存済みKnowledgeを検索・分類状態で絞り、一覧または分類別ブラウズ画面を描画する。 */
 function renderLibrary(container) {
   const entries = getLearningEntries();
   const query = listState.query.trim().toLocaleLowerCase();
@@ -282,7 +282,7 @@ function resetBrowseTrail() {
   listState.regionId = ''; listState.countryCode = ''; listState.conceptKey = '';
 }
 
-/** `renderEntryCard`: 項目・カードの画面表示またはHTMLを組み立てる。 */
+/** Knowledge一件を、分類・題名・要約・関連概念数・更新日を持つ一覧カードへ変換する。 */
 function renderEntryCard(entry) {
   const classification = getLearningClassificationLabel(entry.classification) || '未分類';
   const preview = (entry.answer?.directAnswer || []).map(segment => segment.text).join('');
@@ -300,7 +300,7 @@ function renderEntryCard(entry) {
   `;
 }
 
-/** `renderKnowledgeBrowse`: Knowledge・Browseの画面表示またはHTMLを組み立てる。 */
+/** 同じ保存データを「すべて・分野・時代・地域・つながり」の選択軸で表示し分ける。 */
 function renderKnowledgeBrowse(entries) {
   const axis = listState.browseAxis;
   const tabs = [['list', 'すべて'], ['domain', '分野'], ['time', '時代'], ['region', '地域'], ['connections', 'つながり']];
@@ -312,7 +312,7 @@ function renderKnowledgeBrowse(entries) {
   return `<section class="learning-browse">${tabHtml}${renderConnectionBrowse(entries)}</section>`;
 }
 
-/** `renderDomainBrowse`: Domain・Browseの画面表示またはHTMLを組み立てる。 */
+/** 分野の大分類から中分類へ進み、該当Knowledgeへ辿る階層UIを作る。 */
 function renderDomainBrowse(entries) {
   if (!listState.browseMajorId) {
     return `${renderBrowseIntro('分野から探す', '大分類を選ぶと、中分類へ進みます。')}
@@ -342,7 +342,7 @@ function renderDomainBrowse(entries) {
   return renderBrowseResults(matches, `${group.label} › ${middle.label}`, 'data-learning-domain-major', group.label);
 }
 
-/** `renderTimeBrowse`: 時刻・Browseの画面表示またはHTMLを組み立てる。 */
+/** 恒常・横断・未整理、または紀元前後の世紀と年代からKnowledgeを絞るUIを作る。 */
 function renderTimeBrowse(entries) {
   const buckets = entries.map(entry => ({ entry, bucket: getKnowledgeTimelineBucket(entry) }));
   const special = ['timeless', 'cross_period', 'unclassified'].map(mode => ({
@@ -382,7 +382,7 @@ function renderTimeBrowse(entries) {
   return renderBrowseResults(decade?.entries || [], decadeLabel, 'data-learning-time-back', centuryLabel);
 }
 
-/** `renderRegionBrowse`: 地域・Browseの画面表示またはHTMLを組み立てる。 */
+/** 世界・地域・国の順に絞り込み、複数地域へ属するKnowledgeも各入口から表示する。 */
 function renderRegionBrowse(entries) {
   if (!listState.regionId) return `${renderBrowseIntro('地域から探す', '世界または地域を選び、必要なときだけ国まで絞り込みます。')}<div class="learning-browse-grid">${LEARNING_REGIONS.map(region => {
     const count = region.id === 'world' ? entries.filter(entry => entry.geography?.scope === 'global').length : entries.filter(entry => (entry.geography?.regionIds || []).includes(region.id)).length;
@@ -397,7 +397,7 @@ function renderRegionBrowse(entries) {
   return renderBrowseResults(entries.filter(entry => (entry.geography?.countryCodes || []).includes(listState.countryCode)), getLearningCountryLabel(listState.countryCode), 'data-learning-region-back', region?.label || '地域');
 }
 
-/** `renderConnectionBrowse`: Connection・Browseの画面表示またはHTMLを組み立てる。 */
+/** 複数解説に共通する概念を件数順に並べ、概念からKnowledgeを横断できるUIを作る。 */
 function renderConnectionBrowse(entries) {
   const concepts = new Map();
   entries.forEach(entry => (entry.concepts || []).forEach(concept => {
@@ -412,22 +412,22 @@ function renderConnectionBrowse(entries) {
   return `${renderBrowseIntro('つながりから探す', '複数の解説に登場する概念から、関連する知識を横断します。')}<div class="learning-browse-grid">${[...concepts.entries()].sort((a, b) => b[1].entries.length - a[1].entries.length || a[1].label.localeCompare(b[1].label, 'ja')).slice(0, 48).map(([key, item]) => `<button type="button" data-learning-concept="${esc(key)}"><strong>${esc(item.label)}</strong><b>${item.entries.length}</b></button>`).join('')}</div>`;
 }
 
-/** `renderBrowseIntro`: Browse・Introの画面表示またはHTMLを組み立てる。 */
+/** 分類別ブラウズの先頭に置く短い見出しと説明文を返す。 */
 function renderBrowseIntro(title, description) {
   return `<div class="learning-browse-intro"><strong>${esc(title)}</strong><span>${esc(description)}</span></div>`;
 }
 
-/** `renderBrowseHeading`: Browse・Headingの画面表示またはHTMLを組み立てる。 */
+/** 一階層戻るボタン、現在地、該当件数をまとめたブラウズ見出しを返す。 */
 function renderBrowseHeading(label, count, backAttribute, backLabel) {
   return `<div class="learning-browse-heading"><button type="button" ${backAttribute}>‹ ${esc(backLabel)}</button><strong>${esc(label)}</strong><span>${count}件</span></div>`;
 }
 
-/** `renderBrowseResults`: Browse・Resultsの画面表示またはHTMLを組み立てる。 */
+/** 選択分類の見出しと該当カードを描画し、空なら保存項目がない旨を表示する。 */
 function renderBrowseResults(entries, label, backAttribute, backLabel) {
   return `<div class="learning-browse-results">${renderBrowseHeading(label, entries.length, backAttribute, backLabel)}${entries.length ? entries.map(renderEntryCard).join('') : '<p>まだ保存済みの解説はありません。</p>'}</div>`;
 }
 
-/** `renderEmptyState`: Empty・状態の画面表示またはHTMLを組み立てる。 */
+/** データ自体が空の場合と、検索結果だけが空の場合を分けた案内表示を返す。 */
 function renderEmptyState(hasEntries) {
   return `
     <div class="learning-empty">
@@ -614,7 +614,7 @@ export function initLearningDetail(container) {
   });
 }
 
-/** `renderSegments`: Segmentsの画面表示またはHTMLを組み立てる。 */
+/** AI回答の分割テキストへ強調・マーカーを適用し、既存概念だけリンクへ変換する。 */
 function renderSegments(segments, conceptIndex, currentId) {
   return (Array.isArray(segments) ? segments : []).map(segment => {
     let content = esc(segment.text || '');
@@ -634,7 +634,7 @@ function renderSegments(segments, conceptIndex, currentId) {
   }).join('');
 }
 
-/** `renderKnowledgeRichBlock`: Knowledge・Rich・ブロックの画面表示またはHTMLを組み立てる。 */
+/** AI回答の表・数式・箇条書き・注意書き・流れ図を、種類別の安全なHTMLへ変換する。 */
 function renderKnowledgeRichBlock(block, conceptIndex, currentId) {
   if (!block?.type) return '';
 
@@ -707,7 +707,7 @@ function renderKnowledgeRichBlock(block, conceptIndex, currentId) {
   return '';
 }
 
-/** `hydrateLearningEquations`: 学習・Equationsを現在状態へ反映し、必要な表示を更新する。 */
+/** KaTeXの準備後に未描画の数式をHTML+MathML化し、失敗時は元の式を残す。 */
 function hydrateLearningEquations(container, retry = true) {
   const equations = [...container.querySelectorAll('[data-learning-equation]:not([data-equation-ready])')];
   if (!equations.length) return;
@@ -734,7 +734,7 @@ function hydrateLearningEquations(container, retry = true) {
   });
 }
 
-/** `renderConceptChip`: Concept・Chipの画面表示またはHTMLを組み立てる。 */
+/** 関連する保存済み解説がある概念だけリンクボタンにし、未登録なら通常ラベルで返す。 */
 function renderConceptChip(concept, conceptIndex, currentId) {
   const matches = findKnowledgeConceptMatches(conceptIndex, concept).filter(match => match.id !== currentId);
   if (!matches.length) return `<span class="learning-concept-chip">${esc(concept.label)}</span>`;

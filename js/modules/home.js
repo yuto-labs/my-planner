@@ -399,7 +399,7 @@ function openHomeCoverEditor(container, currentCover) {
   const preview = body.querySelector('.home-cover-editor-preview img');
   const xInput = body.querySelector('[data-cover-x]');
   const yInput = body.querySelector('[data-cover-y]');
-  /** `updatePreview`: プレビューを現在状態へ反映し、必要な表示を更新する。 */
+  /** 横・縦スライダーの値を、カバー画像の表示位置と数値ラベルへ反映する。 */
   const updatePreview = () => {
     positionX = Number(xInput.value);
     positionY = Number(yInput.value);
@@ -453,13 +453,13 @@ function openHomeCoverEditor(container, currentCover) {
   });
 }
 
-/** `clampCoverPosition`: Cover・位置を後続処理で扱える安全な形にそろえる。 */
+/** カバー画像の表示位置を0〜100%へ収め、無効値は中央50%にする。 */
 function clampCoverPosition(value) {
   const number = Number(value);
   return Number.isFinite(number) ? Math.min(100, Math.max(0, number)) : 50;
 }
 
-/** `renderGreetingIcon`: あいさつ・Iconの画面表示またはHTMLを組み立てる。 */
+/** 朝・昼・夜の時間帯に対応する挨拶用SVGアイコンを返す。 */
 function renderGreetingIcon(period) {
   if (period === 'morning') {
     return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -726,7 +726,7 @@ function resolveAiDeletion(parsed) {
   return { ambiguous: false, item: items[0], remove };
 }
 
-/** `normalizeSearchText`: 検索・文字列を後続処理で扱える安全な形にそろえる。 */
+/** 日本語検索用に全角半角・大文字小文字・空白の差を吸収した比較文字列を作る。 */
 function normalizeSearchText(value) {
   return String(value || '')
     .normalize('NFKC')
@@ -747,7 +747,7 @@ function buildMemoBlocksFromInput(rawText, memo, isDatabase, fields, rows) {
   return blocks;
 }
 
-/** `reinit`: `reinit`を現在状態へ反映し、必要な表示を更新する。 */
+/** ホームのDOMを空にして初期化をやり直し、保存後の最新状態を表示する。 */
 function reinit(container) {
   container.innerHTML = '';
   initHome(container);

@@ -78,7 +78,7 @@ export function initCalendar(container) {
   const cleanupSwipe = _setupSwipe(container); // register touch listeners for this mount only
   /** `onGroupsChanged`: グループ・変更に関する操作またはイベントを受けて処理する。 */
   const onGroupsChanged = () => loadCalendarShareGroups();
-  /** `refreshSharedData`: 共有・データを現在状態へ反映し、必要な表示を更新する。 */
+  /** 画面が有効な間だけ、個人同期または共有予定をバックグラウンドで再取得する。 */
   const refreshSharedData = () => {
     if (document.hidden || state.container !== container) return;
     refreshCalendarBackground().catch(() => {});
@@ -153,9 +153,9 @@ function _setupSwipe(container) {
   let _tracking = false;
   let _settling = false;
   let _allowSwipe = false;
-  /** `isActiveCalendar`: カレンダーの条件を確認し、結果を真偽値で返す。 */
+  /** このDOMが現在表示中のカレンダー画面ならtrue。古い画面のリスナー誤作動を防ぐ。 */
   const isActiveCalendar = () => container.dataset.view === 'calendar' && state.container === container;
-  /** `view`: 画面に関する補助処理を行い、結果を呼び出し元へ返す。 */
+  /** 再描画で差し替わるスワイプ対象を、操作のたびに現在DOMから取得する。 */
   const view = () => container.querySelector('#cal-view');
   const SWIPE_BLOCK_SELECTOR = [
     '.cal-day-sheet',
@@ -182,7 +182,7 @@ function _setupSwipe(container) {
     _settling = false;
     _allowSwipe = false;
   };
-  /** `hasSwipeBlocker`: Swipe・Blockerの条件を確認し、結果を真偽値で返す。 */
+  /** 日別シート・モーダル・日付選択が開いており、カレンダーを動かすべきでないか判定する。 */
   const hasSwipeBlocker = () => {
     if (document.querySelector('.cal-day-sheet')) return true;
     const modalOverlay = document.getElementById('modal-overlay');
@@ -373,7 +373,7 @@ function render() {
   }
 }
 
-/** `getViewTitle`: 画面・タイトルを取得して呼び出し元へ返す。 */
+/** 月・週・日の表示モードに合う、カレンダーヘッダーの日付文字列を返す。 */
 function getViewTitle() {
   const { mode, cursor } = state;
   if (mode === 'month') return formatDate(cursor, 'month');
@@ -385,7 +385,7 @@ function getViewTitle() {
   return formatDate(cursor, 'medium');
 }
 
-/** `loadCalendarShareGroups`: カレンダー・共有・グループを取得して呼び出し元へ返す。 */
+/** 参加中の共有グループを取得し、現在の表示元に応じて予定または画面を更新する。 */
 async function loadCalendarShareGroups() {
   try {
     state.shareGroups = await loadSharedGroups();
@@ -449,7 +449,7 @@ async function refreshCalendarBackground() {
   } catch {}
 }
 
-/** `refreshCalendarSharedEvents`: カレンダー・共有・予定を現在状態へ反映し、必要な表示を更新する。 */
+/** 選択中グループの共有予定を競合しないよう取得し、古いリクエスト結果は捨てる。 */
 async function refreshCalendarSharedEvents({ silent = false } = {}) {
   if (state.source === 'personal') return;
 
@@ -504,7 +504,7 @@ async function refreshCalendarSharedEvents({ silent = false } = {}) {
   return sharedRefreshPromise;
 }
 
-/** `isSharedSource`: 共有・入力元の条件を確認し、結果を真偽値で返す。 */
+/** 個人カレンダーではなく、有効な共有グループを表示中ならtrueを返す。 */
 function isSharedSource() {
   return state.source !== 'personal' && !!state.groupId;
 }
@@ -514,12 +514,12 @@ function getVisibleEvents() {
   return isSharedSource() ? state.sharedEvents : getEvents();
 }
 
-/** `getMonthVisibleEvents`: 月・Visible・予定を取得して呼び出し元へ返す。 */
+/** 現在の表示元にある予定から「月表示に出さない」予定を除いて返す。 */
 function getMonthVisibleEvents() {
   return getVisibleEvents().filter(event => !event.hideFromMonth);
 }
 
-/** `getEventDisplayTitle`: 予定・Display・タイトルを取得して呼び出し元へ返す。 */
+/** 共有時の伏せ字タイトルを優先し、なければ元タイトルまたは既定名を返す。 */
 function getEventDisplayTitle(event) {
   return event.visibleTitle || event.title || '予定';
 }
@@ -552,7 +552,7 @@ function redrawAfterEventChange(removedId = '') {
   }
 }
 
-/** `getWeekStartDate`: 週・開始・日付を取得して呼び出し元へ返す。 */
+/** 保存済みの週開始日があれば復元し、なければカーソル日の週初めを返す。 */
 function getWeekStartDate(fallbackDate = state.cursor) {
   const d = state.weekStartDate
     ? new Date(`${state.weekStartDate}T00:00:00`)
@@ -875,7 +875,7 @@ function openYearMonthPicker() {
     requestAnimationFrame(() => el.classList.add('cal-ymp--open'));
   });
 
-  /** `getSelected`: Selectedを取得して呼び出し元へ返す。 */
+  /** 年月ドラムのスクロール位置から、中央に選択された数値を範囲内で返す。 */
   const getSelected = (drum) => {
     const items = drum.querySelectorAll('.cal-ymp-item');
     const idx   = Math.round(drum.scrollTop / ITEM_H);
@@ -992,7 +992,7 @@ function openDaySheet(dateStr) {
   };
 }
 
-/** `renderTimedEvent`: 時刻付き・予定の画面表示またはHTMLを組み立てる。 */
+/** 予定の開始・長さを日表示グリッド上のtop/heightへ換算し、予定要素のHTMLを返す。 */
 function renderTimedEvent(event, slotH) {
   if (event._scheduleItem) return renderTimedScheduleItem(event, slotH);
 
@@ -1046,7 +1046,7 @@ function compareTimedItems(a, b) {
   return getTimedItemStartMin(a) - getTimedItemStartMin(b);
 }
 
-/** `getTimedItemStartMin`: 時刻付き・項目・開始・分を取得して呼び出し元へ返す。 */
+/** 予定またはMy Schedule項目の開始時刻を0時からの分へ直し、時刻順比較に使う。 */
 function getTimedItemStartMin(item) {
   if (item._scheduleItem) return clockTimeToMinutes(item.startTime) ?? 1440;
   if (item._isAllDay) return 0;
@@ -1056,7 +1056,7 @@ function getTimedItemStartMin(item) {
   return d.getHours() * 60 + d.getMinutes();
 }
 
-/** `renderTimedScheduleItem`: 時刻付き・スケジュール・項目の画面表示またはHTMLを組み立てる。 */
+/** My Schedule項目を日表示グリッド上の位置と高さへ換算してHTML化する。 */
 function renderTimedScheduleItem(item, slotH) {
   const startMin = clockTimeToMinutes(item.startTime) ?? 0;
   const endMin = clockTimeToMinutes(item.endTime) ?? (startMin + 60);
@@ -1075,7 +1075,7 @@ function renderTimedScheduleItem(item, slotH) {
   </div>`;
 }
 
-/** `getCurrentShareDefaults`: 現在の・共有・既定値を取得して呼び出し元へ返す。 */
+/** 共有カレンダー上で追加する場合に、そのグループをフォームの既定共有先として返す。 */
 function getCurrentShareDefaults() {
   if (!isSharedSource()) return {};
   return {
@@ -1085,7 +1085,7 @@ function getCurrentShareDefaults() {
   };
 }
 
-/** `loadShareDefaults`: 共有・既定値を取得して呼び出し元へ返す。 */
+/** 前回予定で選んだ公開範囲と共有グループを端末内設定から復元する。 */
 function loadShareDefaults() {
   try {
     return JSON.parse(localStorage.getItem(SHARE_DEFAULTS_KEY) || 'null') || {};
@@ -1094,7 +1094,7 @@ function loadShareDefaults() {
   }
 }
 
-/** `saveShareDefaults`: 共有・既定値を保存先または一時状態へ反映する。 */
+/** 今回選んだ公開範囲と共有グループを、次回フォームの初期値として端末へ保存する。 */
 function saveShareDefaults(visibility, groupIds) {
   try {
     localStorage.setItem(SHARE_DEFAULTS_KEY, JSON.stringify({
@@ -1104,7 +1104,7 @@ function saveShareDefaults(visibility, groupIds) {
   } catch {}
 }
 
-/** `loadEventTitleHistory`: 予定・タイトル・履歴を取得して呼び出し元へ返す。 */
+/** タイトル入力候補に使う過去予定の時刻・カテゴリ履歴を端末から読み出す。 */
 function loadEventTitleHistory() {
   try {
     const raw = JSON.parse(localStorage.getItem(EVENT_TITLE_HISTORY_KEY) || '[]');
@@ -1114,14 +1114,14 @@ function loadEventTitleHistory() {
   }
 }
 
-/** `saveEventTitleHistory`: 予定・タイトル・履歴を保存先または一時状態へ反映する。 */
+/** タイトル候補履歴を上限件数に切り詰めて端末へ保存する。 */
 function saveEventTitleHistory(history) {
   try {
     localStorage.setItem(EVENT_TITLE_HISTORY_KEY, JSON.stringify(history.slice(0, EVENT_TITLE_HISTORY_MAX)));
   } catch {}
 }
 
-/** `rememberEventTitle`: 予定・タイトルを保存先または一時状態へ反映する。 */
+/** 保存した予定のタイトル・時刻・カテゴリを、次回の入力候補として履歴先頭へ記録する。 */
 function rememberEventTitle({ title, start, end, categoryId, updatedAt, createdAt } = {}) {
   const cleanTitle = String(title || '').trim();
   if (!cleanTitle || !start || !end) return;
@@ -1496,7 +1496,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
   suggWrap.className = 'ev-title-sugg-wrap';
   body.querySelector('#ev-title')?.insertAdjacentElement('afterend', suggWrap);
 
-  /** `renderAttachments`: Attachmentsの画面表示またはHTMLを組み立てる。 */
+  /** 編集中の添付画像を描画し、拡大表示と削除ボタンを現在の配列へ接続する。 */
   const renderAttachments = () => {
     const list = body.querySelector('#ev-photo-list');
     if (!list) return;
@@ -1556,7 +1556,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
   photoInput?.addEventListener('change', handlePhoto);
   cameraInput?.addEventListener('change', handlePhoto);
 
-  /** `_syncHidden`: Hiddenを現在状態へ反映し、必要な表示を更新する。 */
+  /** 日付・時刻ボタンの状態を、保存処理が読む非表示datetime-local入力へ同期する。 */
   const _syncHidden = () => {
     const sh = body.querySelector('#ev-start');
     const eh = body.querySelector('#ev-end');
@@ -1573,7 +1573,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
   };
 
   const titleInput = body.querySelector('#ev-title');
-  /** `renderTitleSuggestions`: タイトル・候補の画面表示またはHTMLを組み立てる。 */
+  /** 入力途中のタイトルに合う過去予定を、時刻とカテゴリ付き候補として最大5件表示する。 */
   const renderTitleSuggestions = () => {
     const q = titleInput?.value.trim().toLowerCase() || '';
     suggWrap.innerHTML = '';
@@ -1645,7 +1645,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
     const recSel = body.querySelector('#ev-recurring');
     const recEndWrap = body.querySelector('#ev-recurring-end-wrap');
     const startLabel = body.querySelector('#ev-recurring-start-label');
-    /** `refreshRecurringStartLabel`: Recurring・開始・表示名を現在状態へ反映し、必要な表示を更新する。 */
+    /** 繰り返し開始日の表示を、予定フォームで現在選ばれている開始日に合わせる。 */
     const refreshRecurringStartLabel = () => {
       if (startLabel) startLabel.textContent = evStart.date ? formatPickerDate(evStart.date) : '開始日未設定';
     };
@@ -1824,7 +1824,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
     return true;
   };
 
-  /** `saveEvent`: 予定を保存先または一時状態へ反映する。 */
+  /** フォームを検証し、重複確認後に繰り返し・共有・画像を含む予定を確定保存する。 */
   const saveEvent = async (allowOverlap = false) => {
     const title = body.querySelector('#ev-title').value.trim();
     if (!title) {

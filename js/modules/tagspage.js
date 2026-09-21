@@ -12,7 +12,7 @@ let tagsState = { activeTag: null };
 
 // Called externally (e.g. from task/memo card tag chip clicks) before navigating
 let _pendingTag = null;
-/** `setTagFilter`: タグ・絞り込みを保存先または一時状態へ反映する。 */
+/** 選択タグを一時フィルタへ保存し、メモ一覧をそのタグで開く。 */
 export function setTagFilter(tag) { _pendingTag = tag; }
 
 /** 選択タグを持つタスクとメモを横断して一覧表示する。 */

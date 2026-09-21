@@ -84,7 +84,7 @@ function renderGoalList() {
   return goals.map(g => renderGoalItem(g)).join('');
 }
 
-/** `renderGoalItem`: 目標・項目の画面表示またはHTMLを組み立てる。 */
+/** 目標一件を、進捗・期限・関連タスクを確認できる一覧要素へ変換する。 */
 function renderGoalItem(goal) {
   const tasks = getTasks().filter(t => t.goalId === goal.id);
   const doneTasks = tasks.filter(t => t.completed);
@@ -444,7 +444,7 @@ async function handleAIKnowledgeSuggest(goalId, itemEl) {
   }
 }
 
-/** `renderRelatedKnowledgeMemos`: Related・Knowledge・メモの画面表示またはHTMLを組み立てる。 */
+/** 目標に紐づくメモを取得し、詳細へ移動できる関連メモ一覧として返す。 */
 function renderRelatedKnowledgeMemos(goal) {
   const memos = getKnowledgeMemos();
   // Match memos whose tags contain words from the goal title

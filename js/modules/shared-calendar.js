@@ -70,7 +70,7 @@ async function handleInviteFromUrl() {
   toast('共有グループに参加しました', 'success');
 }
 
-/** `refresh`: `refresh`を現在状態へ反映し、必要な表示を更新する。 */
+/** 選択グループの共有予定を再取得し、読込・失敗状態を含めて画面を更新する。 */
 async function refresh() {
   state.loading = true;
   render();
@@ -146,7 +146,7 @@ function render() {
   container.querySelector('#shared-personal-btn')?.addEventListener('click', () => nav('calendar'));
 }
 
-/** `renderMonth`: 月の画面表示またはHTMLを組み立てる。 */
+/** 共有予定を選択月の日付セルへ割り当て、月間カレンダーHTMLを作る。 */
 function renderMonth() {
   if (!state.groups.length) {
     return `
@@ -187,7 +187,7 @@ function renderMonth() {
   return `${html}</div></div>`;
 }
 
-/** `renderChip`: Chipの画面表示またはHTMLを組み立てる。 */
+/** 共有予定一件を、公開範囲に応じた題名と色を持つ日付セル内チップへ変換する。 */
 function renderChip(event) {
   const label = event.isOwn ? '自分' : (event.shareVisibility === 'shared_busy' ? '予定あり' : '共有');
   return `

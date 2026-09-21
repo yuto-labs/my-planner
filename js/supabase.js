@@ -29,42 +29,42 @@ export function getStoredConfig() {
   }
 }
 
-/** `saveConfig`: 設定を保存先または一時状態へ反映する。 */
+/** Supabase接続設定を端末へ保存し、次回取得時に新設定でクライアントを作り直す。 */
 export function saveConfig(cfg) {
   localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg));
   _client = null; // reset cached client
 }
 
-/** `isMigrated`: `isMigrated`の条件を確認し、結果を真偽値で返す。 */
+/** この端末で旧ローカルデータの初回クラウド移行が完了済みか返す。 */
 export function isMigrated() {
   return localStorage.getItem(MIGRATE_KEY) === 'true';
 }
 
-/** `setMigrated`: 移行済みを保存先または一時状態へ反映する。 */
+/** 旧ローカルデータの初回クラウド移行が完了したことを端末へ記録する。 */
 export function setMigrated() {
   localStorage.setItem(MIGRATE_KEY, 'true');
 }
 
-/** `isMigratedForCurrentUser`: 現在の・ユーザーの条件を確認し、結果を真偽値で返す。 */
+/** 現在ユーザー単位の移行済み印を確認し、未ログイン時は端末共通の印へ戻る。 */
 export async function isMigratedForCurrentUser() {
   const userId = await getUserId();
   if (!userId) return isMigrated();
   return localStorage.getItem(`${MIGRATE_KEY}:${userId}`) === 'true';
 }
 
-/** `setMigratedForCurrentUser`: 移行済み・現在の・ユーザーを保存先または一時状態へ反映する。 */
+/** 現在ユーザーと端末共通の両方へ、初回移行完了を記録する。 */
 export async function setMigratedForCurrentUser() {
   const userId = await getUserId();
   if (userId) localStorage.setItem(`${MIGRATE_KEY}:${userId}`, 'true');
   localStorage.setItem(MIGRATE_KEY, 'true');
 }
 
-/** `getActiveUserId`: 現在の・ユーザー・IDを取得して呼び出し元へ返す。 */
+/** 前回有効だったユーザーIDを端末から読み、アカウント切替検出に使う。 */
 export function getActiveUserId() {
   return localStorage.getItem(ACTIVE_USER_KEY) || null;
 }
 
-/** `setActiveUserId`: 現在の・ユーザー・IDを保存先または一時状態へ反映する。 */
+/** 現在ユーザーIDを端末へ保存し、ログアウト時は記録を削除する。 */
 export function setActiveUserId(userId) {
   if (userId) localStorage.setItem(ACTIVE_USER_KEY, userId);
   else localStorage.removeItem(ACTIVE_USER_KEY);
@@ -199,13 +199,13 @@ export async function signInWithMagicLinkUrl(linkText) {
   throw new Error('リンク内にログイン用の token / code が見つかりません');
 }
 
-/** `getUserId`: ユーザー・IDを取得して呼び出し元へ返す。 */
+/** 現在のSupabaseセッションからユーザーIDだけを返す。 */
 export async function getUserId() {
   const session = await getSession();
   return session?.user?.id ?? null;
 }
 
-/** `getUserEmail`: ユーザー・メールを取得して呼び出し元へ返す。 */
+/** 現在のSupabaseセッションからログインメールアドレスだけを返す。 */
 export async function getUserEmail() {
   const session = await getSession();
   return session?.user?.email ?? null;

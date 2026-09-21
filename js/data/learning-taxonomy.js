@@ -135,7 +135,7 @@ export const LEARNING_MIDDLE_BY_ID = new Map(
   ]))
 );
 
-/** `getLearningClassificationLabel`: 学習・分類・表示名を取得して呼び出し元へ返す。 */
+/** 保存された大分類・中分類IDを「大分類 › 中分類」の表示名へ変換する。 */
 export function getLearningClassificationLabel(classification = {}) {
   const major = LEARNING_MAJOR_BY_ID.get(classification.majorId);
   const middle = LEARNING_MIDDLE_BY_ID.get(classification.middleId);

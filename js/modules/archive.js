@@ -101,7 +101,7 @@ function render(container) {
   });
 }
 
-/** `renderMonthBlock`: 月・ブロックの画面表示またはHTMLを組み立てる。 */
+/** アーカイブ済みタスクを月単位にまとめ、展開可能な一覧ブロックへ変換する。 */
 function renderMonthBlock(ym, items) {
   const sorted = [...items].sort((a, b) => (b.deletedAt || '').localeCompare(a.deletedAt || ''));
   return `

@@ -266,7 +266,7 @@ export async function openPlannerImageViewer({
     viewer.classList.remove('media-lightbox--loading');
     viewer.classList.add('media-lightbox--error');
   };
-  /** `loadSource`: 入力元を取得して呼び出し元へ返す。 */
+  /** 候補URLをライトボックスへ読み込み、失効URLなら保存パスから一度だけ再取得する。 */
   const loadSource = async (candidate, { allowRefresh = true } = {}) => {
     if (closed) return;
     const attempt = ++loadAttempt;
@@ -347,7 +347,7 @@ async function resolvePersistentImageUrl(path) {
   }
 }
 
-/** `writePersistentImage`: 永続・画像を保存先または一時状態へ反映する。 */
+/** 画像BlobをCache Storageへ長期保存し、ホーム画像キャッシュの古い項目を整理する。 */
 async function writePersistentImage(path, blob) {
   if (!path || !(blob instanceof Blob) || !('caches' in globalThis)) return false;
   try {
@@ -455,7 +455,7 @@ async function compressImage(file) {
   }
 }
 
-/** `loadImage`: 画像を取得して呼び出し元へ返す。 */
+/** URLをHTMLImageElementとして非同期読込し、圧縮処理で使える状態にして返す。 */
 function loadImage(url) {
   return new Promise((resolve, reject) => {
     const image = new Image();

@@ -101,7 +101,7 @@ export function closeSearch() {
   overlay.innerHTML = '';
 }
 
-/** `renderSkeleton`: Skeletonの画面表示またはHTMLを組み立てる。 */
+/** 横断検索の待機中にレイアウトが跳ねないよう、結果カード形状の骨組みを表示する。 */
 function renderSkeleton() {
   return `
     <div class="task-skeleton-list">

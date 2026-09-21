@@ -61,7 +61,7 @@ export function initReview(container) {
     `;
   }
 
-  /** `renderEmpty`: Emptyの画面表示またはHTMLを組み立てる。 */
+  /** 今日復習するメモがない状態を表示し、一覧へ戻る操作を接続する。 */
   function renderEmpty() {
     container.innerHTML = `
       <div class="rv-page rv-done">
@@ -73,7 +73,7 @@ export function initReview(container) {
     container.querySelector('#rv-exit')?.addEventListener('click', exitReview);
   }
 
-  /** `renderDone`: 完了の画面表示またはHTMLを組み立てる。 */
+  /** 今回の復習をすべて終えた状態と完了件数を表示する。 */
   function renderDone() {
     container.innerHTML = `
       <div class="rv-page rv-done">
@@ -85,7 +85,7 @@ export function initReview(container) {
     container.querySelector('#rv-exit')?.addEventListener('click', exitReview);
   }
 
-  /** `renderFront`: Frontの画面表示またはHTMLを組み立てる。 */
+  /** 復習カードの題名だけを表面に出し、答えを開く操作を接続する。 */
   function renderFront(memo) {
     container.innerHTML = `
       <div class="rv-page">
@@ -109,7 +109,7 @@ export function initReview(container) {
     });
   }
 
-  /** `renderBack`: Backの画面表示またはHTMLを組み立てる。 */
+  /** メモ本文を答えとして表示し、理解度評価から次回復習日を更新できるようにする。 */
   function renderBack(memo) {
     const ivs = previewReviewIntervals(memo.id);
     container.innerHTML = `

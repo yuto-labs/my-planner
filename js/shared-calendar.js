@@ -17,12 +17,12 @@ function ls(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback; } catch { return fallback; }
 }
 
-/** `saveGroups`: グループを保存先または一時状態へ反映する。 */
+/** 参加中の共有グループ一覧を、オフライン表示用の端末キャッシュへ保存する。 */
 function saveGroups(groups) {
   try { localStorage.setItem(CACHE_KEY, JSON.stringify(groups || [])); } catch {}
 }
 
-/** `savePendingInvite`: 保留中・招待を保存先または一時状態へ反映する。 */
+/** 未ログイン時に受け取った招待トークンを、ログイン後に再処理できるよう端末へ保管する。 */
 function savePendingInvite(token) {
   try { localStorage.setItem(PENDING_INVITE_KEY, String(token || '')); } catch {}
 }
@@ -117,7 +117,7 @@ async function callCreateInviteRpc(client, payload) {
   throw lastError;
 }
 
-/** `normalizeGroup`: グループを後続処理で扱える安全な形にそろえる。 */
+/** DBの共有グループ行を、画面側が期待する既定値付きオブジェクトへ揃える。 */
 function normalizeGroup(group) {
   return {
     id: group.id,
@@ -161,7 +161,7 @@ function isEventSharedToGroups(event, groupIds) {
   return ids.some(id => groupIds.includes(id));
 }
 
-/** `getShareGroupsForEventForm`: 共有・グループ・予定・フォームを取得して呼び出し元へ返す。 */
+/** 予定フォームですぐ表示できる共有グループ一覧を端末キャッシュから返す。 */
 export function getShareGroupsForEventForm() {
   return ls(CACHE_KEY, []);
 }
@@ -313,7 +313,7 @@ export async function acceptSharedInvite(token) {
   return data;
 }
 
-/** `getPendingSharedInvite`: 保留中・共有・招待を取得して呼び出し元へ返す。 */
+/** ログイン後の参加処理を待っている共有招待トークンを端末から返す。 */
 export function getPendingSharedInvite() {
   try { return localStorage.getItem(PENDING_INVITE_KEY) || ''; } catch { return ''; }
 }
@@ -405,7 +405,7 @@ export function bulkShareLocalEvents({ groupId, visibility = 'shared_detail', sc
   return count;
 }
 
-/** `updateOwnSharedEvent`: 自分の・共有・予定を現在状態へ反映し、必要な表示を更新する。 */
+/** 自分が所有する共有予定だけをローカル予定経由で更新し、他人の予定編集を拒否する。 */
 export async function updateOwnSharedEvent(eventId, updates) {
   const local = getEvents().find(ev => ev.id === eventId);
   if (!local) throw new Error('自分の予定だけ編集できます');

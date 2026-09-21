@@ -35,12 +35,12 @@ const COUNTRY_CODE_SET = new Set(COUNTRY_CODES);
 const regionByCode = new Map();
 Object.entries(REGION_CODES).forEach(([regionId, codes]) => codes.forEach(code => regionByCode.set(code, regionId)));
 
-/** `getLearningCountryCodes`: 学習・国・コードを取得して呼び出し元へ返す。 */
+/** Knowledge分類で使用できる国コードを、地域定義から重複なしで返す。 */
 export function getLearningCountryCodes() {
   return COUNTRY_CODES;
 }
 
-/** `getLearningCountryLabel`: 学習・国・表示名を取得して呼び出し元へ返す。 */
+/** 国コードを日本語の国名へ変換し、未知のコードはそのまま返す。 */
 export function getLearningCountryLabel(code) {
   const clean = String(code || '').toUpperCase();
   try {
@@ -50,26 +50,26 @@ export function getLearningCountryLabel(code) {
   }
 }
 
-/** `getLearningRegionForCountry`: 学習・地域・国を取得して呼び出し元へ返す。 */
+/** 国コードが属する地域定義を検索して返す。 */
 export function getLearningRegionForCountry(code) {
   return regionByCode.get(String(code || '').toUpperCase()) || 'world';
 }
 
-/** `getLearningCountriesForRegion`: 学習・国・地域を取得して呼び出し元へ返す。 */
+/** 指定地域に所属する国コードを、地域定義の表示順で返す。 */
 export function getLearningCountriesForRegion(regionId) {
   if (regionId === 'world') return getLearningCountryCodes();
   return (REGION_CODES[regionId] || [])
     .sort((a, b) => getLearningCountryLabel(a).localeCompare(getLearningCountryLabel(b), 'ja'));
 }
 
-/** `normalizeLearningCountryCodes`: 学習・国・コードを後続処理で扱える安全な形にそろえる。 */
+/** AI由来の国コードを既知の大文字コードだけに絞り、重複を除く。 */
 export function normalizeLearningCountryCodes(values) {
   return [...new Set((Array.isArray(values) ? values : [])
     .map(value => String(value || '').toUpperCase())
     .filter(code => COUNTRY_CODE_SET.has(code)))].slice(0, 12);
 }
 
-/** `normalizeLearningRegionIds`: 学習・地域・IDを後続処理で扱える安全な形にそろえる。 */
+/** AI由来の地域IDと国コードから、有効な地域IDを補完して重複なく返す。 */
 export function normalizeLearningRegionIds(values, countryCodes = []) {
   const allowed = new Set(LEARNING_REGIONS.map(region => region.id));
   const supplied = (Array.isArray(values) ? values : [])
@@ -83,7 +83,7 @@ export function normalizeLearningRegionIds(values, countryCodes = []) {
   return normalized.slice(0, 6);
 }
 
-/** `getLearningTimelineBucket`: 学習・時代区分・区分を取得して呼び出し元へ返す。 */
+/** Knowledgeの時間分類を、恒常・横断・未整理または世紀/年代バケットへ変換する。 */
 export function getLearningTimelineBucket(timeline = {}) {
   const mode = ['timeless', 'cross_period', 'dated', 'unclassified'].includes(timeline.mode)
     ? timeline.mode
@@ -99,7 +99,7 @@ export function getLearningTimelineBucket(timeline = {}) {
   return { mode, era, century, decade, startYear, endYear };
 }
 
-/** `getLearningTimelineLabel`: 学習・時代区分・表示名を取得して呼び出し元へ返す。 */
+/** 保存された時間分類を、詳細画面で読める時代ラベルへ変換する。 */
 export function getLearningTimelineLabel(timeline = {}) {
   const bucket = getLearningTimelineBucket(timeline);
   if (bucket.mode === 'timeless') return '恒常';

@@ -81,7 +81,7 @@ function listsOverlap(left, right) {
   return normalizedList(right).some(value => a.has(value));
 }
 
-/** `normalizeSenseFingerprint`: 意味・意味特徴を後続処理で扱える安全な形にそろえる。 */
+/** 語義比較用の特徴文字列を小文字・空白統一し、表記揺れに強い比較値へ変換する。 */
 export function normalizeSenseFingerprint(value = {}) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   return {

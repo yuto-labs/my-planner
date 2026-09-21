@@ -321,7 +321,7 @@ function safeDecode(value) {
   catch { return String(value || ''); }
 }
 
-/** `normalizeTitle`: タイトルを後続処理で扱える安全な形にそろえる。 */
+/** Notion由来の題名から余分な空白を除き、空ならメモ用の既定題名を返す。 */
 function normalizeTitle(value) {
   return String(value || '').trim().toLowerCase();
 }

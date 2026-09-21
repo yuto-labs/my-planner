@@ -173,7 +173,7 @@ async function callServerAI(
   actionType = 'ai_request',
   { signal } = {}
 ) {
-  /** `readSession`: ログイン状態を取得して呼び出し元へ返す。 */
+  /** Supabase認証取得が固まらないよう、短い上限時間付きで現在セッションを読む。 */
   const readSession = async () => {
     let timeoutId;
     try {
@@ -197,7 +197,7 @@ async function callServerAI(
     throw new Error('AIを使うには、AI設定でログインしてください。');
   }
   const controller = new AbortController();
-  /** `abortFromCaller`: から・呼び出し元を安全に終了または削除する。 */
+  /** 呼び出し側のAbortSignalを、この通信専用AbortControllerへ中継する。 */
   const abortFromCaller = () => controller.abort();
   const timeoutId = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
   signal?.addEventListener('abort', abortFromCaller, { once: true });
@@ -256,7 +256,10 @@ async function callServerAI(
   return text;
 }
 
-/** `callAPI`: APIを呼び出し、応答を返す。 */
+/**
+ * 各AI機能から共通サーバー通信へ、モデル・指示・入力・出力形式をまとめて渡す。
+ * 認証、タイムアウト、アカウント切替検査、エラー翻訳はcallServerAI側へ集約する。
+ */
 async function callAPI(
   modelPreference,
   systemText,
@@ -300,7 +303,7 @@ export async function streamDailyMessage(tasks = [], events = [], goals = [], on
   });
 }
 
-/** `getDailyMessage`: 日次・メッセージを取得して呼び出し元へ返す。 */
+/** 今日の未完了タスク・予定・最上位目標から短い注目点を生成し、同日中はキャッシュを再利用する。 */
 export async function getDailyMessage(tasks = [], events = [], goals = []) {
   const cacheKey = `daily_${today()}`;
   const cached = getAiCache(cacheKey);
@@ -487,12 +490,12 @@ function pearsonR(xs, ys) {
   return Math.sqrt(dx * dy) < 1e-10 ? 0 : num / Math.sqrt(dx * dy);
 }
 
-/** `avg`: `avg`に必要な数値を計算して返す。 */
+/** 数値配列の算術平均を返し、空配列ではNaNを避けて0を返す。 */
 function avg(arr) {
   return arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : 0;
 }
 
-/** `generateMonthlyReport`: 受け取った情報から月次・レポートを作る。 */
+/** 月間の完了数・目標・メモ・集中度・習慣日数を、構造化された振り返りへまとめる。 */
 export async function generateMonthlyReport(prevMonth, data) {
   const result = await callAPI(
     QUALITY_MODEL,
@@ -512,7 +515,7 @@ export async function generateMonthlyReport(prevMonth, data) {
   };
 }
 
-/** `generateAnalyticsSummary`: 受け取った情報から分析・要約を作る。 */
+/** 指定月の集計値を、数値を含む短い日本語サマリーへ変換する。 */
 export async function generateAnalyticsSummary(monthStr, data) {
   const text = await callAPI(
     FAST_MODEL,
@@ -1215,7 +1218,7 @@ function normalizeStringList(value, maxItems) {
     .slice(0, maxItems);
 }
 
-/** `normalizeCollocations`: よく一緒に使う語を後続処理で扱える安全な形にそろえる。 */
+/** 旧文字列形式と新しい詳細形式のcollocationを、訳・用法・例文を持つ共通形へそろえる。 */
 function normalizeCollocations(value, maxItems) {
   return (Array.isArray(value) ? value : [])
     .map(item => {
@@ -1414,9 +1417,9 @@ export async function interpretPlannerInput(text, context = {}) {
     && !String(parsed.targetTitle || parsed.title || '').trim()) {
     throw new Error('削除対象を特定できなかったため、何も削除していません。');
   }
-  /** `validDate`: 日付の条件を確認し、結果を真偽値で返す。 */
+  /** AIの日付候補が未指定、または厳密な`YYYY-MM-DD`か検証する。 */
   const validDate = value => value == null || /^\d{4}-\d{2}-\d{2}$/.test(String(value));
-  /** `validTime`: 時刻の条件を確認し、結果を真偽値で返す。 */
+  /** AIの時刻候補が未指定、または範囲内の24時間制`HH:MM`か検証する。 */
   const validTime = value => value == null || /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(value));
   if (!validDate(parsed.date) || !validDate(parsed.dueDate)
     || !validTime(parsed.startTime) || !validTime(parsed.endTime) || !validTime(parsed.dueTime)) {
@@ -1434,7 +1437,7 @@ export async function interpretPlannerInput(text, context = {}) {
   return parsed;
 }
 
-/** `applyExplicitTimes`: 明示された・時刻を現在状態へ反映し、必要な表示を更新する。 */
+/** 入力文に明記された時刻を優先し、AIが推測した期限・開始・終了時刻を上書きする。 */
 function applyExplicitTimes(parsed, text) {
   const times = parseJapaneseTimes(text);
   if (!times.length) return;

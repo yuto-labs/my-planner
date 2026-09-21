@@ -177,7 +177,7 @@ function calcLearningStages() {
 const noData = (msg = 'まだデータが足りません') =>
   `<div class="analytics-info-box">${esc(msg)}</div>`;
 
-/** `renderLineChart`: 行・Chartの画面表示またはHTMLを組み立てる。 */
+/** 日ごとの値をSVG折れ線グラフへ変換し、軸ラベルと点の説明も付ける。 */
 function renderLineChart(data) {
   const active = data.filter(d => d.plannedPts > 0);
   if (active.length < 2) {
@@ -214,7 +214,7 @@ function renderLineChart(data) {
     </svg>`;
 }
 
-/** `renderAccuracyContent`: Accuracy・内容の画面表示またはHTMLを組み立てる。 */
+/** 予定工数と実績の差を集計し、見積精度の指標と内訳を表示する。 */
 function renderAccuracyContent(acc) {
   if (acc.rate === null) return noData('この期間に期限付き完了タスクがありません');
   const color = acc.rate >= 80 ? 'var(--success)' : acc.rate >= 50 ? 'var(--warning)' : 'var(--danger)';

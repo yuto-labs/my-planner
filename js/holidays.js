@@ -22,7 +22,7 @@ export function getHolidayInfo(dateLike) {
   return getHolidayMap(year).get(dateStr) || null;
 }
 
-/** `isHoliday`: `isHoliday`の条件を確認し、結果を真偽値で返す。 */
+/** 指定日が組み込み祝日データに含まれるかを日付キーで判定する。 */
 export function isHoliday(dateLike) {
   return !!getHolidayInfo(dateLike);
 }
