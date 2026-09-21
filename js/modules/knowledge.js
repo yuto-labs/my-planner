@@ -38,6 +38,7 @@ import {
   memoBlocksToText as blocksToText,
   normalizeMemoTable as normalizeTableData,
   sortMemosForList,
+  trimMemoEdgeEmptyBlocks,
 } from '../memo-model.js';
 
 /** `nav`: 指定したハッシュ画面へ移動し、必要なら遷移元の状態を引き継ぐ。 */
@@ -4198,6 +4199,9 @@ async function persistMemo(container) {
   }
 
   edState.tags = [...new Set(edState.tags.map(tag => String(tag).trim()).filter(Boolean))];
+
+  // 空にした先頭・末尾ブロックは保存前に片付ける。本文途中の空行はレイアウトとして残す。
+  edState.blocks = trimMemoEdgeEmptyBlocks(edState.blocks);
 
   const memoData = {
     title:   edState.title || '無題のメモ',

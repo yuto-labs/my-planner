@@ -70,8 +70,8 @@ let _swipeLocked  = false; // true while slide animation plays - blocks consecut
 /** カレンダー画面の状態を初期化し、月・週・日表示と各操作を接続する。 */
 export function initCalendar(container) {
   state.container = container;
-  state.mode = 'month';
-  _selectedDate = null;
+  // 同期後の再描画でも日・週表示を維持する。モジュール初回読込時だけstate既定値の月表示になる。
+  if (!['month', 'week', 'day'].includes(state.mode)) state.mode = 'month';
   if (!(state.cursor instanceof Date) || Number.isNaN(state.cursor.getTime())) {
     state.cursor = new Date();
   }

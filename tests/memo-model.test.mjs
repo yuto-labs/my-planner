@@ -7,6 +7,7 @@ import {
   memoBlocksToText,
   normalizeMemoTable,
   sortMemosForList,
+  trimMemoEdgeEmptyBlocks,
 } from '../js/memo-model.js';
 
 test('sorts starred memos first and then uses the latest edit time', () => {
@@ -53,4 +54,38 @@ test('builds the current search text while skipping dividers and math', () => {
   ]);
   assert.equal(text, '見出し 子本文 語 意味 range 範囲');
   assert.equal(memoBlocksToText([{ type: 'paragraph', text: '123456' }], 4), '1234…');
+});
+
+test('trims only empty edge blocks while preserving intentional gaps and structural blocks', () => {
+  const source = [
+    { id: 'leading', type: 'paragraph', text: '', html: '<br>' },
+    { id: 'body', type: 'paragraph', text: '本文' },
+    { id: 'gap', type: 'paragraph', text: '' },
+    { id: 'body-2', type: 'paragraph', text: '続き' },
+    { id: 'trailing', type: 'h2', text: '', html: '<strong></strong>' },
+  ];
+  assert.deepEqual(trimMemoEdgeEmptyBlocks(source).map(block => block.id), [
+    'body', 'gap', 'body-2',
+  ]);
+  assert.deepEqual(trimMemoEdgeEmptyBlocks([
+    { id: 'divider', type: 'divider', text: '' },
+    { id: 'empty', type: 'paragraph', text: '' },
+  ]).map(block => block.id), ['divider']);
+});
+
+test('keeps one editable block for a completely empty memo and trims toggle child edges', () => {
+  const [only] = trimMemoEdgeEmptyBlocks([
+    { id: 'first', type: 'paragraph', text: '' },
+    { id: 'second', type: 'paragraph', text: '' },
+  ]);
+  assert.equal(only.id, 'first');
+
+  const [toggle] = trimMemoEdgeEmptyBlocks([{
+    id: 'toggle', type: 'toggle', text: '詳細', children: [
+      { id: 'child-empty', type: 'paragraph', text: '' },
+      { id: 'child-body', type: 'paragraph', text: '中身' },
+      { id: 'child-tail', type: 'paragraph', text: '' },
+    ],
+  }]);
+  assert.deepEqual(toggle.children.map(block => block.id), ['child-body']);
 });

@@ -38,6 +38,48 @@ export function collectMemoImagePaths(blocks, paths = new Set()) {
   return paths;
 }
 
+const EDGE_TRIMMABLE_BLOCK_TYPES = new Set([
+  'paragraph', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'bullet', 'numbered', 'checklist', 'quote', 'code',
+]);
+
+/** 装飾タグや改行だけのHTMLを、空の編集ブロックとして扱える形へ整える。 */
+function memoHtmlToComparableText(html) {
+  return String(html || '')
+    .replace(/<br\s*\/?\s*>/gi, '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;|&#160;/gi, ' ')
+    .trim();
+}
+
+/** 先頭・末尾に残った空の文字ブロックだけを除き、本文中の意図的な空行は保つ。 */
+export function trimMemoEdgeEmptyBlocks(blocks, { keepOne = true } = {}) {
+  const source = Array.isArray(blocks) ? blocks : [];
+  const normalized = source.map(block => {
+    if (!Array.isArray(block?.children)) return block;
+    return {
+      ...block,
+      children: trimMemoEdgeEmptyBlocks(block.children, { keepOne: false }),
+    };
+  });
+  /** 画像や区切り線を除き、文字を持たない編集用ブロックだけを判定する。 */
+  const isEmptyEdgeBlock = block => {
+    const type = block?.type || 'paragraph';
+    if (!EDGE_TRIMMABLE_BLOCK_TYPES.has(type)) return false;
+    return !String(block?.text || '').trim() && !memoHtmlToComparableText(block?.html);
+  };
+
+  let start = 0;
+  let end = normalized.length;
+  while (start < end && isEmptyEdgeBlock(normalized[start])) start += 1;
+  while (end > start && isEmptyEdgeBlock(normalized[end - 1])) end -= 1;
+  const trimmed = normalized.slice(start, end);
+
+  // エディタには入力先が一つ必要なので、全文が空なら既存の先頭ブロックを残す。
+  if (!trimmed.length && keepOne && normalized.length) return [normalized[0]];
+  return trimmed;
+}
+
 /** 検索索引や概要に使うプレーンテキストを、現在の保存形式から作る。 */
 export function memoBlocksToText(blocks, maxLen = 0) {
   let text = '';
