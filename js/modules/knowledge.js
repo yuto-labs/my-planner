@@ -27,7 +27,12 @@ import {
   wirePlannerImageViewer,
 } from '../media.js';
 import { flushPendingSync } from '../sync.js';
-import { markdownBlockShortcut, completedInlineMarkdown } from '../markdown-shortcuts.js';
+import {
+  markdownBlockShortcut,
+  markdownPrefixForBlock,
+  parseMarkdownBlockSource,
+  markdownDelimitersForCommand,
+} from '../markdown-shortcuts.js';
 import {
   collectMemoImagePaths as collectImagePaths,
   memoBlocksToText as blocksToText,
@@ -1972,17 +1977,6 @@ function renderBlockEdit(block, idx, listNumber = 0) {
       <button type="button" class="kn-block-move" data-block-action="outdent" data-block-id="${esc(block.id)}" title="外へ" aria-label="外側へ移動">←</button>
     </div>`;
 
-  if (block.type === 'divider') {
-    return `
-      <div class="kn-block kn-block--divider${block.id === activeEditorBlockId ? ' kn-block--active' : ''}"
-        data-block-id="${esc(block.id)}" tabindex="0" role="separator"
-        aria-label="区切り線。選択後、ブロック操作から移動または削除できます">
-        <hr class="kn-view-divider">
-        ${controls}
-      </div>
-      ${insertRow}`;
-  }
-
   if (block.type === 'image') {
     return `
       <div class="kn-block kn-block--image${block.id === activeEditorBlockId ? ' kn-block--active' : ''}"
@@ -2052,13 +2046,12 @@ function renderBlockEdit(block, idx, listNumber = 0) {
     numbered: '番号付きリスト',
     quote: '引用',
     toggle: 'トグルのタイトル',
+    divider: '---',
   }[block.type] || 'テキスト…';
 
+  // 行頭の種類記号も本文と同じMarkdownソースとして表示する。
+  // トグルの矢印だけは子ブロックを開閉する操作なので、記号とは別に残す。
   const prefix = {
-    bullet:   '<span class="kn-block-prefix">•</span>',
-    checklist: `<input type="checkbox" class="kn-block-prefix kn-checklist-input" data-edit-checklist-id="${esc(block.id)}" aria-label="チェックリスト項目を完了" ${block.checked ? 'checked' : ''}>`,
-    numbered: `<span class="kn-block-prefix">${listNumber || 1}.</span>`,
-    quote:    '<span class="kn-block-prefix kn-block-prefix--quote">❝</span>',
     toggle:   `<button type="button" class="kn-block-prefix kn-block-prefix--toggle kn-toggle-edit-btn"
       data-toggle-edit-id="${esc(block.id)}" aria-label="${toggleCollapsed ? 'トグルを開く' : 'トグルを閉じる'}"
       aria-expanded="${String(!toggleCollapsed)}">${toggleCollapsed ? '▶' : '▼'}</button>`,
@@ -2070,7 +2063,8 @@ function renderBlockEdit(block, idx, listNumber = 0) {
       <div class="kn-block-text kn-block-focusable" contenteditable="true"
         data-block-id="${esc(block.id)}"
         data-placeholder="${esc(placeholder)}"
-        ${colorStyle}>${getBlockEditorHtml(block)}</div>
+        spellcheck="true"
+        ${colorStyle}>${getBlockEditorHtml(block, listNumber)}</div>
       ${block.type === 'toggle' && !toggleCollapsed && block.children?.length ? `
         <div class="kn-block-toggle-children-edit">
           ${renderBlocksEdit(block.children || [])}
@@ -2139,48 +2133,6 @@ function convertMarkdownBlockShortcut(editable, container, afterSpace = false) {
     rerenderBlocks(container);
     focusBlock(blockId, container);
   }
-  return true;
-}
-
-/** `convertInlineMarkdownShortcut`: 行内装飾・Markdown・Shortcutを別の処理で使う形式へ変換する。 */
-function convertInlineMarkdownShortcut(editable, container) {
-  if (!caretIsAtEditableEnd(editable)) return false;
-  editable.normalize();
-  const tail = window.getSelection()?.anchorNode;
-  if (tail?.nodeType !== Node.TEXT_NODE) return false;
-  for (let parent = tail.parentElement; parent && parent !== editable; parent = parent.parentElement) {
-    if (parent.tagName !== 'DIV') return false;
-  }
-  const completed = completedInlineMarkdown(tail.textContent.replace(/\u200B/g, ''));
-  if (!completed) return false;
-  recordEditorHistory(container);
-  const fragment = document.createDocumentFragment();
-  if (completed.prefix) fragment.append(document.createTextNode(completed.prefix));
-  const tags = completed.tags || [completed.tag];
-  let formatted = document.createElement(tags[0]);
-  let contentTarget = formatted;
-  for (const tag of tags.slice(1)) {
-    const child = document.createElement(tag);
-    contentTarget.append(child);
-    contentTarget = child;
-  }
-  contentTarget.textContent = completed.text;
-  if (completed.tag === 'a') {
-    formatted.href = completed.href;
-    formatted.target = '_blank';
-    formatted.rel = 'noopener';
-    formatted.className = 'kn-inline-link';
-  }
-  const caretAnchor = document.createTextNode('\u200B');
-  fragment.append(formatted, caretAnchor);
-  tail.replaceWith(fragment);
-  const range = document.createRange();
-  const selection = window.getSelection();
-  range.setStart(caretAnchor, 1);
-  range.collapse(true);
-  selection?.removeAllRanges();
-  selection?.addRange(range);
-  syncEditableBlock(editable.dataset.blockId, editable);
   return true;
 }
 
@@ -2269,11 +2221,10 @@ function wireBlocksEdit(container) {
     } else if (el.contentEditable === 'true') {
       const block = findBlockInAllBlocks(edState.blocks, blockId);
       if (block) {
-        block.text = el.textContent.replace(/\u200B/g, '');
-        block.html = sanitizeBlockHtml(el.innerHTML).replace(/\u200B/g, '');
+        const parsed = applyMarkdownSourceToBlock(blockId, el.textContent);
+        if (parsed) highlightToolbarType(container, parsed.type);
         if (!editorCompositionActive && e.inputType === 'insertText') {
           if (e.data === ' ' && convertMarkdownBlockShortcut(el, container, true)) return;
-          convertInlineMarkdownShortcut(el, container);
         }
       }
     }
@@ -2684,7 +2635,8 @@ function handleBlockKeydown(e, blockId, container) {
   if (e.key === 'Backspace') {
     const el = e.target;
     const loc = findBlockLocation(blockId);
-    if (el.textContent === '' && loc && (loc.parent || edState.blocks.length > 1)) {
+    const editableText = parseMarkdownBlockSource(el.textContent || '').text;
+    if (editableText === '' && loc && (loc.parent || edState.blocks.length > 1)) {
       e.preventDefault();
       recordEditorHistory(container);
       removeBlockById(blockId);
@@ -2741,9 +2693,11 @@ function splitEditableAtCaret(editable) {
   const extract = range => {
     const holder = document.createElement('div');
     holder.appendChild(range.cloneContents());
+    const text = holder.textContent.replace(/\u200B/g, '');
     return {
-      text: holder.textContent.replace(/\u200B/g, ''),
-      html: sanitizeBlockHtml(holder.innerHTML).replace(/\u200B/g, ''),
+      text,
+      // 編集DOMはMarkdownの生文字列なので、DOM装飾を保存用HTMLと誤認しない。
+      html: markdownToInlineHtml(text),
     };
   };
   const beforeRange = document.createRange();
@@ -2774,16 +2728,15 @@ function continueListFromBlock(blockId, container, editable = null) {
 
   const split = splitEditableAtCaret(editable);
   if (split) {
-    currentBlock.text = split.before.text;
-    currentBlock.html = split.before.html;
+    applyMarkdownSourceToBlock(blockId, split.before.text);
   }
 
   const nextBlock = insertBlockAfter(blockId, currentBlock.type);
   if (!nextBlock) return;
   if (nextBlock.type === 'checklist') nextBlock.checked = false;
   if (split) {
-    nextBlock.text = split.after.text;
-    nextBlock.html = split.after.html;
+    const nextSource = `${markdownPrefixForBlock(nextBlock, 1)}${split.after.text}`;
+    applyMarkdownSourceToBlock(nextBlock.id, nextSource);
   }
   rerenderBlocks(container);
   focusBlock(nextBlock.id, container);
@@ -2810,10 +2763,51 @@ function insertBlockLineBreak(editable) {
 
 /** `syncEditableBlock`: Editable・ブロックを現在状態へ反映し、必要な表示を更新する。 */
 function syncEditableBlock(blockId, editable) {
-  const block = findBlockInAllBlocks(edState.blocks, blockId);
-  if (!block) return;
-  block.text = editable.textContent.replace(/\u200B/g, '');
-  block.html = sanitizeBlockHtml(editable.innerHTML).replace(/\u200B/g, '');
+  applyMarkdownSourceToBlock(blockId, editable.textContent.replace(/\u200B/g, ''));
+}
+
+/**
+ * 選択文字をMarkdown記号で囲み、編集画面にも記号を残す。
+ * execCommandで見た目だけ装飾すると編集時にMarkdownが見えないため、文字列として挿入する。
+ */
+function wrapEditableSelectionWithMarkdown(editable, opening, closing, savedRange = null) {
+  if (!editable) return false;
+  const selection = window.getSelection();
+  if (!selection) return false;
+  if (savedRange) {
+    selection.removeAllRanges();
+    selection.addRange(savedRange);
+  }
+  if (!selection.rangeCount) return false;
+  const range = selection.getRangeAt(0);
+  if (!editable.contains(range.commonAncestorContainer)) return false;
+  const selected = range.toString();
+  const replacement = `${opening}${selected}${closing}`;
+  range.deleteContents();
+  const textNode = document.createTextNode(replacement);
+  range.insertNode(textNode);
+  const caretOffset = selected ? replacement.length : opening.length;
+  range.setStart(textNode, caretOffset);
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  return true;
+}
+
+/** 選択範囲を、貼り付け元から変換したMarkdown文字列で置き換える。 */
+function insertMarkdownAtEditableSelection(editable, markdown) {
+  const selection = window.getSelection();
+  if (!editable || !selection?.rangeCount) return false;
+  const range = selection.getRangeAt(0);
+  if (!editable.contains(range.commonAncestorContainer)) return false;
+  range.deleteContents();
+  const textNode = document.createTextNode(String(markdown || ''));
+  range.insertNode(textNode);
+  range.setStart(textNode, textNode.length);
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  return true;
 }
 
 /** `wireToolbar`: Toolbarの画面操作と処理をイベントで結び付ける。 */
@@ -2890,10 +2884,13 @@ function wireToolbar(container) {
       const focusedBlockId = getFocusedBlockId(container);
       if (!focusedBlockId) return;
       const command = btn.dataset.inlineCommand;
+      const delimiters = markdownDelimitersForCommand(command);
+      const active = container.querySelector(`.kn-block-focusable[data-block-id="${focusedBlockId}"]`);
+      if (!delimiters || !active) return;
       recordEditorHistory(container);
-      document.execCommand?.(command, false, null);
+      wrapEditableSelectionWithMarkdown(active, delimiters[0], delimiters[1]);
       syncFocusedEditableBlock(container, focusedBlockId);
-      focusEditableWithoutScroll(container.querySelector(`.kn-block-focusable[data-block-id="${focusedBlockId}"]`));
+      focusEditableWithoutScroll(active);
     });
   });
 
@@ -2953,8 +2950,11 @@ function wireToolbar(container) {
         toast('マーカーを付ける文字を選択してください', 'info');
       } else {
         recordEditorHistory(container);
-        const ok = document.execCommand?.('hiliteColor', false, color.css);
-        if (!ok) document.execCommand?.('backColor', false, color.css);
+        const opening = color.id === 'clear'
+          ? ''
+          : `<mark style="background-color:${color.css}">`;
+        const closing = color.id === 'clear' ? '' : '</mark>';
+        wrapEditableSelectionWithMarkdown(active, opening, closing, savedHighlightSelection?.range || null);
         syncFocusedEditableBlock(container, focusedBlockId);
         focusEditableWithoutScroll(active);
       }
@@ -2977,7 +2977,9 @@ function wireToolbar(container) {
         const active = container.querySelector(`.kn-block-focusable[data-block-id="${focusedBlockId}"]:focus`);
         const selection = window.getSelection();
         if (active && selection && selection.rangeCount && !selection.isCollapsed && active.contains(selection.anchorNode)) {
-          document.execCommand?.('foreColor', false, color.css || 'inherit');
+          const opening = color.css ? `<span style="color:${color.css}">` : '';
+          const closing = color.css ? '</span>' : '';
+          wrapEditableSelectionWithMarkdown(active, opening, closing);
           syncFocusedEditableBlock(container, focusedBlockId);
           focusEditableWithoutScroll(active);
         } else {
@@ -3205,6 +3207,69 @@ function hasStructuredClipboardHtml(html) {
   ));
 }
 
+/** プレーンテキストに、複数ブロックとして扱うべきMarkdown行頭記号があるか判定する。 */
+function hasMarkdownBlockStructure(text) {
+  const value = String(text || '');
+  return /(^|\n)\s*(?:#{1,6}\s+|[-*+]\s+|\d+\.\s+|>\s+|>>\s+|-\s+\[[ xX]\]\s+|---\s*$)/m.test(value);
+}
+
+/**
+ * 外部から貼られたMarkdownを既存のメモブロックへ変換する。
+ * 記号付き行は独立ブロックにし、普通の文章の連続行は同じ段落として改行を保つ。
+ */
+function clipboardBlocksFromMarkdown(text) {
+  const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+  const blocks = [];
+  let paragraphLines = [];
+
+  /** 連続した通常行を一つの段落として確定する。 */
+  const flushParagraph = () => {
+    if (!paragraphLines.length) return;
+    const source = paragraphLines.join('\n');
+    const block = { id: generateId(), type: 'paragraph', text: '', html: '', color: null };
+    blocks.push(block);
+    paragraphLines = [];
+    const parsed = parseMarkdownBlockSource(source);
+    block.type = parsed.type;
+    block.text = parsed.text;
+    block.html = markdownToInlineHtml(parsed.text);
+    if (parsed.type === 'checklist') block.checked = parsed.checked;
+    if (parsed.type === 'toggle') {
+      block.children = [];
+      block.collapsed = true;
+    }
+  };
+
+  for (const line of lines) {
+    if (!line.trim()) {
+      flushParagraph();
+      continue;
+    }
+    const parsed = parseMarkdownBlockSource(line);
+    const hasMarker = parsed.type !== 'paragraph' || line.trim() === '---';
+    if (!hasMarker) {
+      paragraphLines.push(line);
+      continue;
+    }
+    flushParagraph();
+    const block = {
+      id: generateId(),
+      type: parsed.type,
+      text: parsed.text,
+      html: parsed.type === 'divider' ? '' : markdownToInlineHtml(parsed.text),
+      color: null,
+    };
+    if (parsed.type === 'checklist') block.checked = parsed.checked;
+    if (parsed.type === 'toggle') {
+      block.children = [];
+      block.collapsed = true;
+    }
+    blocks.push(block);
+  }
+  flushParagraph();
+  return blocks;
+}
+
 /** `clipboardImageFiles`: クリップボード・画像・ファイルに関する補助処理を行い、結果を呼び出し元へ返す。 */
 function clipboardImageFiles(clipboard) {
   const files = [...(clipboard?.files || [])].filter(file => file.type.startsWith('image/'));
@@ -3248,22 +3313,22 @@ function insertRichClipboardBlocks(blockId, editable, blocks, container) {
   const current = loc.blocks[loc.idx];
   const before = split?.before || { text: current.text || '', html: current.html || '' };
   const after = split?.after || { text: '', html: '' };
-  const beforeIsEmpty = !String(before.text || '').trim() && !String(before.html || '').replace(/<br\s*\/?>(\s*)/gi, '').trim();
+  const beforeParsed = parseMarkdownBlockSource(before.text || '');
+  const beforeIsEmpty = !String(beforeParsed.text || '').trim();
   const inserted = blocks.map(block => ({ ...block }));
   if (beforeIsEmpty) {
     const first = inserted.shift();
     Object.keys(current).forEach(key => delete current[key]);
     Object.assign(current, first, { id: current.id });
   } else {
-    current.text = before.text;
-    current.html = before.html;
+    applyMarkdownSourceToBlock(current.id, before.text);
   }
   const insertAt = loc.idx + 1;
   if (inserted.length) loc.blocks.splice(insertAt, 0, ...inserted);
-  if (String(after.text || '').trim() || String(after.html || '').trim()) {
-    loc.blocks.splice(insertAt + inserted.length, 0, {
-      id: generateId(), type: 'paragraph', text: after.text, html: after.html, color: null,
-    });
+  if (String(after.text || '').trim()) {
+    const trailing = { id: generateId(), type: 'paragraph', text: '', html: '', color: null };
+    loc.blocks.splice(insertAt + inserted.length, 0, trailing);
+    applyMarkdownSourceToBlock(trailing.id, after.text);
   }
   const focusTarget = inserted[inserted.length - 1]?.id || current.id;
   activeEditorBlockId = focusTarget;
@@ -3280,6 +3345,7 @@ function handleEditorPaste(event, container) {
   recordEditorHistory(container);
   const clipboard = event.clipboardData;
   if (!clipboard) return;
+  const plainText = clipboard.getData('text/plain') || '';
   const imageFiles = clipboardImageFiles(clipboard);
   if (imageFiles.length) {
     event.preventDefault();
@@ -3291,6 +3357,17 @@ function handleEditorPaste(event, container) {
     return;
   }
   const html = clipboard.getData('text/html');
+  // Markdownをコピーした場合は、貼り付け元が付けた簡易HTMLより明示された記号を優先する。
+  // これにより `## 見出し` や `- 箇条書き` が編集画面でもそのまま見える。
+  if (hasMarkdownBlockStructure(plainText)) {
+    const blocks = clipboardBlocksFromMarkdown(plainText);
+    if (blocks.length) {
+      event.preventDefault();
+      event.stopPropagation();
+      insertRichClipboardBlocks(editable.dataset.blockId, editable, blocks, container);
+      return;
+    }
+  }
   if (!html) return;
   const imageSources = clipboardImageSources(html);
   if (imageSources.length) {
@@ -3314,7 +3391,8 @@ function handleEditorPaste(event, container) {
     if (!safeHtml) return;
     event.preventDefault();
     event.stopPropagation();
-    document.execCommand?.('insertHTML', false, safeHtml);
+    // 貼り付け元の太字などをDOM装飾のまま入れず、編集画面で読めるMarkdownへ変換する。
+    insertMarkdownAtEditableSelection(editable, inlineHtmlToMarkdown(safeHtml));
     syncEditableBlock(editable.dataset.blockId, editable);
     return;
   }
@@ -3407,8 +3485,7 @@ function syncFocusedEditableBlock(container, blockId) {
   const el = container.querySelector(`.kn-block-focusable[data-block-id="${blockId}"]`);
   const block = findBlockInAllBlocks(edState.blocks, blockId);
   if (!el || !block || el.tagName === 'TEXTAREA') return;
-  block.text = el.textContent;
-  block.html = sanitizeBlockHtml(el.innerHTML);
+  applyMarkdownSourceToBlock(blockId, el.textContent);
 }
 
 /** `findBlockLocation`: 条件に合うブロック・Locationを探して返す。 */
@@ -3945,8 +4022,7 @@ function syncEditorDomToState(container) {
     if (el.tagName === 'TEXTAREA') {
       block.text = el.value;
     } else if (el.isContentEditable || el.contentEditable === 'true') {
-      block.text = el.textContent.replace(/\u200B/g, '');
-      block.html = sanitizeBlockHtml(el.innerHTML).replace(/\u200B/g, '');
+      applyMarkdownSourceToBlock(blockId, el.textContent.replace(/\u200B/g, ''));
     }
   });
 }
@@ -4173,10 +4249,133 @@ function cleanupPendingImageUploads() {
   if (paths.length) Promise.allSettled(paths.map(deletePlannerImage));
 }
 
-/** `getBlockEditorHtml`: ブロック・エディタ・HTMLを取得して呼び出し元へ返す。 */
-function getBlockEditorHtml(block) {
-  if (block.html) return sanitizeBlockHtml(block.html);
-  return esc(block.text || '');
+/**
+ * 保存済みの安全な行内HTMLを、編集画面で読めるMarkdownへ戻す。
+ * ブラウザーの装飾済みDOMを直接編集すると記号が見えないため、編集時だけ
+ * `strong`を`**`へ変換し、保存形式そのものは従来のブロック形式に保つ。
+ */
+function inlineHtmlToMarkdown(html) {
+  const template = document.createElement('template');
+  template.innerHTML = sanitizeBlockHtml(html);
+
+  /** 許可済みDOMをMarkdown文字列へ再帰的に変換する。 */
+  const visit = node => {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent || '';
+    if (node.nodeType !== Node.ELEMENT_NODE) return '';
+    const inner = [...node.childNodes].map(visit).join('');
+    const tag = node.tagName;
+    if (tag === 'BR') return '\n';
+    if (tag === 'DIV') return `${inner}\n`;
+    if (tag === 'B' || tag === 'STRONG') return `**${inner}**`;
+    if (tag === 'I' || tag === 'EM') return `*${inner}*`;
+    if (tag === 'S' || tag === 'STRIKE') return `~~${inner}~~`;
+    if (tag === 'CODE') return `\`${inner}\``;
+    if (tag === 'U') return `<u>${inner}</u>`;
+    if (tag === 'A') {
+      const href = node.getAttribute('href') || '';
+      return href ? `[${inner}](${href})` : inner;
+    }
+    if (tag === 'MARK') {
+      const style = node.getAttribute('style');
+      return style ? `<mark style="${style}">${inner}</mark>` : `==${inner}==`;
+    }
+    if (tag === 'SPAN' || tag === 'FONT') {
+      const color = node.style?.color || node.getAttribute('color') || '';
+      return color ? `<span style="color:${color}">${inner}</span>` : inner;
+    }
+    return inner;
+  };
+
+  return [...template.content.childNodes].map(visit).join('').replace(/\n+$/, '');
+}
+
+/**
+ * 編集中のMarkdownを閲覧用の安全な行内HTMLへ変換する。
+ * 下線・文字色・複数色マーカーは標準Markdownに表現がないため、Markdownで
+ * 許されるインラインHTMLを限定的に残し、最後に必ずsanitizeBlockHtmlを通す。
+ */
+function markdownToInlineHtml(markdown) {
+  const rawTags = [];
+  /** 許可候補のインラインHTMLを、Markdown解析中だけ衝突しない一時記号へ退避する。 */
+  const rawTagToken = value => {
+    const index = rawTags.push(value) - 1;
+    return `\uE100${index}\uE101`;
+  };
+  let source = String(markdown || '').replace(
+    /<\/?(?:u|mark|span)(?:\s+style\s*=\s*"[^"]*")?\s*>/gi,
+    rawTagToken,
+  );
+  const codeTokens = [];
+  source = source.replace(/`([^`\n]+)`/g, (_match, code) => {
+    const index = codeTokens.push(`<code class="kn-inline-code">${esc(code)}</code>`) - 1;
+    return `\uE200${index}\uE201`;
+  });
+  source = esc(source)
+    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener" class="kn-inline-link">$1</a>')
+    .replace(/\*\*\*([^*\n]+)\*\*\*/g, '<strong><em>$1</em></strong>')
+    .replace(/___([^_\n]+)___/g, '<strong><em>$1</em></strong>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/__([^_\n]+)__/g, '<strong>$1</strong>')
+    .replace(/~~([^~\n]+)~~/g, '<s>$1</s>')
+    .replace(/==([^=\n]+)==/g, '<mark>$1</mark>')
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
+    .replace(/(^|[^_])_([^_\n]+)_/g, '$1<em>$2</em>')
+    .replace(/\r?\n/g, '<br>')
+    .replace(/\uE200(\d+)\uE201/g, (_match, index) => codeTokens[Number(index)] || '')
+    .replace(/\uE100(\d+)\uE101/g, (_match, index) => rawTags[Number(index)] || '');
+  return sanitizeBlockHtml(source);
+}
+
+/** 保存済みブロックを、行頭記号を含む編集用Markdownへ変換する。 */
+function getBlockEditorMarkdown(block, listNumber = 1) {
+  const inline = block.html ? inlineHtmlToMarkdown(block.html) : String(block.text || '');
+  if (block.type === 'divider') return '---';
+  return `${markdownPrefixForBlock(block, listNumber)}${inline}`;
+}
+
+/** 編集用MarkdownをHTMLとして解釈せず、そのまま画面へ安全に表示する。 */
+function getBlockEditorHtml(block, listNumber = 1) {
+  return esc(getBlockEditorMarkdown(block, listNumber));
+}
+
+/**
+ * 一つの編集ブロックのMarkdownを既存データモデルへ戻す。
+ * type/text/htmlを同時に更新し、閲覧画面と同期処理には従来どおりの形を渡す。
+ */
+function applyMarkdownSourceToBlock(blockId, source) {
+  const loc = findBlockLocation(blockId);
+  const block = loc?.blocks[loc.idx];
+  if (!block || !loc) return null;
+  const previousType = block.type;
+  const parsed = parseMarkdownBlockSource(source);
+
+  if (previousType === 'toggle' && parsed.type !== 'toggle' && block.children?.length) {
+    loc.blocks.splice(loc.idx + 1, 0, ...block.children);
+  }
+  block.type = parsed.type;
+  if (parsed.type === 'toggle') {
+    block.children = block.children || [];
+    block.collapsed = block.collapsed ?? block.children.length === 0;
+  } else {
+    delete block.children;
+    delete block.collapsed;
+  }
+  if (parsed.type === 'checklist') block.checked = parsed.checked;
+  else delete block.checked;
+
+  if (parsed.type === 'divider') {
+    block.text = '';
+    block.html = '';
+    return parsed;
+  }
+
+  const richHtml = markdownToInlineHtml(parsed.text);
+  const holder = document.createElement('div');
+  holder.innerHTML = richHtml.replace(/<br\s*\/?\s*>/gi, '\n');
+  block.text = holder.textContent || '';
+  block.html = richHtml;
+  return parsed;
 }
 
 /** `sanitizeBlockHtml`: ブロック・HTMLを後続処理で扱える安全な形にそろえる。 */

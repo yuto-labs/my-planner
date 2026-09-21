@@ -64,3 +64,50 @@ export function completedInlineMarkdown(text) {
   }
   return null;
 }
+
+/**
+ * 保存済みのブロック種別を、編集画面で見せるMarkdownの行頭記号へ変換する。
+ * 閲覧用データへ記号を混ぜず、編集時だけ表現を変えることで既存メモとの互換性を保つ。
+ */
+export function markdownPrefixForBlock(block, listNumber = 1) {
+  const type = block?.type || 'paragraph';
+  if (/^h[1-6]$/.test(type)) return `${'#'.repeat(Number(type.slice(1)))} `;
+  if (type === 'bullet') return '- ';
+  if (type === 'numbered') return `${Math.max(1, Number(listNumber) || 1)}. `;
+  if (type === 'checklist') return `- [${block?.checked ? 'x' : ' '}] `;
+  if (type === 'quote') return '> ';
+  if (type === 'toggle') return '>> ';
+  return '';
+}
+
+/**
+ * 編集画面の一行をブロック種別と本文へ戻す。
+ * 行頭記号がなければ段落として扱うため、`##`を消せば通常本文へ戻せる。
+ */
+export function parseMarkdownBlockSource(source) {
+  const value = String(source || '').replace(/\u200B/g, '');
+  if (value.trim() === '---') return { type: 'divider', text: '', checked: false };
+  const heading = value.match(/^(#{1,6})[ \t]+([\s\S]*)$/);
+  if (heading) return { type: `h${heading[1].length}`, text: heading[2], checked: false };
+  const checklist = value.match(/^-\s+\[([ xX])\]\s*([\s\S]*)$/);
+  if (checklist) return { type: 'checklist', text: checklist[2], checked: checklist[1].toLowerCase() === 'x' };
+  const numbered = value.match(/^\d+\.\s+([\s\S]*)$/);
+  if (numbered) return { type: 'numbered', text: numbered[1], checked: false };
+  const toggle = value.match(/^>>\s+([\s\S]*)$/);
+  if (toggle) return { type: 'toggle', text: toggle[1], checked: false };
+  const quote = value.match(/^>\s+([\s\S]*)$/);
+  if (quote) return { type: 'quote', text: quote[1], checked: false };
+  const bullet = value.match(/^[-*+]\s+([\s\S]*)$/);
+  if (bullet) return { type: 'bullet', text: bullet[1], checked: false };
+  return { type: 'paragraph', text: value, checked: false };
+}
+
+/** ツールバーの行内装飾を、編集画面へ挿入するMarkdown記号へ対応付ける。 */
+export function markdownDelimitersForCommand(command) {
+  return {
+    bold: ['**', '**'],
+    italic: ['*', '*'],
+    underline: ['<u>', '</u>'],
+    strikeThrough: ['~~', '~~'],
+  }[command] || null;
+}

@@ -3,7 +3,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { markdownBlockType, markdownBlockShortcut, completedInlineMarkdown } from '../js/markdown-shortcuts.js';
+import {
+  markdownBlockType,
+  markdownBlockShortcut,
+  completedInlineMarkdown,
+  markdownPrefixForBlock,
+  parseMarkdownBlockSource,
+  markdownDelimitersForCommand,
+} from '../js/markdown-shortcuts.js';
 import { renderBlocksView, renderMemoCardPreview } from '../js/modules/knowledge.js';
 import { normalizeMemoBlockIds } from '../js/storage.js';
 
@@ -61,6 +68,26 @@ test('completed inline markers identify formatting without changing ordinary tex
     prefix: 'see ', text: 'https://openai.com/docs', tag: 'a', href: 'https://openai.com/docs',
   });
   assert.equal(completedInlineMarkdown('[unsafe](javascript:alert(1))'), null);
+});
+
+test('saved block types are represented as visible Markdown while editing', () => {
+  assert.equal(markdownPrefixForBlock({ type: 'h2' }), '## ');
+  assert.equal(markdownPrefixForBlock({ type: 'checklist', checked: true }), '- [x] ');
+  assert.equal(markdownPrefixForBlock({ type: 'numbered' }, 3), '3. ');
+  assert.equal(markdownPrefixForBlock({ type: 'toggle' }), '>> ');
+});
+
+test('editing Markdown prefixes changes the block type without storing the marker in its text', () => {
+  assert.deepEqual(parseMarkdownBlockSource('### 見出し'), { type: 'h3', text: '見出し', checked: false });
+  assert.deepEqual(parseMarkdownBlockSource('- [x] 完了'), { type: 'checklist', text: '完了', checked: true });
+  assert.deepEqual(parseMarkdownBlockSource('12. 項目'), { type: 'numbered', text: '項目', checked: false });
+  assert.deepEqual(parseMarkdownBlockSource('記号を消した本文'), { type: 'paragraph', text: '記号を消した本文', checked: false });
+});
+
+test('toolbar formatting inserts source markers instead of hidden rich HTML', () => {
+  assert.deepEqual(markdownDelimitersForCommand('bold'), ['**', '**']);
+  assert.deepEqual(markdownDelimitersForCommand('underline'), ['<u>', '</u>']);
+  assert.equal(markdownDelimitersForCommand('unknown'), null);
 });
 
 test('new memo block data renders safely without rewriting existing blocks', () => {

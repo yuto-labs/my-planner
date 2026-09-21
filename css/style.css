@@ -3494,6 +3494,31 @@ button { cursor: pointer; font-family: inherit; }
 }
 
 /* Compact editor controls and tables keep the writing surface primary. */
+.kn-edit-page .kn-block-text {
+  /* 編集中は完成後の見た目ではなくMarkdownソースを読むため、種類ごとの装飾を統一する。 */
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", "Yu Gothic UI", monospace;
+  font-size: 14px;
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1.65;
+  letter-spacing: 0;
+}
+.kn-edit-page :is(.kn-block--h1, .kn-block--h2, .kn-block--h3, .kn-block--h4, .kn-block--h5, .kn-block--h6) .kn-block-text {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.65;
+}
+.kn-edit-page .kn-block--quote .kn-block-text {
+  border-left: 0;
+  padding-left: 0;
+  color: var(--text);
+  font-style: normal;
+}
+.kn-edit-page .kn-block--divider {
+  min-height: 30px;
+  padding-block: 1px;
+  cursor: text;
+}
 .kn-toolbar-type-select {
   width: 96px;
   font-size: 11px;
