@@ -53,7 +53,9 @@ JavaScriptやHTMLを初めて読む場合は、まず [`docs/README.md`](docs/RE
 
 - [`docs/start-here.md`](docs/start-here.md) - VS Code、起動、最初の読み方
 - [`docs/html-css-basics.md`](docs/html-css-basics.md) - HTMLとCSSの基礎
+- [`docs/javascript-first-course.md`](docs/javascript-first-course.md) - 初めてコードを読む人向けの文法・関数講座
 - [`docs/javascript-basics.md`](docs/javascript-basics.md) - このアプリで使うJavaScript
+- [`docs/javascript-browser-apis.md`](docs/javascript-browser-apis.md) - DOM、イベント、通信、保存、画像処理
 - [`docs/first-walkthrough.md`](docs/first-walkthrough.md) - 起動処理を実コードで追う
 - [`docs/architecture.md`](docs/architecture.md) - 全体設計
 - [`docs/data-and-sync.md`](docs/data-and-sync.md) - 保存と同期の安全設計

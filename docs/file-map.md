@@ -77,7 +77,9 @@
 - `start-here.md`: VS Codeと最初の操作
 - `html-css-basics.md`: HTML/CSSの基礎
 - `css-reading-guide.md`: 長いCSSから対象規則を探す方法
+- `javascript-first-course.md`: 完全な初学者向けの文法・関数講座
 - `javascript-basics.md`: JavaScriptの基礎
+- `javascript-browser-apis.md`: DOM、イベント、通信、端末保存、画像処理
 - `first-walkthrough.md`: 起動処理の実コード追跡
 - `feature-walkthroughs.md`: 機能をファイル横断で追う練習
 - `architecture.md`: 全体構造
