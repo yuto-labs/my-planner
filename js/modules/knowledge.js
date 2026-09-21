@@ -1743,7 +1743,7 @@ function renderEditMode(container, { preserveHistory = false } = {}) {
   crossBlockSelectionMode = false;
 
   container.innerHTML = `
-    <div class="kn-edit-page">
+    <div class="kn-edit-page" tabindex="-1">
       <!-- Top action bar -->
       <div class="kn-edit-topbar">
         <button class="btn btn-ghost btn-sm" id="kn-cancel-btn">${id ? 'キャンセル' : '一覧へ'}</button>
@@ -1885,13 +1885,48 @@ function renderEditMode(container, { preserveHistory = false } = {}) {
   editPage?.addEventListener('keydown', event => {
     if (event.isComposing || !(event.ctrlKey || event.metaKey)) return;
     const key = event.key.toLowerCase();
-    if (key === 'z') {
+    if (key === 'a') {
+      const editable = event.target?.closest?.('.kn-block-text[contenteditable="true"]');
+      // 1回目は一般的なエディタと同じく現在ブロックだけを選ぶ。
+      // そのブロック全体が選択済みなら、2回目でメモ本文全体へ範囲を広げる。
+      if (crossBlockSelectionMode || (editable && selectionCoversEditable(editable))) {
+        event.preventDefault();
+        selectAllMemoBlocks(container);
+      }
+    } else if (key === 'z') {
       event.preventDefault();
       restoreEditorHistory(container, event.shiftKey ? 'redo' : 'undo');
     } else if (key === 'y') {
       event.preventDefault();
       restoreEditorHistory(container, 'redo');
     }
+  });
+  editPage?.addEventListener('copy', event => copyWholeMemoSelection(event));
+  editPage?.addEventListener('cut', event => {
+    if (!crossBlockSelectionMode || !copyWholeMemoSelection(event)) return;
+    recordEditorHistory(container);
+    edState.blocks = [defaultBlock()];
+    activeEditorBlockId = edState.blocks[0].id;
+    setCrossBlockSelectionMode(container, false);
+    rerenderBlocks(container);
+    focusBlock(activeEditorBlockId, container);
+  });
+  editPage?.addEventListener('keydown', event => {
+    if (!crossBlockSelectionMode) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setCrossBlockSelectionMode(container, false);
+      focusBlock(activeEditorBlockId || edState.blocks[0]?.id, container, true);
+      return;
+    }
+    if (event.key !== 'Backspace' && event.key !== 'Delete') return;
+    event.preventDefault();
+    recordEditorHistory(container);
+    edState.blocks = [defaultBlock()];
+    activeEditorBlockId = edState.blocks[0].id;
+    setCrossBlockSelectionMode(container, false);
+    rerenderBlocks(container);
+    focusBlock(activeEditorBlockId, container);
   });
   editPage?.addEventListener('beforeinput', event => {
     if (event.target?.closest?.('#kn-blocks-wrap, #kn-edit-title, #kn-tag-input')) {
@@ -2087,6 +2122,33 @@ function renderBlockTypeOptions(currentType) {
     .join('');
 }
 
+/**
+ * contenteditable内のMarkdownを、`br`やブラウザー生成の`div`改行を失わずに読む。
+ * textContentだけでは改行要素が空文字になるため、先頭行を削除した直後などに
+ * DOMと保存値が食い違い、消した行が復活する原因になる。
+ */
+function readEditableMarkdownSource(editable) {
+  if (!editable) return '';
+  const blockTags = new Set(['DIV', 'P']);
+  /** 編集DOMをMarkdownの生文字列へ戻す。 */
+  const visit = (node, isRoot = false) => {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent || '';
+    if (node.nodeType !== Node.ELEMENT_NODE) return '';
+    if (node.tagName === 'BR') return '\n';
+    let value = [...node.childNodes].map(child => visit(child)).join('');
+    if (!isRoot && blockTags.has(node.tagName) && node.nextSibling && !value.endsWith('\n')) {
+      value += '\n';
+    }
+    return value;
+  };
+  const source = visit(editable, true)
+    .replace(/\u200B/g, '')
+    .replace(/\u00A0/g, ' ')
+    .replace(/\r\n?/g, '\n');
+  // An empty contenteditable is often represented as only one or more <br> nodes.
+  return source.replace(/\n/g, '') === '' ? '' : source;
+}
+
 /** `caretIsAtEditableEnd`: caret・Is・位置・Editable・終了に関する補助処理を行い、結果を呼び出し元へ返す。 */
 function caretIsAtEditableEnd(editable) {
   const selection = window.getSelection();
@@ -2106,7 +2168,7 @@ function convertMarkdownBlockShortcut(editable, container, afterSpace = false) {
   const blockId = editable.dataset.blockId;
   const block = findBlockInAllBlocks(edState.blocks, blockId);
   if (!block || !['paragraph', 'bullet'].includes(block.type)) return false;
-  const text = editable.textContent.replace(/\u200B/g, '');
+  const text = readEditableMarkdownSource(editable);
   if (afterSpace && !text.endsWith(' ')) return false;
   const shortcut = markdownBlockShortcut(afterSpace ? text.slice(0, -1) : text);
   if (!shortcut) return false;
@@ -2221,7 +2283,7 @@ function wireBlocksEdit(container) {
     } else if (el.contentEditable === 'true') {
       const block = findBlockInAllBlocks(edState.blocks, blockId);
       if (block) {
-        const parsed = applyMarkdownSourceToBlock(blockId, el.textContent);
+        const parsed = applyMarkdownSourceToBlock(blockId, readEditableMarkdownSource(el));
         if (parsed) highlightToolbarType(container, parsed.type);
         if (!editorCompositionActive && e.inputType === 'insertText') {
           if (e.data === ' ' && convertMarkdownBlockShortcut(el, container, true)) return;
@@ -2635,7 +2697,7 @@ function handleBlockKeydown(e, blockId, container) {
   if (e.key === 'Backspace') {
     const el = e.target;
     const loc = findBlockLocation(blockId);
-    const editableText = parseMarkdownBlockSource(el.textContent || '').text;
+    const editableText = parseMarkdownBlockSource(readEditableMarkdownSource(el)).text;
     if (editableText === '' && loc && (loc.parent || edState.blocks.length > 1)) {
       e.preventDefault();
       recordEditorHistory(container);
@@ -2693,7 +2755,7 @@ function splitEditableAtCaret(editable) {
   const extract = range => {
     const holder = document.createElement('div');
     holder.appendChild(range.cloneContents());
-    const text = holder.textContent.replace(/\u200B/g, '');
+    const text = readEditableMarkdownSource(holder);
     return {
       text,
       // 編集DOMはMarkdownの生文字列なので、DOM装飾を保存用HTMLと誤認しない。
@@ -2763,7 +2825,7 @@ function insertBlockLineBreak(editable) {
 
 /** `syncEditableBlock`: Editable・ブロックを現在状態へ反映し、必要な表示を更新する。 */
 function syncEditableBlock(blockId, editable) {
-  applyMarkdownSourceToBlock(blockId, editable.textContent.replace(/\u200B/g, ''));
+  applyMarkdownSourceToBlock(blockId, readEditableMarkdownSource(editable));
 }
 
 /**
@@ -2893,7 +2955,6 @@ function wireToolbar(container) {
       focusEditableWithoutScroll(active);
     });
   });
-
   // Color picker toggle
   const colorBtn = container.querySelector('#kn-color-btn');
   colorBtn?.addEventListener('mousedown', e => e.preventDefault());
@@ -2994,6 +3055,65 @@ function wireToolbar(container) {
       container.querySelector('#kn-color-picker')?.classList.add('hidden');
     });
   });
+}
+
+/** 現在の選択範囲が、一つの編集ブロックのMarkdown全体を覆っているか判定する。 */
+function selectionCoversEditable(editable) {
+  const selection = window.getSelection();
+  if (!editable || !selection?.rangeCount || selection.isCollapsed) return false;
+  if (!editable.contains(selection.anchorNode) || !editable.contains(selection.focusNode)) return false;
+  const selected = selection.toString().replace(/\u200B/g, '').replace(/\r\n?/g, '\n');
+  const source = readEditableMarkdownSource(editable);
+  return source.length > 0 && selected === source;
+}
+
+/** メモの保存ブロックを、全体コピー用のMarkdown文字列へ直列化する。 */
+function memoBlocksToMarkdownSource(blocks, depth = 0) {
+  const lines = [];
+  let listNumber = 0;
+  for (const block of blocks || []) {
+    listNumber = block.type === 'numbered' ? listNumber + 1 : 0;
+    let source = '';
+    if (block.type === 'image') source = `![${block.caption || block.alt || '画像'}]`;
+    else if (block.type === 'math') source = `$$\n${block.text || ''}\n$$`;
+    else if (block.type === 'codeblock') source = `\`\`\`${block.language || ''}\n${block.text || ''}\n\`\`\``;
+    else if (block.type === 'table') {
+      const table = normalizeTableData(block);
+      source = [
+        `| ${table.headers.join(' | ')} |`,
+        `| ${table.headers.map(() => '---').join(' | ')} |`,
+        ...table.rows.map(row => `| ${row.join(' | ')} |`),
+      ].join('\n');
+    } else source = getBlockEditorMarkdown(block, listNumber || 1);
+
+    const indent = '  '.repeat(depth);
+    lines.push(source.split('\n').map(line => `${indent}${line}`).join('\n'));
+    if (block.children?.length) lines.push(memoBlocksToMarkdownSource(block.children, depth + 1));
+  }
+  return lines.filter(Boolean).join('\n');
+}
+
+/** Ctrl/Cmd+Aを続けて押したとき、編集本文の全ブロックを一つの範囲として選択する。 */
+function selectAllMemoBlocks(container) {
+  const wrap = container.querySelector('#kn-blocks-wrap');
+  const editPage = container.querySelector('.kn-edit-page');
+  if (!wrap || !editPage) return false;
+  setCrossBlockSelectionMode(container, true);
+  editPage.focus({ preventScroll: true });
+  const selection = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(wrap);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  return true;
+}
+
+/** 全体選択中のコピーでは、操作ボタンを混ぜず本文Markdownだけをクリップボードへ渡す。 */
+function copyWholeMemoSelection(event) {
+  if (!crossBlockSelectionMode || !event.clipboardData) return false;
+  event.preventDefault();
+  event.clipboardData.setData('text/plain', memoBlocksToMarkdownSource(edState.blocks));
+  return true;
 }
 
 /** `setCrossBlockSelectionMode`: Cross・ブロック・選択範囲・Modeを保存先または一時状態へ反映する。 */
@@ -3485,7 +3605,7 @@ function syncFocusedEditableBlock(container, blockId) {
   const el = container.querySelector(`.kn-block-focusable[data-block-id="${blockId}"]`);
   const block = findBlockInAllBlocks(edState.blocks, blockId);
   if (!el || !block || el.tagName === 'TEXTAREA') return;
-  applyMarkdownSourceToBlock(blockId, el.textContent);
+  applyMarkdownSourceToBlock(blockId, readEditableMarkdownSource(el));
 }
 
 /** `findBlockLocation`: 条件に合うブロック・Locationを探して返す。 */
@@ -4022,7 +4142,7 @@ function syncEditorDomToState(container) {
     if (el.tagName === 'TEXTAREA') {
       block.text = el.value;
     } else if (el.isContentEditable || el.contentEditable === 'true') {
-      applyMarkdownSourceToBlock(blockId, el.textContent.replace(/\u200B/g, ''));
+      applyMarkdownSourceToBlock(blockId, readEditableMarkdownSource(el));
     }
   });
 }

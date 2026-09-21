@@ -3316,6 +3316,7 @@ button { cursor: pointer; font-family: inherit; }
 
 /* Blocks wrapper */
 .kn-blocks-wrap { padding: 6px 12px; display: flex; flex-direction: column; gap: 0; min-width: 0; overflow-x: clip; }
+.kn-edit-page:focus { outline: none; }
 
 /* Individual block */
 .kn-block {
