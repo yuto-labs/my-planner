@@ -28,7 +28,7 @@ test('installed tablet app supports both orientations', () => {
 });
 
 test('responsive stylesheet loads after the established design stylesheet', () => {
-  const baseIndex = indexHtml.indexOf('css/style.css?v=292');
+  const baseIndex = indexHtml.indexOf('css/style.css?v=293');
   const responsiveIndex = indexHtml.indexOf('css/responsive.css?v=4');
 
   assert.ok(baseIndex >= 0);
@@ -76,6 +76,6 @@ test('responsive stylesheet has balanced blocks', () => {
 test('narrow Atlas and Knowledge controls keep their labels readable', () => {
   assert.match(styleCss, /#app\[data-view="expression-atlas"\] #page-title/);
   assert.match(styleCss, /\.learning-question-actions \.btn[\s\S]*?white-space:\s*nowrap/);
-  assert.match(indexHtml, /css\/style\.css\?v=292/);
-  assert.match(serviceWorker, /css\/style\.css\?v=292/);
+  assert.match(indexHtml, /css\/style\.css\?v=293/);
+  assert.match(serviceWorker, /css\/style\.css\?v=293/);
 });

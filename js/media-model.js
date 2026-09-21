@@ -43,3 +43,9 @@ export function escapeMediaHtml(value) {
 export function escapeMediaAttribute(value) {
   return escapeMediaHtml(value).replaceAll('\n', ' ');
 }
+
+/** 読み込み済みのサムネイルだけを、拡大表示の即時表示URLとして再利用する。 */
+export function hydratedMediaSource(image) {
+  if (!image || image?.dataset?.mediaLoaded !== '1' || Number(image.naturalWidth) <= 0) return '';
+  return String(image.currentSrc || image.src || '').trim();
+}

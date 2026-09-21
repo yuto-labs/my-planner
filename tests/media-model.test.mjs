@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {
   escapeMediaAttribute,
   escapeMediaHtml,
+  hydratedMediaSource,
   isOwnedMediaPath,
   sanitizeMediaKind,
   scaledImageDimensions,
@@ -33,4 +34,23 @@ test('allows deletion only below the signed-in user folder', () => {
 test('escapes viewer captions and removes newlines from attributes', () => {
   assert.equal(escapeMediaHtml('<b>"photo" & note</b>'), '&lt;b&gt;&quot;photo&quot; &amp; note&lt;/b&gt;');
   assert.equal(escapeMediaAttribute('line 1\nline 2'), 'line 1 line 2');
+});
+
+test('reuses only a fully hydrated thumbnail source for the image viewer', () => {
+  assert.equal(hydratedMediaSource({
+    dataset: { mediaLoaded: '1' },
+    naturalWidth: 640,
+    currentSrc: 'blob:ready-image',
+    src: 'https://example.test/fallback.jpg',
+  }), 'blob:ready-image');
+  assert.equal(hydratedMediaSource({
+    dataset: { mediaLoaded: 'loading' },
+    naturalWidth: 0,
+    src: 'https://example.test/current-page',
+  }), '');
+  assert.equal(hydratedMediaSource({
+    dataset: { mediaLoaded: 'error' },
+    naturalWidth: 0,
+    src: 'https://example.test/expired.jpg',
+  }), '');
 });

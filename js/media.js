@@ -11,6 +11,7 @@ import { generateId } from './utils.js';
 import {
   escapeMediaAttribute,
   escapeMediaHtml,
+  hydratedMediaSource,
   isOwnedMediaPath,
   sanitizeMediaKind,
   scaledImageDimensions,
@@ -165,7 +166,8 @@ export function wirePlannerImageViewer(root) {
     if (!image || !root.contains(image)) return false;
     openPlannerImageViewer({
       path: image.dataset.mediaPath,
-      src: image.currentSrc || image.src,
+      // 読み込み途中のimg.srcは現在ページのURLになる場合があるため再利用しない。
+      src: hydratedMediaSource(image),
       alt: image.alt,
       caption: image.dataset.mediaCaption,
       trigger: image,
@@ -249,14 +251,18 @@ export async function openPlannerImageViewer({
   // A hydrated image already has a valid signed/blob URL. Reusing it makes
   // the viewer open immediately on mobile and avoids a second network lookup.
   const reveal = () => {
+    if (closed) return;
     clearTimeout(loadTimer);
+    loadTimer = null;
     viewer.classList.remove('media-lightbox--loading');
     viewer.classList.remove('media-lightbox--error');
     requestAnimationFrame(() => viewer.classList.add('media-lightbox--open'));
   };
   /** `fail`: 非同期処理を失敗として終了し、呼び出し元へエラーを返す。 */
   const fail = () => {
+    if (closed) return;
     clearTimeout(loadTimer);
+    loadTimer = null;
     viewer.classList.remove('media-lightbox--loading');
     viewer.classList.add('media-lightbox--error');
   };
@@ -278,8 +284,11 @@ export async function openPlannerImageViewer({
     viewer.classList.add('media-lightbox--loading');
     viewer.classList.remove('media-lightbox--error', 'media-lightbox--open');
     image.onload = () => { if (attempt === loadAttempt) reveal(); };
-    image.onerror = async () => {
+    /** 失効URLや通信失敗時は、保存パスから一度だけ新しいURLを取り直す。 */
+    const retryOrFail = async () => {
       if (attempt !== loadAttempt) return;
+      clearTimeout(loadTimer);
+      loadTimer = null;
       if (allowRefresh && path) {
         const fresh = await resolvePlannerImageUrl(path, {
           persistent: trigger?.dataset?.mediaPersist === '1',
@@ -288,13 +297,12 @@ export async function openPlannerImageViewer({
         if (attempt === loadAttempt) await loadSource(fresh, { allowRefresh: false });
       } else fail();
     };
+    image.onerror = retryOrFail;
+    // タイマーをsrc設定より先に用意し、同期的に読み込みが完了してもrevealで解除できるようにする。
+    clearTimeout(loadTimer);
+    loadTimer = setTimeout(retryOrFail, 12000);
     image.src = value;
     if (image.complete && image.naturalWidth > 0) reveal();
-    clearTimeout(loadTimer);
-    loadTimer = setTimeout(() => {
-      if (attempt !== loadAttempt) return;
-      image.onerror?.();
-    }, 12000);
   };
 
   image.setAttribute('role', 'button');

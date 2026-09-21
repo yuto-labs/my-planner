@@ -11559,6 +11559,9 @@ button.atlas-nuance-map-row:focus-visible {
 
 .media-lightbox img { display: block; max-width: 100%; max-height: calc(-108px + 100dvh); object-fit: contain; border-radius: var(--radius-sm); box-shadow: rgba(0, 0, 0, 0.45) 0px 18px 60px; opacity: 0; transform: scale(0.975); transition: opacity 160ms, transform 160ms; }
 
+/* この末尾側の画像基底ルールより後で、読込完了状態を必ず可視に戻す。 */
+.media-lightbox--open img { opacity: 1; transform: scale(1); }
+
 .media-lightbox-caption { max-width: min(760px, 100%); margin-top: 10px; color: rgb(245, 247, 250); font-size: 13px; line-height: 1.55; text-align: center; }
 
 .media-lightbox-close { position: fixed; z-index: 1; top: max(10px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid rgba(255, 255, 255, 0.38); border-radius: 50%; background: rgba(20, 24, 30, 0.82); color: rgb(255, 255, 255); font-size: 27px; line-height: 1; cursor: pointer; backdrop-filter: blur(8px); }
