@@ -858,14 +858,14 @@ function fieldVersion(data, field) {
   return timestampOrZero(data?.fieldUpdatedAt?.[field]);
 }
 
-/** `mergeLearningRecord`: 複数の学習・保存レコードを既存情報を失わないよう統合する。 */
+/** Knowledgeの題名・回答・分類等をフィールド更新時刻ごとに選び、端末間編集を一件へ統合する。 */
 function mergeLearningRecord(local, remote) {
   const localData = learningData(local);
   const remoteData = learningData(remote);
   if (!localData || !remoteData) return remote;
   const newerRecord = _syncVersion(local) > _syncVersion(remote) ? local : remote;
   const newerData = newerRecord === local ? localData : remoteData;
-  /** `pickFieldData`: 条件に合う項目・データを探して返す。 */
+  /** フィールド別更新時刻を比較し、ローカル・クラウドの新しい方の値を採用する。 */
   const pickFieldData = field => {
     const localVersion = fieldVersion(localData, field);
     const remoteVersion = fieldVersion(remoteData, field);
@@ -940,7 +940,7 @@ function atlasRecordData(record) {
     : null;
 }
 
-/** `mergeAtlasList`: 複数の表現帳・一覧を既存情報を失わないよう統合する。 */
+/** 同期中の配列フィールドを内容キーで重複排除し、両端末の追加を残す。 */
 function mergeAtlasList(left, right) {
   const seen = new Set();
   return [...(Array.isArray(left) ? left : []), ...(Array.isArray(right) ? right : [])]
@@ -952,7 +952,7 @@ function mergeAtlasList(left, right) {
     });
 }
 
-/** `mergeAtlasRecord`: 複数の表現帳・保存レコードを既存情報を失わないよう統合する。 */
+/** 同じ見出し語の語義・例文・コロケーションを統合し、片端末の追記を失わないレコードを作る。 */
 function mergeAtlasRecord(local, remote) {
   const localAtlas = atlasRecordData(local);
   const remoteAtlas = atlasRecordData(remote);
@@ -960,7 +960,7 @@ function mergeAtlasRecord(local, remote) {
   const newerRecord = _syncVersion(local) > _syncVersion(remote) ? local : remote;
   const newerData = newerRecord === local ? localAtlas.data : remoteAtlas.data;
   const contentField = localAtlas.block.type === 'expression-atlas-data' ? 'answer' : 'content';
-  /** `pickData`: 条件に合うデータを探して返す。 */
+  /** レコード全体の更新時刻を比較し、同時編集マージの基準となる新しい側を返す。 */
   const pickData = field => {
     const localVersion = fieldVersion(localAtlas.data, field);
     const remoteVersion = fieldVersion(remoteAtlas.data, field);
@@ -1241,7 +1241,7 @@ async function _executeDelete(scopedPayload, epoch = _syncEpoch) {
   }
 }
 
-/** `_deleteKey`: キーを安全に終了または削除する。 */
+/** 削除待ち記録をテーブルとIDまたは名前で一意に識別するキーを作る。 */
 function _deleteKey({ table, id, name }) {
   return `${table}:${id || name || ''}`;
 }
@@ -1314,7 +1314,7 @@ function _markPendingDelete(payload) {
   _savePendingDeletes(entries);
 }
 
-/** `_clearPendingDelete`: 保留中・削除を安全に終了または削除する。 */
+/** クラウド送信済みまたは取り消された一件を、削除待ち記録から取り除く。 */
 function _clearPendingDelete(payload) {
   const key = _deleteKey(payload);
   const entries = _getPendingDeletes().filter(entry => _deleteKey(entry) !== key);
@@ -1450,7 +1450,7 @@ function _reviewEntryVersion(entry) {
   return (_reviewEntryTs(entry) * 16) + stage + 1;
 }
 
-/** `reviewEntryToRow`: 復習・項目を行へ変換して返す。 */
+/** メモIDと復習段階・前回日・次回日をSupabase review_schedule行へ変換する。 */
 function reviewEntryToRow(memoId, entry, userId) {
   return {
     user_id: userId,
@@ -1489,7 +1489,7 @@ function _syncEntryToken(entry) {
   return `${entry?.table || ''}:${entry?.id || entry?.name || ''}:${entry?.version ?? 'legacy'}`;
 }
 
-/** `_clearSentUpserts`: 送信済み・更新記録を安全に終了または削除する。 */
+/** クラウド送信に成功したバージョンだけを直近更新保護リストから取り除く。 */
 function _clearSentUpserts(tableKey, sentEntries) {
   if (!LS_KEYS[tableKey] && tableKey !== 'tags') return;
   const sent = new Set((sentEntries || []).map(_syncEntryToken));
@@ -1499,18 +1499,18 @@ function _clearSentUpserts(tableKey, sentEntries) {
   _saveRecentUpserts(entries);
 }
 
-/** `_eventRemoteSnapshotKey`: 予定・クラウド側・退避データ・キーに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** ユーザー別の予定クラウドスナップショットを保存するlocalStorageキーを作る。 */
 function _eventRemoteSnapshotKey(userId) {
   return `mp_event_remote_snapshot_v${EVENT_REMOTE_SNAPSHOT_VERSION}:${userId}`;
 }
 
-/** `_remoteSnapshotKey`: クラウド側・退避データ・キーに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** コレクションとユーザー別の直前クラウド状態を保存するキーを作る。 */
 function _remoteSnapshotKey(collectionKey, userId) {
   if (collectionKey === 'events') return _eventRemoteSnapshotKey(userId);
   return `mp_sync_remote_snapshot_v${SYNC_SNAPSHOT_VERSION}:${collectionKey}:${userId}`;
 }
 
-/** `_remoteMissingStateKey`: クラウド側・不足・状態・キーに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** クラウドで見えない項目を即削除しないための確認状態を、種類・ユーザー別キーにする。 */
 function _remoteMissingStateKey(collectionKey, userId) {
   return `mp_sync_remote_missing_v${REMOTE_MISSING_STATE_VERSION}:${collectionKey}:${userId}`;
 }

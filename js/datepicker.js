@@ -84,7 +84,7 @@ function _close() {
   previouslyFocused = null;
 }
 
-/** `closePicker`: 選択画面を安全に終了または削除する。 */
+/** 開いている日付・時刻選択オーバーレイを閉じ、DOMから取り除く。 */
 export function closePicker() {
   _close();
 }
@@ -117,7 +117,7 @@ export function openDatePicker({ value, onConfirm, onClear }) {
   const popup = document.createElement('div');
   popup.className = 'dp-popup';
 
-  /** `render`: 現在の一時状態から、この画面部分のHTMLを描き直す。 */
+  /** 選択中年月から日付グリッドを作り、前後月移動と日付選択を結び直す。 */
   const render = () => {
     const firstDow    = new Date(viewYear, viewMonth, 1).getDay();
     const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
@@ -205,7 +205,7 @@ export function openTimePicker({ value, onConfirm, onClear }) {
   const popup = document.createElement('div');
   popup.className = 'dp-popup tp-popup';
 
-  /** `render`: 現在の一時状態から、この画面部分のHTMLを描き直す。 */
+  /** 選択中の時・分をドラム位置と表示ラベルへ反映し、確定可能な状態にする。 */
   const render = () => {
     popup.innerHTML = `
       <div class="dp-header-bar">
@@ -293,7 +293,7 @@ export function openDurationPicker({ value, onConfirm, onClear }) {
   const popup = document.createElement('div');
   popup.className = 'dp-popup tp-popup';
 
-  /** `render`: 現在の一時状態から、この画面部分のHTMLを描き直す。 */
+  /** 選択中の時間数・分数から所要時間候補と現在値を再描画する。 */
   const render = () => {
     popup.innerHTML = `
       <div class="dp-header-bar">

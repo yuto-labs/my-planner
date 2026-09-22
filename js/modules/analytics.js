@@ -15,7 +15,7 @@ import { esc, today } from '../utils.js';
 /** `toast`: 短い通知メッセージを画面へ表示する。 */
 const toast = (msg, type) => window.AppNav?.showToast(msg, type);
 const WEIGHT = { large: 3, medium: 2, small: 1 };
-/** `wt`: wtに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** タスクの大・中・小を分析計算用の重み3・2・1へ変換する。 */
 const wt = t => WEIGHT[t.weight] || 1;
 
 /* ---- Date helpers ---- */
@@ -60,7 +60,7 @@ function calcWeekScore() {
   };
 }
 
-/** `calcMonthlyTrend`: 月次・Trendに必要な数値を計算して返す。 */
+/** 月内のタスク作成・完了を日別に集計し、折れ線表示用の推移データを返す。 */
 function calcMonthlyTrend() {
   const tasks = allTasks();
   return Array.from({ length: 6 }, (_, i) => {
@@ -73,7 +73,7 @@ function calcMonthlyTrend() {
   });
 }
 
-/** `calcWeightCompletion`: Weight・完了予測に必要な数値を計算して返す。 */
+/** 大・中・小タスク別に総数と完了率を集計し、重さごとの実行状況を返す。 */
 function calcWeightCompletion() {
   const mb = monthBounds();
   const labels = { large: '大', medium: '中', small: '小' };
@@ -91,7 +91,7 @@ function calcWeightCompletion() {
   });
 }
 
-/** `calcPlanAccuracy`: 計画・Accuracyに必要な数値を計算して返す。 */
+/** 見積時間と実績時間のあるタスクを比較し、誤差率とサンプル数を返す。 */
 function calcPlanAccuracy(mode = 'week') {
   const tasks = allTasks().filter(t => t.dueDate);
   let filtered;
@@ -120,7 +120,7 @@ function calcFieldBalance() {
     .map(([tag, cnt]) => ({ tag, cnt, pct: Math.round(cnt / total * 100) }));
 }
 
-/** `calcReviewSpeed`: 復習・Speedに必要な数値を計算して返す。 */
+/** 復習履歴から一定期間内の実施数を数え、日ごとの復習ペースを返す。 */
 function calcReviewSpeed() {
   const log = getReviewLog();
   const weeks = Array.from({ length: 8 }, (_, i) => {
@@ -134,7 +134,7 @@ function calcReviewSpeed() {
   return { weeks, thisWeek, lastWeek, monthAvg };
 }
 
-/** `calcReviewByField`: 復習・項目に必要な数値を計算して返す。 */
+/** メモタグを分野として復習回数を集計し、分野別の偏りを返す。 */
 function calcReviewByField() {
   const log = getReviewLog();
   const mb = monthBounds();
@@ -148,7 +148,7 @@ function calcReviewByField() {
     .map(([tag, cnt]) => ({ tag, cnt, pct: Math.round(cnt / total * 100) }));
 }
 
-/** `calcReviewRate`: 復習・Rateに必要な数値を計算して返す。 */
+/** 復習予定総数に対する期限内実施数から、現在の復習実行率を計算する。 */
 function calcReviewRate() {
   const schedule = getReviewSchedule();
   const entries  = Object.values(schedule).filter(e => e.stage < MASTERY_STAGE);
@@ -159,7 +159,7 @@ function calcReviewRate() {
   return { rate: Math.round(done / entries.length * 100), done, total: entries.length };
 }
 
-/** `calcLearningStages`: 学習・Stagesに必要な数値を計算して返す。 */
+/** 復習段階ごとのメモ数を集計し、未確認から定着までの分布を返す。 */
 function calcLearningStages() {
   const memos = getKnowledgeMemos();
   const schedule = getReviewSchedule();
@@ -472,7 +472,7 @@ async function maybeGenerateSummary(container, currentMonth) {
   }
 }
 
-/** `appendSummarySection`: 受け取った情報から要約・セクションを作る。 */
+/** 値がある分析だけを、見出しと本文を持つサマリー欄として親要素へ追加する。 */
 function appendSummarySection(container, summary, monthStr) {
   const sec = document.createElement('div');
   sec.className = 'analytics-section';

@@ -202,7 +202,7 @@ export function initHome(container) {
   container.querySelector('#goto-review')?.addEventListener('click', () => nav('review'));
 
   container.querySelectorAll('[data-edit-schedule-id]').forEach(card => {
-    /** `openEditor`: エディタの画面・詳細・ダイアログを表示する。 */
+    /** カバー画像の位置調整・差替え・削除ができる編集ダイアログを開く。 */
     const openEditor = () => {
       const item = todayMySchedule.find(entry => entry.id === card.dataset.editScheduleId);
       if (!item) return;
@@ -283,7 +283,7 @@ function wireHomeCover(container, currentCover) {
     let startY = 0;
     let suppressNextClick = false;
     let suppressResetTimer = null;
-    /** `cancelPress`: Pressを安全に終了または削除する。 */
+    /** カバー画像の長押し判定タイマーを止め、通常タップとの競合を防ぐ。 */
     const cancelPress = () => {
       clearTimeout(pressTimer);
       pressTimer = null;
@@ -321,7 +321,7 @@ function wireHomeCover(container, currentCover) {
     });
   }
 
-  /** `handleFile`: ファイルに関する操作またはイベントを受けて処理する。 */
+  /** 選択・撮影した画像を圧縮保存し、ホームカバー設定と画面へ反映する。 */
   const handleFile = async event => {
     const file = event.target.files?.[0];
     event.target.value = '';
@@ -568,12 +568,12 @@ function renderScheduleItem(event) {
   `;
 }
 
-/** `compareHomeScheduleItems`: Home・スケジュール・Itemsを比較し、表示または処理順を決める。 */
+/** ホームの予定とMy Scheduleを開始時刻順、同時刻なら安定した種類順へ並べる。 */
 function compareHomeScheduleItems(a, b) {
   return homeScheduleStartMin(a) - homeScheduleStartMin(b);
 }
 
-/** `homeScheduleStartMin`: home・スケジュール・開始・分に関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** ホーム表示項目の開始時刻を0時からの分へ変換し、時刻なしは末尾へ送る。 */
 function homeScheduleStartMin(item) {
   if (item._homeType === 'mySchedule') return timeToMinutes(item.startTime) ?? 1440;
   if (item._isAllDay) return 0;

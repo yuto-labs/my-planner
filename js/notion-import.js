@@ -219,7 +219,7 @@ function block(type, text) {
   return { id: generateId(), type, text: text || '' };
 }
 
-/** `extractMetadata`: 入力を解析してメタデータを取り出す。 */
+/** Notion Markdown先頭のプロパティ行からタグ・親子関係を抽出し、本文と分離する。 */
 function extractMetadata(text) {
   const tags = [];
   let parentTitle = '';
@@ -292,7 +292,7 @@ function cleanInline(text) {
     .trim();
 }
 
-/** `extractMarkdownTitle`: 入力を解析してMarkdownの見出しを取り出す。 */
+/** Markdownで最初に現れるH1見出しをメモ題名として抽出する。 */
 function extractMarkdownTitle(text) {
   const line = String(text || '').split(/\r?\n/).find(l => /^#\s+/.test(l.trim()));
   return line ? cleanInline(line.replace(/^#\s+/, '')) : '';
@@ -304,7 +304,7 @@ function titleFromFile(name) {
   return base.replace(/\s+[0-9a-f]{32}$/i, '').trim();
 }
 
-/** `extractNotionId`: 入力を解析してNotion IDを取り出す。 */
+/** ファイル名やリンク末尾に含まれる32桁のNotionページIDを取り出す。 */
 function extractNotionId(name) {
   return findFirstId(name);
 }

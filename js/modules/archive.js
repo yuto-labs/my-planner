@@ -153,14 +153,14 @@ function renderTrashItem(item) {
   `;
 }
 
-/** `monthLabel`: 月・表示名に関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** YYYY-MMの保存キーを、アーカイブ見出し用の「YYYY年M月」へ変換する。 */
 function monthLabel(ym) {
   const [year, month] = String(ym || '').split('-');
   if (!year || !month) return 'Unknown';
   return `${year}年${parseInt(month, 10)}月`;
 }
 
-/** `formatDeletedAt`: 削除済み・位置を画面表示用の文字列へ整える。 */
+/** アーカイブ日時を月別履歴カードで読める短い日付表記へ変換する。 */
 function formatDeletedAt(iso) {
   if (!iso) return '';
   const day = formatDate(iso.slice(0, 10), 'short');

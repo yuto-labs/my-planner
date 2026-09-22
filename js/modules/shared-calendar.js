@@ -19,7 +19,7 @@ import { esc, formatDate, formatTime, getEventsForDate, today, toDateStr } from 
 
 /** `toast`: 短い通知メッセージを画面へ表示する。 */
 const toast = (msg, type) => window.AppNav?.showToast(msg, type);
-/** `openModal`: Modalの画面・詳細・ダイアログを表示する。 */
+/** 共有カレンダー設定用の共通モーダルを開き、本文とフッターを返す。 */
 const openModal = (opts) => window.AppNav?.openModal(opts);
 /** `nav`: 指定したハッシュ画面へ移動し、必要なら遷移元の状態を引き継ぐ。 */
 const nav = (view) => window.AppNav?.navigate(view);
@@ -54,7 +54,7 @@ export function initSharedCalendar(container) {
   };
 }
 
-/** `handleInviteFromUrl`: 招待・から・URLに関する操作またはイベントを受けて処理する。 */
+/** URL内の共有招待トークンを受諾し、未ログインなら保留保存して設定画面へ案内する。 */
 async function handleInviteFromUrl() {
   const url = new URL(window.location.href);
   const token = url.searchParams.get('shareInvite');
@@ -83,13 +83,13 @@ async function refresh() {
   return !state.error;
 }
 
-/** `moveMonth`: 移動・月に関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** 共有カレンダーの表示月を前後へ動かし、その月の予定を再描画する。 */
 function moveMonth(delta) {
   state.cursor = new Date(state.cursor.getFullYear(), state.cursor.getMonth() + delta, 1);
   render();
 }
 
-/** `render`: 現在の一時状態から、この画面部分のHTMLを描き直す。 */
+/** 選択グループ・表示月・取得状態から共有カレンダー画面全体を再描画する。 */
 function render() {
   const container = state.container;
   if (!container) return;
@@ -199,7 +199,7 @@ function renderChip(event) {
   `;
 }
 
-/** `openSharedCalendarSettings`: 共有・カレンダー・設定の画面・詳細・ダイアログを表示する。 */
+/** グループ作成・招待・一括共有・削除をまとめた共有設定画面を開く。 */
 export async function openSharedCalendarSettings() {
   state.groups = await loadSharedGroups().catch(() => state.groups || []);
 
@@ -379,7 +379,7 @@ export async function openSharedCalendarSettings() {
   });
 }
 
-/** `confirmBulkShare`: confirm・Bulk・共有に関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** 対象期間と公開範囲を確認し、既存の個人予定へ共有設定を一括適用する。 */
 function confirmBulkShare({ groupId, groupName, scope, visibility, count, parentClose }) {
   const body = document.createElement('div');
   const scopeLabel = scope === 'all' ? 'すべての予定' : '今日以降の予定';
@@ -412,7 +412,7 @@ function confirmBulkShare({ groupId, groupName, scope, visibility, count, parent
   };
 }
 
-/** `confirmDeleteGroup`: confirm・削除・グループに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** グループ削除を二段階確認し、成功後に選択状態と一覧を更新する。 */
 function confirmDeleteGroup(groupId, groupName, parentClose) {
   const body = document.createElement('div');
   body.innerHTML = `

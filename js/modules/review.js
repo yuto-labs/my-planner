@@ -29,13 +29,13 @@ export function initReview(container) {
   const queue = reviewSession.queueIds.map(getKnowledgeMemoById).filter(Boolean);
   reviewSession.idx = Math.min(reviewSession.idx, queue.length);
 
-  /** `exitReview`: exit・復習に関する補助処理を行い、結果を呼び出し元へ返す。 */
+  /** 復習セッションを終了し、呼び出し元のメモ一覧へ戻る。 */
   const exitReview = () => {
     reviewSession = null;
     nav('home');
   };
 
-  /** `render`: 現在の一時状態から、この画面部分のHTMLを描き直す。 */
+  /** 現在の復習位置と表裏状態から、空・問題・答え・完了のいずれかを描画する。 */
   function render() {
     if (queue.length === 0) {
       renderEmpty();
@@ -49,7 +49,7 @@ export function initReview(container) {
     else renderFront(queue[reviewSession.idx]);
   }
 
-  /** `header`: headerに関する補助処理を行い、結果を呼び出し元へ返す。 */
+  /** 現在位置と総件数を表示する復習セッション共通ヘッダーを返す。 */
   function header() {
     const pct = Math.round((reviewSession.idx / queue.length) * 100);
     return `

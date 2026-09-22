@@ -105,11 +105,11 @@ export function registerSyncHook(fn)       { _syncHook       = fn; }
 /** 削除後に呼ぶリモート削除処理を sync.js から登録する。 */
 export function registerSyncDeleteHook(fn) { _syncDeleteHook = fn; }
 
-/** `_notifySync`: Syncが変わったことを他の処理へ通知する。 */
+/** ローカル保存が変わったテーブル名を同期層へ通知し、クラウド送信を予約する。 */
 function _notifySync(tableKey) {
   if (_syncHook) _syncHook(tableKey);
 }
-/** `_notifyDelete`: 削除が変わったことを他の処理へ通知する。 */
+/** 削除対象の種類とIDを同期層へ通知し、他端末にも削除を伝えられるようにする。 */
 function _notifyDelete(payload) {
   if (_syncDeleteHook) _syncDeleteHook(payload);
 }
@@ -1009,7 +1009,7 @@ function expressionSenses(entry = {}) {
   return stored.length ? stored.map(atlasSenseFromEntry) : [atlasSenseFromEntry(entry)];
 }
 
-/** `mergeUniqueArray`: 複数のUnique・配列を既存情報を失わないよう統合する。 */
+/** 複数配列を安定した内容キーで重複排除し、最初に現れた順で一つへまとめる。 */
 function mergeUniqueArray(existing, incoming) {
   return mergeAtlasList(existing, incoming);
 }
@@ -1078,7 +1078,7 @@ function mergeExpressionEntry(existing, incoming) {
   };
 }
 
-/** `normalizedExpressionSourceQueries`: normalized・表現・入力元・Queriesに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** 表現項目の元質問と別名を正規化し、検索・再生成判定用の重複なし配列へまとめる。 */
 function normalizedExpressionSourceQueries(entry) {
   return new Set([
     entry?.sourceQueryJa,
@@ -1245,7 +1245,7 @@ function translationSetKey(set) {
   ].join('|');
 }
 
-/** `translationSetToRecord`: 英訳・Setを保存レコードへ変換して返す。 */
+/** 英訳セットへレコード種別と同期用メタデータを加え、共通Knowledge保存形式へ変換する。 */
 function translationSetToRecord(set, existing = null) {
   const now = new Date().toISOString();
   const id = set.id || existing?.id || generateId();
@@ -1434,13 +1434,13 @@ export function getKnowledgeMemos() {
  */
 export function normalizeMemoBlockIds(blocks, idFactory = generateId) {
   const seen = new Set();
-  /** `nextId`: next・IDに関する補助処理を行い、結果を呼び出し元へ返す。 */
+  /** 重複したブロックIDへ連番を加え、メモ内で一意になる新IDを作る。 */
   const nextId = () => {
     let id = String(idFactory() || '').trim();
     while (!id || seen.has(id)) id = String(idFactory() || '').trim();
     return id;
   };
-  /** `visit`: visitに関する補助処理を行い、結果を呼び出し元へ返す。 */
+  /** トグルの子を含む全ブロックを再帰走査し、重複IDだけを安全に差し替える。 */
   const visit = block => {
     const next = { ...(block || {}) };
     const originalId = String(next.id || '').trim();

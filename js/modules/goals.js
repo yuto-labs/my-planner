@@ -30,7 +30,7 @@ export function initGoals(container) {
   render();
 }
 
-/** `render`: 現在の一時状態から、この画面部分のHTMLを描き直す。 */
+/** 保存目標を状態別に並べ、追加フォーム・進捗・関連タスクを含む画面を再描画する。 */
 function render() {
   const { tab, container } = state;
 
@@ -173,7 +173,7 @@ function renderGoalItem(goal) {
   `;
 }
 
-/** `wireGoalActions`: 目標・Actionsの画面操作と処理をイベントで結び付ける。 */
+/** 目標カードの進捗更新、編集、削除、AIタスク分解を対応する処理へ接続する。 */
 function wireGoalActions(container) {
   container.querySelector('#goal-list')?.addEventListener('click', async (e) => {
     // Navigate to knowledge memo (no data-action required)
@@ -207,7 +207,7 @@ function wireGoalActions(container) {
   });
 }
 
-/** `promptDelete`: prompt・削除に関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** 目標削除の確認後、関連付けは保ったまま目標本体をごみ箱へ移す。 */
 async function promptDelete(goalId) {
   const goal = getGoals().find(g => g.id === goalId);
   return promptConfirm(
@@ -240,7 +240,7 @@ async function handleAISplit(goalId, itemEl) {
   }
 }
 
-/** `showAITaskModal`: AITask・Modalの画面・詳細・ダイアログを表示する。 */
+/** 目標をAIでタスク分解した候補を確認し、選択項目だけ保存する画面を開く。 */
 function showAITaskModal(goal, result) {
   const body = document.createElement('div');
 
@@ -484,7 +484,7 @@ function makeBtn(text, cls) {
   return btn;
 }
 
-/** `promptConfirm`: prompt・Confirmに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** 破壊的な目標操作の確認文を表示し、実行可否を真偽値で返す。 */
 function promptConfirm(message, opts = {}) {
   return new Promise(resolve => {
     const body = document.createElement('div');
@@ -500,7 +500,7 @@ function promptConfirm(message, opts = {}) {
   });
 }
 
-/** `openModalInline`: Modal・行内装飾の画面・詳細・ダイアログを表示する。 */
+/** 目標用の小さな確認ダイアログを作り、確定・キャンセル結果をPromiseで返す。 */
 function openModalInline(opts) {
   const overlay = document.getElementById('modal-overlay');
   if (!overlay) return () => {};
@@ -528,7 +528,7 @@ function openModalInline(opts) {
   }
 
   overlay.appendChild(modal);
-  /** `close`: 現在開いているモーダルまたはシートを閉じる。 */
+  /** 目標確認ダイアログを閉じ、Escape監視とDOMを片付ける。 */
   const close = () => { overlay.classList.add('hidden'); overlay.innerHTML = ''; };
   modal.querySelector('.modal-close').onclick = close;
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });

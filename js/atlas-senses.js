@@ -143,7 +143,7 @@ function fingerprintSupportsMatch(left, right) {
   return hasMeaningAnchor && signals >= 4;
 }
 
-/** `mergeAtlasList`: 複数の表現帳・一覧を既存情報を失わないよう統合する。 */
+/** 文字列・例文などの配列を正規化キーで重複排除し、既存順を保って新情報を追加する。 */
 export function mergeAtlasList(existing, incoming) {
   const seen = new Set();
   return [...(Array.isArray(existing) ? existing : []), ...(Array.isArray(incoming) ? incoming : [])]
@@ -161,7 +161,7 @@ function collocationKey(item) {
   return normalized(expression);
 }
 
-/** `mergeAtlasCollocations`: 複数の表現帳・よく一緒に使う語を既存情報を失わないよう統合する。 */
+/** 同じコロケーションを一件へまとめ、訳・例文・解説は情報量の多い内容へ更新する。 */
 function mergeAtlasCollocations(existing, incoming) {
   const merged = [];
   const indexes = new Map();
@@ -245,7 +245,7 @@ function preferRicherText(existing, incoming) {
   return next.length >= previous.length ? incoming : existing;
 }
 
-/** `mergeAtlasSense`: 複数の表現帳・意味を既存情報を失わないよう統合する。 */
+/** 同一語義の新旧解説をフィールド別に統合し、既存の詳しい説明を短い再生成で上書きしない。 */
 export function mergeAtlasSense(existing = {}, incoming = {}) {
   const merged = { ...existing };
   ATLAS_SENSE_FIELDS.forEach(field => {

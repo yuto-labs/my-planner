@@ -69,7 +69,7 @@ export function openLearningEntry(id, { remember = true } = {}) {
   }
 }
 
-/** `backFromLearningDetail`: back・から・学習・詳細に関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** Knowledge詳細を閉じ、直前の検索・分類・スクロール位置を保った一覧へ戻る。 */
 export function backFromLearningDetail() {
   const previous = detailHistory.pop();
   if (previous && getLearningEntryById(previous)) {
@@ -354,7 +354,7 @@ function renderTimeBrowse(entries) {
     if (!centuries.has(key)) centuries.set(key, { ...item.bucket, entries: [] });
     centuries.get(key).entries.push(item.entry);
   });
-  /** `sortTimeline`: 時代区分を比較し、表示または処理順を決める。 */
+  /** 紀元前を古い順、紀元後を新しい世紀順に並べるため時代バケットを比較する。 */
   const sortTimeline = (a, b) => {
     if (a[1].era !== b[1].era) return a[1].era === 'bce' ? -1 : 1;
     return a[1].era === 'bce'
@@ -742,7 +742,7 @@ function renderConceptChip(concept, conceptIndex, currentId) {
     data-concept-key="${esc(concept.key)}" data-concept-label="${esc(concept.label)}">${esc(concept.label)}</button>`;
 }
 
-/** `openConceptMatches`: Concept・一致候補の画面・詳細・ダイアログを表示する。 */
+/** 関連概念の解説が一件なら直接開き、複数なら候補を選ぶダイアログを出す。 */
 function openConceptMatches(index, concept, currentId) {
   const matches = findKnowledgeConceptMatches(index, concept).filter(entry => entry.id !== currentId);
   if (matches.length === 1) {
@@ -767,7 +767,7 @@ function openConceptMatches(index, concept, currentId) {
   });
 }
 
-/** `editTitle`: edit・タイトルに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** 保存済みKnowledgeの表示題名を編集し、本文や分類を変えずに保存する。 */
 function editTitle(container, entry) {
   const title = container.querySelector('#learning-detail-title');
   if (!title) return;
@@ -806,7 +806,7 @@ function editTitle(container, entry) {
   });
 }
 
-/** `formatEntryDate`: 項目・日付を画面表示用の文字列へ整える。 */
+/** Knowledgeの更新日時を一覧カード用の短いローカル日付へ変換する。 */
 function formatEntryDate(value) {
   if (!value) return '';
   const date = new Date(value);

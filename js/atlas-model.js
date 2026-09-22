@@ -333,7 +333,7 @@ export function isUsefulLinkedToken(value, entriesOrIndex = []) {
   return matches.length > 0 && (!FUNCTION_WORDS.has(token) || matches.some(entry => entry.linkFunctionWord));
 }
 
-/** `tokenizeEnglishForLinks`: 入力を解析してリンク候補となる英単語を取り出す。 */
+/** 英文を単語・句読点へ分け、保存済み解説へリンクできる英語トークンだけを順番に返す。 */
 export function tokenizeEnglishForLinks(text, entriesOrIndex = null) {
   const source = String(text || '');
   if (entriesOrIndex) {

@@ -462,7 +462,7 @@ function renderFiltersHTML() {
     : '');
 }
 
-/** `wireFilters`: Filtersの画面操作と処理をイベントで結び付ける。 */
+/** タスク状態・大きさの絞り込みと完了済み一括削除を一覧更新へ接続する。 */
 function wireFilters(container) {
   container.querySelectorAll('.filter-btn[data-filter]').forEach(btn =>
     btn.addEventListener('click', () => {
@@ -554,7 +554,7 @@ function renderCodexPlannerPanel() {
   `;
 }
 
-/** `wireCodexPlannerPanel`: Codex・Planner・Panelの画面操作と処理をイベントで結び付ける。 */
+/** AI再分配パネルの期間・活動時間・休憩・生成・適用操作を現在状態へ接続する。 */
 function wireCodexPlannerPanel(container) {
   const startDateBtn = container.querySelector('#codex-start-date-btn');
   const endDateBtn   = container.querySelector('#codex-end-date-btn');
@@ -602,7 +602,7 @@ function wireCodexPlannerPanel(container) {
   });
 }
 
-/** `openCodexTimePicker`: Codex・時刻・選択画面の画面・詳細・ダイアログを表示する。 */
+/** AI再分配条件の開始・終了・休憩時刻を選ぶ時刻ピッカーを開く。 */
 function openCodexTimePicker(key, btn, label, allowClear = false) {
   openTimePicker({
     value: state[key],
@@ -662,7 +662,7 @@ function buildCodexPayload() {
   };
 }
 
-/** `copyCodexPayload`: copy・Codex・内容に関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** AI再分配へ渡す計画条件JSONをクリップボードへコピーし、結果を通知する。 */
 async function copyCodexPayload(container) {
   const payload = buildCodexPayload();
   const text = JSON.stringify({
@@ -795,20 +795,20 @@ function isNormalTask(task) {
   return !task.taskType || task.taskType === 'normal';
 }
 
-/** `taskInPlanningPeriod`: タスク・In・計画・Periodに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** 締切なし、または締切が計画開始日から終了日の間にあるタスクか判定する。 */
 function taskInPlanningPeriod(task, startDate, endDate) {
   if (!task.dueDate) return true;
   return task.dueDate >= startDate && task.dueDate <= endDate;
 }
 
-/** `dateInPlanningPeriod`: 日付・In・計画・Periodに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** 日付文字列が現在設定中のAI計画期間内に含まれるか判定する。 */
 function dateInPlanningPeriod(dateStr) {
   const startDate = state.codexStartDate || today();
   const endDate = state.codexEndDate || startDate;
   return dateStr >= startDate && dateStr <= endDate;
 }
 
-/** `blockOutsidePlanningWindow`: ブロック・範囲外・計画・時間枠に関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** AI案の作業ブロックが対象日または活動可能時間帯の外へ出ていないか確認する。 */
 function blockOutsidePlanningWindow(block) {
   const startMin = clockTimeToMinutes(block.startTime);
   const endMin = clockTimeToMinutes(block.endTime);
@@ -820,14 +820,14 @@ function blockOutsidePlanningWindow(block) {
   return !dateInPlanningPeriod(block.date);
 }
 
-/** `blockOverlapsBreak`: ブロック・重複・休憩に関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** AI案の時間帯が、ユーザー指定の休憩時間のどれかと重なるか判定する。 */
 function blockOverlapsBreak(block) {
   const breaks = getCodexDailyBreaks();
   if (!breaks.length) return false;
   return breaks.some(b => timeRangesOverlap(block.startTime, block.endTime, b.start, b.end));
 }
 
-/** `blockOverlapsExistingSchedule`: ブロック・重複・既存の・スケジュールに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** AI案が、同日の既存My Schedule項目と時間重複するか判定する。 */
 function blockOverlapsExistingSchedule(block) {
   return getScheduleItems().some(item => {
     if (item.source === 'codex-plan') return false;
@@ -836,7 +836,7 @@ function blockOverlapsExistingSchedule(block) {
   });
 }
 
-/** `blockOverlapsCalendar`: ブロック・重複・カレンダーに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** AI案が、同日のカレンダー予定が実際に占める時間帯と重なるか判定する。 */
 function blockOverlapsCalendar(block) {
   const startMin = clockTimeToMinutes(block.startTime);
   const endMin = clockTimeToMinutes(block.endTime);
@@ -858,7 +858,7 @@ function blockOverlapsCalendar(block) {
   });
 }
 
-/** `timeRangesOverlap`: 時刻・Ranges・重複に関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** HH:MMの二つの半開区間が重なるか、安全側の時刻解析で判定する。 */
 function timeRangesOverlap(aStart, aEnd, bStart, bEnd) {
   return clockRangesOverlapConservatively(aStart, aEnd, bStart, bEnd);
 }
@@ -880,7 +880,7 @@ function _timeStrToMin(t) {
   return h * 60 + m;
 }
 
-/** `_breakDeduction`: 休憩・Deductionに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** 活動時間帯に重なる休憩だけを切り取り、利用不能な合計分数を返す。 */
 function _breakDeduction(breaks, slotStart, slotEnd) {
   return (breaks || []).reduce((sum, b) => {
     if (!b.start || !b.end) return sum;
@@ -890,7 +890,7 @@ function _breakDeduction(breaks, slotStart, slotEnd) {
   }, 0);
 }
 
-/** `_dayAvailMin`: 日・空き時間・分に関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** 一日の活動時間から休憩を引き、今日なら現在以降だけの利用可能分数を返す。 */
 function _dayAvailMin(dateStr, activeStart, activeEnd, breaks, todayFirstSlot) {
   const startMin = dateStr === today() && todayFirstSlot
     ? Math.max(_timeStrToMin(todayFirstSlot), _timeStrToMin(activeStart))
@@ -900,7 +900,7 @@ function _dayAvailMin(dateStr, activeStart, activeEnd, breaks, todayFirstSlot) {
   return Math.max(0, endMin - startMin - _breakDeduction(breaks, startMin, endMin));
 }
 
-/** `_availForPeriod`: 空き時間・Periodに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** 計画開始日から終了日までの日別利用可能時間を合計する。 */
 function _availForPeriod(fromDate, toDate, activeStart, activeEnd, breaks, todayFirstSlot) {
   let total = 0;
   let d = new Date(fromDate + 'T00:00:00');
@@ -912,7 +912,7 @@ function _availForPeriod(fromDate, toDate, activeStart, activeEnd, breaks, today
   return total;
 }
 
-/** `adjustTasksForOverflow`: adjust・タスク・Overflowに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** 必要工数が空き時間を超える場合、全体と締切別の二段階で各タスク時間を比例縮小する。 */
 function adjustTasksForOverflow(tasks, periodStart, periodEnd, activeStart, activeEnd, breaks, todayFirstSlot) {
   // Step 1: global scale if total needed > total available
   const totalAvail = _availForPeriod(periodStart, periodEnd, activeStart, activeEnd, breaks, todayFirstSlot);
@@ -953,7 +953,7 @@ function adjustTasksForOverflow(tasks, periodStart, periodEnd, activeStart, acti
   return scaled.map(t => updated.get(t.id) || t);
 }
 
-/** `nextHalfHour`: next・30分・時間に関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** 現在時刻を次の30分境界へ切り上げ、HH:MM形式で返す。 */
 function nextHalfHour() {
   const now = new Date();
   const totalMin = now.getHours() * 60 + now.getMinutes();
@@ -963,7 +963,7 @@ function nextHalfHour() {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-/** `formatEstimate`: 所要時間を画面表示用の文字列へ整える。 */
+/** 見積分数をタスク画面共通の「時間/分」表記へ変換する。 */
 function formatEstimate(minutes) {
   return formatDuration(minutes);
 }
@@ -1004,7 +1004,7 @@ function getScheduleItemsInPlanningPeriod(startDate, endDate) {
     }));
 }
 
-/** `forEachDateInRange`: Each・日付・In・Rangeに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** 開始日から終了日までを一日ずつ進め、各YYYY-MM-DDをコールバックへ渡す。 */
 function forEachDateInRange(startDate, endDate, fn) {
   let d = new Date(startDate + 'T00:00:00');
   const end = new Date(endDate + 'T00:00:00');
@@ -1014,7 +1014,7 @@ function forEachDateInRange(startDate, endDate, fn) {
   }
 }
 
-/** `toDateStrLocal`: 日付・文字列・端末内を別の処理で使う形式へ変換する。 */
+/** DateをUTCずれさせず端末ローカルのYYYY-MM-DDへ変換する。 */
 function toDateStrLocal(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
@@ -1038,7 +1038,7 @@ function getSortedFilteredTasks() {
 /** 未完了を中心に、期限日時が近い順へ安定して並べる。 */
 export function sortTasksByDeadline(tasks) {
   const wo = { large: 0, medium: 1, small: 2 };
-  /** `dueSortValue`: due・Sort・値に関する補助処理を行い、結果を呼び出し元へ返す。 */
+  /** タスクの締切日と時刻を並べ替え可能な数値にし、締切なしは最後へ送る。 */
   const dueSortValue = (task) => {
     if (!task.dueDate) return Number.POSITIVE_INFINITY;
     const value = new Date(`${task.dueDate}T${task.dueTime || '23:59'}:00`).getTime();
@@ -1375,7 +1375,7 @@ function handleToggle(taskId, li) {
   }
 }
 
-/** `handleDelete`: 削除に関する操作またはイベントを受けて処理する。 */
+/** 削除確認後にタスクをごみ箱へ移し、元に戻す通知と一覧更新を行う。 */
 function handleDelete(taskId, li) {
   const tasks = getTasks();
   const task  = tasks.find(t => t.id === taskId);
@@ -1405,7 +1405,7 @@ function handleDelete(taskId, li) {
   setTimeout(() => refreshTaskUi(true), 200);
 }
 
-/** `handleAbandon`: 保留に関する操作またはイベントを受けて処理する。 */
+/** タスクを「諦めた」状態へ移し、直前状態へ戻せる通知を表示する。 */
 function handleAbandon(taskId, li) {
   const task = getTasks().find(t => t.id === taskId);
   if (!task || task.completed) return;
@@ -1424,7 +1424,7 @@ function handleAbandon(taskId, li) {
   }, 220);
 }
 
-/** `handleUnabandon`: 保留解除に関する操作またはイベントを受けて処理する。 */
+/** 「諦めた」タスクを未完了へ戻し、一覧と進捗表示を更新する。 */
 function handleUnabandon(taskId, li) {
   const task = getTasks().find(t => t.id === taskId);
   if (!task) return;
@@ -1546,7 +1546,7 @@ function startTitleEdit(li, taskId) {
 
   let _vvCleanup = null;
   if (window.visualViewport) {
-    /** `_onVVResize`: VVResizeに関する操作またはイベントを受けて処理する。 */
+    /** スマホのソフトウェアキーボードによる表示領域変化に合わせ、詳細シートの高さを更新する。 */
     const _onVVResize = () => {
       const vvH = window.visualViewport.height;
       modal.style.maxHeight = `${vvH - 20}px`;
@@ -1597,7 +1597,7 @@ function startTitleEdit(li, taskId) {
 
   const newSubInput = modal.querySelector('#edit-new-sub');
   const addSubBtn = modal.querySelector('#add-sub-btn');
-  /** `_doAddSub`: do・Add・Subに関する補助処理を行い、結果を呼び出し元へ返す。 */
+  /** サブタスク入力を検証して追加し、入力欄とサブタスク一覧を更新する。 */
   const _doAddSub = () => {
     const title = newSubInput?.value?.trim();
     if (!title) return;
@@ -1655,17 +1655,17 @@ function startTitleEdit(li, taskId) {
   const timeBtn = modal.querySelector('#edit-task-time-btn');
   const estimateBtn = modal.querySelector('#edit-task-estimate-btn');
 
-  /** `_updDate`: upd・日付に関する補助処理を行い、結果を呼び出し元へ返す。 */
+  /** 編集中の締切日に合わせて、日付ボタンの文言と設定済み表示を更新する。 */
   const _updDate = () => {
     dateBtn.textContent = editDueDate ? formatPickerDate(editDueDate) : '📅 日付';
     dateBtn.classList.toggle('dp-trigger--set', !!editDueDate);
   };
-  /** `_updTime`: upd・時刻に関する補助処理を行い、結果を呼び出し元へ返す。 */
+  /** 編集中の締切時刻に合わせて、時刻ボタンの文言と設定済み表示を更新する。 */
   const _updTime = () => {
     timeBtn.textContent = editDueTime ? '🕐 ' + editDueTime : '🕐 時刻';
     timeBtn.classList.toggle('dp-trigger--set', !!editDueTime);
   };
-  /** `_updEstimate`: upd・所要時間に関する補助処理を行い、結果を呼び出し元へ返す。 */
+  /** 編集中の見積時間を読みやすい表記へ変え、工数ボタンへ反映する。 */
   const _updEstimate = () => {
     estimateBtn.textContent = editEstimate ? `⏱ ${formatDuration(editEstimate)}` : '⏱ 工数';
     estimateBtn.classList.toggle('dp-trigger--set', !!editEstimate);
@@ -1693,7 +1693,7 @@ function startTitleEdit(li, taskId) {
     });
   });
 
-  /** `close`: 現在開いているモーダルまたはシートを閉じる。 */
+  /** タスク詳細シートを閉じ、Visual Viewport監視と一時DOMを片付ける。 */
   const close = () => {
     _vvCleanup?.();
     overlay.classList.add('hidden');

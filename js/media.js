@@ -214,7 +214,7 @@ export async function openPlannerImageViewer({
   let closed = false;
   let loadAttempt = 0;
   let loadTimer = null;
-  /** `close`: 現在開いているモーダルまたはシートを閉じる。 */
+  /** 画像ビューアを閉じ、読込タイマー・Object URL・キーボード監視を片付ける。 */
   const close = () => {
     if (closed) return;
     closed = true;
@@ -330,7 +330,7 @@ export async function deletePlannerImage(path) {
   return !error;
 }
 
-/** `resolvePersistentImageUrl`: 条件に合う永続・画像・URLを探して返す。 */
+/** 保存パスの画像をCache Storageから読み、再利用可能なBlob URLとして返す。 */
 async function resolvePersistentImageUrl(path) {
   const existingUrl = blobUrlCache.get(path);
   if (existingUrl) return existingUrl;
@@ -369,7 +369,7 @@ async function writePersistentImage(path, blob) {
   }
 }
 
-/** `prunePersistentHomeImages`: 永続・Home・Imagesを安全に終了または削除する。 */
+/** 現在のホームカバー以外の古い永続画像をCache Storageから削除する。 */
 async function prunePersistentHomeImages(cache, currentPath) {
   const parts = String(currentPath).split('/');
   if (parts.length < 3 || parts[1] !== 'home') return;
@@ -390,7 +390,7 @@ async function prunePersistentHomeImages(cache, currentPath) {
   }));
 }
 
-/** `deletePersistentImage`: 永続・画像を安全に終了または削除する。 */
+/** 指定保存パスのキャッシュ本体と生成済みBlob URLをまとめて破棄する。 */
 async function deletePersistentImage(path) {
   if (!('caches' in globalThis)) return false;
   try {
@@ -409,7 +409,7 @@ function persistentCacheKey(path) {
   );
 }
 
-/** `createCachedBlobUrl`: 受け取った情報からCached・一時画像・URLを作る。 */
+/** 画像Blobから表示用Object URLを作り、保存パス単位で再利用できるよう記録する。 */
 function createCachedBlobUrl(path, blob) {
   const existing = blobUrlCache.get(path);
   if (existing) return existing;
@@ -418,7 +418,7 @@ function createCachedBlobUrl(path, blob) {
   return url;
 }
 
-/** `revokeCachedBlobUrl`: Cached・一時画像・URLを安全に終了または削除する。 */
+/** 保存パスに紐づくObject URLを解放し、ブラウザメモリ上の参照も削除する。 */
 function revokeCachedBlobUrl(path) {
   const url = blobUrlCache.get(path);
   if (!url) return;

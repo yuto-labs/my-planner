@@ -466,7 +466,7 @@ export function openModal({ title, body, footer, onClose, wide = false }) {
 
   overlay.appendChild(modal);
 
-  /** `close`: 現在開いているモーダルまたはシートを閉じる。 */
+  /** 共通モーダルを閉じ、オーバーレイ・キー監視・フォーカス状態を片付ける。 */
   const close = () => {
     if (overlay.classList.contains('hidden')) return;
     overlay.classList.add('hidden');

@@ -769,7 +769,7 @@ function pickResponseSchema(actionType, body) {
   return null;
 }
 
-/** `extractText`: 入力を解析して文字列を取り出す。 */
+/** Gemini候補のpartsを順番に連結し、JSON解析へ渡す応答本文だけを取り出す。 */
 function extractText(data) {
   const parts = data?.candidates?.[0]?.content?.parts || [];
   return parts.map(part => part?.text || '').join('').trim();
@@ -801,7 +801,7 @@ function parseStructuredResponse(text) {
   }
 }
 
-/** `hasCompleteTranslationResponse`: 完全な・英訳・応答の条件を確認し、結果を真偽値で返す。 */
+/** 英訳回答が順序の決まった3案を持ち、各案に異なる英文と十分な解説が揃うか検証する。 */
 function hasCompleteTranslationResponse(text) {
   const parsed = parseStructuredResponse(text);
   const variants = Array.isArray(parsed?.variants) ? parsed.variants : [];
@@ -837,7 +837,7 @@ function hasCompleteTranslationResponse(text) {
     ));
 }
 
-/** `isCompleteNuanceEntry`: 完全な・Nuance・項目の条件を確認し、結果を真偽値で返す。 */
+/** 表現一件に見出し語・語義・深い解説・比較・必要数の例文が揃っているか検証する。 */
 function isCompleteNuanceEntry(entry, mapMode, minimumComparisons = 2) {
   const intensityLevel = Number(entry?.intensityLevel);
   const intensityMin = Number(entry?.intensityMin);
@@ -880,7 +880,7 @@ function isCompleteNuanceEntry(entry, mapMode, minimumComparisons = 2) {
   );
 }
 
-/** `hasCompleteNuanceResponse`: 完全な・Nuance・応答の条件を確認し、結果を真偽値で返す。 */
+/** ニュアンス回答JSONを正規化し、マップ情報と保存可能な表現解説が揃うか検証する。 */
 function hasCompleteNuanceResponse(text) {
   const parsed = parseStructuredResponse(text);
   const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
@@ -915,7 +915,7 @@ function nuanceResponseIncludesRequestedHeadword(text, userText) {
   if (!requested.length) return true;
   const parsed = parseStructuredResponse(text);
   const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
-  /** `normalize`: `normalize`を後続処理で扱える安全な形にそろえる。 */
+  /** 要求語と生成語を照合できるよう、Unicode・空白・大文字小文字の差を除く。 */
   const normalize = value => String(value || '').normalize('NFKC').trim().toLocaleLowerCase();
   const requestedKeys = new Set(requested.flatMap(item => (
     [item?.lemma, item?.term, ...(Array.isArray(item?.aliases) ? item.aliases : [])].map(normalize)
@@ -923,7 +923,7 @@ function nuanceResponseIncludesRequestedHeadword(text, userText) {
   return entries.some(entry => requestedKeys.has(normalize(entry?.lemma || entry?.term)));
 }
 
-/** `hasRequiredNuanceEntryCount`: Required・Nuance・項目・Countの条件を確認し、結果を真偽値で返す。 */
+/** 初回生成か既存語義の追記かに応じ、要求された最低表現数を満たすか判定する。 */
 function hasRequiredNuanceEntryCount(text, userText, { allowPartialSalvage = false } = {}) {
   const parsed = parseStructuredResponse(text);
   let request = null;
@@ -940,7 +940,7 @@ function hasRequiredNuanceEntryCount(text, userText, { allowPartialSalvage = fal
     || (allowPartialSalvage && entries.length >= 3 && discarded >= 1);
 }
 
-/** `mergeNuanceResponses`: 複数のNuance・Responsesを既存情報を失わないよう統合する。 */
+/** 分割生成されたニュアンス回答を分類と表現単位でまとめ、解説・例文・比較項目を重複なく統合する。 */
 function mergeNuanceResponses(baseText, supplementText) {
   const base = parseStructuredResponse(baseText);
   const supplement = parseStructuredResponse(supplementText);
@@ -963,7 +963,7 @@ function mergeNuanceResponses(baseText, supplementText) {
   }));
 }
 
-/** `hasSafeNuanceEnrichmentResponse`: 安全な・Nuance・Enrichment・応答の条件を確認し、結果を真偽値で返す。 */
+/** 既存見出し語の追記回答が対象語義を明示し、無関係な表現を混ぜていないか検証する。 */
 function hasSafeNuanceEnrichmentResponse(text, userText) {
   const parsed = parseStructuredResponse(text);
   let request = null;
@@ -993,7 +993,7 @@ function hasSafeNuanceEnrichmentResponse(text, userText) {
   });
 }
 
-/** `normalizeStructuredResponse`: 構造化された・応答を後続処理で扱える安全な形にそろえる。 */
+/** AIのJSONを操作種別ごとの保存形式へ補正し、表記揺れ・重複・危険な装飾を除く。 */
 function normalizeStructuredResponse(actionType, text) {
   const parsed = parseStructuredResponse(text);
   if (!parsed) return text;
@@ -1021,7 +1021,7 @@ function normalizeStructuredResponse(actionType, text) {
             .split(/[。！？\n]/)[0]
             .slice(0, 18) || 'その他')
           : '');
-      /** `normalizeTextList`: 文字列・一覧を後続処理で扱える安全な形にそろえる。 */
+      /** 文字列または説明オブジェクトの配列から、空でない表示文だけを取り出す。 */
       const normalizeTextList = value => (Array.isArray(value) ? value : [])
         .map(item => String(
           typeof item === 'string'
@@ -1112,9 +1112,9 @@ function normalizeStructuredResponse(actionType, text) {
         return;
       }
       const previous = mergedEntries[index].entry;
-      /** `richer`: 情報量の多い方に関する補助処理を行い、結果を呼び出し元へ返す。 */
+      /** 同じ解説項目の新旧文字列を比べ、空や短い再生成で詳しい説明を上書きしない。 */
       const richer = (left, right) => String(right || '').length > String(left || '').length ? right : left;
-      /** `uniqueObjects`: Objectsから重複を除いて返す。 */
+      /** 新旧の例文・比較項目をJSON内容で重複排除し、両方の追加情報を残す。 */
       const uniqueObjects = (left, right) => {
         const seen = new Set();
         return [...(Array.isArray(left) ? left : []), ...(Array.isArray(right) ? right : [])]
@@ -1154,11 +1154,11 @@ function normalizeStructuredResponse(actionType, text) {
       parsed?.primaryConcept?.key,
       ...(Array.isArray(parsed?.concepts) ? parsed.concepts.map(concept => concept?.key) : []),
     ].map(value => String(value || '').trim()).filter(Boolean));
-    /** `cleanText`: 文字列を後続処理で扱える安全な形にそろえる。 */
+    /** Knowledge本文からMarkdown記号とHTMLタグを外し、画面側の構造化装飾と衝突させない。 */
     const cleanText = value => String(value || '')
       .replace(/(\*\*|__|```|<\/?[a-z][^>]*>)/gi, '')
       .trim();
-    /** `cleanSegment`: Segmentを後続処理で扱える安全な形にそろえる。 */
+    /** 本文断片を清掃し、回答内で宣言済みの概念キーだけをリンクとして残す。 */
     const cleanSegment = segment => ({
       ...segment,
       text: cleanText(segment?.text),
@@ -1166,11 +1166,11 @@ function normalizeStructuredResponse(actionType, text) {
         ? String(segment.conceptKey).trim()
         : '',
     });
-    /** `cleanSegments`: Segmentsを後続処理で扱える安全な形にそろえる。 */
+    /** 本文断片配列を一件ずつ清掃し、空になった断片を除外する。 */
     const cleanSegments = value => (Array.isArray(value) ? value : [])
       .map(cleanSegment)
       .filter(segment => segment.text);
-    /** `cleanRichBlock`: Rich・ブロックを後続処理で扱える安全な形にそろえる。 */
+    /** AIの表・数式・箇条書き・フローを種類別に検証し、許可フィールドだけへ正規化する。 */
     const cleanRichBlock = block => {
       const type = String(block?.type || '').trim();
       if (!['list', 'table', 'equation', 'callout', 'flow'].includes(type)) return null;
@@ -1362,7 +1362,7 @@ function logStructuredValidationFailure(actionType, text, stage) {
   });
 }
 
-/** `hasCompleteEnglishQuestionResponse`: 完全な・英語・質問・応答の条件を確認し、結果を真偽値で返す。 */
+/** 英語質問回答に短答・感覚的説明・詳説と、英日が揃った例文2件以上があるか検証する。 */
 function hasCompleteEnglishQuestionResponse(text) {
   const parsed = parseStructuredResponse(text);
   const examples = Array.isArray(parsed?.examples) ? parsed.examples : [];
@@ -1377,7 +1377,7 @@ function hasCompleteEnglishQuestionResponse(text) {
   );
 }
 
-/** `hasCompleteKnowledgeResponse`: 完全な・Knowledge・応答の条件を確認し、結果を真偽値で返す。 */
+/** Knowledge回答に直接回答・仕組み・複数視点・関連概念・分類が揃うか検証する。 */
 function hasCompleteKnowledgeResponse(text) {
   const parsed = parseStructuredResponse(text);
   const sections = Array.isArray(parsed?.answer?.sections) ? parsed.answer.sections : [];
@@ -1442,7 +1442,7 @@ function hasCompleteKnowledgeResponse(text) {
   );
 }
 
-/** `hasCompleteStructuredResponse`: 完全な・構造化された・応答の条件を確認し、結果を真偽値で返す。 */
+/** 操作種別に対応する専用検証へ振り分け、保存前に必須フィールドと形式を確認する。 */
 function hasCompleteStructuredResponse(actionType, text) {
   const parsed = parseStructuredResponse(text);
   if (!parsed) return false;
@@ -1451,15 +1451,15 @@ function hasCompleteStructuredResponse(actionType, text) {
   if (actionType === 'english_question') return hasCompleteEnglishQuestionResponse(text);
   if (actionType === 'knowledge_answer') return hasCompleteKnowledgeResponse(text);
   if (actionType === 'event_parse') {
-    /** `dateTime`: 日付・時刻に関する補助処理を行い、結果を呼び出し元へ返す。 */
+    /** 値がnullまたは秒まで固定されたローカル日時形式か検証する。 */
     const dateTime = value => value === null || /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:00$/.test(value);
     return Boolean(String(parsed.title || '').trim() && dateTime(parsed.start) && dateTime(parsed.end));
   }
   if (actionType === 'planner_action') {
     const actions = new Set(['task', 'event', 'schedule', 'memo', 'database', 'delete_event', 'delete_task', 'delete_memo']);
-    /** `date`: 日付に関する補助処理を行い、結果を呼び出し元へ返す。 */
+    /** 値がnullまたはAI操作で許可するYYYY-MM-DD形式か検証する。 */
     const date = value => value === null || /^\d{4}-\d{2}-\d{2}$/.test(value);
-    /** `time`: 時刻に関する補助処理を行い、結果を呼び出し元へ返す。 */
+    /** 値がnullまたはAI操作で許可する24時間HH:MM形式か検証する。 */
     const time = value => value === null || /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
     if (!actions.has(parsed.action) || !date(parsed.date) || !date(parsed.dueDate)
       || !time(parsed.startTime) || !time(parsed.endTime) || !time(parsed.dueTime)) return false;
@@ -1583,7 +1583,7 @@ const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3Mi
 const HANDLER_BUDGET_MS = 285_000;
 const NETWORK_SAFETY_MS = 5_000;
 
-/** `getBearerToken`: Bearer・語を取得して呼び出し元へ返す。 */
+/** AuthorizationヘッダーがBearer形式ならアクセストークン部分だけを取り出す。 */
 function getBearerToken(req) {
   const header = req.headers.authorization || req.headers.Authorization || '';
   const match = String(header).match(/^Bearer\s+(.+)$/i);

@@ -24,7 +24,7 @@ export function initTagsPage(container) {
   render(container);
 }
 
-/** `render`: 現在の一時状態から、この画面部分のHTMLを描き直す。 */
+/** 全タグを使用件数付きで並べ、選択すると該当メモ一覧へ移動できる画面を描画する。 */
 function render(container) {
   const tasks    = getTasks();
   const archived = getArchivedTasks();

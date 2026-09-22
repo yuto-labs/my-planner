@@ -210,12 +210,12 @@ function renderResults(q, container) {
   container.innerHTML = html;
 }
 
-/** `matchText`: 一致・文字列に関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** 大文字小文字を無視し、対象文字列に検索語が含まれるか判定する。 */
 function matchText(text, lowerQ) {
   return text?.toLowerCase().includes(lowerQ) ?? false;
 }
 
-/** `highlight`: highlightに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** 検索語に一致する部分だけを安全なmark要素で囲み、結果内で見つけやすくする。 */
 function highlight(text, q) {
   const safeText = text || '';
   if (!q) return esc(safeText);

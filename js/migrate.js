@@ -254,7 +254,7 @@ export function rowToEvent(row) {
   };
 }
 
-/** `goalToRow`: 目標を行へ変換して返す。 */
+/** アプリ内の目標を、Supabase goals表の列名と日時形式へ変換する。 */
 export function goalToRow(goal, userId) {
   return {
     id:          goal.id,
@@ -314,7 +314,7 @@ export function rowToMemo(row) {
   };
 }
 
-/** `trashToRow`: ゴミ箱を行へ変換して返す。 */
+/** 復元用データを保持したごみ箱項目を、Supabase trash_items行へ変換する。 */
 export function trashToRow(item, userId) {
   return {
     id:          item.id,
@@ -341,7 +341,7 @@ export function rowToTrash(row) {
   };
 }
 
-/** `schedItemToRow`: スケジュール・項目を行へ変換して返す。 */
+/** My Schedule項目を、Supabase schedule_items表へ保存できる行データに変換する。 */
 export function schedItemToRow(item, userId) {
   return {
     id:         item.id,

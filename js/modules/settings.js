@@ -334,7 +334,7 @@ function renderAccountSection() {
   `;
 }
 
-/** `safeCloudHost`: 安全な・Cloud・Hostに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** 接続先URLから表示して安全なホスト名だけを取り出し、解析失敗時は空文字を返す。 */
 function safeCloudHost(url) {
   try {
     return new URL(url).hostname;
@@ -353,14 +353,14 @@ function renderSyncStatus(status) {
   return `最終送信: ${esc(lastPush)} / 最終取得: ${esc(lastPull)}${error}`;
 }
 
-/** `formatSyncTime`: Sync・時刻を画面表示用の文字列へ整える。 */
+/** 同期日時を端末ロケールの短い日時へ変換し、未同期なら案内文を返す。 */
 function formatSyncTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value || '');
   return date.toLocaleString();
 }
 
-/** `wireAppearance`: Appearanceの画面操作と処理をイベントで結び付ける。 */
+/** テーマ、RGBアクセント、背景調整の各入力を保存と即時プレビューへ接続する。 */
 function wireAppearance(container) {
   container.querySelector('#my-schedule-color-input')?.addEventListener('input', e => {
     const color = e.target.value || '#60A5FA';
@@ -535,7 +535,7 @@ function normalizeThemeTuning(tuning) {
   };
 }
 
-/** `wireCategories`: カテゴリの画面操作と処理をイベントで結び付ける。 */
+/** 予定カテゴリの追加・名称変更・色変更・削除をまとめて保存処理へ接続する。 */
 function wireCategories(container) {
   /** 設定画面の全カテゴリ行を読み直し、名前と色をまとめて保存する。 */
   const saveCats = () => {
@@ -590,7 +590,7 @@ function wireCategories(container) {
   });
 }
 
-/** `wireAISettings`: AISettingsの画面操作と処理をイベントで結び付ける。 */
+/** AI有効化、処理モード、実行時刻、キュー操作を設定保存と状態表示へ接続する。 */
 function wireAISettings(container) {
   container.querySelector('#ai-enabled-toggle')?.addEventListener('change', e => {
     saveSettings({ aiEnabled: e.target.checked, aiVisibilityConfigured: true });
@@ -641,7 +641,7 @@ function wireAISettings(container) {
   });
 }
 
-/** `wireBackup`: バックアップの画面操作と処理をイベントで結び付ける。 */
+/** 全データのJSON書き出しと、既存データを消さないマージ取込を各ボタンへ接続する。 */
 function wireBackup(container) {
   container.querySelector('#export-btn')?.addEventListener('click', () => {
     const json = exportBackup();
@@ -676,7 +676,7 @@ function wireBackup(container) {
   });
 }
 
-/** `wireAccount`: Accountの画面操作と処理をイベントで結び付ける。 */
+/** メールログイン、コード確認、ログアウト、初回クラウド移行をアカウント欄へ接続する。 */
 function wireAccount(container, options = {}) {
   container.querySelector('#sb-sync-now-btn')?.addEventListener('click', async () => {
     const btn = container.querySelector('#sb-sync-now-btn');

@@ -1463,7 +1463,7 @@ function addDaysToDateString(dateString, days) {
   return `${year}-${month}-${day}`;
 }
 
-/** `resolveRelativeDate`: 条件に合うRelative・日付を探して返す。 */
+/** 「今日」「明日」などの相対日表現を基準日から計算し、YYYY-MM-DDへ変換する。 */
 function resolveRelativeDate(text, localToday) {
   const value = String(text || '');
   if (value.includes('明後日')) return addDaysToDateString(localToday, 2);

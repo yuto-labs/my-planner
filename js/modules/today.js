@@ -150,7 +150,7 @@ function updateTodayHeaderTitle() {
   if (titleEl) titleEl.textContent = dayHeaderTitle(selectedDateStr || today());
 }
 
-/** `dayHeaderTitle`: 日・Header・タイトルに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** 選択日が今日・明日・昨日なら相対名を添え、それ以外は月日と曜日を返す。 */
 function dayHeaderTitle(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
   const wd = ['日','月','火','水','木','金','土'][d.getDay()];
@@ -160,7 +160,7 @@ function dayHeaderTitle(dateStr) {
   return `${d.getMonth() + 1}/${d.getDate()}(${wd})`;
 }
 
-/** `dayLabel`: 日・表示名に関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** 日付文字列を予定セクションで使う短い月日・曜日表示へ変換する。 */
 function dayLabel(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
   const wd = ['日','月','火','水','木','金','土'][d.getDay()];
@@ -170,9 +170,9 @@ function dayLabel(dateStr) {
   return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}(${wd})`;
 }
 
-/** `wireDateNav`: 日付・Navの画面操作と処理をイベントで結び付ける。 */
+/** 前日・翌日・日付選択ボタンを選択日の変更とToday再描画へ接続する。 */
 function wireDateNav(container) {
-  /** `move`: 移動に関する補助処理を行い、結果を呼び出し元へ返す。 */
+  /** 現在の選択日を指定日数だけ動かし、Today画面全体をその日で再描画する。 */
   const move = days => {
     const base = new Date((selectedDateStr || today()) + 'T00:00:00');
     selectedDateStr = toDateStr(addDays(base, days));
@@ -291,12 +291,12 @@ function renderSwipeTaskHTML(task) {
     </li>`;
 }
 
-/** `wireTaskList`: タスク・一覧の画面操作と処理をイベントで結び付ける。 */
+/** Today内の完了チェック、詳細表示、取り消し通知を各タスク行へ接続する。 */
 function wireTaskList(container, allTasks) {
   const lists = container.querySelectorAll('.today-task-list');
   if (!lists.length) return;
 
-  /** `onClick`: Clickに関する操作またはイベントを受けて処理する。 */
+  /** 次の予定バナーを押した時、予定編集またはMy Schedule編集を種類に応じて開く。 */
   const onClick = e => {
     const btn = e.target.closest('[data-action="toggle"]');
     if (!btn) return;
@@ -322,7 +322,7 @@ function wireTaskList(container, allTasks) {
   });
 }
 
-/** `wireTaskMoreToggle`: タスク・More・Toggleの画面操作と処理をイベントで結び付ける。 */
+/** 折りたたまれた残りタスクの表示ボタンを展開状態と件数表示へ接続する。 */
 function wireTaskMoreToggle(container) {
   const btn = container.querySelector('#today-task-more-toggle');
   const list = container.querySelector('#today-task-extra-list');
@@ -416,9 +416,9 @@ function updateProgressUI(container) {
 function buildTimeline(events, schedItems) {
   const items = [];
 
-  /** `hh`: hhに関する補助処理を行い、結果を呼び出し元へ返す。 */
+  /** 時刻ピッカー用に時を0〜23の二桁文字列へ収める。 */
   const hh = (d) => String(d.getHours()).padStart(2, '0');
-  /** `mm`: mmに関する補助処理を行い、結果を呼び出し元へ返す。 */
+  /** 時刻ピッカー用に分を0〜59の二桁文字列へ収める。 */
   const mm = (d) => String(d.getMinutes()).padStart(2, '0');
 
   events.forEach(e => {
@@ -509,7 +509,7 @@ function renderTimelineHTML(items, nowMin = null) {
   return html;
 }
 
-/** `nowLineHTML`: now・行・HTMLに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** 選択日が今日の場合だけ、現在時刻の位置へ赤線と時刻ラベルを描画する。 */
 function nowLineHTML() {
   const now = new Date();
   const hh  = String(now.getHours()).padStart(2, '0');
@@ -520,7 +520,7 @@ function nowLineHTML() {
   </div>`;
 }
 
-/** `timelineCardHTML`: 時代区分・カード・HTMLに関する補助処理を行い、結果を呼び出し元へ返す。 */
+/** 予定またはMy Schedule一件を、開始位置と長さを持つタイムラインカードへ変換する。 */
 function timelineCardHTML(item, nowMin) {
   const showNowState = typeof nowMin === 'number';
   const isPast    = showNowState && item.endMin   <= nowMin;
@@ -686,7 +686,7 @@ export function openScheduleItemModal({ dateStr = today(), item = null, onSaved 
 
   overlay.appendChild(modal);
 
-  /** `close`: 現在開いているモーダルまたはシートを閉じる。 */
+  /** My Schedule編集ダイアログを閉じ、キー監視とDOMを片付ける。 */
   const close = () => {
     document.removeEventListener('keydown', keyH);
     overlay.classList.add('hidden');

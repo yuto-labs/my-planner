@@ -27,17 +27,17 @@ function savePendingInvite(token) {
   try { localStorage.setItem(PENDING_INVITE_KEY, String(token || '')); } catch {}
 }
 
-/** `clearPendingInvite`: 保留中・招待を安全に終了または削除する。 */
+/** ログイン待ちとして保存していた共有招待トークンを端末から削除する。 */
 function clearPendingInvite() {
   try { localStorage.removeItem(PENDING_INVITE_KEY); } catch {}
 }
 
-/** `notifyGroupsChanged`: グループ・変更が変わったことを他の処理へ通知する。 */
+/** 共有グループ一覧が変化したことをカレンダー画面へカスタムイベントで知らせる。 */
 function notifyGroupsChanged() {
   try { document.dispatchEvent(new CustomEvent('shared-calendar:groups-changed')); } catch {}
 }
 
-/** `mergeGroupInCache`: 複数のグループ・In・キャッシュを既存情報を失わないよう統合する。 */
+/** 取得した共有グループをIDで端末キャッシュへ追加・更新し、他グループを残す。 */
 function mergeGroupInCache(group) {
   if (!group?.id) return;
   const groups = getShareGroupsForEventForm();
@@ -56,7 +56,7 @@ function rpcNeedsSqlRefresh(error, functionName) {
     .test(message);
 }
 
-/** `callCreateGroupRpc`: Create・グループ・データベース関数を呼び出し、応答を返す。 */
+/** 新旧どちらのSQL引数名にも対応して共有グループ作成RPCを呼び、最初の成功結果を返す。 */
 async function callCreateGroupRpc(client, group) {
   const attempts = [
     { p_group_id: group.id, p_group_name: group.name },
@@ -89,7 +89,7 @@ async function callDeleteGroupRpc(client, groupId) {
   throw lastError;
 }
 
-/** `callCreateInviteRpc`: Create・招待・データベース関数を呼び出し、応答を返す。 */
+/** SQL定義差を吸収しながら共有招待作成RPCを呼び、更新が必要なエラーだけ再試行する。 */
 async function callCreateInviteRpc(client, payload) {
   const attempts = [
     {
@@ -129,7 +129,7 @@ function normalizeGroup(group) {
   };
 }
 
-/** `mapSharedEvent`: 共有・予定を別の処理で使う形式へ変換する。 */
+/** RPCが返す共有予定行を、カレンダー画面共通の予定オブジェクトへ変換する。 */
 function mapSharedEvent(row, userId) {
   const event = rowToEvent(row);
   event.ownerId = row.user_id;
@@ -142,7 +142,7 @@ function mapSharedEvent(row, userId) {
   return event;
 }
 
-/** `mapLocalSharedEvent`: 端末内・共有・予定を別の処理で使う形式へ変換する。 */
+/** 自分のローカル予定を共有カレンダー表示と同じフィールド構成へ変換する。 */
 function mapLocalSharedEvent(event, userId) {
   return {
     ...event,
@@ -234,7 +234,7 @@ export async function createSharedGroup(name) {
   return created;
 }
 
-/** `deleteSharedGroup`: 共有・グループを安全に終了または削除する。 */
+/** 所有する共有グループをDBから削除し、端末キャッシュと表示へ反映する。 */
 export async function deleteSharedGroup(groupId) {
   const client = await getClient();
   const userId = await getUserId();
@@ -370,7 +370,7 @@ export async function collectSharedCalendarEvents(groupId = '') {
   return { groups, events, userId };
 }
 
-/** `countShareableLocalEvents`: 共有可能な・端末内・予定に必要な数値を計算して返す。 */
+/** 指定期間と共有状態に一致し、一括共有で新たに対象となる個人予定数を返す。 */
 export function countShareableLocalEvents(groupId = '', scope = 'future') {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
@@ -412,7 +412,7 @@ export async function updateOwnSharedEvent(eventId, updates) {
   return updateEvent(eventId, updates);
 }
 
-/** `deleteOwnSharedEvent`: 自分の・共有・予定を安全に終了または削除する。 */
+/** 自分が所有する共有予定だけを通常の予定削除経路へ渡し、他人の予定は拒否する。 */
 export async function deleteOwnSharedEvent(eventId) {
   const local = getEvents().find(ev => ev.id === eventId);
   if (!local) throw new Error('自分の予定だけ削除できます');
