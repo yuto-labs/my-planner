@@ -8,5 +8,8 @@
     "comments:check": "node scripts/check-function-comments.mjs",
     "docs:check": "node scripts/check-doc-links.mjs",
     "build": "node scripts/check-syntax.mjs && node scripts/check-function-comments.mjs && node scripts/check-doc-links.mjs"
+  },
+  "dependencies": {
+    "@vercel/functions": "^3.9.9"
   }
 }

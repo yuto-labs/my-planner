@@ -28,6 +28,7 @@ import {
   reuseEquivalentAtlasTopic,
   resolveAtlasTopic,
 } from './atlas-query.js';
+import { runAIJob } from './ai-jobs.js';
 
 export { NUANCE_ATLAS_CATEGORIES };
 // 以前からai.jsを利用している画面やテストを壊さないため、公開口を残す。
@@ -171,8 +172,12 @@ async function callServerAI(
   maxTokens,
   responseFormat = 'text',
   actionType = 'ai_request',
-  { signal } = {}
+  options = {}
 ) {
+  const { signal, backgroundContext, jobState, completedText } = options;
+  // 復帰処理では保存済みの完成文を同じ正規化経路へ戻す。
+  // Geminiを再度呼ばないため、再開時も料金と重複生成が増えない。
+  if (typeof completedText === 'string' && completedText.trim()) return completedText;
   /** Supabase認証取得が固まらないよう、短い上限時間付きで現在セッションを読む。 */
   const readSession = async () => {
     let timeoutId;
@@ -196,6 +201,17 @@ async function callServerAI(
   if (!token) {
     throw new Error('AIを使うには、AI設定でログインしてください。');
   }
+  const requestBody = {
+    modelPreference,
+    systemText,
+    userText,
+    maxTokens,
+    responseFormat,
+    actionType,
+  };
+  if (backgroundContext && ['knowledge_answer', 'nuance_generate', 'translation_variants'].includes(actionType)) {
+    return runAIJob(requestBody, backgroundContext, { signal, jobState });
+  }
   const controller = new AbortController();
   /** 呼び出し側のAbortSignalを、この通信専用AbortControllerへ中継する。 */
   const abortFromCaller = () => controller.abort();
@@ -210,14 +226,7 @@ async function callServerAI(
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({
-        modelPreference,
-        systemText,
-        userText,
-        maxTokens,
-        responseFormat,
-        actionType,
-      }),
+      body: JSON.stringify(requestBody),
       signal: controller.signal,
     });
   } catch (error) {
@@ -254,6 +263,17 @@ async function callServerAI(
     throw new Error('アカウントが切り替わったため、回答は保存していません。元のアカウントで再試行してください。');
   }
   return text;
+}
+
+/** 保存成功後にジョブを消せるよう、生成結果へ列挙されないジョブIDを付ける。 */
+function attachGenerationJobId(value, jobId) {
+  if (!jobId || !value || (typeof value !== 'object' && typeof value !== 'function')) return value;
+  Object.defineProperty(value, '__aiJobId', {
+    value: jobId,
+    enumerable: false,
+    configurable: false,
+  });
+  return value;
 }
 
 /**
@@ -706,6 +726,7 @@ export async function generateKnowledgeAnswer(question, taxonomy, options = {}) 
     'If the question is ambiguous, state the most reasonable interpretation in the answer instead of asking for clarification.',
     'Avoid unsupported precision. Put genuine uncertainty or disputed points in cautions.',
   ].join('\n');
+  const jobState = {};
   const raw = await callAPI(
     QUALITY_MODEL,
     system,
@@ -724,11 +745,15 @@ export async function generateKnowledgeAnswer(question, taxonomy, options = {}) 
     6500,
     'json',
     'knowledge_answer',
-    options
+    {
+      ...options,
+      jobState,
+      backgroundContext: { kind: 'knowledge', question: cleanQuestion, taxonomy },
+    }
   );
   const parsed = tryParseJSON(raw);
   if (!parsed) throw new Error('AIの回答形式を確認できませんでした。もう一度お試しください。');
-  return parsed;
+  return attachGenerationJobId(parsed, jobState.id);
 }
 
 /** 英語表現の比較解説を生成し、既存見出し語へ統合できる形に正規化する。 */
@@ -747,6 +772,16 @@ export async function generateNuanceEntries(
   } = {},
   options = {}
 ) {
+  const resumeInput = {
+    language,
+    learningTarget,
+    category,
+    topic,
+    seedTerms,
+    existingExpressions,
+    referenceExpressions,
+    existingTaxonomy,
+  };
   const cleanCategory = String(category || '').trim();
   const cleanTopic = String(topic || '').trim();
   const cleanTarget = String(learningTarget || '').trim();
@@ -906,6 +941,7 @@ export async function generateNuanceEntries(
       : (terms.length ? Math.max(terms.length, 5) : 5),
   });
 
+  const jobState = {};
   const raw = await callAPI(
     QUALITY_MODEL,
     system,
@@ -913,7 +949,11 @@ export async function generateNuanceEntries(
     14000,
     'json',
     'nuance_generate',
-    options
+    {
+      ...options,
+      jobState,
+      backgroundContext: { kind: 'nuance', input: resumeInput },
+    }
   );
   const parsed = tryParseJSON(raw);
   const mapMode = parsed?.mapMode === 'groups' ? 'groups' : 'scale';
@@ -1051,7 +1091,7 @@ export async function generateNuanceEntries(
     existing.aliases = [...new Set([...(existing.aliases || []), ...(entry.aliases || [])])];
     existing.sourceQueries = [...new Set([...(existing.sourceQueries || []), ...(entry.sourceQueries || [])])];
   });
-  return [...grouped.values()];
+  return attachGenerationJobId([...grouped.values()], jobState.id);
 }
 
 /** 日本語文から、用途の異なる自然な英訳セットを生成する。 */
@@ -1108,6 +1148,8 @@ export async function generateTranslationVariants(
     requiredStyles: ['natural_conversational', 'standard_faithful', 'expressive_polished'],
   });
 
+  const resumeInput = { sourceTextJa: source, contextJa: context, existingTaxonomy };
+  const jobState = {};
   const raw = await callAPI(
     QUALITY_MODEL,
     system,
@@ -1115,7 +1157,11 @@ export async function generateTranslationVariants(
     9000,
     'json',
     'translation_variants',
-    options
+    {
+      ...options,
+      jobState,
+      backgroundContext: { kind: 'translation', input: resumeInput },
+    }
   );
   const parsed = tryParseJSON(raw);
   const styleDefinitions = [
@@ -1195,7 +1241,7 @@ export async function generateTranslationVariants(
   if (!category || variants.length !== 3 || !variantsAreComplete) {
     throw new Error('3種類の英訳と解説を十分に揃えられませんでした。もう一度お試しください。');
   }
-  return {
+  return attachGenerationJobId({
     promptVersion: 6,
     language: 'English',
     sourceTextJa: source,
@@ -1207,7 +1253,7 @@ export async function generateTranslationVariants(
     summaryJa: '',
     variants,
     personalNote: '',
-  };
+  }, jobState.id);
 }
 
 // AIの小さな形式ゆれを、保存しやすい配列とオブジェクトへそろえる。

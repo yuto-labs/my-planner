@@ -911,6 +911,8 @@ const LEARNING_LIBRARY_TAG = '__learning_library__';
 const LEARNING_ENTRY_BLOCK_TYPE = 'learning-entry-data';
 const APP_MEDIA_PREFS_TAG = '__app_media_preferences__';
 const APP_MEDIA_PREFS_BLOCK_TYPE = 'app-media-preferences';
+const AI_GENERATION_JOB_TAG = '__ai_generation_job__';
+const AI_GENERATION_JOB_BLOCK_TYPE = 'ai-generation-job';
 
 /** 通常メモと内部レコードを区別せず、共通保存配列の全件を返す内部関数。 */
 function getAllKnowledgeRecords() {
@@ -938,6 +940,14 @@ function isAppMediaPreferencesRecord(record) {
     && record.blocks.some(block => block?.type === APP_MEDIA_PREFS_BLOCK_TYPE);
 }
 
+/** バックグラウンドAIジョブを通常メモや教材から除外する。 */
+function isAIGenerationJobRecord(record) {
+  return Array.isArray(record?.tags)
+    && record.tags.includes(AI_GENERATION_JOB_TAG)
+    && Array.isArray(record.blocks)
+    && record.blocks.some(block => block?.type === AI_GENERATION_JOB_BLOCK_TYPE);
+}
+
 /** 一般Knowledgeの質問回答を保存した内部レコードか判定する。 */
 function isLearningLibraryRecord(record) {
   return Array.isArray(record?.tags)
@@ -950,7 +960,8 @@ function isLearningLibraryRecord(record) {
 function isInternalKnowledgeRecord(record) {
   return isExpressionAtlasRecord(record)
     || isLearningLibraryRecord(record)
-    || isAppMediaPreferencesRecord(record);
+    || isAppMediaPreferencesRecord(record)
+    || isAIGenerationJobRecord(record);
 }
 
 /** 表現帳系レコードのうち、英語見出し語とsenseを持つ解説レコードか判定する。 */

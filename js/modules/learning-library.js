@@ -13,6 +13,7 @@ import {
   deleteLearningEntry,
 } from '../storage.js';
 import { generateKnowledgeAnswer } from '../ai.js';
+import { acknowledgeAIJobAfterSync } from '../ai-jobs.js';
 import {
   normalizeKnowledgeAnswer,
   validateKnowledgeEntry,
@@ -132,7 +133,7 @@ function renderLibrary(container) {
         <div class="learning-generation hidden" id="learning-generation" role="status">
           <span class="learning-generation-spinner" aria-hidden="true"></span>
           <div><strong>解説を組み立てています</strong><span>分類・概念・文章を確認してから保存します</span></div>
-          <button class="btn btn-ghost btn-sm" id="learning-cancel-btn" type="button">中止</button>
+          <button class="btn btn-ghost btn-sm" id="learning-cancel-btn" type="button">あとで確認</button>
         </div>
       </section>
 
@@ -466,6 +467,7 @@ async function createLearningEntry(container) {
     if (!validation.valid) throw new Error(`回答の検証に失敗しました (${validation.errors.join(', ')})`);
     const saved = addLearningEntry(entry);
     if (!saved) throw new Error('保存できませんでした。端末の空き容量を確認してください。');
+    if (raw?.__aiJobId) acknowledgeAIJobAfterSync(raw.__aiJobId).catch(() => {});
     input.value = '';
     questionDraft = '';
     selectedEntryId = saved.id;

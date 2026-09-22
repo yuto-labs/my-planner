@@ -6,7 +6,7 @@
 // JS/CSSの動作を変更したときはCACHE_VERも進め、古い端末キャッシュを更新する。
 // ============================================================
 
-const CACHE_VER  = 'v347';
+const CACHE_VER  = 'v348';
 const APP_CACHE  = `my-planner-app-${CACHE_VER}`;
 const CDN_CACHE  = `my-planner-cdn-${CACHE_VER}`;
 const PERSISTENT_IMAGE_CACHE = 'my-planner-images-v1';
@@ -27,6 +27,8 @@ const APP_ASSETS = [
   './js/media.js',
 
   './js/ai.js',
+  './js/ai-jobs.js',
+  './js/ai-job-resume.js',
   './js/ai-response.js',
   './js/atlas-model.js',
   './js/atlas-query.js',

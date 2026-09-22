@@ -15,6 +15,7 @@ import {
 import { processBatchQueue, refreshAiRuntimeStatus } from './ai.js';
 import { backfillLocalEvents, initSync, pullAll, pullIfStale, startRealtimeSync, hasPendingSyncWork, flushPendingSync, resetSyncForUserSwitch } from './sync.js';
 import { getSession, handleAuthRedirect, getActiveUserId, setActiveUserId, isMigratedForCurrentUser } from './supabase.js';
+import { resumeCompletedAIJobs } from './ai-job-resume.js';
 import { migrateToSupabase } from './migrate.js';
 import { initHome }     from './modules/home.js';
 import { initCalendar, openCalendarAddFlow } from './modules/calendar.js';
@@ -950,6 +951,10 @@ async function init() {
   // Route to initial view
   const hash = getViewFromHash();
   navigate(MODULES[hash] ? hash : 'home');
+  // 初期同期と画面描画を先に済ませ、閉じていた間の完成回答を後から安全に取り込む。
+  setTimeout(() => {
+    resumeCompletedAIJobs().catch(error => console.warn('[AI jobs] startup resume failed:', error));
+  }, 1800);
 
   // アプリ内の戻る操作は各画面のボタンで管理しており、通常の navigate() は
   // 履歴を増やさない。ここへ来る別ルートへの変更は、主に旧版で残った履歴を
@@ -978,6 +983,7 @@ async function init() {
     }
     getSession().then(session => {
       if (!session) return;
+      resumeCompletedAIJobs().catch(error => console.warn('[AI jobs] foreground resume failed:', error));
       pullIfStale(30_000, true).then(pulled => {
         if (pulled) refreshCurrentView({ preserveScroll: true });
       }).catch(() => {});
@@ -1007,6 +1013,11 @@ async function init() {
         if (pulled) refreshCurrentView({ preserveScroll: true });
       }).catch(() => {});
     }).catch(() => {});
+  });
+
+  // AI画面を離れた後にジョブが完成した場合も、現在画面を壊さず保存だけ取り込む。
+  document.addEventListener('ai:job-ready', () => {
+    resumeCompletedAIJobs().catch(error => console.warn('[AI jobs] completion resume failed:', error));
   });
 }
 

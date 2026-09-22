@@ -71,6 +71,30 @@ test('learning writes preserve ordinary memo records', () => {
   assert.equal(getLearningEntries().length, 1);
 });
 
+test('background AI jobs stay hidden and survive ordinary memo writes', () => {
+  const job = {
+    id: 'ai-job-hidden-record',
+    title: 'AI generation job',
+    summary: 'completed',
+    tags: ['__ai_generation_job__'],
+    blocks: [{
+      id: 'ai-job-hidden-record-data',
+      type: 'ai-generation-job',
+      data: { status: 'completed', resultText: '{"answer":"ready"}' },
+    }],
+    createdAt: '2026-09-22T09:00:00.000Z',
+    updatedAt: '2026-09-22T09:01:00.000Z',
+  };
+  localStorage.setItem('mp_knowledge', JSON.stringify([job]));
+
+  assert.deepEqual(getKnowledgeMemos(), []);
+  assert.ok(addLearningEntry(entry('learning-after-job', '背景処理')));
+
+  const records = JSON.parse(localStorage.getItem('mp_knowledge'));
+  assert.ok(records.some(record => record.id === job.id));
+  assert.equal(getLearningEntries().length, 1);
+});
+
 test('a one-character memo edit persists without losing its tags or blocks', () => {
   localStorage.setItem('mp_knowledge', JSON.stringify([{
     id: 'memo-small-edit',

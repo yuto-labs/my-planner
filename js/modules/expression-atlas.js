@@ -29,6 +29,7 @@ import {
   NUANCE_ATLAS_CATEGORIES,
   refreshAiRuntimeStatus,
 } from '../ai.js';
+import { acknowledgeAIJobAfterSync } from '../ai-jobs.js';
 
 /** キャッシュ上で未設定でもサーバー状態を再確認し、AI利用可否を確定する。 */
 // ---- 起動と音声再生 ----
@@ -1636,7 +1637,7 @@ function renderTranslationGenerator() {
           <button class="btn btn-primary" type="submit" ${state.generating ? 'disabled' : ''}>
             ${state.generating ? '<span class="atlas-spinner" aria-hidden="true"></span> 英訳を作成中…' : '3つの英訳を作る'}
           </button>
-          ${state.generating ? '<button class="btn btn-secondary" id="atlas-cancel-translation" type="button">キャンセル</button>' : ''}
+          ${state.generating ? '<button class="btn btn-secondary" id="atlas-cancel-translation" type="button">あとで確認</button>' : ''}
         </div>
       </form>
 
@@ -1907,6 +1908,7 @@ async function handleTranslationGenerate(event) {
       existingTaxonomy: taxonomy,
     }, { signal: state.controller.signal });
     const saved = addTranslationSet(generated);
+    if (saved && generated?.__aiJobId) acknowledgeAIJobAfterSync(generated.__aiJobId).catch(() => {});
     state.translationDraft = saved || generated;
     toast(
       saved
@@ -2586,7 +2588,7 @@ function renderGenerator() {
           <button class="btn btn-primary" id="atlas-generate-btn" type="submit" ${state.generating ? 'disabled' : ''}>
             ${state.generating ? '<span class="atlas-spinner" aria-hidden="true"></span> 作成中…' : (input.expansionMode ? '新しい表現を追加' : '表現セットを作成')}
           </button>
-          ${state.generating ? '<button class="btn btn-secondary" id="atlas-cancel-generate" type="button">キャンセル</button>' : ''}
+          ${state.generating ? '<button class="btn btn-secondary" id="atlas-cancel-generate" type="button">あとで確認</button>' : ''}
           <p>${input.expansionMode ? '既存語は除外し、有用な追加候補だけを保存します。' : '既存の語と重なった場合は、新しい説明で安全に更新されます。'}</p>
         </div>
       </form>
@@ -2753,6 +2755,7 @@ async function handleGenerate(event) {
     const saveReport = addExpressionEntriesWithReport(drafts);
     const saved = saveReport.entries;
     if (!saved.length) throw new Error('\u751f\u6210\u7d50\u679c\u3092\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f\u3002\u5165\u529b\u5185\u5bb9\u306f\u753b\u9762\u306b\u6b8b\u3057\u3066\u3044\u307e\u3059\u3002');
+    if (drafts?.__aiJobId) acknowledgeAIJobAfterSync(drafts.__aiJobId).catch(() => {});
 
     const questionId = state.questionConversionId;
     if (questionId) {

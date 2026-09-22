@@ -816,8 +816,17 @@ async function _pullMemos(client, userId, forceReplace = false) {
   if (trashResult.error) {
     console.warn('[Sync] could not verify note deletion records; preserving local notes:', trashResult.error);
   }
-  let remote = _filterPendingDeletes('knowledge_memos', data.map(rowToMemo));
-  const local = _ls('mp_knowledge', []);
+  // AIジョブは専用APIが所有する一時レコード。通常メモ同期へ混ぜると、
+  // 完了後に削除したジョブを「欠落データ」と誤認して復元してしまう。
+  const memoRows = data.filter(row => !(
+    Array.isArray(row?.tags)
+    && row.tags.includes('__ai_generation_job__')
+  ));
+  let remote = _filterPendingDeletes('knowledge_memos', memoRows.map(rowToMemo));
+  const local = _ls('mp_knowledge', []).filter(record => !(
+    Array.isArray(record?.tags)
+    && record.tags.includes('__ai_generation_job__')
+  ));
   const learningMerge = mergeLearningRecordsForSync(local, remote);
   remote = learningMerge.items;
   const atlasMerge = mergeAtlasRecordsForSync(local, remote);
