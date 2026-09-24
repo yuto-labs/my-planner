@@ -6,6 +6,7 @@ import {
   BACKGROUND_ACTIONS,
   JOB_BLOCK_TYPE,
   JOB_TAG,
+  errorMessage,
   rowToJob,
 } from '../api/ai/jobs.js';
 import { createAIJobId } from '../js/ai-jobs.js';
@@ -63,6 +64,11 @@ test('malformed knowledge memo rows are never treated as AI jobs', () => {
     id: 'memo',
     blocks: [{ type: 'paragraph', data: { status: 'completed' } }],
   }), null);
+});
+
+test('background jobs persist a readable nested upstream error', () => {
+  assert.equal(errorMessage({ error: { message: 'Gemini request rejected' } }), 'Gemini request rejected');
+  assert.equal(errorMessage({ message: '[object Object]' }, 'AI生成に失敗しました。'), 'AI生成に失敗しました。');
 });
 
 test('offline app shell contains both background job modules', async () => {

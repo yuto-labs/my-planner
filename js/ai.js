@@ -20,7 +20,11 @@ import {
   expressionLookupKeys,
 } from './atlas-model.js';
 import { atlasSenseFromEntry, mergeAtlasSenseArrays } from './atlas-senses.js';
-import { getFriendlyAiError, tryParseAIJSON as tryParseJSON } from './ai-response.js';
+import {
+  extractAIErrorMessage,
+  getFriendlyAiError,
+  tryParseAIJSON as tryParseJSON,
+} from './ai-response.js';
 import {
   canonicalTopicKey,
   detectAtlasQueryMode,
@@ -245,7 +249,7 @@ async function callServerAI(
     let usage = null;
     try {
       const data = await res.json();
-      msg = data.error || msg;
+      msg = extractAIErrorMessage(data?.error ?? data, msg);
       usage = data.usage || null;
     } catch {}
     const err = new Error(getFriendlyAiError(res.status, msg));
@@ -724,6 +728,8 @@ export async function generateKnowledgeAnswer(question, taxonomy, options = {}) 
     'Create stable lowercase ASCII concept keys with hyphens when possible. Include aliases for Japanese/English naming differences.',
     'Put every concept mentioned as a future learning target in concepts, but keep the list focused.',
     'If the question is ambiguous, state the most reasonable interpretation in the answer instead of asking for clarification.',
+    'If the input is only a word, short phrase, vague concept, or broad question, infer that the user wants its core meaning and structure. State the chosen scope briefly, then answer it; do not refuse merely because the wording is incomplete.',
+    'When two or three interpretations are genuinely plausible and materially change the answer, explain the most likely one first and distinguish the alternatives compactly. Do not invent ambiguity when ordinary context is enough.',
     'Avoid unsupported precision. Put genuine uncertainty or disputed points in cautions.',
   ].join('\n');
   const jobState = {};

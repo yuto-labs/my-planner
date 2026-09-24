@@ -16,6 +16,23 @@ const ALLOWED_MARKS = new Set(['strong', 'highlight-yellow', 'highlight-blue', '
 const KNOWLEDGE_RICH_BLOCK_TYPES = new Set(['list', 'table', 'equation', 'callout', 'flow']);
 const MARKDOWN_NOISE = /(\*\*|__|```|<\/?[a-z][^>]*>)/gi;
 
+/** AIが文字列の代わりに包みオブジェクトを返しても、既知の本文フィールドだけを安全に読む。 */
+function knowledgeTextValue(value, depth = 0) {
+  if (depth > 4 || value == null) return '';
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(item => knowledgeTextValue(item, depth + 1)).filter(Boolean).join('\n');
+  }
+  if (typeof value !== 'object') return '';
+  for (const key of ['text', 'content', 'value', 'label', 'title', 'name', 'description']) {
+    const text = knowledgeTextValue(value[key], depth + 1);
+    if (text) return text;
+  }
+  return '';
+}
+
 /** 検索・重複比較専用に、表記ゆれを除いた小文字キーを作る。表示文字は変えない。 */
 export function normalizeKnowledgeKey(value) {
   return String(value || '')
@@ -47,7 +64,7 @@ export function hasDistinctKnowledgeQuestion(title, question) {
 
 /** AIが残したMarkdown記号やHTML片を除き、保存・表示できるプレーン文へ直す。 */
 export function cleanKnowledgeText(value) {
-  return String(value || '')
+  return knowledgeTextValue(value)
     .replace(MARKDOWN_NOISE, '')
     .replace(/\r\n?/g, '\n')
     .replace(/^\s{0,3}#{1,6}\s+/gm, '')

@@ -12,6 +12,26 @@ const JOB_TAG = '__ai_generation_job__';
 const JOB_BLOCK_TYPE = 'ai-generation-job';
 const BACKGROUND_ACTIONS = new Set(['knowledge_answer', 'nuance_generate', 'translation_variants']);
 
+/** 外部APIの入れ子エラーを利用者向け文字列へ直し、[object Object]の保存を防ぐ。 */
+function errorMessage(value, fallback = 'AI生成に失敗しました。', depth = 0) {
+  if (depth > 5 || value == null) return fallback;
+  if (typeof value === 'string') {
+    const text = value.trim();
+    return text && text !== '[object Object]' ? text : fallback;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) {
+    const messages = value.map(item => errorMessage(item, '', depth + 1)).filter(Boolean);
+    return messages.join(' / ') || fallback;
+  }
+  if (typeof value !== 'object') return fallback;
+  for (const key of ['message', 'error', 'detail', 'details', 'hint', 'reason', 'description']) {
+    const message = errorMessage(value[key], '', depth + 1);
+    if (message) return message;
+  }
+  return fallback;
+}
+
 /** BearerヘッダーからSupabaseアクセストークンだけを取り出す。 */
 function bearerToken(req) {
   const header = req.headers.authorization || req.headers.Authorization || '';
@@ -153,7 +173,7 @@ async function runJob({ row, job, userId, token, generateUrl }) {
     }
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !String(payload?.text || '').trim()) {
-      throw new Error(payload?.error || `AI生成に失敗しました (${response.status})`);
+      throw new Error(errorMessage(payload?.error ?? payload, `AI生成に失敗しました (${response.status})`));
     }
     await writeJob({
       ...running,
@@ -171,7 +191,7 @@ async function runJob({ row, job, userId, token, generateUrl }) {
         status: 'failed',
         error: error?.name === 'AbortError'
           ? 'AI生成が時間内に完了しませんでした。再試行できます。'
-          : String(error?.message || 'AI生成に失敗しました。'),
+          : errorMessage(error, 'AI生成に失敗しました。'),
         failedAt: new Date().toISOString(),
       }, userId, token, row);
     } catch (writeError) {
@@ -287,4 +307,4 @@ export default async function handler(req, res) {
   }
 }
 
-export { BACKGROUND_ACTIONS, JOB_BLOCK_TYPE, JOB_TAG, rowToJob };
+export { BACKGROUND_ACTIONS, JOB_BLOCK_TYPE, JOB_TAG, errorMessage, rowToJob };

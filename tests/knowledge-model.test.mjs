@@ -69,6 +69,21 @@ test('normalizes structured answers without leaking Markdown', () => {
   assert.equal(validateKnowledgeEntry(entry).valid, true);
 });
 
+test('unwraps recoverable AI text objects without displaying object Object', () => {
+  const raw = rawAnswer();
+  raw.answer.directAnswer = [{ text: { content: '曖昧な質問は、最も自然な意味を明示して解釈します。' } }];
+  raw.answer.keyPoints = [
+    { text: '中心となる意味を先に示す' },
+    { label: '別解釈が重要なら区別する' },
+    { content: '不明なオブジェクトは画面へ漏らさない' },
+  ];
+  raw.answer.sections[0].paragraphs[0][0].text = { value: '本文の内容'.repeat(500) };
+  const entry = normalizeKnowledgeAnswer(raw, 'それってどういうこと？');
+  assert.match(entry.answer.directAnswer[0].text, /最も自然な意味/);
+  assert.equal(knowledgeAnswerText(entry).includes('[object Object]'), false);
+  assert.equal(validateKnowledgeEntry(entry).valid, true);
+});
+
 test('normalizes safe rich knowledge blocks without changing legacy paragraphs', () => {
   const raw = rawAnswer();
   raw.answer.sections[0].richBlocks = [

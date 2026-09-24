@@ -1155,13 +1155,26 @@ function normalizeStructuredResponse(actionType, text) {
       ...(Array.isArray(parsed?.concepts) ? parsed.concepts.map(concept => concept?.key) : []),
     ].map(value => String(value || '').trim()).filter(Boolean));
     /** Knowledge本文からMarkdown記号とHTMLタグを外し、画面側の構造化装飾と衝突させない。 */
-    const cleanText = value => String(value || '')
+    /** 生成モデルが本文を一段余計なオブジェクトで包んでも、既知の文字列フィールドだけを救済する。 */
+    const readableText = (value, depth = 0) => {
+      if (depth > 4 || value == null) return '';
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
+      if (Array.isArray(value)) return value.map(item => readableText(item, depth + 1)).filter(Boolean).join('\n');
+      if (typeof value !== 'object') return '';
+      for (const key of ['text', 'content', 'value', 'label', 'title', 'name', 'description']) {
+        const text = readableText(value[key], depth + 1);
+        if (text) return text;
+      }
+      return '';
+    };
+    /** Knowledge本文からMarkdown記号とHTMLタグを外し、保存用のプレーン文へそろえる。 */
+    const cleanText = value => readableText(value)
       .replace(/(\*\*|__|```|<\/?[a-z][^>]*>)/gi, '')
       .trim();
     /** 本文断片を清掃し、回答内で宣言済みの概念キーだけをリンクとして残す。 */
     const cleanSegment = segment => ({
-      ...segment,
-      text: cleanText(segment?.text),
+      ...(segment && typeof segment === 'object' && !Array.isArray(segment) ? segment : {}),
+      text: cleanText(segment?.text ?? segment),
       conceptKey: conceptKeys.has(String(segment?.conceptKey || '').trim())
         ? String(segment.conceptKey).trim()
         : '',

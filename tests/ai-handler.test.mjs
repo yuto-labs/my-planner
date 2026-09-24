@@ -118,3 +118,67 @@ test('AI status remains available when one configured model route is degraded', 
     restoreEnv('GEMINI_MODEL_QUALITY', previousQuality);
   }
 });
+
+test('knowledge generation accepts short, vague, conceptual, and complex questions', async () => {
+  const previousFetch = globalThis.fetch;
+  const previousKey = process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY = 'test-key';
+  const questions = [
+    '自由って何？',
+    'それって結局どういうこと？',
+    'レイリー散乱',
+    '金利上昇が家計、企業、為替、物価へ波及する仕組みを知りたい',
+  ];
+  const prompts = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const value = String(url);
+    if (value.includes('/auth/v1/user')) {
+      return new Response(JSON.stringify({ id: 'user-1' }), { status: 200 });
+    }
+    const request = JSON.parse(options.body || '{}');
+    prompts.push(request.systemInstruction?.parts?.[0]?.text || '');
+    const answerText = '質問の最も自然な解釈を明示し、前提から仕組み、具体例、限界まで順に説明します。'.repeat(35);
+    return geminiResponse(JSON.stringify({
+      title: '質問に応じた解説',
+      classification: {
+        majorId: 'interdisciplinary', middleId: 'unclassified', specialty: '', relatedCategoryIds: [],
+      },
+      primaryConcept: { key: 'question-core', label: '中心概念', aliases: [], role: 'primary' },
+      concepts: [{ key: 'question-core', label: '中心概念', aliases: [], role: 'primary' }],
+      facets: { periods: [], regions: [], people: [], organizations: [], works: [], systems: [] },
+      timeline: { mode: 'timeless', startYear: null, endYear: null, precision: 'range', label: '' },
+      geography: { scope: 'unclassified', regionIds: [], countryCodes: [] },
+      answer: {
+        directAnswer: [{ text: answerText, marks: [], conceptKey: 'question-core' }],
+        keyPoints: ['中心的な意味を示す', '判断の前提を分ける', '限界と別解釈を区別する'],
+        sections: [{ heading: '意味と仕組み', paragraphs: [[{ text: answerText, marks: [], conceptKey: '' }]], richBlocks: [] }],
+        cautions: [],
+      },
+    }));
+  };
+
+  try {
+    for (const question of questions) {
+      const req = {
+        method: 'POST',
+        headers: { authorization: 'Bearer test-token' },
+        body: {
+          modelPreference: 'quality',
+          actionType: 'knowledge_answer',
+          responseFormat: 'json',
+          maxTokens: 6500,
+          systemText: '曖昧でも合理的に解釈して答える。',
+          userText: JSON.stringify({ question }),
+        },
+      };
+      const res = createResponseRecorder();
+      await generateHandler(req, res);
+      assert.equal(res.statusCode, 200, question);
+      assert.doesNotMatch(res.body.text, /\[object Object\]/);
+    }
+    assert.equal(prompts.length, questions.length);
+  } finally {
+    globalThis.fetch = previousFetch;
+    restoreEnv('GEMINI_API_KEY', previousKey);
+  }
+});

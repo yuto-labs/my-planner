@@ -25,9 +25,37 @@ export function tryParseAIJSON(text) {
   return null;
 }
 
+/**
+ * APIや外部AIが返す文字列・Error・入れ子オブジェクトから、表示可能な原因文だけを取り出す。
+ * オブジェクトを直接Errorへ渡して「[object Object]」になる事故をここで止める。
+ */
+export function extractAIErrorMessage(value, fallback = '') {
+  const visited = new Set();
+  /** よくあるエラー包みを再帰的に読み、最初の有用な文字列を返す。 */
+  const read = (candidate, depth = 0) => {
+    if (depth > 5 || candidate == null) return '';
+    if (typeof candidate === 'string') {
+      const text = candidate.trim();
+      return text && text !== '[object Object]' ? text : '';
+    }
+    if (typeof candidate === 'number' || typeof candidate === 'boolean') return String(candidate);
+    if (typeof candidate !== 'object' || visited.has(candidate)) return '';
+    visited.add(candidate);
+    if (Array.isArray(candidate)) {
+      return candidate.map(item => read(item, depth + 1)).filter(Boolean).join(' / ');
+    }
+    for (const key of ['message', 'error', 'detail', 'details', 'hint', 'reason', 'description']) {
+      const text = read(candidate[key], depth + 1);
+      if (text) return text;
+    }
+    return '';
+  };
+  return read(value) || String(fallback || '').trim();
+}
+
 /** サーバーの状態コードと英語メッセージを、画面へ出せる日本語へ変換する。 */
 export function getFriendlyAiError(status, message) {
-  const raw = String(message || '');
+  const raw = extractAIErrorMessage(message);
   if (/[ぁ-んァ-ヶ一-龠]/.test(raw)) return raw;
   if (status === 401) return 'AIを使うにはログインしてください。';
   if (status === 403) return 'このアカウントではAIを利用できません。';

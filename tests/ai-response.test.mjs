@@ -2,7 +2,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { getFriendlyAiError, tryParseAIJSON } from '../js/ai-response.js';
+import {
+  extractAIErrorMessage,
+  getFriendlyAiError,
+  tryParseAIJSON,
+} from '../js/ai-response.js';
 
 test('parses plain, fenced, and surrounded JSON without evaluating arbitrary text', () => {
   assert.deepEqual(tryParseAIJSON('{"ok":true}'), { ok: true });
@@ -21,4 +25,12 @@ test('keeps Japanese server detail and maps common HTTP failures', () => {
   assert.match(getFriendlyAiError(503, 'model unavailable'), /model unavailable/);
   assert.equal(getFriendlyAiError(500, 'server failed'), 'AIから正常な応答を受け取れませんでした。もう一度お試しください。');
   assert.equal(getFriendlyAiError(418, ''), 'AIエラー (418)');
+});
+
+test('extracts nested API failures without leaking object Object', () => {
+  assert.equal(extractAIErrorMessage({ error: { message: 'モデルが混雑しています' } }), 'モデルが混雑しています');
+  assert.equal(extractAIErrorMessage({ details: { hint: 'しばらく待ってください' } }), 'しばらく待ってください');
+  assert.equal(extractAIErrorMessage({}, 'AI生成に失敗しました。'), 'AI生成に失敗しました。');
+  assert.equal(getFriendlyAiError(429, { error: { message: 'rate limited' } }), 'AIの利用が集中しています。少し時間を置いてもう一度お試しください。');
+  assert.equal(extractAIErrorMessage({ message: '[object Object]' }, 'fallback'), 'fallback');
 });

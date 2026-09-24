@@ -336,6 +336,28 @@ test('accepts nuance output using the schema field names', () => {
   assert.equal(hasCompleteStructuredResponse('nuance_generate', salvaged), true);
 });
 
+test('repairs wrapped knowledge text fields before validation', () => {
+  const response = {
+    title: '曖昧な概念の解釈',
+    classification: { majorId: 'interdisciplinary', middleId: 'unclassified' },
+    primaryConcept: { key: 'ambiguous-concept', label: '曖昧な概念' },
+    concepts: [{ key: 'ambiguous-concept', label: '曖昧な概念' }],
+    answer: {
+      directAnswer: [{ text: { content: '最も自然な解釈を先に示します。'.repeat(60) }, conceptKey: '' }],
+      keyPoints: [{ text: '中心的な解釈' }, { label: '別の可能性' }, { content: '判断の前提' }],
+      sections: [{
+        heading: { text: '解釈の範囲' },
+        paragraphs: [[{ text: { value: '文脈に応じて意味を区別します。'.repeat(30) }, conceptKey: '' }]],
+        richBlocks: [],
+      }],
+      cautions: [],
+    },
+  };
+  const normalized = normalizeStructuredResponse('knowledge_answer', JSON.stringify(response));
+  assert.equal(normalized.includes('[object Object]'), false);
+  assert.equal(hasCompleteStructuredResponse('knowledge_answer', normalized), true);
+});
+
 test('keeps structured knowledge visuals while removing formatting noise', () => {
   const response = {
     title: '光の散乱',
