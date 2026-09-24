@@ -10,7 +10,13 @@ import {
   rowToJob,
 } from '../api/ai/jobs.js';
 import { createAIJobId } from '../js/ai-jobs.js';
-import { aiJobLabel, formatAIElapsed } from '../js/ai-job-status.js';
+import {
+  aiJobLabel,
+  formatAIElapsed,
+  hasShownAIJobNotice,
+  normalizeAIJobNoticeHistory,
+  rememberAIJobNotice,
+} from '../js/ai-job-status.js';
 
 test('only durable long-form AI actions use background jobs', () => {
   assert.deepEqual(
@@ -26,6 +32,17 @@ test('AI status labels and elapsed time stay compact and deterministic', () => {
   assert.equal(aiJobLabel({ actionType: 'unknown' }), 'AI回答');
   assert.equal(formatAIElapsed('2026-09-22T00:00:00.000Z', Date.parse('2026-09-22T00:01:08.000Z')), '1:08');
   assert.equal(formatAIElapsed('2026-09-22T00:00:00.000Z', Date.parse('2026-09-22T01:02:03.000Z')), '1:02:03');
+});
+
+test('a failed AI job is announced once and old notice history stays bounded', () => {
+  const now = Date.UTC(2026, 8, 24);
+  const history = rememberAIJobNotice({}, 'job-1', 'save-failed', now);
+  assert.equal(hasShownAIJobNotice(history, 'job-1', 'save-failed', now + 1000), true);
+  assert.equal(hasShownAIJobNotice(history, 'job-1', 'generation-failed', now + 1000), false);
+  const old = { old: now - (31 * 24 * 60 * 60 * 1000) };
+  assert.deepEqual(normalizeAIJobNoticeHistory(old, now), {});
+  const many = Object.fromEntries(Array.from({ length: 100 }, (_, index) => [`job-${index}`, now - index]));
+  assert.equal(Object.keys(normalizeAIJobNoticeHistory(many, now)).length, 80);
 });
 
 test('AI job ids are valid, unique, and independent from memo ids', () => {

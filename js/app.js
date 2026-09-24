@@ -388,14 +388,21 @@ export function refreshCurrentView(options = {}) {
 
 // ---- Toast ----
 
-let toastTimer = null;
 /** 数秒で消える短い通知を表示する。 */
 export function showToast(message, type = 'info') {
   const container = document.getElementById('toast-container');
   if (!container) return;
+  const normalizedMessage = String(message || '');
+  // 同じ失敗を複数の非同期経路が同時に報告しても、通知を積み重ねない。
+  const duplicate = [...container.querySelectorAll('.toast')].some(item => (
+    item.dataset.message === normalizedMessage && item.dataset.type === type
+  ));
+  if (duplicate) return;
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
-  toast.textContent = message;
+  toast.dataset.message = normalizedMessage;
+  toast.dataset.type = type;
+  toast.textContent = normalizedMessage;
   container.appendChild(toast);
   setTimeout(() => toast.remove(), 3200);
 }

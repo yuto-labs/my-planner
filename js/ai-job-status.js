@@ -7,7 +7,10 @@ import { getFriendlyAIJobError } from './ai-response.js';
 const ACTIVE_POLL_MS = 3000;
 const IDLE_POLL_MS = 30000;
 const SUCCESS_VISIBLE_MS = 12000;
-const FAILURE_VISIBLE_MS = 60000;
+const FAILURE_VISIBLE_MS = 9000;
+const NOTICE_STORAGE_KEY = 'mp_ai_job_notices_v1';
+const NOTICE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const NOTICE_LIMIT = 80;
 
 let host = null;
 let jobs = new Map();
@@ -22,6 +25,56 @@ const LABELS = {
   translation_variants: '英訳',
   english_question: '英語の疑問',
 };
+
+/** 保存済み通知履歴を期限・件数で絞り、壊れた値を安全に捨てる。 */
+export function normalizeAIJobNoticeHistory(history, now = Date.now()) {
+  return Object.fromEntries(Object.entries(history && typeof history === 'object' ? history : {})
+    .map(([key, value]) => [String(key), Number(value)])
+    .filter(([key, value]) => key && Number.isFinite(value) && now - value < NOTICE_RETENTION_MS)
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, NOTICE_LIMIT));
+}
+
+/** 同じジョブ・同じ失敗段階を過去に通知済みか判定する。 */
+export function hasShownAIJobNotice(history, jobId, stage = 'failed', now = Date.now()) {
+  const key = `${String(jobId || '')}:${stage}`;
+  return Boolean(jobId && normalizeAIJobNoticeHistory(history, now)[key]);
+}
+
+/** 通知済みキーを追加し、長期間使っても履歴が増え続けない形へ整える。 */
+export function rememberAIJobNotice(history, jobId, stage = 'failed', now = Date.now()) {
+  if (!jobId) return normalizeAIJobNoticeHistory(history, now);
+  return normalizeAIJobNoticeHistory({ ...(history || {}), [`${jobId}:${stage}`]: now }, now);
+}
+
+/** localStorageから通知済み履歴を読み、利用できない環境では空として続行する。 */
+function readNoticeHistory() {
+  try {
+    return normalizeAIJobNoticeHistory(JSON.parse(localStorage.getItem(NOTICE_STORAGE_KEY) || '{}'));
+  } catch {
+    return {};
+  }
+}
+
+/** 同じ失敗を次回のポーリングや画面復帰で再表示しないよう端末へ記録する。 */
+function markNoticeShown(jobId, stage) {
+  const history = rememberAIJobNotice(readNoticeHistory(), jobId, stage);
+  try { localStorage.setItem(NOTICE_STORAGE_KEY, JSON.stringify(history)); } catch {}
+}
+
+/** 未通知の失敗だけを一度表示し、回答ジョブそのものは再保存用に残す。 */
+function showTerminalOnce({ jobId, stage, title, message }) {
+  if (!jobId || hasShownAIJobNotice(readNoticeHistory(), jobId, stage)) return false;
+  markNoticeShown(jobId, stage);
+  terminal = {
+    jobId,
+    kind: 'error',
+    title,
+    message,
+    expiresAt: Date.now() + FAILURE_VISIBLE_MS,
+  };
+  return true;
+}
 
 /** API由来の失敗文をHTMLとして解釈させず、そのまま文字として表示する。 */
 function escapeStatusText(value) {
@@ -129,13 +182,12 @@ export async function refreshAIJobStatus() {
       jobs = new Map(items.map(job => [job.id, job]));
       const failed = [...jobs.values()].filter(job => job.status === 'failed').at(-1);
       if (failed && (!terminal || terminal.jobId !== failed.id)) {
-        terminal = {
+        showTerminalOnce({
           jobId: failed.id,
-          kind: 'error',
+          stage: 'generation-failed',
           title: `${aiJobLabel(failed)}に失敗しました`,
           message: getFriendlyAIJobError(failed.error, '通信状態を確認して、もう一度お試しください。'),
-          expiresAt: Date.now() + FAILURE_VISIBLE_MS,
-        };
+        });
       }
       render();
       return items;
@@ -156,13 +208,12 @@ export function initAIJobStatus() {
     if (!job?.id) return;
     jobs.set(job.id, job);
     if (job.status === 'failed') {
-      terminal = {
+      showTerminalOnce({
         jobId: job.id,
-        kind: 'error',
+        stage: 'generation-failed',
         title: `${aiJobLabel(job)}に失敗しました`,
         message: getFriendlyAIJobError(job.error, '通信状態を確認して、もう一度お試しください。'),
-        expiresAt: Date.now() + FAILURE_VISIBLE_MS,
-      };
+      });
     }
     render();
     schedulePoll();
@@ -182,13 +233,12 @@ export function initAIJobStatus() {
   });
   document.addEventListener('ai:job-apply-failed', event => {
     const job = event.detail?.job || {};
-    terminal = {
+    showTerminalOnce({
       jobId: job.id,
-      kind: 'error',
+      stage: 'save-failed',
       title: `${aiJobLabel(job)}の保存を完了できませんでした`,
       message: String(event.detail?.error?.message || '回答はサーバーに保持されています。アプリを開き直すと再試行します。'),
-      expiresAt: Date.now() + FAILURE_VISIBLE_MS,
-    };
+    });
     render();
   });
   document.addEventListener('visibilitychange', () => {
