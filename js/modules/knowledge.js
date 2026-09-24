@@ -33,6 +33,7 @@ import {
   parseMarkdownBlockSource,
   markdownDelimitersForCommand,
   resolvePastedOrderedListNumber,
+  shouldPreferClipboardMarkdown,
 } from '../markdown-shortcuts.js';
 import {
   collectMemoImagePaths as collectImagePaths,
@@ -3633,12 +3634,6 @@ function hasStructuredClipboardHtml(html) {
   ));
 }
 
-/** プレーンテキストに、複数ブロックとして扱うべきMarkdown行頭記号があるか判定する。 */
-function hasMarkdownBlockStructure(text) {
-  const value = String(text || '');
-  return /(^|\n)\s*(?:#{1,6}\s+|[-*+]\s+|\d+\.\s+|>\s+|>>\s+|-\s+\[[ xX]\]\s+|---\s*$)/m.test(value);
-}
-
 /** 貼り付け文字列の外側にだけ付いた空行を除き、本文途中の改行はそのまま残す。 */
 export function trimPastedMarkdownEdges(value) {
   return String(value || '')
@@ -3801,7 +3796,7 @@ function handleEditorPaste(event, container) {
   const html = clipboard.getData('text/html');
   // 本物の見出し・リストを持つHTMLではHTML側の書式を優先する。GPTの番号リストを
   // Markdownと誤認すると、同時にコピーされた太字や見出しが失われるためである。
-  if (hasMarkdownBlockStructure(plainText) && !hasStructuredClipboardHtml(html)) {
+  if (shouldPreferClipboardMarkdown(plainText, html)) {
     const blocks = clipboardBlocksFromMarkdown(plainText);
     if (blocks.length) {
       event.preventDefault();

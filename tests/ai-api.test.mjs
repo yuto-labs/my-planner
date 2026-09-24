@@ -378,6 +378,46 @@ test('repairs common Knowledge array-shape drift without inventing new content',
   assert.equal(hasCompleteStructuredResponse('knowledge_answer', JSON.stringify(normalized)), true);
 });
 
+test('normalizes materially different Knowledge response shapes', () => {
+  const longCloud = 'クラウドコンピューティングは、計算資源をネットワーク越しに必要な分だけ利用する考え方です。物理設備の所有と利用を分け、需要に応じて構成を変えられます。責任範囲はサービス形態によって異なるため、利用者側の管理が不要になるわけではありません。'.repeat(14);
+  const longHistory = 'フランス革命は単一の事件ではなく、財政危機、身分制への不満、政治参加の要求が重なって進行した変化です。各段階で主体と目的が変わるため、時系列と利害関係を分けて考える必要があります。'.repeat(14);
+  const longMath = 'ベイズ推論では、観測前の見込みと新しい証拠を区別し、証拠が得られた条件の下で見込みを更新します。結果だけでなく、比較対象となる仮説ごとの尤度を見ることが重要です。'.repeat(14);
+  const cases = [
+    {
+      title: 'クラウドコンピューティング',
+      classification: { majorId: 'engineering', middleId: 'information_technology' },
+      primaryConcept: { key: 'cloud-computing', label: 'クラウドコンピューティング', role: 'primary' },
+      concepts: [{ key: 'cloud-computing', label: 'クラウドコンピューティング', role: 'primary' }],
+      answer: longCloud,
+    },
+    {
+      title: 'フランス革命の原因',
+      classification: { majorId: 'humanities', middleId: 'history' },
+      concepts: { key: 'french-revolution', label: 'フランス革命', role: 'primary' },
+      answer: {
+        directAnswer: longHistory,
+        keyPoints: [{ text: '財政危機' }, { label: '身分制への不満' }, { content: '政治参加の要求' }],
+        sections: { title: '複数の原因が重なった過程', text: longHistory },
+      },
+    },
+    {
+      title: 'ベイズ推論',
+      explanation: longMath,
+      keyPoints: ['事前の見込み', '証拠の尤度', '観測後の更新'],
+    },
+  ];
+
+  for (const candidate of cases) {
+    const normalized = normalizeStructuredResponse('knowledge_answer', JSON.stringify(candidate));
+    const parsed = JSON.parse(normalized);
+    assert.ok(parsed.answer.directAnswer.length, candidate.title);
+    assert.ok(parsed.answer.sections.length, candidate.title);
+    assert.ok(parsed.answer.keyPoints.length >= 3, candidate.title);
+    assert.ok(parsed.primaryConcept?.key, candidate.title);
+    assert.equal(hasCompleteStructuredResponse('knowledge_answer', normalized), true, candidate.title);
+  }
+});
+
 test('keeps structured knowledge visuals while removing formatting noise', () => {
   const response = {
     title: '光の散乱',

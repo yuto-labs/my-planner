@@ -1184,7 +1184,41 @@ function normalizeStructuredResponse(actionType, text) {
       : 0;
     parsed.entries = completeEntries.length >= 1 ? completeEntries : deduplicatedEntries;
   }
-  if (actionType === 'knowledge_answer' && parsed.answer) {
+  if (actionType === 'knowledge_answer') {
+    // JSON modeでは内容が正しくても、answerを文字列にする、sectionsを単体
+    // オブジェクトにする等の軽微な型揺れが起きる。保存形式へ寄せられるものは
+    // ここで救済し、事実を新しく作らなければ直せない欠損だけ再生成へ回す。
+    const answerSource = parsed.answer ?? parsed.explanation ?? parsed.content ?? {};
+    if (typeof answerSource === 'string' || Array.isArray(answerSource)) {
+      parsed.answer = {
+        directAnswer: answerSource,
+        keyPoints: parsed.keyPoints || [],
+        sections: [],
+        cautions: parsed.cautions || [],
+      };
+    } else {
+      parsed.answer = answerSource && typeof answerSource === 'object' ? answerSource : {};
+      parsed.answer.directAnswer ??= parsed.directAnswer || '';
+      parsed.answer.keyPoints ??= parsed.keyPoints || [];
+      parsed.answer.sections ??= parsed.sections || [];
+      parsed.answer.cautions ??= parsed.cautions || [];
+    }
+    parsed.classification = parsed.classification && typeof parsed.classification === 'object'
+      ? parsed.classification
+      : { majorId: 'interdisciplinary', middleId: 'unclassified', specialty: '', relatedCategoryIds: [] };
+    parsed.classification.majorId ||= 'interdisciplinary';
+    parsed.classification.middleId ||= 'unclassified';
+    parsed.concepts = Array.isArray(parsed.concepts)
+      ? parsed.concepts
+      : (parsed.concepts && typeof parsed.concepts === 'object' ? [parsed.concepts] : []);
+    if (!parsed.primaryConcept && parsed.concepts.length) {
+      parsed.primaryConcept = parsed.concepts.find(concept => concept?.role === 'primary') || parsed.concepts[0];
+    }
+    if (!parsed.primaryConcept && String(parsed.title || '').trim()) {
+      const label = String(parsed.title).trim();
+      parsed.primaryConcept = { key: label, label, aliases: [], role: 'primary' };
+      parsed.concepts.unshift(parsed.primaryConcept);
+    }
     const conceptKeys = new Set([
       parsed?.primaryConcept?.key,
       ...(Array.isArray(parsed?.concepts) ? parsed.concepts.map(concept => concept?.key) : []),
@@ -1276,21 +1310,37 @@ function normalizeStructuredResponse(actionType, text) {
     parsed.answer.keyPoints = (Array.isArray(parsed.answer.keyPoints)
       ? parsed.answer.keyPoints
       : []).map(cleanText).filter(Boolean);
-    parsed.answer.sections = (Array.isArray(parsed.answer.sections)
+    const sectionSources = Array.isArray(parsed.answer.sections)
       ? parsed.answer.sections
-      : []).map(section => ({
-      ...section,
-      heading: cleanText(section?.heading),
-      paragraphs: (Array.isArray(section?.paragraphs) ? section.paragraphs : [])
+      : (parsed.answer.sections ? [parsed.answer.sections] : []);
+    parsed.answer.sections = sectionSources.map(section => {
+      const sectionObject = section && typeof section === 'object' && !Array.isArray(section) ? section : {};
+      const paragraphSource = sectionObject.paragraphs
+        ?? sectionObject.text
+        ?? sectionObject.content
+        ?? section;
+      const paragraphs = Array.isArray(paragraphSource) ? paragraphSource : [paragraphSource];
+      return {
+      ...sectionObject,
+      heading: cleanText(sectionObject.heading || sectionObject.title),
+      paragraphs: paragraphs
         .map(paragraph => cleanSegments(Array.isArray(paragraph) ? paragraph : [paragraph]))
         .filter(paragraph => paragraph.length),
-      richBlocks: (Array.isArray(section?.richBlocks) ? section.richBlocks : [])
+      richBlocks: (Array.isArray(sectionObject.richBlocks) ? sectionObject.richBlocks : [])
         .map(cleanRichBlock)
         .filter(Boolean),
-    }));
+    };
+    }).filter(section => section.paragraphs.length || section.richBlocks.length);
     parsed.answer.cautions = (Array.isArray(parsed.answer.cautions)
       ? parsed.answer.cautions
       : []).map(cleanText).filter(Boolean);
+    if (!parsed.answer.sections.length && parsed.answer.directAnswer.length) {
+      parsed.answer.sections = [{
+        heading: '',
+        paragraphs: [parsed.answer.directAnswer.map(segment => ({ ...segment, conceptKey: '' }))],
+        richBlocks: [],
+      }];
+    }
     const paragraphSegments = parsed.answer.sections
       .flatMap(section => section.paragraphs || [])
       .flatMap(paragraph => paragraph || []);
@@ -1751,7 +1801,11 @@ export default async function handler(req, res) {
   // revisions reject that schema before generation and force an expensive
   // second request. JSON mode plus the prompt contract and server validation
   // is faster and still prevents malformed content from being saved.
-  const responseSchema = responseFormat === 'json' && body.actionType !== 'nuance_generate'
+  // Knowledgeは表・数式・概念リンクを含むためSchemaが深く、一部のGemini
+  // リビジョンでは生成前に400となる。プロンプト、正規化、保存前検証の三段で
+  // 守られているため、Atlasと同様にJSON modeだけを使って互換性を優先する。
+  const responseSchema = responseFormat === 'json'
+    && !['nuance_generate', 'knowledge_answer'].includes(body.actionType)
     ? pickResponseSchema(body.actionType, body)
     : null;
   if (responseSchema) payload.generationConfig.responseSchema = responseSchema;

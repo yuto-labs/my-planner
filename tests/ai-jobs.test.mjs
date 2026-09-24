@@ -102,3 +102,10 @@ test('offline app shell contains both background job modules', async () => {
   assert.match(serviceWorker, /\.\/js\/ai-job-resume\.js/);
   assert.match(serviceWorker, /\.\/js\/ai-job-status\.js/);
 });
+
+test('job creation waits until generation has started and persisted a terminal state', async () => {
+  const source = await readFile(new URL('../api/ai/jobs.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /waitUntil\s*\(\s*runJob/);
+  assert.match(source, /await runJob\s*\(\{/);
+  assert.match(source, /const finishedRow = await readJobRow/);
+});

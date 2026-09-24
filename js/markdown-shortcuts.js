@@ -121,6 +121,22 @@ export function resolvePastedOrderedListNumber(requestedNumber, previousNumber =
   return requested === 1 && previous >= 1 ? previous + 1 : requested;
 }
 
+/**
+ * GPTのスマホ版が返すクリップボードでは、正しいMarkdown本文とは別に
+ * `div`で包んだだけのHTMLが付くことがある。そのHTMLには見出しやリストの
+ * 意味がないため、Markdown側を優先して書式を復元する。
+ */
+export function shouldPreferClipboardMarkdown(plainText, html) {
+  const text = String(plainText || '');
+  const markup = String(html || '');
+  const hasMarkdownBlocks = /(^|\n)\s*(?:#{1,6}\s+|[-*+]\s+|\d+\.\s+|>\s+|>>\s+|-\s+\[[ xX]\]\s+|---\s*$)/m.test(text);
+  if (!hasMarkdownBlocks) return false;
+  // p/div/spanだけのHTMLは視覚的な包装にすぎない。実際の見出し・リスト・
+  // 表などがある場合だけHTML構造を優先する。
+  const hasSemanticBlocks = /<(?:h[1-6]|ul|ol|li|blockquote|table|thead|tbody|tr|th|td|hr)\b/i.test(markup);
+  return !hasSemanticBlocks;
+}
+
 /** ツールバーの行内装飾を、編集画面へ挿入するMarkdown記号へ対応付ける。 */
 export function markdownDelimitersForCommand(command) {
   return {

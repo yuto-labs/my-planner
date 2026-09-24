@@ -11,6 +11,7 @@ import {
   parseMarkdownBlockSource,
   markdownDelimitersForCommand,
   resolvePastedOrderedListNumber,
+  shouldPreferClipboardMarkdown,
 } from '../js/markdown-shortcuts.js';
 import {
   isDecorativeClipboardTextColor,
@@ -113,6 +114,22 @@ test('GPT-style repeated one markers become a useful pasted sequence', () => {
   });
   assert.deepEqual(numbers, [1, 2, 3, 4]);
   assert.equal(resolvePastedOrderedListNumber(5, 2), 5);
+});
+
+test('mobile GPT clipboard prefers meaningful Markdown over wrapper-only HTML', () => {
+  const markdown = '# 見出し\n\n1. 最初\n1. 次\n\n本文の **強調**';
+  assert.equal(
+    shouldPreferClipboardMarkdown(markdown, '<div># 見出し</div><div>1. 最初</div><div>1. 次</div>'),
+    true,
+  );
+  assert.equal(
+    shouldPreferClipboardMarkdown(markdown, '<h1>見出し</h1><ol><li>最初</li><li>次</li></ol>'),
+    false,
+  );
+  assert.equal(
+    shouldPreferClipboardMarkdown('普通の一段落', '<div><strong>普通</strong>の一段落</div>'),
+    false,
+  );
 });
 
 test('toolbar formatting inserts source markers instead of hidden rich HTML', () => {

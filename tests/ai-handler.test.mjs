@@ -146,11 +146,18 @@ test('knowledge generation accepts short, vague, conceptual, and complex questio
   const previousKey = process.env.GEMINI_API_KEY;
   process.env.GEMINI_API_KEY = 'test-key';
   const questions = [
-    '自由って何？',
-    'それって結局どういうこと？',
-    'レイリー散乱',
     'クラウドとは',
+    '空が青いのはなぜ？',
+    'フランス革命はなぜ起きた？',
     '金利上昇が家計、企業、為替、物価へ波及する仕組みを知りたい',
+    'ベイズの定理',
+    '自由って何？',
+    '契約はなぜ必要なの？',
+    'プレートテクトニクスと地震の関係',
+    '俳句と短歌は何が違う？',
+    'それって結局どういうこと？',
+    'ネットワーク',
+    '複利が長期投資へ与える影響と限界',
   ];
   const prompts = [];
   globalThis.fetch = async (url, options = {}) => {
