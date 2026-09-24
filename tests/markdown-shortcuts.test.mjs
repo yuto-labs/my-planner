@@ -13,6 +13,7 @@ import {
 } from '../js/markdown-shortcuts.js';
 import {
   isDecorativeClipboardTextColor,
+  resolveMemoEnterAction,
   renderBlocksView,
   renderMemoCardPreview,
 } from '../js/modules/knowledge.js';
@@ -100,6 +101,16 @@ test('pasted page text colors are distinguished from meaningful emphasis colors'
   assert.equal(isDecorativeClipboardTextColor('white'), true);
   assert.equal(isDecorativeClipboardTextColor('rgb(220, 38, 38)'), false);
   assert.equal(isDecorativeClipboardTextColor('#2563eb'), false);
+});
+
+test('desktop Enter splits blocks while Shift+Enter keeps an inline line break', () => {
+  assert.equal(resolveMemoEnterAction({ key: 'Enter' }, 'paragraph', true), 'split-block');
+  assert.equal(resolveMemoEnterAction({ key: 'Enter', shiftKey: true }, 'paragraph', true), 'line-break');
+  assert.equal(resolveMemoEnterAction({ key: 'Enter' }, 'bullet', true), 'continue-list');
+  assert.equal(resolveMemoEnterAction({ key: 'Enter' }, 'toggle', true), 'open-toggle');
+  assert.equal(resolveMemoEnterAction({ key: 'Enter' }, 'paragraph', false), 'line-break');
+  assert.equal(resolveMemoEnterAction({ key: 'Enter', isComposing: true }, 'paragraph', true), null);
+  assert.equal(resolveMemoEnterAction({ key: 'Enter', ctrlKey: true }, 'paragraph', true), null);
 });
 
 test('new memo block data renders safely without rewriting existing blocks', () => {

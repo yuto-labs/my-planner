@@ -2662,22 +2662,41 @@ function renderMathPreviews(container) {
   });
 }
 
+/** PCのEnterをブロック分割、Shift+Enterを同一ブロック内改行へ割り当てる。 */
+export function resolveMemoEnterAction(event, blockType = 'paragraph', desktopKeyboard = true) {
+  if (event?.key !== 'Enter' || event?.ctrlKey || event?.metaKey || event?.isComposing) return null;
+  if (!desktopKeyboard) {
+    if (blockType === 'toggle' && !event?.shiftKey) return 'open-toggle';
+    if (['bullet', 'numbered', 'checklist'].includes(blockType) && !event?.shiftKey) return 'continue-list';
+    return 'line-break';
+  }
+  if (event?.shiftKey) return 'line-break';
+  if (blockType === 'toggle') return 'open-toggle';
+  if (['bullet', 'numbered', 'checklist'].includes(blockType)) return 'continue-list';
+  return 'split-block';
+}
+
 /** Enter、Backspace、Markdownショートカットなどのキー操作をブロック編集へ変換する。 */
 function handleBlockKeydown(e, blockId, container) {
   if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
+    if (e.isComposing || editorCompositionActive) return;
     e.preventDefault();
     e.stopPropagation();
     const block = findBlockInAllBlocks(edState.blocks, blockId);
     recordEditorHistory(container);
-    if (block?.type === 'toggle' && !e.shiftKey) {
+    const desktopKeyboard = !window.matchMedia?.('(pointer: coarse)')?.matches;
+    const action = resolveMemoEnterAction(e, block?.type, desktopKeyboard);
+    if (action === 'open-toggle') {
       openToggleForEditing(blockId, container);
       return;
     }
-    if (!e.shiftKey) {
-      if (block?.type === 'bullet' || block?.type === 'numbered' || block?.type === 'checklist') {
-        continueListFromBlock(blockId, container, e.target);
-        return;
-      }
+    if (action === 'continue-list') {
+      continueListFromBlock(blockId, container, e.target);
+      return;
+    }
+    if (action === 'split-block') {
+      splitTextBlockAfterCaret(blockId, container, e.target);
+      return;
     }
     insertBlockLineBreak(e.target);
     syncEditableBlock(blockId, e.target);
@@ -2809,6 +2828,20 @@ function continueListFromBlock(blockId, container, editable = null) {
   if (split) {
     const nextSource = `${markdownPrefixForBlock(nextBlock, 1)}${split.after.text}`;
     applyMarkdownSourceToBlock(nextBlock.id, nextSource);
+  }
+  rerenderBlocks(container);
+  focusBlock(nextBlock.id, container);
+}
+
+/** PCのEnter位置で本文を前後へ分け、後半を新しい通常ブロックとして直後へ置く。 */
+function splitTextBlockAfterCaret(blockId, container, editable) {
+  syncFocusedEditableBlock(container, blockId);
+  const split = splitEditableAtCaret(editable);
+  const nextBlock = insertBlockAfter(blockId, 'paragraph');
+  if (!nextBlock) return;
+  if (split) {
+    applyMarkdownSourceToBlock(blockId, split.before.text);
+    applyMarkdownSourceToBlock(nextBlock.id, split.after.text);
   }
   rerenderBlocks(container);
   focusBlock(nextBlock.id, container);
