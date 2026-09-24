@@ -68,6 +68,7 @@ let editorTypingHistoryOpen = false;
 let editorTypingHistoryTimer = null;
 let editorHistoryRestoring = false;
 let editorCompositionActive = false;
+let lastEditorSelection = null;
 let memoSaveInFlight = false;
 let crossBlockSelectionMode = false;
 // 閲覧中のトグル開閉は本文データではない。同期再描画で状態が戻らないよう画面内だけで保持する。
@@ -141,8 +142,59 @@ function markEditorBaseline() {
   editorBaseline = editorSnapshot();
 }
 
+/**
+ * 編集欄のカーソル位置を、DOMを作り直した後でも使える文字オフセットとして記録する。
+ * contenteditableの内部DOMはMarkdown装飾などで変わるため、Node参照ではなく先頭からの文字数を使う。
+ */
+function captureEditorSelection(container) {
+  const active = document.activeElement;
+  if (!active || !container?.contains(active)) return lastEditorSelection;
+  if (active.id === 'kn-edit-title' || active.id === 'kn-tag-input') {
+    return {
+      kind: 'input',
+      id: active.id,
+      start: active.selectionStart ?? active.value?.length ?? 0,
+      end: active.selectionEnd ?? active.selectionStart ?? active.value?.length ?? 0,
+    };
+  }
+  const blockId = active.dataset?.blockId;
+  if (!blockId) return lastEditorSelection;
+  if (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT') {
+    return {
+      kind: 'block-input',
+      blockId,
+      start: active.selectionStart ?? active.value?.length ?? 0,
+      end: active.selectionEnd ?? active.selectionStart ?? active.value?.length ?? 0,
+    };
+  }
+  if (active.contentEditable !== 'true') return lastEditorSelection;
+  const selection = window.getSelection();
+  if (!selection?.rangeCount || !active.contains(selection.anchorNode) || !active.contains(selection.focusNode)) {
+    return lastEditorSelection;
+  }
+  /** 選択端のDOM位置を、編集欄先頭からの文字数へ変換する。 */
+  const offsetFromStart = (node, offset) => {
+    const range = document.createRange();
+    range.selectNodeContents(active);
+    range.setEnd(node, offset);
+    return range.toString().length;
+  };
+  return {
+    kind: 'contenteditable',
+    blockId,
+    start: Math.min(
+      offsetFromStart(selection.anchorNode, selection.anchorOffset),
+      offsetFromStart(selection.focusNode, selection.focusOffset),
+    ),
+    end: Math.max(
+      offsetFromStart(selection.anchorNode, selection.anchorOffset),
+      offsetFromStart(selection.focusNode, selection.focusOffset),
+    ),
+  };
+}
+
 /** Undo/Redoで復元できるよう、編集下書き全体を参照の切れたコピーとして保存する。 */
-function editorHistorySnapshot() {
+function editorHistorySnapshot(container = null) {
   return {
     title: edState.title,
     blocks: deepClone(edState.blocks),
@@ -151,6 +203,7 @@ function editorHistorySnapshot() {
     starred: edState.starred,
     reviewEnabled: edState.reviewEnabled,
     activeBlockId: activeEditorBlockId,
+    selection: captureEditorSelection(container),
   };
 }
 
@@ -161,6 +214,7 @@ function resetEditorHistory() {
   editorTypingHistoryOpen = false;
   clearTimeout(editorTypingHistoryTimer);
   editorTypingHistoryTimer = null;
+  lastEditorSelection = null;
 }
 
 /** Undo・Redo履歴の現在位置から、各ボタンの有効状態だけを更新する。 */
@@ -180,7 +234,7 @@ function recordEditorHistory(container) {
   if (!edState.isEdit || editorHistoryRestoring) return;
   editorTypingHistoryOpen = false;
   clearTimeout(editorTypingHistoryTimer);
-  const snapshot = editorHistorySnapshot();
+  const snapshot = editorHistorySnapshot(container);
   const last = editorUndoHistory.at(-1);
   if (last && JSON.stringify(last) === JSON.stringify(snapshot)) return;
   editorUndoHistory.push(snapshot);
@@ -206,12 +260,15 @@ function restoreEditorHistory(container, direction) {
   const to = direction === 'undo' ? editorRedoHistory : editorUndoHistory;
   const snapshot = from.pop();
   if (!snapshot) return;
+  // inputイベントを送らない一部のIMEやブラウザでも、Redo側へ最新文字を残せるよう
+  // 現在のDOMを先に下書きへ回収する。
+  syncEditorDomToState(container);
   const scrollOwner = document.getElementById('main-content');
   const scrollTop = scrollOwner?.scrollTop || 0;
   // A keyboard undo should leave the user in the same block, but clicking the
   // toolbar should not steal focus or jump the page back to that block.
   const restoreEditableFocus = document.activeElement?.matches?.('[contenteditable="true"], textarea, input') || false;
-  to.push(editorHistorySnapshot());
+  to.push(editorHistorySnapshot(container));
   if (to.length > EDITOR_HISTORY_LIMIT) to.shift();
   clearTimeout(editorTypingHistoryTimer);
   editorTypingHistoryOpen = false;
@@ -244,9 +301,8 @@ function restoreEditorHistory(container, direction) {
     if (scrollOwner) scrollOwner.scrollTop = scrollTop;
     editorHistoryRestoring = false;
     updateEditorHistoryControls(container);
-    if (restoreEditableFocus && activeEditorBlockId) {
-      const editable = container.querySelector(`.kn-block-focusable[data-block-id="${activeEditorBlockId}"]`);
-      focusEditableWithoutScroll(editable);
+    if (restoreEditableFocus) {
+      restoreEditorSelection(container, snapshot.selection);
     }
   });
 }
@@ -1893,6 +1949,16 @@ function renderEditMode(container, { preserveHistory = false } = {}) {
   container.querySelector('#kn-save-btn')?.addEventListener('click', () => saveMemo(container));
 
   const editPage = container.querySelector('.kn-edit-page');
+  // Browsers can expose Undo/Redo through beforeinput (mobile keyboard menus,
+  // accessibility actions, or OS edit commands) without emitting keydown.
+  // Route those actions through the same app history instead of allowing the
+  // browser's per-element history to conflict with the memo-wide history.
+  editPage?.addEventListener('beforeinput', event => {
+    if (event.inputType !== 'historyUndo' && event.inputType !== 'historyRedo') return;
+    event.preventDefault();
+    event.stopPropagation();
+    restoreEditorHistory(container, event.inputType === 'historyRedo' ? 'redo' : 'undo');
+  }, true);
   editPage?.addEventListener('keydown', event => {
     if (event.isComposing || !(event.ctrlKey || event.metaKey)) return;
     const key = event.key.toLowerCase();
@@ -1950,7 +2016,26 @@ function renderEditMode(container, { preserveHistory = false } = {}) {
   editPage?.addEventListener('focusin', event => {
     if (event.target?.matches?.('[contenteditable="true"], input, textarea')) {
       beginEditorTextHistory(container);
+      requestAnimationFrame(() => {
+        lastEditorSelection = captureEditorSelection(container);
+      });
     }
+  });
+  /** 入力やポインター移動後の最新カーソル位置を次の履歴操作用に記憶する。 */
+  const rememberEditorSelection = () => {
+    requestAnimationFrame(() => {
+      lastEditorSelection = captureEditorSelection(container);
+    });
+  };
+  editPage?.addEventListener('input', rememberEditorSelection);
+  editPage?.addEventListener('keyup', rememberEditorSelection);
+  editPage?.addEventListener('pointerup', rememberEditorSelection);
+  // A toolbar button receives focus before click. Preserve the caret while the
+  // editor still owns focus so Redo can return to the exact typing position.
+  container.querySelectorAll('#kn-undo-btn, #kn-redo-btn').forEach(button => {
+    button.addEventListener('pointerdown', () => {
+      lastEditorSelection = captureEditorSelection(container);
+    });
   });
   container.querySelector('#kn-undo-btn')?.addEventListener('click', () => restoreEditorHistory(container, 'undo'));
   container.querySelector('#kn-redo-btn')?.addEventListener('click', () => restoreEditorHistory(container, 'redo'));
@@ -1959,6 +2044,7 @@ function renderEditMode(container, { preserveHistory = false } = {}) {
   container.querySelector('#kn-edit-title')?.addEventListener('input', e => {
     beginEditorTextHistory(container);
     edState.title = e.target.value.slice(0, 180);
+    lastEditorSelection = captureEditorSelection(container);
   });
 
   container.querySelector('#kn-review-enabled')?.addEventListener('change', e => {
@@ -4106,6 +4192,65 @@ function focusEditableWithoutScroll(el) {
   catch { el.focus(); }
 }
 
+/** Undo/Redoで再描画した入力欄へ、保存した選択範囲とカーソル位置を戻す。 */
+function restoreEditorSelection(container, savedSelection) {
+  const saved = savedSelection || lastEditorSelection;
+  if (!saved) {
+    const fallback = activeEditorBlockId
+      ? container.querySelector(`.kn-block-focusable[data-block-id="${activeEditorBlockId}"]`)
+      : null;
+    focusEditableWithoutScroll(fallback);
+    return;
+  }
+
+  if (saved.kind === 'input') {
+    const input = container.querySelector(`#${saved.id}`);
+    if (!input) return;
+    focusEditableWithoutScroll(input);
+    input.setSelectionRange?.(
+      Math.min(saved.start, input.value.length),
+      Math.min(saved.end, input.value.length),
+    );
+    lastEditorSelection = saved;
+    return;
+  }
+
+  const editable = container.querySelector(`.kn-block-focusable[data-block-id="${saved.blockId}"]`);
+  if (!editable) return;
+  activeEditorBlockId = saved.blockId;
+  focusEditableWithoutScroll(editable);
+  if (saved.kind === 'block-input') {
+    editable.setSelectionRange?.(
+      Math.min(saved.start, editable.value.length),
+      Math.min(saved.end, editable.value.length),
+    );
+    lastEditorSelection = saved;
+    return;
+  }
+
+  /** 先頭からの文字数を、現在のDOMに存在するテキストノード位置へ戻す。 */
+  const pointAtOffset = wantedOffset => {
+    const walker = document.createTreeWalker(editable, NodeFilter.SHOW_TEXT);
+    let remaining = Math.max(0, Number(wantedOffset) || 0);
+    let node = walker.nextNode();
+    while (node && remaining > node.textContent.length) {
+      remaining -= node.textContent.length;
+      node = walker.nextNode();
+    }
+    if (node) return { node, offset: Math.min(remaining, node.textContent.length) };
+    return { node: editable, offset: editable.childNodes.length };
+  };
+  const start = pointAtOffset(saved.start);
+  const end = pointAtOffset(saved.end);
+  const range = document.createRange();
+  range.setStart(start.node, start.offset);
+  range.setEnd(end.node, end.offset);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  lastEditorSelection = saved;
+}
+
 /** タグ候補を直近使用順に並べるため、タグ名ごとの最終使用時刻を端末から読む。 */
 function getKnowledgeTagRecency() {
   try {
@@ -4314,7 +4459,7 @@ function renderTagDisplay(container) {
 /** 保存直前に、まだinput要素内だけにある編集値をedStateへ回収する。 */
 function syncEditorDomToState(container) {
   const titleInput = container.querySelector('#kn-edit-title');
-  if (titleInput) edState.title = titleInput.value.trim().slice(0, 180);
+  if (titleInput) edState.title = titleInput.value.slice(0, 180);
 
   container.querySelectorAll('[data-table-header], [data-table-cell]').forEach(input => {
     const block = findBlockInAllBlocks(edState.blocks, input.dataset.blockId);
@@ -4426,7 +4571,7 @@ async function persistMemo(container) {
   edState.blocks = trimMemoEdgeEmptyBlocks(edState.blocks);
 
   const memoData = {
-    title:   edState.title || '無題のメモ',
+    title:   edState.title.trim() || '無題のメモ',
     blocks:  edState.blocks,
     tags:    edState.tags.length > 0 ? edState.tags : ['General'],
     url:     edState.url,
