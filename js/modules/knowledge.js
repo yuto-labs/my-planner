@@ -4405,12 +4405,48 @@ function inlineHtmlToMarkdown(html) {
     }
     if (tag === 'SPAN' || tag === 'FONT') {
       const color = node.style?.color || node.getAttribute('color') || '';
-      return color ? `<span style="color:${color}">${inner}</span>` : inner;
+      // Webページは通常の本文色まで各spanへ書き込むことがある。その色を
+      // Markdownへ持ち込むと、編集画面へ `<span style=...>` が大量に露出する。
+      // 黒・白・低彩度の本文色は見た目上の既定値として外し、意味のある色だけ残す。
+      return color && !isDecorativeClipboardTextColor(color)
+        ? `<span style="color:${color}">${inner}</span>`
+        : inner;
     }
     return inner;
   };
 
   return [...template.content.childNodes].map(visit).join('').replace(/\n+$/, '');
+}
+
+/**
+ * 貼り付け元が通常本文へ機械的に付けた文字色か判定する。
+ * 赤や青など意味を持つ強い色は維持し、黒・白・低彩度のUI色だけを除外する。
+ */
+export function isDecorativeClipboardTextColor(value) {
+  const color = String(value || '').trim().toLowerCase();
+  if (!color) return false;
+  if (['black', 'white', 'gray', 'grey', 'currentcolor', 'inherit', 'initial'].includes(color)) return true;
+
+  let channels = null;
+  const hex = color.match(/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+  if (hex) {
+    const raw = hex[1].length === 3
+      ? [...hex[1]].map(char => char + char).join('')
+      : hex[1].slice(0, 6);
+    channels = [0, 2, 4].map(index => Number.parseInt(raw.slice(index, index + 2), 16));
+  } else {
+    const rgb = color.match(/^rgba?\(\s*(\d+(?:\.\d+)?)\s*[, ]\s*(\d+(?:\.\d+)?)\s*[, ]\s*(\d+(?:\.\d+)?)/i);
+    if (rgb) channels = rgb.slice(1, 4).map(channel => Math.max(0, Math.min(255, Number(channel))));
+  }
+  if (!channels) return false;
+
+  const highest = Math.max(...channels);
+  const lowest = Math.min(...channels);
+  const chroma = highest - lowest;
+  const luminance = channels.reduce((sum, channel, index) => (
+    sum + channel * [0.2126, 0.7152, 0.0722][index]
+  ), 0) / 255;
+  return chroma <= 18 || (chroma <= 36 && (luminance <= 0.28 || luminance >= 0.82));
 }
 
 /**

@@ -11,7 +11,11 @@ import {
   parseMarkdownBlockSource,
   markdownDelimitersForCommand,
 } from '../js/markdown-shortcuts.js';
-import { renderBlocksView, renderMemoCardPreview } from '../js/modules/knowledge.js';
+import {
+  isDecorativeClipboardTextColor,
+  renderBlocksView,
+  renderMemoCardPreview,
+} from '../js/modules/knowledge.js';
 import { normalizeMemoBlockIds } from '../js/storage.js';
 
 test('offline app shell includes the memo shortcut module', () => {
@@ -88,6 +92,14 @@ test('toolbar formatting inserts source markers instead of hidden rich HTML', ()
   assert.deepEqual(markdownDelimitersForCommand('bold'), ['**', '**']);
   assert.deepEqual(markdownDelimitersForCommand('underline'), ['<u>', '</u>']);
   assert.equal(markdownDelimitersForCommand('unknown'), null);
+});
+
+test('pasted page text colors are distinguished from meaningful emphasis colors', () => {
+  assert.equal(isDecorativeClipboardTextColor('rgb(39, 35, 62)'), true);
+  assert.equal(isDecorativeClipboardTextColor('#222222'), true);
+  assert.equal(isDecorativeClipboardTextColor('white'), true);
+  assert.equal(isDecorativeClipboardTextColor('rgb(220, 38, 38)'), false);
+  assert.equal(isDecorativeClipboardTextColor('#2563eb'), false);
 });
 
 test('new memo block data renders safely without rewriting existing blocks', () => {
