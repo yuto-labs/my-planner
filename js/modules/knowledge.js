@@ -70,6 +70,8 @@ let editorHistoryRestoring = false;
 let editorCompositionActive = false;
 let memoSaveInFlight = false;
 let crossBlockSelectionMode = false;
+// 閲覧中のトグル開閉は本文データではない。同期再描画で状態が戻らないよう画面内だけで保持する。
+const viewToggleCollapsedOverrides = new Map();
 
 // ---- Navigation history for swipe-back ----
 let _knHistory           = [];  // [{memoId: string|null, scrollTop: number}]
@@ -88,6 +90,7 @@ export function openKnowledgeMemo(id) {
     scrollTop: main?.scrollTop || 0,
     anchorId: fromDetail ? currentMemoId : id,
   });
+  viewToggleCollapsedOverrides.clear();
   currentMemoId  = id;
   pendingNewOpts = null;
 
@@ -1486,7 +1489,11 @@ function renderViewMode(container) {
       if (e.target.closest('a')) return;
       const block = findBlockInAllBlocks(edState.blocks, row.dataset.viewToggleId);
       if (!block) return;
-      block.collapsed = !block.collapsed;
+      const currentCollapsed = resolveViewToggleCollapsed(
+        block,
+        viewToggleCollapsedOverrides.get(block.id),
+      );
+      viewToggleCollapsedOverrides.set(block.id, !currentCollapsed);
       renderDetail(container, { preserveScroll: true });
     });
   });
@@ -1586,7 +1593,10 @@ function renderBlockView(block, numCounter = 0, indent = 0) {
 
   if (block.type === 'toggle') {
     const children = block.children || [];
-    const collapsed = block.collapsed ?? !children.length;
+    const collapsed = resolveViewToggleCollapsed(
+      block,
+      viewToggleCollapsedOverrides.get(block.id),
+    );
     return `
       <div class="kn-view-toggle${collapsed ? ' collapsed' : ''}" ${id}
         data-view-toggle-id="${esc(block.id || '')}">
@@ -2121,6 +2131,12 @@ function renderBlockTypeOptions(currentType) {
   return BLOCK_TYPES
     .map(bt => `<option value="${esc(bt.type)}"${bt.type === currentType ? ' selected' : ''}>${esc(bt.label)}</option>`)
     .join('');
+}
+
+/** 保存値より画面内の一時開閉を優先し、同期とは独立したトグル表示状態を返す。 */
+export function resolveViewToggleCollapsed(block, override) {
+  if (typeof override === 'boolean') return override;
+  return block?.collapsed ?? !(block?.children?.length);
 }
 
 /**

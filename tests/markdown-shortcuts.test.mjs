@@ -18,6 +18,7 @@ import {
   trimPastedMarkdownEdges,
   renderBlocksView,
   renderMemoCardPreview,
+  resolveViewToggleCollapsed,
 } from '../js/modules/knowledge.js';
 import { normalizeMemoBlockIds } from '../js/storage.js';
 
@@ -138,6 +139,15 @@ test('Backspace merging accepts text blocks but protects structural content', ()
     { type: 'paragraph', text: '上' },
     { type: 'toggle', text: '下', children: [{ type: 'paragraph', text: '子' }] },
   ), false);
+});
+
+test('view toggle state survives redraw without changing the saved collapsed value', () => {
+  const block = { type: 'toggle', collapsed: true, children: [{ type: 'paragraph', text: '中身' }] };
+  assert.equal(resolveViewToggleCollapsed(block), true);
+  assert.equal(resolveViewToggleCollapsed(block, false), false);
+  assert.equal(block.collapsed, true);
+  assert.equal(resolveViewToggleCollapsed({ type: 'toggle', children: [] }), true);
+  assert.equal(resolveViewToggleCollapsed({ type: 'toggle', children: [{}] }), false);
 });
 
 test('new memo block data renders safely without rewriting existing blocks', () => {
