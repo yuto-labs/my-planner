@@ -358,6 +358,26 @@ test('repairs wrapped knowledge text fields before validation', () => {
   assert.equal(hasCompleteStructuredResponse('knowledge_answer', normalized), true);
 });
 
+test('repairs common Knowledge array-shape drift without inventing new content', () => {
+  const paragraph = 'クラウドは、ネットワーク越しに計算資源を利用する仕組みです。利用者は物理設備を直接管理せずに機能を使えます。必要量に応じて資源を増減できる点も重要です。'.repeat(8);
+  const response = {
+    title: 'クラウドコンピューティング',
+    classification: { majorId: 'engineering_technology', middleId: 'computer_science' },
+    primaryConcept: { key: 'cloud-computing', label: 'クラウド', aliases: [], role: 'primary' },
+    concepts: [{ key: 'cloud-computing', label: 'クラウド', aliases: [], role: 'primary' }],
+    answer: {
+      directAnswer: '',
+      keyPoints: [],
+      sections: [{ heading: '仕組み', paragraphs: [paragraph], richBlocks: [] }],
+      cautions: [],
+    },
+  };
+  const normalized = JSON.parse(normalizeStructuredResponse('knowledge_answer', JSON.stringify(response)));
+  assert.equal(normalized.answer.directAnswer.length, 1);
+  assert.ok(normalized.answer.keyPoints.length >= 3);
+  assert.equal(hasCompleteStructuredResponse('knowledge_answer', JSON.stringify(normalized)), true);
+});
+
 test('keeps structured knowledge visuals while removing formatting noise', () => {
   const response = {
     title: '光の散乱',

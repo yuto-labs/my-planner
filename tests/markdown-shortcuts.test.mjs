@@ -10,6 +10,7 @@ import {
   markdownPrefixForBlock,
   parseMarkdownBlockSource,
   markdownDelimitersForCommand,
+  resolvePastedOrderedListNumber,
 } from '../js/markdown-shortcuts.js';
 import {
   isDecorativeClipboardTextColor,
@@ -102,6 +103,16 @@ test('ordered-list numbers survive editing and viewing instead of restarting at 
   ]);
   assert.match(html, />3\.<\/span><span>first/);
   assert.match(html, />4\.<\/span><span>second/);
+});
+
+test('GPT-style repeated one markers become a useful pasted sequence', () => {
+  let previous = 0;
+  const numbers = [1, 1, 1, 1].map(number => {
+    previous = resolvePastedOrderedListNumber(number, previous);
+    return previous;
+  });
+  assert.deepEqual(numbers, [1, 2, 3, 4]);
+  assert.equal(resolvePastedOrderedListNumber(5, 2), 5);
 });
 
 test('toolbar formatting inserts source markers instead of hidden rich HTML', () => {

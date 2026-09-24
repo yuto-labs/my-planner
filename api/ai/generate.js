@@ -808,6 +808,7 @@ function buildBlockedRetryInstruction(actionType) {
     return [
       'Answer the user\'s ordinary educational question in calm, accurate Japanese.',
       'Interpret a short or ambiguous term in its most common learning context and briefly state that interpretation.',
+      'Prefer an academic or technical interpretation over an entertainment-specific one unless entertainment is explicit. Interpret standalone Japanese クラウド as cloud computing.',
       'Return JSON matching the supplied response schema exactly.',
       'Give a direct answer, 3-5 key points, and a coherent explanation with content-specific headings.',
       'For a focused question, provide roughly 1400-2200 Japanese characters of substantive explanation without repetition.',
@@ -1271,7 +1272,7 @@ function normalizeStructuredResponse(actionType, text) {
     };
     parsed.answer.directAnswer = (Array.isArray(parsed.answer.directAnswer)
       ? parsed.answer.directAnswer
-      : []).map(cleanSegment);
+      : (parsed.answer.directAnswer ? [parsed.answer.directAnswer] : [])).map(cleanSegment);
     parsed.answer.keyPoints = (Array.isArray(parsed.answer.keyPoints)
       ? parsed.answer.keyPoints
       : []).map(cleanText).filter(Boolean);
@@ -1281,7 +1282,8 @@ function normalizeStructuredResponse(actionType, text) {
       ...section,
       heading: cleanText(section?.heading),
       paragraphs: (Array.isArray(section?.paragraphs) ? section.paragraphs : [])
-        .map(cleanSegments),
+        .map(paragraph => cleanSegments(Array.isArray(paragraph) ? paragraph : [paragraph]))
+        .filter(paragraph => paragraph.length),
       richBlocks: (Array.isArray(section?.richBlocks) ? section.richBlocks : [])
         .map(cleanRichBlock)
         .filter(Boolean),
@@ -1289,6 +1291,24 @@ function normalizeStructuredResponse(actionType, text) {
     parsed.answer.cautions = (Array.isArray(parsed.answer.cautions)
       ? parsed.answer.cautions
       : []).map(cleanText).filter(Boolean);
+    const paragraphSegments = parsed.answer.sections
+      .flatMap(section => section.paragraphs || [])
+      .flatMap(paragraph => paragraph || []);
+    // 本文は十分でも配列形だけが崩れた回答は捨てず、AIが返した文章から形を補う。
+    // 新しい事実を生成する処理ではないため、回答の意味と密度は変えない。
+    if (!parsed.answer.directAnswer.length && paragraphSegments.length) {
+      parsed.answer.directAnswer = [paragraphSegments[0]];
+    }
+    if (parsed.answer.keyPoints.length < 3) {
+      const sentenceCandidates = paragraphSegments
+        .flatMap(segment => cleanText(segment?.text).split(/(?<=[。！？])/))
+        .map(sentence => sentence.trim())
+        .filter(sentence => sentence.length >= 8);
+      parsed.answer.keyPoints = [...new Set([
+        ...parsed.answer.keyPoints,
+        ...sentenceCandidates,
+      ])].slice(0, 5);
+    }
   }
   return JSON.stringify(parsed);
 }

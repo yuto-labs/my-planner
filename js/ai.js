@@ -692,6 +692,8 @@ export async function generateKnowledgeAnswer(question, taxonomy, options = {}) 
   if (!cleanQuestion) throw new Error('質問を入力してください。');
   const system = [
     'You create a durable Japanese learning-library entry from the user question.',
+    'This library is for academic, scientific, historical, social-scientific, and technical learning. Prefer the established disciplinary meaning of an ambiguous term over entertainment-specific meanings unless the user explicitly asks for entertainment.',
+    'In particular, when the Japanese question is simply クラウド or クラウドとは, interpret it as cloud computing in information science. Do not switch to cloud gaming, fictional settings, or meteorological clouds unless those are explicitly mentioned.',
     'Return JSON only and follow the response schema exactly.',
     'Answer the question directly first, then explain it carefully in a coherent flow.',
     'After the direct answer, provide three to five concise keyPoints. Each point must capture a distinct idea the reader should retain, not merely repeat a section heading.',
@@ -748,7 +750,7 @@ export async function generateKnowledgeAnswer(question, taxonomy, options = {}) 
         note: 'For dated items use non-zero integer startYear and endYear. BCE is negative; use no year zero.',
       },
     }),
-    6500,
+    9000,
     'json',
     'knowledge_answer',
     {

@@ -32,6 +32,7 @@ import {
   markdownPrefixForBlock,
   parseMarkdownBlockSource,
   markdownDelimitersForCommand,
+  resolvePastedOrderedListNumber,
 } from '../markdown-shortcuts.js';
 import {
   collectMemoImagePaths as collectImagePaths,
@@ -3654,6 +3655,7 @@ function clipboardBlocksFromMarkdown(text) {
   const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
   const blocks = [];
   let paragraphLines = [];
+  let orderedListNumber = 0;
 
   /** 連続した通常行を一つの段落として確定する。 */
   const flushParagraph = () => {
@@ -3681,6 +3683,7 @@ function clipboardBlocksFromMarkdown(text) {
     const parsed = parseMarkdownBlockSource(line);
     const hasMarker = parsed.type !== 'paragraph' || line.trim() === '---';
     if (!hasMarker) {
+      orderedListNumber = 0;
       paragraphLines.push(line);
       continue;
     }
@@ -3692,7 +3695,12 @@ function clipboardBlocksFromMarkdown(text) {
       html: parsed.type === 'divider' ? '' : markdownToInlineHtml(parsed.text),
       color: null,
     };
-    if (parsed.type === 'numbered') block.listNumber = parsed.listNumber;
+    if (parsed.type === 'numbered') {
+      orderedListNumber = resolvePastedOrderedListNumber(parsed.listNumber, orderedListNumber);
+      block.listNumber = orderedListNumber;
+    } else {
+      orderedListNumber = 0;
+    }
     if (parsed.type === 'checklist') block.checked = parsed.checked;
     if (parsed.type === 'toggle') {
       block.children = [];

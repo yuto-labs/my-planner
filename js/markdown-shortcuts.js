@@ -114,6 +114,13 @@ export function parseMarkdownBlockSource(source) {
   return { type: 'paragraph', text: value, checked: false };
 }
 
+/** GPT等が全項目を`1.`で表すMarkdownリストを、貼り付け時だけ連番へ直す。 */
+export function resolvePastedOrderedListNumber(requestedNumber, previousNumber = 0) {
+  const requested = Math.max(1, Number(requestedNumber) || 1);
+  const previous = Math.max(0, Number(previousNumber) || 0);
+  return requested === 1 && previous >= 1 ? previous + 1 : requested;
+}
+
 /** ツールバーの行内装飾を、編集画面へ挿入するMarkdown記号へ対応付ける。 */
 export function markdownDelimitersForCommand(command) {
   return {
