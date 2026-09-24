@@ -73,7 +73,12 @@ export function markdownPrefixForBlock(block, listNumber = 1) {
   const type = block?.type || 'paragraph';
   if (/^h[1-6]$/.test(type)) return `${'#'.repeat(Number(type.slice(1)))} `;
   if (type === 'bullet') return '- ';
-  if (type === 'numbered') return `${Math.max(1, Number(listNumber) || 1)}. `;
+  if (type === 'numbered') {
+    const number = Number.isFinite(Number(block?.listNumber))
+      ? Number(block.listNumber)
+      : listNumber;
+    return `${Math.max(1, number || 1)}. `;
+  }
   if (type === 'checklist') return `- [${block?.checked ? 'x' : ' '}] `;
   if (type === 'quote') return '> ';
   if (type === 'toggle') return '>> ';
@@ -91,8 +96,15 @@ export function parseMarkdownBlockSource(source) {
   if (heading) return { type: `h${heading[1].length}`, text: heading[2], checked: false };
   const checklist = value.match(/^-\s+\[([ xX])\]\s*([\s\S]*)$/);
   if (checklist) return { type: 'checklist', text: checklist[2], checked: checklist[1].toLowerCase() === 'x' };
-  const numbered = value.match(/^\d+\.\s+([\s\S]*)$/);
-  if (numbered) return { type: 'numbered', text: numbered[1], checked: false };
+  const numbered = value.match(/^(\d+)\.\s+([\s\S]*)$/);
+  if (numbered) {
+    return {
+      type: 'numbered',
+      text: numbered[2],
+      checked: false,
+      listNumber: Math.max(1, Number(numbered[1]) || 1),
+    };
+  }
   const toggle = value.match(/^>>\s+([\s\S]*)$/);
   if (toggle) return { type: 'toggle', text: toggle[1], checked: false };
   const quote = value.match(/^>\s+([\s\S]*)$/);

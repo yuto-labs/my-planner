@@ -1597,7 +1597,9 @@ export function renderBlocksView(blocks, indent = 0) {
 
   for (const block of blocks) {
     if (block.type === 'numbered') {
-      numberedCounter++;
+      numberedCounter = Number.isFinite(Number(block.listNumber))
+        ? Math.max(1, Number(block.listNumber))
+        : numberedCounter + 1;
     } else {
       numberedCounter = 0;
     }
@@ -2088,7 +2090,9 @@ function renderEditMode(container, { preserveHistory = false } = {}) {
 function renderBlocksEdit(blocks) {
   let listNumber = 0;
   return blocks.map((block, idx) => {
-    listNumber = block.type === 'numbered' ? listNumber + 1 : 0;
+    listNumber = block.type === 'numbered'
+      ? (Number.isFinite(Number(block.listNumber)) ? Math.max(1, Number(block.listNumber)) : listNumber + 1)
+      : 0;
     return renderBlockEdit(block, idx, listNumber);
   }).join('');
 }
@@ -2598,6 +2602,9 @@ function wireBlockDrag(container, wrap) {
     holdTimer = setTimeout(() => {
       if (!dragState || dragState.pointerId !== e.pointerId) return;
       dragState.dragging = true;
+      // 長押し後は文字選択ではなくブロック移動として扱う。表示上のハンドルを
+      // 増やさず、本文のどこからでも掴める現在のUIを維持する。
+      window.getSelection()?.removeAllRanges();
       document.body.classList.add('kn-block-drag-active');
       blockEl.classList.add('kn-block--dragging');
       blockEl.setPointerCapture?.(e.pointerId);
@@ -2644,6 +2651,10 @@ function wireBlockDrag(container, wrap) {
     finishDrag(false);
   });
   wrap.addEventListener('pointercancel', () => finishDrag(true));
+  wrap.addEventListener('contextmenu', e => {
+    if (!dragState?.dragging) return;
+    e.preventDefault();
+  });
 
   wrap.addEventListener('keydown', e => {
     if (!e.altKey) return;
@@ -2848,10 +2859,16 @@ function handleBlockKeydown(e, blockId, container) {
     if (editableText === '' && loc && (loc.parent || edState.blocks.length > 1)) {
       e.preventDefault();
       recordEditorHistory(container);
+      const previousBlock = loc.blocks[loc.idx - 1] || loc.parent || null;
+      const nextBlock = loc.blocks[loc.idx + 1] || null;
       removeBlockById(blockId);
-      removeBlockElement(blockId, container);
-      const prevBlock = loc.blocks[Math.max(0, loc.idx - 1)] || loc.parent || edState.blocks[0];
-      if (prevBlock) focusBlock(prevBlock.id, container, true);
+      if (!edState.blocks.length) edState.blocks.push(defaultBlock());
+      const focusTarget = previousBlock || nextBlock || edState.blocks[0];
+      activeEditorBlockId = focusTarget?.id || null;
+      // DOMだけを遅延削除すると、先頭ブロックのactive状態が残って保存時に
+      // 古い本文を再同期する場合がある。状態を正として即座に全体を描き直す。
+      rerenderBlocks(container);
+      if (focusTarget) focusBlock(focusTarget.id, container, true);
       return;
     }
     const currentBlock = loc?.blocks[loc.idx];
@@ -3334,7 +3351,9 @@ function memoBlocksToMarkdownSource(blocks, depth = 0) {
   const lines = [];
   let listNumber = 0;
   for (const block of blocks || []) {
-    listNumber = block.type === 'numbered' ? listNumber + 1 : 0;
+    listNumber = block.type === 'numbered'
+      ? (Number.isFinite(Number(block.listNumber)) ? Math.max(1, Number(block.listNumber)) : listNumber + 1)
+      : 0;
     let source = '';
     if (block.type === 'image') source = `![${block.caption || block.alt || '画像'}]`;
     else if (block.type === 'math') source = `$$\n${block.text || ''}\n$$`;
@@ -3477,7 +3496,7 @@ function insertBlockAfter(blockId, type = 'paragraph') {
 }
 
 /** 貼り付けHTMLの見出し・段落・リスト・表・画像を、メモのブロック配列へ変換する。 */
-function clipboardBlocksFromHtml(html) {
+export function clipboardBlocksFromHtml(html) {
   const template = document.createElement('template');
   template.innerHTML = String(html || '');
   const blocks = [];
@@ -3516,13 +3535,26 @@ function clipboardBlocksFromHtml(html) {
     return 'paragraph';
   };
   /** 空でない貼り付け文字列を指定種類のメモブロックとして変換結果へ追加する。 */
-  const addTextBlock = (element, type = 'paragraph') => {
+  const addTextBlock = (element, type = 'paragraph', options = {}) => {
     const text = String(element?.textContent || '').replace(/\u200B/g, '').trim();
     // `<br>`だけの段落をブロック化すると、貼り付け本文の前へ巨大な空白ができる。
     if (!text) return;
     const markdown = trimPastedMarkdownEdges(inlineHtmlToMarkdown(element?.innerHTML || ''));
     const inlineHtml = markdownToInlineHtml(markdown);
-    blocks.push({ id: generateId(), type: type === 'paragraph' ? inferredTextBlockType(element) : type, text, html: inlineHtml, color: null });
+    const inferredType = type === 'paragraph' ? inferredTextBlockType(element) : type;
+    // MarkdownソースをブラウザーやGPTがHTML段落で包んだ場合も、見えている
+    // 行頭記号をブロック種類として扱う。装飾HTMLそのものは上で維持する。
+    const parsed = inferredType === 'paragraph' ? parseMarkdownBlockSource(markdown) : null;
+    const hasParsedMarker = Boolean(parsed && parsed.type !== 'paragraph');
+    const blockType = hasParsedMarker ? parsed.type : inferredType;
+    const blockText = hasParsedMarker ? parsed.text : text;
+    const blockHtml = hasParsedMarker ? markdownToInlineHtml(parsed.text) : inlineHtml;
+    const block = { id: generateId(), type: blockType, text: blockText, html: blockHtml, color: null };
+    const listNumber = options.listNumber ?? parsed?.listNumber;
+    if (blockType === 'numbered' && Number.isFinite(Number(listNumber))) {
+      block.listNumber = Math.max(1, Number(listNumber));
+    }
+    blocks.push(block);
   };
   /** HTML表のセルを文字列行列へ変換し、見出し付きtableブロックとして追加する。 */
   const addTable = table => {
@@ -3569,7 +3601,16 @@ function clipboardBlocksFromHtml(html) {
       return;
     }
     if (tag === 'UL' || tag === 'OL') {
-      [...node.children].filter(child => child.tagName === 'LI').forEach(child => addTextBlock(child, tag === 'OL' ? 'numbered' : 'bullet'));
+      let number = Math.max(1, Number(node.getAttribute('start')) || 1);
+      [...node.children].filter(child => child.tagName === 'LI').forEach(child => {
+        const item = child.cloneNode(true);
+        // 入れ子リストは親項目の本文へ混ぜない。子リストは直後に同じ順序で処理する。
+        item.querySelectorAll(':scope > ul, :scope > ol').forEach(list => list.remove());
+        const explicit = Math.max(1, Number(child.getAttribute('value')) || number);
+        addTextBlock(item, tag === 'OL' ? 'numbered' : 'bullet', { listNumber: explicit });
+        [...child.children].filter(element => ['UL', 'OL'].includes(element.tagName)).forEach(visit);
+        number = explicit + 1;
+      });
       return;
     }
     if (tag === 'TABLE') {
@@ -3651,6 +3692,7 @@ function clipboardBlocksFromMarkdown(text) {
       html: parsed.type === 'divider' ? '' : markdownToInlineHtml(parsed.text),
       color: null,
     };
+    if (parsed.type === 'numbered') block.listNumber = parsed.listNumber;
     if (parsed.type === 'checklist') block.checked = parsed.checked;
     if (parsed.type === 'toggle') {
       block.children = [];
@@ -3749,9 +3791,9 @@ function handleEditorPaste(event, container) {
     return;
   }
   const html = clipboard.getData('text/html');
-  // Markdownをコピーした場合は、貼り付け元が付けた簡易HTMLより明示された記号を優先する。
-  // これにより `## 見出し` や `- 箇条書き` が編集画面でもそのまま見える。
-  if (hasMarkdownBlockStructure(plainText)) {
+  // 本物の見出し・リストを持つHTMLではHTML側の書式を優先する。GPTの番号リストを
+  // Markdownと誤認すると、同時にコピーされた太字や見出しが失われるためである。
+  if (hasMarkdownBlockStructure(plainText) && !hasStructuredClipboardHtml(html)) {
     const blocks = clipboardBlocksFromMarkdown(plainText);
     if (blocks.length) {
       event.preventDefault();
@@ -4089,14 +4131,6 @@ function removeBlockById(blockId, blocks = edState.blocks) {
     if (block.children && removeBlockById(blockId, block.children)) return true;
   }
   return false;
-}
-
-/** 編集中DOMと下書きの両方からブロックを削除し、空になれば編集可能な本文を一つ補う。 */
-function removeBlockElement(blockId, container) {
-  const blockEl = container.querySelector(`.kn-block[data-block-id="${blockId}"]`);
-  if (!blockEl) return;
-  blockEl.classList.add('kn-block--removing');
-  setTimeout(() => blockEl.remove(), 120);
 }
 
 /** 指定ブロックの編集要素へスクロールを抑えてフォーカスし、末尾へカーソルを置く。 */
@@ -4747,7 +4781,9 @@ function cleanupPendingImageUploads() {
  */
 function inlineHtmlToMarkdown(html) {
   const template = document.createElement('template');
-  template.innerHTML = sanitizeBlockHtml(html);
+  // templateは実行されないため、ここでは元HTMLを保持してCSS由来の太字等も読む。
+  // 出力はMarkdownへ変換され、表示・保存前にmarkdownToInlineHtmlで必ずsanitizeされる。
+  template.innerHTML = String(html || '');
 
   /** 許可済みDOMをMarkdown文字列へ再帰的に変換する。 */
   const visit = node => {
@@ -4775,9 +4811,16 @@ function inlineHtmlToMarkdown(html) {
       // Webページは通常の本文色まで各spanへ書き込むことがある。その色を
       // Markdownへ持ち込むと、編集画面へ `<span style=...>` が大量に露出する。
       // 黒・白・低彩度の本文色は見た目上の既定値として外し、意味のある色だけ残す。
-      return color && !isDecorativeClipboardTextColor(color)
+      let styled = color && !isDecorativeClipboardTextColor(color)
         ? `<span style="color:${color}">${inner}</span>`
         : inner;
+      const weight = String(node.style?.fontWeight || '').toLowerCase();
+      const decoration = String(node.style?.textDecoration || node.style?.textDecorationLine || '').toLowerCase();
+      if (node.style?.fontStyle === 'italic') styled = `*${styled}*`;
+      if (['bold', 'bolder'].includes(weight) || Number.parseInt(weight, 10) >= 600) styled = `**${styled}**`;
+      if (decoration.includes('line-through')) styled = `~~${styled}~~`;
+      if (decoration.includes('underline')) styled = `<u>${styled}</u>`;
+      return styled;
     }
     return inner;
   };
@@ -4903,6 +4946,8 @@ function applyMarkdownSourceToBlock(blockId, source) {
   }
   if (parsed.type === 'checklist') block.checked = parsed.checked;
   else delete block.checked;
+  if (parsed.type === 'numbered') block.listNumber = parsed.listNumber;
+  else delete block.listNumber;
 
   if (parsed.type === 'divider') {
     block.text = '';

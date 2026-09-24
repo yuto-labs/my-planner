@@ -88,8 +88,20 @@ test('saved block types are represented as visible Markdown while editing', () =
 test('editing Markdown prefixes changes the block type without storing the marker in its text', () => {
   assert.deepEqual(parseMarkdownBlockSource('### 見出し'), { type: 'h3', text: '見出し', checked: false });
   assert.deepEqual(parseMarkdownBlockSource('- [x] 完了'), { type: 'checklist', text: '完了', checked: true });
-  assert.deepEqual(parseMarkdownBlockSource('12. 項目'), { type: 'numbered', text: '項目', checked: false });
+  assert.deepEqual(parseMarkdownBlockSource('12. 項目'), {
+    type: 'numbered', text: '項目', checked: false, listNumber: 12,
+  });
   assert.deepEqual(parseMarkdownBlockSource('記号を消した本文'), { type: 'paragraph', text: '記号を消した本文', checked: false });
+});
+
+test('ordered-list numbers survive editing and viewing instead of restarting at one', () => {
+  assert.equal(markdownPrefixForBlock({ type: 'numbered', listNumber: 4 }, 1), '4. ');
+  const html = renderBlocksView([
+    { id: 'one', type: 'numbered', text: 'first', listNumber: 3 },
+    { id: 'two', type: 'numbered', text: 'second', listNumber: 4 },
+  ]);
+  assert.match(html, />3\.<\/span><span>first/);
+  assert.match(html, />4\.<\/span><span>second/);
 });
 
 test('toolbar formatting inserts source markers instead of hidden rich HTML', () => {
