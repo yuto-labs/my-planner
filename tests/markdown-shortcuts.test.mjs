@@ -13,6 +13,7 @@ import {
 } from '../js/markdown-shortcuts.js';
 import {
   isDecorativeClipboardTextColor,
+  canMergeMemoTextBlocks,
   resolveMemoEnterAction,
   trimPastedMarkdownEdges,
   renderBlocksView,
@@ -118,6 +119,25 @@ test('paste trimming removes only outer blank lines', () => {
   assert.equal(trimPastedMarkdownEdges('\n\n本文\n二行目\n\n'), '本文\n二行目');
   assert.equal(trimPastedMarkdownEdges('  \r\n\r\n見出し\r\n\r\n本文  '), '見出し\n\n本文  ');
   assert.equal(trimPastedMarkdownEdges('本文\n\n途中の段落'), '本文\n\n途中の段落');
+});
+
+test('Backspace merging accepts text blocks but protects structural content', () => {
+  assert.equal(canMergeMemoTextBlocks(
+    { type: 'paragraph', text: '上' },
+    { type: 'paragraph', text: '下' },
+  ), true);
+  assert.equal(canMergeMemoTextBlocks(
+    { type: 'h2', text: '見出し' },
+    { type: 'bullet', text: '本文' },
+  ), true);
+  assert.equal(canMergeMemoTextBlocks(
+    { type: 'image' },
+    { type: 'paragraph', text: '本文' },
+  ), false);
+  assert.equal(canMergeMemoTextBlocks(
+    { type: 'paragraph', text: '上' },
+    { type: 'toggle', text: '下', children: [{ type: 'paragraph', text: '子' }] },
+  ), false);
 });
 
 test('new memo block data renders safely without rewriting existing blocks', () => {

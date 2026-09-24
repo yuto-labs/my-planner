@@ -2678,6 +2678,20 @@ export function resolveMemoEnterAction(event, blockType = 'paragraph', desktopKe
   return 'split-block';
 }
 
+/** カーソルがMarkdown接頭辞を除いたブロック本文の先頭にあるか判定する。 */
+function caretIsAtBlockContentStart(editable) {
+  const selection = window.getSelection();
+  if (!editable || !selection?.rangeCount || !selection.isCollapsed) return false;
+  const caret = selection.getRangeAt(0);
+  if (!editable.contains(caret.startContainer)) return false;
+  const before = document.createRange();
+  before.selectNodeContents(editable);
+  before.setEnd(caret.startContainer, caret.startOffset);
+  const holder = document.createElement('div');
+  holder.appendChild(before.cloneContents());
+  return parseMarkdownBlockSource(readEditableMarkdownSource(holder)).text === '';
+}
+
 /** Enter、Backspace、Markdownショートカットなどのキー操作をブロック編集へ変換する。 */
 function handleBlockKeydown(e, blockId, container) {
   if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) {
@@ -2736,8 +2750,45 @@ function handleBlockKeydown(e, blockId, container) {
       removeBlockElement(blockId, container);
       const prevBlock = loc.blocks[Math.max(0, loc.idx - 1)] || loc.parent || edState.blocks[0];
       if (prevBlock) focusBlock(prevBlock.id, container, true);
+      return;
+    }
+    const currentBlock = loc?.blocks[loc.idx];
+    const previousBlock = loc && loc.idx > 0 ? loc.blocks[loc.idx - 1] : null;
+    if (caretIsAtBlockContentStart(el) && canMergeMemoTextBlocks(previousBlock, currentBlock)) {
+      e.preventDefault();
+      recordEditorHistory(container);
+      mergeMemoBlockIntoPrevious(loc, container, el);
     }
   }
+}
+
+/** 画像・表などを除き、先頭Backspaceで安全に文章を結合できるブロックか判定する。 */
+export function canMergeMemoTextBlocks(previousBlock, currentBlock) {
+  const nonTextTypes = new Set(['image', 'table', 'math', 'divider', 'codeblock']);
+  if (!previousBlock || !currentBlock) return false;
+  if (nonTextTypes.has(previousBlock.type) || nonTextTypes.has(currentBlock.type)) return false;
+  return !(currentBlock.type === 'toggle' && currentBlock.children?.length);
+}
+
+/** 現在ブロックを上の兄弟ブロック末尾へ結合し、境界位置へカーソルを戻す。 */
+function mergeMemoBlockIntoPrevious(location, container, currentEditable) {
+  const currentBlock = location?.blocks[location.idx];
+  const previousBlock = location?.blocks[location.idx - 1];
+  if (!canMergeMemoTextBlocks(previousBlock, currentBlock)) return false;
+
+  syncEditableBlock(currentBlock.id, currentEditable);
+  const previousEditable = container.querySelector(`.kn-block-focusable[data-block-id="${previousBlock.id}"]`);
+  const joinOffset = previousEditable?.textContent?.length ?? getBlockEditorMarkdown(previousBlock, 1).length;
+  const previousSource = getBlockEditorMarkdown(previousBlock, 1);
+  const currentInline = currentBlock.html
+    ? inlineHtmlToMarkdown(currentBlock.html)
+    : String(currentBlock.text || '');
+  applyMarkdownSourceToBlock(previousBlock.id, `${previousSource}${currentInline}`);
+  location.blocks.splice(location.idx, 1);
+  activeEditorBlockId = previousBlock.id;
+  rerenderBlocks(container);
+  focusBlockAtTextOffset(previousBlock.id, container, joinOffset);
+  return true;
 }
 
 /** 閉じたトグルを開いて子ブロックを描画し、最初の子へすぐ入力できるようにする。 */
@@ -4274,6 +4325,32 @@ function syncEditorDomToState(container) {
     } else if (el.isContentEditable || el.contentEditable === 'true') {
       applyMarkdownSourceToBlock(blockId, readEditableMarkdownSource(el));
     }
+  });
+}
+
+/** 再描画後の編集欄へフォーカスし、表示文字数で指定した接合位置へカーソルを置く。 */
+function focusBlockAtTextOffset(id, container, characterOffset) {
+  requestAnimationFrame(() => {
+    const editable = container.querySelector(`.kn-block-focusable[data-block-id="${id}"]`);
+    if (!editable || editable.contentEditable !== 'true') return;
+    focusEditableWithoutScroll(editable);
+    const walker = document.createTreeWalker(editable, NodeFilter.SHOW_TEXT);
+    let remaining = Math.max(0, Number(characterOffset) || 0);
+    let node = walker.nextNode();
+    while (node && remaining > node.textContent.length) {
+      remaining -= node.textContent.length;
+      node = walker.nextNode();
+    }
+    const range = document.createRange();
+    const selection = window.getSelection();
+    if (node) range.setStart(node, Math.min(remaining, node.textContent.length));
+    else {
+      range.selectNodeContents(editable);
+      range.collapse(false);
+    }
+    range.collapse(true);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
   });
 }
 
