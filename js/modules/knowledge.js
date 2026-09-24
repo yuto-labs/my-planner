@@ -3365,8 +3365,10 @@ function clipboardBlocksFromHtml(html) {
   /** 空でない貼り付け文字列を指定種類のメモブロックとして変換結果へ追加する。 */
   const addTextBlock = (element, type = 'paragraph') => {
     const text = String(element?.textContent || '').replace(/\u200B/g, '').trim();
-    const inlineHtml = sanitizeBlockHtml(element?.innerHTML || '').replace(/\u200B/g, '').trim();
-    if (!text && !inlineHtml) return;
+    // `<br>`だけの段落をブロック化すると、貼り付け本文の前へ巨大な空白ができる。
+    if (!text) return;
+    const markdown = trimPastedMarkdownEdges(inlineHtmlToMarkdown(element?.innerHTML || ''));
+    const inlineHtml = markdownToInlineHtml(markdown);
     blocks.push({ id: generateId(), type: type === 'paragraph' ? inferredTextBlockType(element) : type, text, html: inlineHtml, color: null });
   };
   /** HTML表のセルを文字列行列へ変換し、見出し付きtableブロックとして追加する。 */
@@ -3440,6 +3442,14 @@ function hasStructuredClipboardHtml(html) {
 function hasMarkdownBlockStructure(text) {
   const value = String(text || '');
   return /(^|\n)\s*(?:#{1,6}\s+|[-*+]\s+|\d+\.\s+|>\s+|>>\s+|-\s+\[[ xX]\]\s+|---\s*$)/m.test(value);
+}
+
+/** 貼り付け文字列の外側にだけ付いた空行を除き、本文途中の改行はそのまま残す。 */
+export function trimPastedMarkdownEdges(value) {
+  return String(value || '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/^(?:[\t ]*\n)+/, '')
+    .replace(/(?:\n[\t ]*)+$/, '');
 }
 
 /**
@@ -3597,7 +3607,15 @@ function handleEditorPaste(event, container) {
       return;
     }
   }
-  if (!html) return;
+  if (!html) {
+    const normalizedText = trimPastedMarkdownEdges(plainText);
+    if (!normalizedText) return;
+    event.preventDefault();
+    event.stopPropagation();
+    insertMarkdownAtEditableSelection(editable, normalizedText);
+    syncEditableBlock(editable.dataset.blockId, editable);
+    return;
+  }
   const imageSources = clipboardImageSources(html);
   if (imageSources.length) {
     event.preventDefault();
@@ -3621,7 +3639,10 @@ function handleEditorPaste(event, container) {
     event.preventDefault();
     event.stopPropagation();
     // 貼り付け元の太字などをDOM装飾のまま入れず、編集画面で読めるMarkdownへ変換する。
-    insertMarkdownAtEditableSelection(editable, inlineHtmlToMarkdown(safeHtml));
+    insertMarkdownAtEditableSelection(
+      editable,
+      trimPastedMarkdownEdges(inlineHtmlToMarkdown(safeHtml)),
+    );
     syncEditableBlock(editable.dataset.blockId, editable);
     return;
   }
