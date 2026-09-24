@@ -1486,7 +1486,14 @@ async function answerEnglishQuestion(question) {
   state.controller = new AbortController();
   render();
   try {
-    const answer = await answerEnglishLearningQuestion(question.questionJa, { signal: state.controller.signal });
+    const answer = await answerEnglishLearningQuestion(question.questionJa, {
+      signal: state.controller.signal,
+      backgroundContext: {
+        kind: 'english-question',
+        questionId: question.id,
+        question: question.questionJa,
+      },
+    });
     const updated = updateEnglishQuestion(question.id, { status: 'ready', answer, errorMessage: '' });
     if (!updated) throw new Error('回答を保存できませんでした。入力内容は残して、もう一度お試しください。');
     toast('回答を保存しました', 'success');

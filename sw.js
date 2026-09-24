@@ -6,7 +6,7 @@
 // JS/CSSの動作を変更したときはCACHE_VERも進め、古い端末キャッシュを更新する。
 // ============================================================
 
-const CACHE_VER  = 'v357';
+const CACHE_VER  = 'v358';
 const APP_CACHE  = `my-planner-app-${CACHE_VER}`;
 const CDN_CACHE  = `my-planner-cdn-${CACHE_VER}`;
 const PERSISTENT_IMAGE_CACHE = 'my-planner-images-v1';
@@ -18,7 +18,7 @@ const APP_ASSETS = [
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
-  './css/style.css?v=293',
+  './css/style.css?v=294',
   './css/responsive.css?v=4',
   './js/app.js',
   './js/storage.js',
@@ -29,6 +29,7 @@ const APP_ASSETS = [
   './js/ai.js',
   './js/ai-jobs.js',
   './js/ai-job-resume.js',
+  './js/ai-job-status.js',
   './js/ai-response.js',
   './js/atlas-model.js',
   './js/atlas-query.js',

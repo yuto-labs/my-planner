@@ -16,6 +16,7 @@ import { processBatchQueue, refreshAiRuntimeStatus } from './ai.js';
 import { backfillLocalEvents, initSync, pullAll, pullIfStale, startRealtimeSync, hasPendingSyncWork, flushPendingSync, resetSyncForUserSwitch } from './sync.js';
 import { getSession, handleAuthRedirect, getActiveUserId, setActiveUserId, isMigratedForCurrentUser } from './supabase.js';
 import { resumeCompletedAIJobs } from './ai-job-resume.js';
+import { initAIJobStatus, refreshAIJobStatus } from './ai-job-status.js';
 import { migrateToSupabase } from './migrate.js';
 import { initHome }     from './modules/home.js';
 import { initCalendar, openCalendarAddFlow } from './modules/calendar.js';
@@ -911,6 +912,7 @@ async function init() {
   document.getElementById('loading-screen').classList.add('hidden');
   document.getElementById('app-header').classList.remove('hidden');
   document.getElementById('bottom-nav').classList.remove('hidden');
+  initAIJobStatus();
 
   // 一部のスマートフォンは横スワイプを、指を離した位置へのclickとして合成する。
   // ナビ以外から始めたスワイプもあるため画面全体を追跡し、その直後のclickだけ止める。
@@ -1017,6 +1019,7 @@ async function init() {
 
   // AI画面を離れた後にジョブが完成した場合も、現在画面を壊さず保存だけ取り込む。
   document.addEventListener('ai:job-ready', () => {
+    refreshAIJobStatus().catch(() => {});
     resumeCompletedAIJobs().catch(error => console.warn('[AI jobs] completion resume failed:', error));
   });
 }

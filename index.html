@@ -27,7 +27,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,400;1,500&family=Inter:wght@400;500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <!-- style.cssが基本、responsive.cssがタブレット・PC向けの上書きです。 -->
-  <link rel="stylesheet" href="css/style.css?v=293">
+  <link rel="stylesheet" href="css/style.css?v=294">
   <link rel="stylesheet" href="css/responsive.css?v=4">
 
   <!-- メモ内の数式を表示する外部ライブラリKaTeX。deferによりHTML解析後に実行します。 -->
@@ -105,6 +105,9 @@
 
     <!-- 保存完了やエラーなど、短時間だけ出す通知の置き場所です。 -->
     <div id="toast-container" aria-live="polite"></div>
+
+    <!-- 長時間のAI生成は画面を移動しても続くため、全画面共通で状態を示します。 -->
+    <aside id="ai-job-status" class="ai-job-status" aria-live="polite" aria-atomic="true" hidden></aside>
 
     <!-- 予定・タスク・メモなどを横断する検索画面です。 -->
     <div id="search-overlay" class="search-overlay hidden" role="dialog" aria-label="検索"></div>

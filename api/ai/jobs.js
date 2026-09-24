@@ -10,7 +10,12 @@ const DEFAULT_SUPABASE_URL = 'https://nhgbvlovptelaqcurobv.supabase.co';
 const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5oZ2J2bG92cHRlbGFxY3Vyb2J2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMTY2NzcsImV4cCI6MjA5NjU5MjY3N30.Vgsy9--B3d5FoxoHpvjC00OPPzE2WUwzP8GV2LE4-p4';
 const JOB_TAG = '__ai_generation_job__';
 const JOB_BLOCK_TYPE = 'ai-generation-job';
-const BACKGROUND_ACTIONS = new Set(['knowledge_answer', 'nuance_generate', 'translation_variants']);
+const BACKGROUND_ACTIONS = new Set([
+  'knowledge_answer',
+  'nuance_generate',
+  'translation_variants',
+  'english_question',
+]);
 
 /** 外部APIの入れ子エラーを利用者向け文字列へ直し、[object Object]の保存を防ぐ。 */
 function errorMessage(value, fallback = 'AI生成に失敗しました。', depth = 0) {

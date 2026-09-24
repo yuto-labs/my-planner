@@ -5,9 +5,12 @@ import {
   addExpressionEntriesWithReport,
   addLearningEntry,
   addTranslationSet,
+  getEnglishQuestions,
   getLearningEntries,
+  updateEnglishQuestion,
 } from './storage.js';
 import {
+  answerEnglishLearningQuestion,
   generateKnowledgeAnswer,
   generateNuanceEntries,
   generateTranslationVariants,
@@ -63,11 +66,29 @@ async function applyTranslationJob(job) {
   return 1;
 }
 
+/** 完成した英語の疑問回答を、先に保存したpending質問へ書き戻す。 */
+async function applyEnglishQuestionJob(job) {
+  const context = job.clientContext || {};
+  const question = getEnglishQuestions().find(item => item.id === context.questionId);
+  if (!question) throw new Error('英語の疑問の保存先を確認できませんでした。');
+  const answer = await answerEnglishLearningQuestion(context.question || question.questionJa, {
+    completedText: job.resultText,
+  });
+  const saved = updateEnglishQuestion(question.id, {
+    status: 'ready',
+    answer,
+    errorMessage: '',
+  });
+  if (!saved) throw new Error('英語の疑問回答を端末へ保存できませんでした。');
+  return question.status === 'ready' ? 0 : 1;
+}
+
 /** ジョブ種別に合う既存保存処理を選び、未知の種別はデータを消さず保留する。 */
 async function applyCompletedJob(job) {
   if (job.clientContext?.kind === 'knowledge') return applyKnowledgeJob(job);
   if (job.clientContext?.kind === 'nuance') return applyNuanceJob(job);
   if (job.clientContext?.kind === 'translation') return applyTranslationJob(job);
+  if (job.clientContext?.kind === 'english-question') return applyEnglishQuestionJob(job);
   throw new Error('このAIジョブの保存先を確認できませんでした。');
 }
 
@@ -97,8 +118,10 @@ export async function resumeCompletedAIJobs({ quiet = false } = {}) {
         try {
           applied += await applyCompletedJob(job);
           await acknowledgeAIJobAfterSync(job.id);
+          document.dispatchEvent(new CustomEvent('ai:job-applied', { detail: { job } }));
         } catch (error) {
           console.warn('[ai-job] completed result could not be applied:', job.id, error);
+          document.dispatchEvent(new CustomEvent('ai:job-apply-failed', { detail: { job, error } }));
         }
       } else {
         try {

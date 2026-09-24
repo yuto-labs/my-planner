@@ -8,6 +8,12 @@ const JOB_API = '/api/ai/jobs';
 const POLL_INTERVAL_MS = 2500;
 const ACTIVE_WAIT_LIMIT_MS = 295_000;
 
+/** ジョブ状態を画面共通の進捗表示へ通知する。Nodeテストでは何もしない。 */
+export function emitAIJobStatus(job, phase = '') {
+  if (!job || typeof document === 'undefined' || typeof CustomEvent === 'undefined') return;
+  document.dispatchEvent(new CustomEvent('ai:job-status', { detail: { job, phase } }));
+}
+
 /** API呼び出しに使う最新のSupabaseアクセストークンを取得する。 */
 async function authToken() {
   const session = await getSession();
@@ -51,6 +57,7 @@ export async function submitAIJob({ id, request, clientContext }) {
     method: 'POST',
     body: JSON.stringify({ id, request, clientContext }),
   });
+  emitAIJobStatus(payload.job, 'submitted');
   return payload.job;
 }
 
@@ -101,6 +108,7 @@ export async function waitForAIJob(id, { signal } = {}) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < ACTIVE_WAIT_LIMIT_MS) {
     const job = await getAIJob(id);
+    emitAIJobStatus(job, 'polled');
     if (job?.status === 'completed') return job;
     if (job?.status === 'failed') {
       throw new Error(extractAIErrorMessage(job.error, 'AI生成に失敗しました。'));
@@ -117,7 +125,21 @@ export async function waitForAIJob(id, { signal } = {}) {
 export async function runAIJob(request, clientContext, { signal, jobState } = {}) {
   const id = createAIJobId();
   if (jobState) jobState.id = id;
-  const submitted = await submitAIJob({ id, request, clientContext });
+  const submitting = {
+    id,
+    actionType: request?.actionType,
+    status: 'submitting',
+    clientContext,
+    createdAt: new Date().toISOString(),
+  };
+  emitAIJobStatus(submitting, 'submitting');
+  let submitted;
+  try {
+    submitted = await submitAIJob({ id, request, clientContext });
+  } catch (error) {
+    emitAIJobStatus({ ...submitting, status: 'failed', error: error?.message || 'AIジョブを登録できませんでした。' }, 'submit-failed');
+    throw error;
+  }
   let completed;
   try {
     completed = submitted?.status === 'completed'
@@ -135,6 +157,12 @@ export async function runAIJob(request, clientContext, { signal, jobState } = {}
   }
   if (!String(completed?.resultText || '').trim()) {
     throw new Error('AIの完成結果を取得できませんでした。');
+  }
+  emitAIJobStatus(completed, 'generated');
+  // 呼び出し元が通常保存を終えた次のタスクで、共通の保存確認とジョブ削除を始める。
+  // 画面に残って完了した場合も、未処理ジョブを次回起動まで放置しないために必要。
+  if (typeof document !== 'undefined') {
+    setTimeout(() => document.dispatchEvent(new CustomEvent('ai:job-ready', { detail: { id } })), 0);
   }
   return completed.resultText;
 }

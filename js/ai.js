@@ -213,7 +213,7 @@ async function callServerAI(
     responseFormat,
     actionType,
   };
-  if (backgroundContext && ['knowledge_answer', 'nuance_generate', 'translation_variants'].includes(actionType)) {
+  if (backgroundContext && ['knowledge_answer', 'nuance_generate', 'translation_variants', 'english_question'].includes(actionType)) {
     return runAIJob(requestBody, backgroundContext, { signal, jobState });
   }
   const controller = new AbortController();
