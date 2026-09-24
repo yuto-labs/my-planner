@@ -2137,6 +2137,15 @@ function readEditableMarkdownSource(editable) {
     if (node.nodeType !== Node.ELEMENT_NODE) return '';
     if (node.tagName === 'BR') return '\n';
     let value = [...node.childNodes].map(child => visit(child)).join('');
+    // マーカーと文字色は編集画面では見た目として表示するが、保存時には
+    // 従来のMarkdown互換HTMLへ戻す。これによりタグ文字列を本文へ露出させない。
+    if (node.tagName === 'MARK') {
+      const color = node.style?.backgroundColor || '';
+      return color ? `<mark style="background-color:${color}">${value}</mark>` : `==${value}==`;
+    }
+    if (node.tagName === 'SPAN' && node.style?.color) {
+      return `<span style="color:${node.style.color}">${value}</span>`;
+    }
     if (!isRoot && blockTags.has(node.tagName) && node.nextSibling && !value.endsWith('\n')) {
       value += '\n';
     }
@@ -2857,6 +2866,65 @@ function wrapEditableSelectionWithMarkdown(editable, opening, closing, savedRang
   return true;
 }
 
+/** 選択文字を実際の行内要素で包み、編集画面でも書式をその場で確認できるようにする。 */
+function wrapEditableSelectionVisually(editable, tagName, styleProperty, styleValue, savedRange = null) {
+  if (!editable) return false;
+  const selection = window.getSelection();
+  if (!selection) return false;
+  if (savedRange) {
+    selection.removeAllRanges();
+    selection.addRange(savedRange);
+  }
+  if (!selection.rangeCount || selection.isCollapsed) return false;
+  const range = selection.getRangeAt(0);
+  if (!editable.contains(range.commonAncestorContainer)) return false;
+
+  let ancestor = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+    ? range.commonAncestorContainer
+    : range.commonAncestorContainer.parentElement;
+  while (ancestor && ancestor !== editable && ancestor.tagName !== tagName.toUpperCase()) {
+    ancestor = ancestor.parentElement;
+  }
+  if (ancestor && ancestor !== editable) {
+    if (styleProperty && styleValue) ancestor.style.setProperty(styleProperty, styleValue);
+    range.selectNodeContents(ancestor);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return true;
+  }
+
+  const wrapper = document.createElement(tagName);
+  if (styleProperty && styleValue) wrapper.style.setProperty(styleProperty, styleValue);
+  wrapper.appendChild(range.extractContents());
+  range.insertNode(wrapper);
+  range.selectNodeContents(wrapper);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  editable.normalize();
+  return true;
+}
+
+/** 選択位置を囲む指定書式を外す。色選択の「なし」が実際に解除として働くための処理。 */
+function unwrapEditableFormatting(editable, tagName, savedRange = null) {
+  if (!editable) return false;
+  const selection = window.getSelection();
+  if (!selection) return false;
+  if (savedRange) {
+    selection.removeAllRanges();
+    selection.addRange(savedRange);
+  }
+  if (!selection.rangeCount) return false;
+  const range = selection.getRangeAt(0);
+  let node = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+    ? range.commonAncestorContainer
+    : range.commonAncestorContainer.parentElement;
+  while (node && node !== editable && node.tagName !== tagName) node = node.parentElement;
+  if (!node || node === editable) return false;
+  node.replaceWith(...node.childNodes);
+  editable.normalize();
+  return true;
+}
+
 /** 選択範囲を、貼り付け元から変換したMarkdown文字列で置き換える。 */
 function insertMarkdownAtEditableSelection(editable, markdown) {
   const selection = window.getSelection();
@@ -3012,11 +3080,17 @@ function wireToolbar(container) {
         toast('マーカーを付ける文字を選択してください', 'info');
       } else {
         recordEditorHistory(container);
-        const opening = color.id === 'clear'
-          ? ''
-          : `<mark style="background-color:${color.css}">`;
-        const closing = color.id === 'clear' ? '' : '</mark>';
-        wrapEditableSelectionWithMarkdown(active, opening, closing, savedHighlightSelection?.range || null);
+        if (color.id === 'clear') {
+          unwrapEditableFormatting(active, 'MARK', savedHighlightSelection?.range || null);
+        } else {
+          wrapEditableSelectionVisually(
+            active,
+            'mark',
+            'background-color',
+            color.css,
+            savedHighlightSelection?.range || null,
+          );
+        }
         syncFocusedEditableBlock(container, focusedBlockId);
         focusEditableWithoutScroll(active);
       }
@@ -3039,9 +3113,8 @@ function wireToolbar(container) {
         const active = container.querySelector(`.kn-block-focusable[data-block-id="${focusedBlockId}"]:focus`);
         const selection = window.getSelection();
         if (active && selection && selection.rangeCount && !selection.isCollapsed && active.contains(selection.anchorNode)) {
-          const opening = color.css ? `<span style="color:${color.css}">` : '';
-          const closing = color.css ? '</span>' : '';
-          wrapEditableSelectionWithMarkdown(active, opening, closing);
+          if (color.css) wrapEditableSelectionVisually(active, 'span', 'color', color.css);
+          else unwrapEditableFormatting(active, 'SPAN');
           syncFocusedEditableBlock(container, focusedBlockId);
           focusEditableWithoutScroll(active);
         } else {
@@ -4496,7 +4569,20 @@ function getBlockEditorMarkdown(block, listNumber = 1) {
 
 /** 編集用MarkdownをHTMLとして解釈せず、そのまま画面へ安全に表示する。 */
 function getBlockEditorHtml(block, listNumber = 1) {
-  return esc(getBlockEditorMarkdown(block, listNumber));
+  const visualTags = [];
+  /** 安全な行内タグをエスケープ処理中だけ一意な文字列へ退避する。 */
+  const tokenFor = tag => `\uE300${visualTags.push(tag) - 1}\uE301`;
+  // 標準Markdown記号は編集可能な文字として残し、マーカーと文字色だけを
+  // 見た目へ変換する。許可タグは最後にsanitizeされるため外部HTMLは実行されない。
+  const source = getBlockEditorMarkdown(block, listNumber).replace(
+    /<\/?(?:mark|span)(?:\s+style\s*=\s*"[^"]*")?\s*>/gi,
+    tokenFor,
+  );
+  const restored = esc(source).replace(
+    /\uE300(\d+)\uE301/g,
+    (_match, index) => visualTags[Number(index)] || '',
+  );
+  return sanitizeBlockHtml(restored);
 }
 
 /**
