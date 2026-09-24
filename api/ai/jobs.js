@@ -139,8 +139,9 @@ async function writeJob(job, userId, token, previousRow = null) {
 }
 
 /** 安全なVercelデプロイURLを作り、内部の既存生成APIだけを呼び出す。 */
-function generationApiUrl(req) {
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}/api/ai/generate`;
+export function generationApiUrl(req) {
+  // VERCEL_URLはデプロイ固有URLで、Deployment Protectionの対象になることが
+  // ある。利用者が到達した公開ホストを優先し、同じ認証済み要求を生成APIへ渡す。
   const host = String(req.headers.host || 'localhost').replace(/[^a-zA-Z0-9.:[\]-]/g, '');
   const protocol = host.startsWith('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https';
   return `${protocol}://${host}/api/ai/generate`;

@@ -7,6 +7,7 @@ import {
   JOB_BLOCK_TYPE,
   JOB_TAG,
   errorMessage,
+  generationApiUrl,
   rowToJob,
 } from '../api/ai/jobs.js';
 import { createAIJobId } from '../js/ai-jobs.js';
@@ -108,4 +109,22 @@ test('job creation waits until generation has started and persisted a terminal s
   assert.doesNotMatch(source, /waitUntil\s*\(\s*runJob/);
   assert.match(source, /await runJob\s*\(\{/);
   assert.match(source, /const finishedRow = await readJobRow/);
+});
+
+test('background generation uses the public request host instead of a protected deployment URL', () => {
+  const previous = process.env.VERCEL_URL;
+  process.env.VERCEL_URL = 'protected-preview.example.vercel.app';
+  try {
+    assert.equal(
+      generationApiUrl({ headers: { host: 'my-planner-five-alpha.vercel.app' } }),
+      'https://my-planner-five-alpha.vercel.app/api/ai/generate',
+    );
+    assert.equal(
+      generationApiUrl({ headers: { host: '127.0.0.1:5180' } }),
+      'http://127.0.0.1:5180/api/ai/generate',
+    );
+  } finally {
+    if (previous === undefined) delete process.env.VERCEL_URL;
+    else process.env.VERCEL_URL = previous;
+  }
 });

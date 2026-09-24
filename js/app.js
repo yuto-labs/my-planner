@@ -1091,7 +1091,7 @@ function getViewFromHash() {
 async function setupServiceWorkerAutoUpdate() {
   // updateViaCache:noneにより、iOSのホーム画面アプリでもService Worker本体を
   // HTTPキャッシュから読まず、本番の最新版を毎回確認できるようにする。
-  const registration = await navigator.serviceWorker.register('./sw.js?v=361', {
+  const registration = await navigator.serviceWorker.register('./sw.js?v=362', {
     updateViaCache: 'none',
   });
   /** 待機中のService Workerへ新版への切替要求を送る。 */

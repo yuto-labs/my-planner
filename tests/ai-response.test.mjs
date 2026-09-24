@@ -22,7 +22,9 @@ test('background jobs hide Gemini policy enum names', () => {
   const message = getFriendlyAIJobError('Gemini could not complete the response: PROHIBITED_CONTENT');
   assert.match(message, /内容判定/);
   assert.doesNotMatch(message, /PROHIBITED_CONTENT|blocked/i);
-  assert.match(getFriendlyAIJobError('protected'), /内容判定/);
+  assert.match(getFriendlyAIJobError('PROTECTED_CONTENT'), /内容判定/);
+  assert.match(getFriendlyAIJobError('Protected deployment'), /接続先/);
+  assert.doesNotMatch(getFriendlyAIJobError('Protected deployment'), /内容判定/);
 });
 
 test('keeps Japanese server detail and maps common HTTP failures', () => {
