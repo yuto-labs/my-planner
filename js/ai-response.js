@@ -67,3 +67,12 @@ export function getFriendlyAiError(status, message) {
   if (status >= 500) return 'AIから正常な応答を受け取れませんでした。もう一度お試しください。';
   return raw || `AIエラー (${status})`;
 }
+
+/** バックグラウンドジョブに残ったGemini内部理由を、再試行可能な日本語へ置き換える。 */
+export function getFriendlyAIJobError(message, fallback = 'AI生成に失敗しました。') {
+  const raw = extractAIErrorMessage(message, fallback);
+  if (/PROHIBITED_CONTENT|PROTECTED_CONTENT|\bPROTECTED\b|BLOCKLIST|\bSAFETY\b|\bSPII\b|\bRECITATION\b|Gemini (?:blocked|could not complete)/i.test(raw)) {
+    return 'AIの内容判定により回答を完成できませんでした。入力内容は保存されています。もう一度お試しください。';
+  }
+  return raw || fallback;
+}

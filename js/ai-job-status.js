@@ -2,6 +2,7 @@
 // 生成完了と保存完了を分け、サーバー回答は得たが端末へ未保存の状態も隠さない。
 
 import { listAIJobs } from './ai-jobs.js';
+import { getFriendlyAIJobError } from './ai-response.js';
 
 const ACTIVE_POLL_MS = 3000;
 const IDLE_POLL_MS = 30000;
@@ -132,7 +133,7 @@ export async function refreshAIJobStatus() {
           jobId: failed.id,
           kind: 'error',
           title: `${aiJobLabel(failed)}に失敗しました`,
-          message: String(failed.error || '通信状態を確認して、もう一度お試しください。'),
+          message: getFriendlyAIJobError(failed.error, '通信状態を確認して、もう一度お試しください。'),
           expiresAt: Date.now() + FAILURE_VISIBLE_MS,
         };
       }
@@ -159,7 +160,7 @@ export function initAIJobStatus() {
         jobId: job.id,
         kind: 'error',
         title: `${aiJobLabel(job)}に失敗しました`,
-        message: String(job.error || '通信状態を確認して、もう一度お試しください。'),
+        message: getFriendlyAIJobError(job.error, '通信状態を確認して、もう一度お試しください。'),
         expiresAt: Date.now() + FAILURE_VISIBLE_MS,
       };
     }

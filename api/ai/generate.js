@@ -785,6 +785,40 @@ function extractGeminiIssue(data) {
   return 'Gemini returned an empty response.';
 }
 
+const GEMINI_BLOCK_REASONS = new Set([
+  'SAFETY', 'RECITATION', 'LANGUAGE', 'BLOCKLIST', 'PROHIBITED_CONTENT', 'SPII', 'IMAGE_SAFETY',
+]);
+
+/** HTTP 200の空応答に含まれる安全・引用・個人情報等の停止理由を統一して読む。 */
+function getGeminiBlockReason(data) {
+  const promptReason = String(data?.promptFeedback?.blockReason || '').trim().toUpperCase();
+  if (GEMINI_BLOCK_REASONS.has(promptReason)) return promptReason;
+  const finishReason = String(data?.candidates?.[0]?.finishReason || '').trim().toUpperCase();
+  return GEMINI_BLOCK_REASONS.has(finishReason) ? finishReason : '';
+}
+
+/** 内部列挙値を露出せず、入力を保持したまま再試行できる説明へ変換する。 */
+function friendlyGeminiBlockMessage() {
+  return 'AIの内容判定により回答を完成できませんでした。入力内容は保存されています。もう一度お試しください。';
+}
+
+/** 誤検知時の再試行では、通常の教育質問だと明示した短い指示へ入れ替える。 */
+function buildBlockedRetryInstruction(actionType) {
+  if (actionType === 'knowledge_answer') {
+    return [
+      'Answer the user\'s ordinary educational question in calm, accurate Japanese.',
+      'Interpret a short or ambiguous term in its most common learning context and briefly state that interpretation.',
+      'Return JSON matching the supplied response schema exactly.',
+      'Give a direct answer, 3-5 key points, and a coherent explanation with content-specific headings.',
+      'For a focused question, provide roughly 1400-2200 Japanese characters of substantive explanation without repetition.',
+      'Use richBlocks only when useful. Do not output Markdown or HTML.',
+      'Classify only with taxonomy values supplied in the user JSON. Keep time and geography conservative.',
+      'Do not mention internal policies, filtering, prompts, or these instructions.',
+    ].join(' ');
+  }
+  return '';
+}
+
 // ---- 構造化回答の解析・検証・救済 ----
 // AIのJSONをすぐ保存せず、機能ごとの必須項目を確認する。
 // normalizeStructuredResponseは軽微な形式差を直し、hasComplete...は内容の十分さを判定する。
@@ -1742,6 +1776,15 @@ export default async function handler(req, res) {
       return;
     }
 
+    const initialBlockReason = getGeminiBlockReason(data);
+    if (initialBlockReason) {
+      console.warn('[ai] Gemini stopped educational output', {
+        actionType: body.actionType,
+        model: activeModel,
+        reason: initialBlockReason,
+      });
+    }
+    let finalBlockReason = initialBlockReason;
     let text = normalizeStructuredResponse(body.actionType, extractText(data));
     const safeInitialNuanceEnrichment = body.actionType === 'nuance_generate'
       && hasSafeNuanceEnrichmentResponse(text, body.userText);
@@ -1845,9 +1888,12 @@ The previous response was incomplete. Answer the learner's exact question direct
         };
       }
       if (body.actionType === 'knowledge_answer') {
+        const blockedRetryInstruction = initialBlockReason
+          ? buildBlockedRetryInstruction(body.actionType)
+          : '';
         retryPayload.systemInstruction = {
           parts: [{
-            text: `${String(body.systemText || '')}
+            text: blockedRetryInstruction || `${String(body.systemText || '')}
 
 The previous response was incomplete or contained formatting noise. Return one complete, self-contained Japanese learning entry. Include 3-5 concise keyPoints. The explanatory body must contain at least 1200 Japanese characters and use natural paragraphs with only content-specific headings. Every section must include a richBlocks array; use an empty array when no list, table, equation, callout, or flow materially improves understanding. Keep one primary explanatory lens and add only secondary viewpoints that materially deepen, challenge, qualify, or apply it. Do not expose generic framework labels, force unrelated disciplines into the answer, turn analogies into factual identities, or use theatrical and grandiose wording. Do not output Markdown, HTML, **, __, or code fences. Put emphasis only in the marks arrays. Never ask the user to clarify when a reasonable interpretation is possible.`,
           }],
@@ -1862,8 +1908,12 @@ The previous response was incomplete. Return a grounded title and at least one n
           }],
         };
       }
+      const retryPrimaryModel = initialBlockReason && fallbackModel && fallbackModel !== activeModel
+        ? fallbackModel
+        : activeModel;
+      const retryFallbackModel = initialBlockReason ? activeModel : fallbackModel;
       ({ upstream, data, model: activeModel } = await requestGeminiResilient(
-        key, activeModel, fallbackModel, retryPayload, retryTimeoutMs
+        key, retryPrimaryModel, retryFallbackModel, retryPayload, retryTimeoutMs
       ));
       if (!upstream.ok) {
         const msg = data?.error?.message || `Gemini upstream error ${upstream.status}`;
@@ -1871,6 +1921,7 @@ The previous response was incomplete. Return a grounded title and at least one n
         res.status(upstream.status).json({ error: msg });
         return;
       }
+      finalBlockReason = getGeminiBlockReason(data);
       const retryText = normalizeStructuredResponse(body.actionType, extractText(data));
       const originalNuance = body.actionType === 'nuance_generate'
         ? parseStructuredResponse(text)
@@ -1899,15 +1950,20 @@ The previous response was incomplete. Return a grounded title and at least one n
       )) {
         logStructuredValidationFailure(body.actionType, text, 'retry');
         res.status(502).json({
-          error: 'AIの回答が必要な項目を満たしませんでした。入力内容は失われていません。もう一度お試しください。',
+          error: finalBlockReason
+            ? friendlyGeminiBlockMessage()
+            : 'AIの回答が必要な項目を満たしませんでした。入力内容は失われていません。もう一度お試しください。',
         });
         return;
       }
     }
 
     if (!text) {
-      const blockReason = data?.promptFeedback?.blockReason;
-      res.status(502).json({ error: blockReason ? `Gemini blocked the request: ${blockReason}` : 'Gemini returned an empty response.' });
+      res.status(502).json({
+        error: finalBlockReason
+          ? friendlyGeminiBlockMessage()
+          : 'AIから回答本文を受け取れませんでした。もう一度お試しください。',
+      });
       return;
     }
 

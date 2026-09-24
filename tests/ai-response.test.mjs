@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 
 import {
   extractAIErrorMessage,
+  getFriendlyAIJobError,
   getFriendlyAiError,
   tryParseAIJSON,
 } from '../js/ai-response.js';
@@ -15,6 +16,13 @@ test('parses plain, fenced, and surrounded JSON without evaluating arbitrary tex
   assert.deepEqual(tryParseAIJSON('prefix ["a","b"] suffix'), ['a', 'b']);
   assert.equal(tryParseAIJSON('not json'), null);
   assert.equal(tryParseAIJSON('{broken]'), null);
+});
+
+test('background jobs hide Gemini policy enum names', () => {
+  const message = getFriendlyAIJobError('Gemini could not complete the response: PROHIBITED_CONTENT');
+  assert.match(message, /内容判定/);
+  assert.doesNotMatch(message, /PROHIBITED_CONTENT|blocked/i);
+  assert.match(getFriendlyAIJobError('protected'), /内容判定/);
 });
 
 test('keeps Japanese server detail and maps common HTTP failures', () => {

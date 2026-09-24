@@ -2,7 +2,7 @@
 // 画面を閉じてもジョブ本体はSupabaseに残り、次回起動時に再取得できる。
 
 import { getSession } from './supabase.js';
-import { extractAIErrorMessage } from './ai-response.js';
+import { extractAIErrorMessage, getFriendlyAIJobError } from './ai-response.js';
 
 const JOB_API = '/api/ai/jobs';
 const POLL_INTERVAL_MS = 2500;
@@ -111,7 +111,7 @@ export async function waitForAIJob(id, { signal } = {}) {
     emitAIJobStatus(job, 'polled');
     if (job?.status === 'completed') return job;
     if (job?.status === 'failed') {
-      throw new Error(extractAIErrorMessage(job.error, 'AI生成に失敗しました。'));
+      throw new Error(getFriendlyAIJobError(job.error));
     }
     await delay(POLL_INTERVAL_MS, signal);
   }
