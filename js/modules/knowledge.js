@@ -2203,7 +2203,9 @@ function convertMarkdownBlockShortcut(editable, container, afterSpace = false) {
       block.collapsed = true;
     }
     rerenderBlocks(container);
-    focusBlock(blockId, container);
+    // 再描画後の編集欄には `>> ` などのMarkdown接頭辞が再び表示される。
+    // 末尾指定がないとカーソルが記号より前へ戻るため、本文開始位置となる末尾へ置く。
+    focusBlock(blockId, container, true);
   }
   return true;
 }
