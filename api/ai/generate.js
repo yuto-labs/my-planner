@@ -1374,6 +1374,8 @@ function logStructuredValidationFailure(actionType, text, stage) {
     const sections = Array.isArray(parsed?.answer?.sections) ? parsed.answer.sections : [];
     const direct = Array.isArray(parsed?.answer?.directAnswer) ? parsed.answer.directAnswer : [];
     const keyPoints = Array.isArray(parsed?.answer?.keyPoints) ? parsed.answer.keyPoints : [];
+    const bodyText = sections.flatMap(section => section?.paragraphs || [])
+      .flatMap(paragraph => paragraph || []).map(item => String(item?.text || '')).join('');
     console.warn('[ai] structured response incomplete', {
       actionType,
       stage,
@@ -1382,9 +1384,13 @@ function logStructuredValidationFailure(actionType, text, stage) {
       keyPointChars: keyPoints.map(String).join('').length,
       sections: sections.length,
       paragraphs: sections.reduce((sum, section) => sum + (Array.isArray(section?.paragraphs) ? section.paragraphs.length : 0), 0),
-      bodyChars: sections.flatMap(section => section?.paragraphs || [])
-        .flatMap(paragraph => paragraph || []).map(item => String(item?.text || '')).join('').length,
+      bodyChars: bodyText.length,
       concepts: Array.isArray(parsed?.concepts) ? parsed.concepts.length : 0,
+      hasTitle: Boolean(String(parsed?.title || '').trim()),
+      majorId: String(parsed?.classification?.majorId || ''),
+      middleId: String(parsed?.classification?.middleId || ''),
+      primaryKey: String(parsed?.primaryConcept?.key || ''),
+      hasFormattingNoise: /(\*\*|__|```|<\/?[a-z][^>]*>)/i.test(bodyText),
     });
     return;
   }
@@ -1494,31 +1500,12 @@ function hasCompleteEnglishQuestionResponse(text) {
   );
 }
 
-/** Knowledge回答に直接回答・仕組み・複数視点・関連概念・分類が揃うか検証する。 */
+/** Knowledge回答に、保存に必要な本文量と読みやすい構造が揃うか検証する。 */
 function hasCompleteKnowledgeResponse(text) {
   const parsed = parseStructuredResponse(text);
   const sections = Array.isArray(parsed?.answer?.sections) ? parsed.answer.sections : [];
   const direct = Array.isArray(parsed?.answer?.directAnswer) ? parsed.answer.directAnswer : [];
   const keyPoints = Array.isArray(parsed?.answer?.keyPoints) ? parsed.answer.keyPoints : [];
-  const concepts = Array.isArray(parsed?.concepts) ? parsed.concepts : [];
-  const conceptKeys = new Set(concepts.map(concept => String(concept?.key || '').trim()).filter(Boolean));
-  const primaryKey = String(parsed?.primaryConcept?.key || '').trim();
-  const availableConceptKeys = new Set([...conceptKeys, primaryKey].filter(Boolean));
-  const referencedKeys = [
-    ...direct,
-    ...sections.flatMap(section => (
-      Array.isArray(section?.paragraphs)
-        ? section.paragraphs.flatMap(paragraph => (Array.isArray(paragraph) ? paragraph : []))
-        : []
-    )),
-    ...sections.flatMap(section => (Array.isArray(section?.richBlocks) ? section.richBlocks : []))
-      .flatMap(block => {
-        if (block?.type === 'list') return (block.items || []).flat();
-        if (block?.type === 'equation') return block.explanation || [];
-        if (block?.type === 'callout') return block.segments || [];
-        return [];
-      }),
-  ].map(segment => String(segment?.conceptKey || '').trim()).filter(Boolean);
   const richText = sections.flatMap(section => (Array.isArray(section?.richBlocks) ? section.richBlocks : []))
     .flatMap(block => {
       if (block?.type === 'list') return [block.title, ...(block.items || []).flat().map(item => item?.text)];
@@ -1542,11 +1529,6 @@ function hasCompleteKnowledgeResponse(text) {
   ].join('');
   return Boolean(
     String(parsed?.title || '').trim()
-    && String(parsed?.classification?.majorId || '').trim()
-    && String(parsed?.classification?.middleId || '').trim()
-    && primaryKey
-    && availableConceptKeys.size
-    && referencedKeys.every(key => availableConceptKeys.has(key))
     && direct.length
     && keyPoints.length >= 3
     && keyPoints.every(point => String(point || '').trim().length >= 4)
@@ -1659,9 +1641,24 @@ async function requestGemini(key, model, payload, timeoutMs = 50_000) {
 /** 主モデル失敗時に、同じ要求を互換モデルで一度だけ再試行する。 */
 async function requestGeminiResilient(key, model, fallbackModel, payload, timeoutMs = 50_000) {
   const startedAt = Date.now();
-  const first = await requestGemini(key, model, payload, timeoutMs);
+  const canFallback = Boolean(fallbackModel && fallbackModel !== model);
+  // 主モデルだけで全時間を消費すると、互換モデルへ切り替える余地がなくなる。
+  // 品質モデルへ十分な時間を渡しつつ、約4割をフォールバック用に確保する。
+  const primaryBudgetMs = canFallback
+    ? Math.min(timeoutMs, Math.max(8_000, Math.floor(timeoutMs * 0.62)))
+    : timeoutMs;
+  let first;
+  try {
+    first = await requestGemini(key, model, payload, primaryBudgetMs);
+  } catch (error) {
+    if (error?.name !== 'AbortError' || !canFallback) throw error;
+    const remainingMs = timeoutMs - (Date.now() - startedAt);
+    if (remainingMs < 8_000) throw error;
+    const fallback = await requestGemini(key, fallbackModel, payload, Math.min(remainingMs, 90_000));
+    return { ...fallback, model: fallbackModel };
+  }
   if (first.upstream.ok || !FALLBACK_GEMINI_STATUSES.has(first.upstream.status)
-    || !fallbackModel || fallbackModel === model) {
+    || !canFallback) {
     return { ...first, model };
   }
 
@@ -2063,5 +2060,6 @@ export {
   normalizeStructuredResponse,
   pickFallbackModel,
   pickModel,
+  requestGeminiResilient,
   validateRequestBody,
 };

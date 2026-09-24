@@ -11,6 +11,7 @@ const {
   normalizeStructuredResponse,
   pickFallbackModel,
   pickModel,
+  requestGeminiResilient,
   validateRequestBody,
   maxDuration,
 } = await import('../api/ai/generate.js');
@@ -61,6 +62,37 @@ test('caps AI output tokens per action', () => {
     responseFormat: 'json',
   });
   assert.equal(nuanceBody.maxTokens, 14000);
+});
+
+test('falls back to the lighter Gemini model when the quality model times out', async () => {
+  const previousFetch = globalThis.fetch;
+  const requestedModels = [];
+  globalThis.fetch = async url => {
+    const model = decodeURIComponent(String(url).match(/models\/([^:]+):generateContent/)?.[1] || '');
+    requestedModels.push(model);
+    if (model === 'gemini-3.5-flash') {
+      throw new DOMException('The operation was aborted.', 'AbortError');
+    }
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'ok' }] } }] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+
+  try {
+    const result = await requestGeminiResilient(
+      'test-key',
+      'gemini-3.5-flash',
+      'gemini-3.5-flash-lite',
+      { contents: [] },
+      20_000
+    );
+    assert.equal(result.upstream.ok, true);
+    assert.equal(result.model, 'gemini-3.5-flash-lite');
+    assert.deepEqual(requestedModels, ['gemini-3.5-flash', 'gemini-3.5-flash-lite']);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
 });
 
 test('rejects malformed structured output', () => {
