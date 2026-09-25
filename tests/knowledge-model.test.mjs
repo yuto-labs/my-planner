@@ -128,14 +128,15 @@ test('drops malformed rich blocks and keeps valid nearby content', () => {
   assert.equal(blocks[0].segments[0].text, '例外があります');
 });
 
-test('validates concept links inside rich block segments', () => {
+test('removes concept links inside rich blocks when their target is absent', () => {
   const raw = rawAnswer();
   raw.answer.sections[0].richBlocks = [{
     type: 'callout', tone: 'definition', title: '定義',
     segments: [{ text: '未登録概念', conceptKey: 'missing-concept' }],
   }];
   const entry = normalizeKnowledgeAnswer(raw, 'なぜ空は青いの？');
-  assert.equal(validateKnowledgeEntry(entry).errors.includes('danglingConceptKey'), true);
+  assert.equal(entry.answer.sections[0].richBlocks[0].segments[0].conceptKey, '');
+  assert.equal(validateKnowledgeEntry(entry).valid, true);
 });
 
 test('keeps legacy knowledge answers valid without generated key points', () => {
@@ -247,9 +248,18 @@ test('an edited display title does not block a distinct new question', () => {
   assert.equal(findDuplicateKnowledgeEntries([entry], '光の散乱').length, 0);
 });
 
-test('rejects concept links that are absent from the concept list', () => {
+test('keeps the answer while removing an absent inline concept link', () => {
   const raw = rawAnswer();
   raw.answer.sections[0].paragraphs[0][0].conceptKey = 'missing-concept';
   const entry = normalizeKnowledgeAnswer(raw, 'なぜ空は青いの？');
-  assert.equal(validateKnowledgeEntry(entry).errors.includes('danglingConceptKey'), true);
+  assert.equal(entry.answer.sections[0].paragraphs[0][0].conceptKey, '');
+  assert.equal(validateKnowledgeEntry(entry).valid, true);
+});
+
+test('synthesizes a primary concept when useful Knowledge text lacks metadata', () => {
+  const raw = rawAnswer({ primaryConcept: null, concepts: [] });
+  const entry = normalizeKnowledgeAnswer(raw, 'なぜ空は青いの？');
+  assert.equal(entry.primaryConcept.label, '空が青く見える理由');
+  assert.equal(entry.concepts[0].key, entry.primaryConcept.key);
+  assert.equal(validateKnowledgeEntry(entry).valid, true);
 });

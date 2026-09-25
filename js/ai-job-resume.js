@@ -16,6 +16,7 @@ import {
   generateTranslationVariants,
 } from './ai.js';
 import {
+  acknowledgeAIJob,
   acknowledgeAIJobAfterSync,
   listAIJobs,
   submitAIJob,
@@ -92,12 +93,11 @@ async function applyCompletedJob(job) {
   throw new Error('このAIジョブの保存先を確認できませんでした。');
 }
 
-/** 途中停止または一時失敗したジョブを、最大二回まで同じIDで再開する。 */
+/** 開始前後で止まったジョブだけを再開し、明示的に失敗した生成は勝手に再実行しない。 */
 async function restartRecoverableJob(job) {
   const age = Date.now() - new Date(job.updatedAt || job.createdAt || 0).getTime();
   const stalled = ['queued', 'running'].includes(job.status) && age > 310_000;
-  const retryableFailure = job.status === 'failed' && Number(job.attempts || 0) < 2;
-  if ((!stalled && !retryableFailure) || !job.request) return false;
+  if (!stalled || !job.request) return false;
   await submitAIJob({
     id: job.id,
     request: job.request,
@@ -121,6 +121,9 @@ export async function resumeCompletedAIJobs({ quiet = false } = {}) {
           document.dispatchEvent(new CustomEvent('ai:job-applied', { detail: { job } }));
         } catch (error) {
           console.warn('[ai-job] completed result could not be applied:', job.id, error);
+          // 完成済み本文が端末検証を通らない場合、同じ結果を画面復帰のたびに
+          // 再適用して通知し続けない。通常データには触れず内部ジョブだけ閉じる。
+          try { await acknowledgeAIJob(job.id); } catch {}
           document.dispatchEvent(new CustomEvent('ai:job-apply-failed', { detail: { job, error } }));
         }
       } else {

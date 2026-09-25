@@ -299,31 +299,53 @@ function normalizeGeography(value = {}) {
 
 /** AI回答の表記揺れや欠損を補い、画面と保存処理が扱う共通形へそろえる。 */
 export function normalizeKnowledgeAnswer(raw, question = '') {
+  const title = cleanKnowledgeText(raw?.title || question).slice(0, 80);
   const concepts = (Array.isArray(raw?.concepts) ? raw.concepts : [])
     .map(normalizeConcept)
     .filter(Boolean);
   const primaryRaw = normalizeConcept(raw?.primaryConcept);
   const primaryConcept = primaryRaw
     || concepts.find(concept => concept.role === 'primary')
-    || null;
+    // 本文が完成していてもGeminiが概念メタデータだけ省くことがある。
+    // その場合はタイトルを最低限の主概念として補い、回答全体を捨てない。
+    || normalizeConcept({ key: title || question, label: title || question, role: 'primary' });
   if (primaryConcept && !concepts.some(concept => concept.key === primaryConcept.key)) {
     concepts.unshift({ ...primaryConcept, role: 'primary' });
   }
+  const conceptKeys = new Set(concepts.map(concept => concept.key));
+  /** 保存されていない概念へのリンクだけを外し、文章と強調は残す。 */
+  const sanitizeSegments = segments => segments.map(segment => (
+    segment.conceptKey && !conceptKeys.has(segment.conceptKey)
+      ? { ...segment, conceptKey: '' }
+      : segment
+  ));
 
   const sections = (Array.isArray(raw?.answer?.sections) ? raw.answer.sections : [])
     .map(section => ({
       heading: cleanKnowledgeText(section?.heading).slice(0, 80),
       paragraphs: (Array.isArray(section?.paragraphs) ? section.paragraphs : [])
         .map(normalizeKnowledgeSegments)
+        .map(sanitizeSegments)
         .filter(paragraph => paragraph.length),
-      richBlocks: normalizeKnowledgeRichBlocks(section?.richBlocks),
+      richBlocks: normalizeKnowledgeRichBlocks(section?.richBlocks).map(block => {
+        if (block.type === 'list') {
+          return { ...block, items: block.items.map(sanitizeSegments) };
+        }
+        if (block.type === 'equation') {
+          return { ...block, explanation: sanitizeSegments(block.explanation) };
+        }
+        if (block.type === 'callout') {
+          return { ...block, segments: sanitizeSegments(block.segments) };
+        }
+        return block;
+      }),
     }))
     .filter(section => section.paragraphs.length || section.richBlocks.length);
 
   const now = new Date().toISOString();
   return {
     schemaVersion: 2,
-    title: cleanKnowledgeText(raw?.title || question).slice(0, 80),
+    title,
     originalQuestion: cleanKnowledgeText(question || raw?.originalQuestion),
     titleSource: 'ai',
     titleEditedByUser: false,
@@ -335,7 +357,7 @@ export function normalizeKnowledgeAnswer(raw, question = '') {
     timeline: normalizeTimeline(raw?.timeline),
     geography: normalizeGeography(raw?.geography),
     answer: {
-      directAnswer: normalizeKnowledgeSegments(raw?.answer?.directAnswer),
+      directAnswer: sanitizeSegments(normalizeKnowledgeSegments(raw?.answer?.directAnswer)),
       keyPoints: (Array.isArray(raw?.answer?.keyPoints) ? raw.answer.keyPoints : [])
         .map(cleanKnowledgeText)
         .filter(Boolean)

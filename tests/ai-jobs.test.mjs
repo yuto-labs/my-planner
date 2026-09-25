@@ -118,6 +118,13 @@ test('the client checks the durable job id before treating a lost submit respons
   assert.match(source, /'submit-recovered'/);
 });
 
+test('a surfaced generation failure is not automatically submitted again', async () => {
+  const source = await readFile(new URL('../js/ai-job-resume.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /retryableFailure/);
+  assert.match(source, /if \(!stalled \|\| !job\.request\) return false/);
+  assert.match(source, /await acknowledgeAIJob\(job\.id\)/);
+});
+
 test('an actively awaited result has only one save owner', async () => {
   const source = await readFile(new URL('../js/ai-jobs.js', import.meta.url), 'utf8');
   const readyEvents = source.match(/new CustomEvent\('ai:job-ready'/g) || [];
