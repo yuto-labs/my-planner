@@ -151,6 +151,7 @@ export function generationApiUrl(req) {
 
 /** Gemini生成を既存APIへ委譲し、結果または失敗をジョブへ必ず記録する。 */
 async function runJob({ row, job, userId, token, generateUrl }) {
+  const runStartedAt = Date.now();
   const running = {
     ...job,
     status: 'running',
@@ -190,6 +191,13 @@ async function runJob({ row, job, userId, token, generateUrl }) {
       completedAt: new Date().toISOString(),
       error: '',
     }, userId, token, runningRow || row);
+    console.info('[ai-job] generation completed', {
+      id: job.id,
+      actionType: job.actionType,
+      model: String(payload.model || ''),
+      resultChars: String(payload.text).length,
+      durationMs: Date.now() - runStartedAt,
+    });
   } catch (error) {
     console.error('[ai-job] generation failed', {
       id: job.id,
