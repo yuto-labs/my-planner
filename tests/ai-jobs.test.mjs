@@ -104,10 +104,11 @@ test('offline app shell contains both background job modules', async () => {
   assert.match(serviceWorker, /\.\/js\/ai-job-status\.js/);
 });
 
-test('job creation returns immediately and continues generation through Vercel waitUntil', async () => {
+test('job creation keeps the server worker alive until a terminal state is persisted', async () => {
   const source = await readFile(new URL('../api/ai/jobs.js', import.meta.url), 'utf8');
-  assert.match(source, /waitUntil\s*\(\s*runJob/);
-  assert.doesNotMatch(source, /await runJob\s*\(\{/);
+  assert.doesNotMatch(source, /waitUntil\s*\(\s*runJob/);
+  assert.match(source, /await runJob\s*\(\{/);
+  assert.match(source, /const finishedRow = await readJobRow/);
   assert.match(source, /res\.status\(202\)\.json/);
 });
 
@@ -115,6 +116,13 @@ test('the client checks the durable job id before treating a lost submit respons
   const source = await readFile(new URL('../js/ai-jobs.js', import.meta.url), 'utf8');
   assert.match(source, /submitted = await getAIJob\(id\)/);
   assert.match(source, /'submit-recovered'/);
+});
+
+test('an actively awaited result has only one save owner', async () => {
+  const source = await readFile(new URL('../js/ai-jobs.js', import.meta.url), 'utf8');
+  const readyEvents = source.match(/new CustomEvent\('ai:job-ready'/g) || [];
+  assert.equal(readyEvents.length, 1);
+  assert.match(source, /if \(error\?\.name === 'AbortError'\)/);
 });
 
 test('background generation uses the public request host instead of a protected deployment URL', () => {

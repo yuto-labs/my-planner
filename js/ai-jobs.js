@@ -167,10 +167,8 @@ export async function runAIJob(request, clientContext, { signal, jobState } = {}
     throw new Error('AIの完成結果を取得できませんでした。');
   }
   emitAIJobStatus(completed, 'generated');
-  // 呼び出し元が通常保存を終えた次のタスクで、共通の保存確認とジョブ削除を始める。
-  // 画面に残って完了した場合も、未処理ジョブを次回起動まで放置しないために必要。
-  if (typeof document !== 'undefined') {
-    setTimeout(() => document.dispatchEvent(new CustomEvent('ai:job-ready', { detail: { id } })), 0);
-  }
+  // 画面上で待っていた呼び出し元が、この返り値を通常の保存経路へ渡す。
+  // ここでも復帰保存イベントを出すと同じ回答を二経路が同時保存し、片方が
+  // 「保存できませんでした」と誤表示するため、復帰イベントはAbort時だけにする。
   return completed.resultText;
 }
