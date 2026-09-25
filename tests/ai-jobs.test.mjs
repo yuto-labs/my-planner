@@ -104,11 +104,17 @@ test('offline app shell contains both background job modules', async () => {
   assert.match(serviceWorker, /\.\/js\/ai-job-status\.js/);
 });
 
-test('job creation waits until generation has started and persisted a terminal state', async () => {
+test('job creation returns immediately and continues generation through Vercel waitUntil', async () => {
   const source = await readFile(new URL('../api/ai/jobs.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(source, /waitUntil\s*\(\s*runJob/);
-  assert.match(source, /await runJob\s*\(\{/);
-  assert.match(source, /const finishedRow = await readJobRow/);
+  assert.match(source, /waitUntil\s*\(\s*runJob/);
+  assert.doesNotMatch(source, /await runJob\s*\(\{/);
+  assert.match(source, /res\.status\(202\)\.json/);
+});
+
+test('the client checks the durable job id before treating a lost submit response as failure', async () => {
+  const source = await readFile(new URL('../js/ai-jobs.js', import.meta.url), 'utf8');
+  assert.match(source, /submitted = await getAIJob\(id\)/);
+  assert.match(source, /'submit-recovered'/);
 });
 
 test('background generation uses the public request host instead of a protected deployment URL', () => {

@@ -2,6 +2,8 @@
 // ジョブは既存のknowledge_memosへ内部レコードとして保存するため、
 // 新しいDB表を要求せず、Supabaseの認証とRLSをそのまま利用できる。
 
+import { waitUntil } from '@vercel/functions';
+
 export const maxDuration = 300;
 
 const DEFAULT_SUPABASE_URL = 'https://nhgbvlovptelaqcurobv.supabase.co';
@@ -302,19 +304,19 @@ export default async function handler(req, res) {
       createdAt: existing?.createdAt || new Date().toISOString(),
     };
     const row = await writeJob(job, user.id, token, existingRow);
-    // VercelのwaitUntilだけに起動を委ねると、モバイルから送信した直後に
-    // Functionが終了した環境で生成処理が開始されないことがある。ここでは
-    // 同じFunction内で生成開始から結果保存まで待ち、画面を離れた場合も
-    // Supabase上のジョブから後で完成結果を回収できるようにする。
-    await runJob({
+    // 受付HTTPを生成完了まで開いたままにすると、モバイル回線やVercelの
+    // 接続上限が先に切れ、サーバーでは成功していても画面が失敗と誤認する。
+    // queued状態を永続化してから即座に202を返し、生成と結果保存だけを
+    // Functionのバックグラウンド寿命へ預ける。生成先は公開Hostを使うため、
+    // Deployment Protectionのデプロイ固有URLへ誤接続することもない。
+    waitUntil(runJob({
       row,
       job,
       userId: user.id,
       token,
       generateUrl: generationApiUrl(req),
-    });
-    const finishedRow = await readJobRow(id, token);
-    res.status(202).json({ job: rowToJob(finishedRow) || rowToJob(row) || job });
+    }));
+    res.status(202).json({ job: rowToJob(row) || job });
   } catch (error) {
     console.error('[ai-job] request failed', error);
     res.status(500).json({ error: error?.message || 'AI job request failed.' });

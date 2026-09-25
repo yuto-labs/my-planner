@@ -137,8 +137,16 @@ export async function runAIJob(request, clientContext, { signal, jobState } = {}
   try {
     submitted = await submitAIJob({ id, request, clientContext });
   } catch (error) {
-    emitAIJobStatus({ ...submitting, status: 'failed', error: error?.message || 'AIジョブを登録できませんでした。' }, 'submit-failed');
-    throw error;
+    // POSTはサーバーへ届いた後、応答だけが回線切断で失われることがある。
+    // 同じIDを確認せず失敗表示にすると、裏では生成中なのに利用者へ誤報する。
+    try {
+      submitted = await getAIJob(id);
+      if (!submitted) throw error;
+      emitAIJobStatus(submitted, 'submit-recovered');
+    } catch {
+      emitAIJobStatus({ ...submitting, status: 'failed', error: error?.message || 'AIジョブを登録できませんでした。' }, 'submit-failed');
+      throw error;
+    }
   }
   let completed;
   try {
