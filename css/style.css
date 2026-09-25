@@ -20,13 +20,12 @@
   --radius-xs:  6px;
   --transition: 0.18s ease;
   --max-w:      680px;
-  --ui-font: "Inter", "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic UI",
-             "Yu Gothic", Meiryo, sans-serif;
-  --nav-font: "Avenir Next", "Segoe UI Variable Text", "Segoe UI",
-              "Helvetica Neue", Arial, sans-serif;
-  --display-font: "Cormorant Garamond", Georgia, "Times New Roman", "Yu Mincho",
-                  "Hiragino Mincho ProN", serif;
-  --greeting-font: Georgia, "Times New Roman", "Yu Mincho", "Hiragino Mincho ProN", serif;
+  /* Times New Romanに日本語字形はないため、日本語だけ自動的に游明朝へフォールバックする。 */
+  --ui-font: "Times New Roman", "Yu Mincho", YuMincho, "Hiragino Mincho ProN", serif;
+  --heading-font: "Yu Gothic", "Yu Gothic UI", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+  --nav-font: "Times New Roman", "Yu Mincho", YuMincho, "Hiragino Mincho ProN", serif;
+  --display-font: var(--heading-font);
+  --greeting-font: "Times New Roman", "Yu Mincho", YuMincho, "Hiragino Mincho ProN", serif;
   --on-primary: #0D0D15;
 
   /* Fixed semantic (same in both modes) */
@@ -161,6 +160,13 @@ html, body {
 
 a { color: var(--primary); text-decoration: none; }
 button { cursor: pointer; font-family: inherit; }
+
+/* 見出しは本文の明朝体と形を分け、情報の階層が一目で分かるゴシック体にする。 */
+h1, h2, h3, h4, h5, h6,
+.kn-view-title,
+.kn-edit-title {
+  font-family: var(--heading-font);
+}
 
 /* Keep iOS from auto-zooming the whole page when a compact editor gains focus. */
 @media (max-width: 640px) {
@@ -9744,10 +9750,7 @@ button.atlas-nuance-map-row:focus-visible {
    LOCAL FEATURE OVERRIDES
    ============================================================ */
 
-:root { --nav-h: 64px; --header-h: 56px; --radius: 14px; --radius-sm: 10px; --radius-xs: 6px; --transition: 0.18s ease; --max-w: 680px; --ui-font: "Inter", "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic UI",
-             "Yu Gothic", Meiryo, sans-serif; --nav-font: "Avenir Next", "Segoe UI Variable Text", "Segoe UI",
-              "Helvetica Neue", Arial, sans-serif; --display-font: "Cormorant Garamond", Georgia, "Times New Roman", "Yu Mincho",
-                  "Hiragino Mincho ProN", serif; --greeting-font: Georgia, "Times New Roman", "Yu Mincho", "Hiragino Mincho ProN", serif; --on-primary: #0D0D15; --danger: #F0607A; --warning: #F5C542; }
+:root { --nav-h: 64px; --header-h: 56px; --radius: 14px; --radius-sm: 10px; --radius-xs: 6px; --transition: 0.18s ease; --max-w: 680px; --ui-font: "Times New Roman", "Yu Mincho", YuMincho, "Hiragino Mincho ProN", serif; --heading-font: "Yu Gothic", "Yu Gothic UI", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif; --nav-font: "Times New Roman", "Yu Mincho", YuMincho, "Hiragino Mincho ProN", serif; --display-font: var(--heading-font); --greeting-font: "Times New Roman", "Yu Mincho", YuMincho, "Hiragino Mincho ProN", serif; --on-primary: #0D0D15; --danger: #F0607A; --warning: #F5C542; }
 
 *, ::before, ::after { box-sizing: border-box; margin: 0px; padding: 0px; }
 
@@ -13003,7 +13006,7 @@ button.atlas-nuance-map-row:focus-visible {
   .learning-ask { padding: 15px; }
   .learning-toolbar { grid-template-columns: 1fr; }
   .learning-question-actions { align-items: flex-end; }
-  .learning-question-actions .btn {
+.learning-question-actions .btn {
     flex-shrink: 0;
     padding-inline: 14px;
     white-space: nowrap;
@@ -13028,6 +13031,28 @@ button.atlas-nuance-map-row:focus-visible {
   .learning-flow-step { grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr); gap: 5px; }
   .learning-flow-node { padding: 7px; font-size: 10px; }
   .learning-flow-arrow { min-width: 44px; }
+}
+
+/* ============================================================
+   TYPOGRAPHY OVERRIDES
+   後半の画面別ルールより後で、本文と見出しの役割分担を最終確定する。
+   ============================================================ */
+:is(h1, h2, h3, h4, h5, h6),
+.kn-view-title,
+.kn-edit-title,
+:is(.kn-view-h1, .kn-view-h2, .kn-view-h3, .kn-view-h4, .kn-view-h5, .kn-view-h6),
+.card-title,
+.settings-heading,
+.analytics-section-title,
+.learning-card-title,
+.learning-browse-heading strong,
+.learning-title-row h2,
+.learning-title-input {
+  font-family: var(--heading-font);
+}
+
+.kn-edit-page :is(.kn-block--h1, .kn-block--h2, .kn-block--h3, .kn-block--h4, .kn-block--h5, .kn-block--h6) .kn-block-text {
+  font-family: var(--heading-font);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -71,6 +71,8 @@ let editorTypingHistoryTimer = null;
 let editorHistoryRestoring = false;
 let editorCompositionActive = false;
 let lastEditorSelection = null;
+let lastKeyboardHistoryAt = 0;
+let lastStructuralEnterAt = 0;
 let memoSaveInFlight = false;
 let crossBlockSelectionMode = false;
 // 閲覧中のトグル開閉は本文データではない。同期再描画で状態が戻らないよう画面内だけで保持する。
@@ -238,7 +240,9 @@ function recordEditorHistory(container) {
   clearTimeout(editorTypingHistoryTimer);
   const snapshot = editorHistorySnapshot(container);
   const last = editorUndoHistory.at(-1);
-  if (last && JSON.stringify(last) === JSON.stringify(snapshot)) return;
+  // カーソル位置や選択範囲だけの違いは編集ではない。本文状態が同じなら
+  // 履歴を増やさず、Ctrl+Zの1回目が何も変えないように見える現象を防ぐ。
+  if (last && sameEditorHistoryContent(last, snapshot)) return;
   editorUndoHistory.push(snapshot);
   if (editorUndoHistory.length > EDITOR_HISTORY_LIMIT) editorUndoHistory.shift();
   editorRedoHistory = [];
@@ -307,6 +311,35 @@ function restoreEditorHistory(container, direction) {
       restoreEditorSelection(container, snapshot.selection);
     }
   });
+}
+
+/** 文字編集だけを履歴開始対象にし、別経路で処理するEnter・貼り付け・Undoを除外する。 */
+function isTextHistoryInput(event) {
+  return ![
+    'historyUndo',
+    'historyRedo',
+    'insertParagraph',
+    'insertLineBreak',
+    'insertFromPaste',
+  ].includes(event?.inputType);
+}
+
+/** カーソル情報を除き、Undo対象となるメモ本文・設定だけを比較可能な文字列へする。 */
+function editorHistoryContent(snapshot) {
+  if (!snapshot) return '';
+  return JSON.stringify({
+    title: snapshot.title,
+    blocks: snapshot.blocks,
+    tags: snapshot.tags,
+    url: snapshot.url,
+    starred: snapshot.starred,
+    reviewEnabled: snapshot.reviewEnabled,
+  });
+}
+
+/** カーソルだけ動いた二状態を同じ履歴内容として扱う。回帰テストからも利用する。 */
+export function sameEditorHistoryContent(left, right) {
+  return editorHistoryContent(left) === editorHistoryContent(right);
 }
 
 /** 現在の編集下書きと最後の保存済み基準を安定JSONで比較し、未保存変更の有無を返す。 */
@@ -1961,6 +1994,9 @@ function renderEditMode(container, { preserveHistory = false } = {}) {
     if (event.inputType !== 'historyUndo' && event.inputType !== 'historyRedo') return;
     event.preventDefault();
     event.stopPropagation();
+    // 一部ブラウザーはCtrl+Zのkeydownを処理した直後にbeforeinputも送る。
+    // 同じキー操作で履歴を二段戻さないよう、直近のキーボード処理を優先する。
+    if (performance.now() - lastKeyboardHistoryAt < 120) return;
     restoreEditorHistory(container, event.inputType === 'historyRedo' ? 'redo' : 'undo');
   }, true);
   editPage?.addEventListener('keydown', event => {
@@ -1976,10 +2012,26 @@ function renderEditMode(container, { preserveHistory = false } = {}) {
       }
     } else if (key === 'z') {
       event.preventDefault();
+      event.stopPropagation();
+      lastKeyboardHistoryAt = performance.now();
       restoreEditorHistory(container, event.shiftKey ? 'redo' : 'undo');
     } else if (key === 'y') {
       event.preventDefault();
+      event.stopPropagation();
+      lastKeyboardHistoryAt = performance.now();
       restoreEditorHistory(container, 'redo');
+    } else if (key === 's') {
+      event.preventDefault();
+      saveMemo(container);
+    } else if (['b', 'i', 'u'].includes(key)) {
+      const editable = event.target?.closest?.('.kn-block-text[contenteditable="true"]');
+      const command = { b: 'bold', i: 'italic', u: 'underline' }[key];
+      const delimiters = markdownDelimitersForCommand(command);
+      if (!editable || !delimiters) return;
+      event.preventDefault();
+      recordEditorHistory(container);
+      wrapEditableSelectionWithMarkdown(editable, delimiters[0], delimiters[1]);
+      syncFocusedEditableBlock(container, editable.dataset.blockId);
     }
   });
   editPage?.addEventListener('copy', event => copyWholeMemoSelection(event));
@@ -2010,16 +2062,17 @@ function renderEditMode(container, { preserveHistory = false } = {}) {
     focusBlock(activeEditorBlockId, container);
   });
   editPage?.addEventListener('beforeinput', event => {
-    if (event.target?.closest?.('#kn-blocks-wrap, #kn-edit-title, #kn-tag-input')) {
+    if (isTextHistoryInput(event)
+      && event.target?.closest?.('#kn-blocks-wrap, #kn-edit-title, #kn-tag-input')) {
       beginEditorTextHistory(container);
     }
   });
-  // Some mobile keyboards and embedded browsers do not surface beforeinput
-  // consistently. Capturing the state when an editable control receives focus
-  // still gives the next edit a reliable undo point.
+  // フォーカス移動は編集操作ではないため、ここでは履歴を追加しない。
+  // 入力直前のbeforeinputと、対応しない端末向けのinputフォールバックが
+  // 実際の変更前状態を記録する。構造変更後の自動focusを履歴へ入れると、
+  // Ctrl+Zの1回目が同じ状態を復元してしまう。
   editPage?.addEventListener('focusin', event => {
     if (event.target?.matches?.('[contenteditable="true"], input, textarea')) {
-      beginEditorTextHistory(container);
       requestAnimationFrame(() => {
         lastEditorSelection = captureEditorSelection(container);
       });
@@ -2344,7 +2397,8 @@ function wireBlocksEdit(container) {
       event.preventDefault();
       return;
     }
-    if (event.target?.closest?.('[contenteditable="true"], textarea, input')) {
+    if (isTextHistoryInput(event)
+      && event.target?.closest?.('[contenteditable="true"], textarea, input')) {
       beginEditorTextHistory(container);
     }
   });
@@ -2447,6 +2501,10 @@ function wireBlocksEdit(container) {
     const blockId = el.dataset.blockId;
     if (!blockId) return;
     e.preventDefault();
+    // PCではkeydown側が既に同じEnterを処理済みの場合がある。直後に届く
+    // beforeinputをもう一度適用・記録すると、Undoが一回空振りする。
+    if (performance.now() - lastStructuralEnterAt < 120) return;
+    recordEditorHistory(container);
     const block = findBlockInAllBlocks(edState.blocks, blockId);
     if (block?.type === 'toggle') {
       openToggleForEditing(blockId, container);
@@ -2813,6 +2871,7 @@ function handleBlockKeydown(e, blockId, container) {
     if (e.isComposing || editorCompositionActive) return;
     e.preventDefault();
     e.stopPropagation();
+    lastStructuralEnterAt = performance.now();
     const block = findBlockInAllBlocks(edState.blocks, blockId);
     recordEditorHistory(container);
     const desktopKeyboard = !window.matchMedia?.('(pointer: coarse)')?.matches;

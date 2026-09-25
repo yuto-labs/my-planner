@@ -1,7 +1,7 @@
 // AIジョブの実行状況を、どの画面からでも確認できる小さな共通表示へまとめる。
 // 生成完了と保存完了を分け、サーバー回答は得たが端末へ未保存の状態も隠さない。
 
-import { listAIJobs } from './ai-jobs.js';
+import { acknowledgeAIJob, listAIJobs } from './ai-jobs.js';
 import { getFriendlyAIJobError } from './ai-response.js';
 
 const ACTIVE_POLL_MS = 3000;
@@ -74,6 +74,26 @@ function showTerminalOnce({ jobId, stage, title, message }) {
     expiresAt: Date.now() + FAILURE_VISIBLE_MS,
   };
   return true;
+}
+
+/**
+ * 失敗を一度だけ表示してから内部ジョブを削除する。
+ * 失敗ジョブをクラウドに残すと、再読込や別端末で同じ通知が復活するため、
+ * 利用者のメモ等には触れずAIの作業記録だけを終了させる。
+ */
+function retireFailedJob(job) {
+  if (!job?.id) return;
+  showTerminalOnce({
+    jobId: job.id,
+    stage: 'generation-failed',
+    title: `${aiJobLabel(job)}に失敗しました`,
+    message: getFriendlyAIJobError(job.error, '通信状態を確認して、もう一度お試しください。'),
+  });
+  jobs.delete(job.id);
+  acknowledgeAIJob(job.id).catch(() => {
+    // 削除通信だけ失敗しても通知済み履歴が同じ端末での再表示を防ぐ。
+    // 次回の一覧取得時にもう一度削除を試せるよう、ここでは通常データを変更しない。
+  });
 }
 
 /** API由来の失敗文をHTMLとして解釈させず、そのまま文字として表示する。 */
@@ -180,15 +200,16 @@ export async function refreshAIJobStatus() {
   refreshPromise = listAIJobs()
     .then(items => {
       jobs = new Map(items.map(job => [job.id, job]));
-      const failed = [...jobs.values()].filter(job => job.status === 'failed').at(-1);
-      if (failed && (!terminal || terminal.jobId !== failed.id)) {
-        showTerminalOnce({
-          jobId: failed.id,
-          stage: 'generation-failed',
-          title: `${aiJobLabel(failed)}に失敗しました`,
-          message: getFriendlyAIJobError(failed.error, '通信状態を確認して、もう一度お試しください。'),
-        });
-      }
+      const failedJobs = [...jobs.values()].filter(job => job.status === 'failed');
+      // 古い失敗が複数残っていても、最新の一件だけを表示して全件を終了扱いにする。
+      const latestFailed = failedJobs.at(-1);
+      failedJobs.forEach(job => {
+        if (job === latestFailed) retireFailedJob(job);
+        else {
+          jobs.delete(job.id);
+          acknowledgeAIJob(job.id).catch(() => {});
+        }
+      });
       render();
       return items;
     })
@@ -208,12 +229,7 @@ export function initAIJobStatus() {
     if (!job?.id) return;
     jobs.set(job.id, job);
     if (job.status === 'failed') {
-      showTerminalOnce({
-        jobId: job.id,
-        stage: 'generation-failed',
-        title: `${aiJobLabel(job)}に失敗しました`,
-        message: getFriendlyAIJobError(job.error, '通信状態を確認して、もう一度お試しください。'),
-      });
+      retireFailedJob(job);
     }
     render();
     schedulePoll();

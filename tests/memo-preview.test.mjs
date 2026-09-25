@@ -5,7 +5,29 @@ import assert from 'node:assert/strict';
 const {
   renderMemoCardPreview,
   resolveNewMemoReviewEnabled,
+  sameEditorHistoryContent,
 } = await import('../js/modules/knowledge.js');
+
+test('memo history ignores caret-only movement but detects block changes', () => {
+  const base = {
+    title: '題名',
+    blocks: [{ id: 'a', type: 'paragraph', text: '本文' }],
+    tags: ['資料'],
+    url: '',
+    starred: false,
+    reviewEnabled: false,
+    activeBlockId: 'a',
+    selection: { kind: 'contenteditable', blockId: 'a', start: 0, end: 0 },
+  };
+  assert.equal(sameEditorHistoryContent(base, {
+    ...base,
+    selection: { kind: 'contenteditable', blockId: 'a', start: 2, end: 2 },
+  }), true);
+  assert.equal(sameEditorHistoryContent(base, {
+    ...base,
+    blocks: [...base.blocks, { id: 'b', type: 'paragraph', text: '' }],
+  }), false);
+});
 
 test('new memos default to review disabled unless explicitly enabled', () => {
   assert.equal(resolveNewMemoReviewEnabled(), false);
