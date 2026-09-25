@@ -3439,7 +3439,7 @@ h1, h2, h3, h4, h5, h6,
 .kn-range-select-mode .kn-table-actions,
 .kn-range-select-mode .kn-block-controls,
 .kn-range-select-mode .kn-add-block-btn {
-  pointer-events: none;
+  display: none;
 }
 .kn-range-select-mode .kn-toolbar > :not(.kn-range-select-btn) {
   opacity: 0.42;
@@ -13049,6 +13049,13 @@ button.atlas-nuance-map-row:focus-visible {
 .learning-title-row h2,
 .learning-title-input {
   font-family: var(--heading-font);
+}
+
+/* メモ名は利用者が付けた文書タイトルなので、ブランド見出し用の斜体を重ねない。 */
+#app[data-view="knowledge-detail"] #page-title {
+  font-family: var(--heading-font);
+  font-style: normal;
+  font-weight: 600;
 }
 
 .kn-edit-page :is(.kn-block--h1, .kn-block--h2, .kn-block--h3, .kn-block--h4, .kn-block--h5, .kn-block--h6) .kn-block-text {

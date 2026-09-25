@@ -2003,10 +2003,12 @@ function renderEditMode(container, { preserveHistory = false } = {}) {
     if (event.isComposing || !(event.ctrlKey || event.metaKey)) return;
     const key = event.key.toLowerCase();
     if (key === 'a') {
-      const editable = event.target?.closest?.('.kn-block-text[contenteditable="true"]');
-      // 1回目は一般的なエディタと同じく現在ブロックだけを選ぶ。
-      // そのブロック全体が選択済みなら、2回目でメモ本文全体へ範囲を広げる。
-      if (crossBlockSelectionMode || (editable && selectionCoversEditable(editable))) {
+      const isMemoBody = crossBlockSelectionMode
+        || !!event.target?.closest?.('#kn-blocks-wrap, .kn-block-text');
+      // ブロックはDOM上では別々の編集領域だが、利用者には一つの文書として見える。
+      // そのため本文内のCtrl/Cmd+Aは一度で全ブロックを選び、タイトルやタグ欄は
+      // 各入力欄の通常の全選択を保つ。
+      if (isMemoBody) {
         event.preventDefault();
         selectAllMemoBlocks(container);
       }
@@ -2054,6 +2056,8 @@ function renderEditMode(container, { preserveHistory = false } = {}) {
     }
     if (event.key !== 'Backspace' && event.key !== 'Delete') return;
     event.preventDefault();
+    // 選択ハンドルで一部分だけに絞った後、誤って全文を削除しない。
+    if (!selectionCoversMemoContents(container)) return;
     recordEditorHistory(container);
     edState.blocks = [defaultBlock()];
     activeEditorBlockId = edState.blocks[0].id;
@@ -3212,7 +3216,13 @@ function wireToolbar(container) {
   let savedHighlightSelection = null;
   const rangeSelectButton = container.querySelector('#kn-range-select-btn');
   rangeSelectButton?.addEventListener('click', () => {
-    setCrossBlockSelectionMode(container, !crossBlockSelectionMode);
+    if (crossBlockSelectionMode) {
+      setCrossBlockSelectionMode(container, false);
+      return;
+    }
+    // スマートフォンでは複数のcontenteditableを指でまたいで選び始めにくい。
+    // ボタン一回で全文を選び、OSの選択ハンドルから必要な範囲へ狭められるようにする。
+    if (selectAllMemoBlocks(container)) toast('メモ本文を全選択しました', 'info');
   });
   const blockMenuToggle = container.querySelector('#kn-block-actions-toggle');
   const blockMenu = container.querySelector('.kn-toolbar-block-actions');
@@ -3397,16 +3407,6 @@ function wireToolbar(container) {
   });
 }
 
-/** 現在の選択範囲が、一つの編集ブロックのMarkdown全体を覆っているか判定する。 */
-function selectionCoversEditable(editable) {
-  const selection = window.getSelection();
-  if (!editable || !selection?.rangeCount || selection.isCollapsed) return false;
-  if (!editable.contains(selection.anchorNode) || !editable.contains(selection.focusNode)) return false;
-  const selected = selection.toString().replace(/\u200B/g, '').replace(/\r\n?/g, '\n');
-  const source = readEditableMarkdownSource(editable);
-  return source.length > 0 && selected === source;
-}
-
 /** メモの保存ブロックを、全体コピー用のMarkdown文字列へ直列化する。 */
 function memoBlocksToMarkdownSource(blocks, depth = 0) {
   const lines = [];
@@ -3435,7 +3435,7 @@ function memoBlocksToMarkdownSource(blocks, depth = 0) {
   return lines.filter(Boolean).join('\n');
 }
 
-/** Ctrl/Cmd+Aを続けて押したとき、編集本文の全ブロックを一つの範囲として選択する。 */
+/** 編集本文の全ブロックを、DOM上の境界をまたぐ一つの選択範囲にする。 */
 function selectAllMemoBlocks(container) {
   const wrap = container.querySelector('#kn-blocks-wrap');
   const editPage = container.querySelector('.kn-edit-page');
@@ -3450,9 +3450,27 @@ function selectAllMemoBlocks(container) {
   return true;
 }
 
+/** 現在のDOM選択が本文ラッパーの先頭から末尾までを完全に覆うか判定する。 */
+function selectionCoversMemoContents(container) {
+  const wrap = container.querySelector('#kn-blocks-wrap');
+  const selection = window.getSelection();
+  if (!wrap || !selection?.rangeCount || selection.isCollapsed) return false;
+
+  const selectedRange = selection.getRangeAt(0);
+  const wholeMemoRange = document.createRange();
+  wholeMemoRange.selectNodeContents(wrap);
+  // compareBoundaryPointsの定数はSTART_TO_START=0、END_TO_END=2。
+  // 完全一致だけでなく、ブラウザーが境界を一段外側へ補正した場合も許容する。
+  const coversStart = selectedRange.compareBoundaryPoints(0, wholeMemoRange) <= 0;
+  const coversEnd = selectedRange.compareBoundaryPoints(2, wholeMemoRange) >= 0;
+  return coversStart && coversEnd;
+}
+
 /** 全体選択中のコピーでは、操作ボタンを混ぜず本文Markdownだけをクリップボードへ渡す。 */
 function copyWholeMemoSelection(event) {
-  if (!crossBlockSelectionMode || !event.clipboardData) return false;
+  const container = event.currentTarget;
+  if (!crossBlockSelectionMode || !event.clipboardData || !container
+    || !selectionCoversMemoContents(container)) return false;
   event.preventDefault();
   event.clipboardData.setData('text/plain', memoBlocksToMarkdownSource(edState.blocks));
   return true;
