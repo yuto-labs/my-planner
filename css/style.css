@@ -13093,6 +13093,14 @@ button.atlas-nuance-map-row:focus-visible {
   font-family: var(--heading-font);
 }
 
+/* メモ名は画面見出しではなく利用者の文章なので、以前の通常書体で静かに見せる。 */
+.kn-memo-title,
+.kn-view-title,
+.kn-edit-title {
+  font-family: var(--ui-font);
+  font-style: normal;
+}
+
 /* 各画面の名前は操作UIと書体を分け、落ち着いた見出しとして統一する。 */
 #page-title {
   font-family: Baskerville, "Palatino Linotype", "Book Antiqua", Georgia,
