@@ -18,6 +18,7 @@ import {
   isDecorativeClipboardTextColor,
   canMergeMemoTextBlocks,
   resolveMemoEnterAction,
+  resolveMemoAddBlockAnchor,
   trimPastedMarkdownEdges,
   renderBlocksView,
   renderMemoCardPreview,
@@ -164,6 +165,28 @@ test('continued list items place the caret after their visible Markdown marker',
   assert.equal(markdownContentStartOffset('- [ ] 未完了'), 6);
   assert.equal(markdownContentStartOffset('>> トグル'), 3);
   assert.equal(markdownContentStartOffset('通常本文'), 0);
+});
+
+test('the add-block button exits the nearest toggle while Enter can keep its current level', () => {
+  const blocks = [
+    { id: 'root', type: 'paragraph' },
+    {
+      id: 'outer', type: 'toggle', children: [
+        { id: 'outer-child', type: 'paragraph' },
+        {
+          id: 'inner', type: 'toggle', children: [
+            { id: 'inner-child', type: 'paragraph' },
+          ],
+        },
+      ],
+    },
+  ];
+  assert.equal(resolveMemoAddBlockAnchor('root', blocks), 'root');
+  assert.equal(resolveMemoAddBlockAnchor('outer', blocks), 'outer');
+  assert.equal(resolveMemoAddBlockAnchor('outer-child', blocks), 'outer');
+  assert.equal(resolveMemoAddBlockAnchor('inner', blocks), 'inner');
+  assert.equal(resolveMemoAddBlockAnchor('inner-child', blocks), 'inner');
+  assert.equal(resolveMemoAddBlockAnchor('missing', blocks), null);
 });
 
 test('paste trimming removes only outer blank lines', () => {

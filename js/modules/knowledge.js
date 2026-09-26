@@ -2131,7 +2131,9 @@ function renderEditMode(container, { preserveHistory = false } = {}) {
   container.querySelector('#kn-add-block-btn')?.addEventListener('click', () => {
     recordEditorHistory(container);
     const focusedBlockId = resolveActiveEditorBlockId(container);
-    const inserted = focusedBlockId ? insertBlockAfter(focusedBlockId) : null;
+    if (focusedBlockId) syncFocusedEditableBlock(container, focusedBlockId);
+    const insertionAnchorId = resolveMemoAddBlockAnchor(focusedBlockId, edState.blocks);
+    const inserted = insertionAnchorId ? insertBlockAfter(insertionAnchorId) : null;
     if (!inserted) edState.blocks.push(defaultBlock());
     rerenderBlocks(container);
     focusBlock(inserted?.id || edState.blocks[edState.blocks.length - 1]?.id, container);
@@ -2144,6 +2146,29 @@ function renderEditMode(container, { preserveHistory = false } = {}) {
       setTimeout(() => handlePasteSummarize(text, container), 100);
     }
   });
+}
+
+/**
+ * 追加ボタンで作るブロックの直前位置を返す。
+ * Enterは現在階層を続ける一方、このボタンは最も近いトグルの外へ抜けるために使う。
+ */
+export function resolveMemoAddBlockAnchor(blockId, blocks = []) {
+  if (!blockId) return null;
+  /** 対象ブロックと、それを直接包むトグルを同時に探す。 */
+  const find = (items, parentToggle = null) => {
+    for (const block of items || []) {
+      if (block?.id === blockId) return { block, parentToggle };
+      const nested = find(block?.children || [], block?.type === 'toggle' ? block : parentToggle);
+      if (nested) return nested;
+    }
+    return null;
+  };
+  const found = find(blocks);
+  if (!found) return null;
+  // トグル見出しを選んでいるならそのトグルの直後、それ以外の子なら親トグルの直後へ出す。
+  return found.block.type === 'toggle'
+    ? found.block.id
+    : (found.parentToggle?.id || found.block.id);
 }
 
 /** edState.blocksを編集可能なブロックDOMへ変換する。 */
