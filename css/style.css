@@ -13051,9 +13051,10 @@ button.atlas-nuance-map-row:focus-visible {
   font-family: var(--heading-font);
 }
 
-/* メモ名は利用者が付けた文書タイトルなので、ブランド見出し用の斜体を重ねない。 */
-#app[data-view="knowledge-detail"] #page-title {
-  font-family: var(--heading-font);
+/* 各画面の名前は操作UIと書体を分け、落ち着いた見出しとして統一する。 */
+#page-title {
+  font-family: Baskerville, "Palatino Linotype", "Book Antiqua", Georgia,
+    "Yu Mincho", YuMincho, "Hiragino Mincho ProN", serif;
   font-style: normal;
   font-weight: 600;
 }
