@@ -20,6 +20,8 @@ import {
   resolveMemoEnterAction,
   resolveMemoAddBlockAnchor,
   removeBlockById,
+  resolveNumberedBlockValue,
+  renumberInsertedListContinuation,
   trimPastedMarkdownEdges,
   renderBlocksView,
   renderMemoCardPreview,
@@ -166,6 +168,30 @@ test('continued list items place the caret after their visible Markdown marker',
   assert.equal(markdownContentStartOffset('- [ ] 未完了'), 6);
   assert.equal(markdownContentStartOffset('>> トグル'), 3);
   assert.equal(markdownContentStartOffset('通常本文'), 0);
+});
+
+test('numbered Enter continuations increment and shift only conflicting following items', () => {
+  const blocks = [
+    { id: 'one', type: 'numbered', text: 'one', listNumber: 1 },
+    { id: 'inserted', type: 'numbered', text: '' },
+    { id: 'old-two', type: 'numbered', text: 'two', listNumber: 2 },
+    { id: 'old-three', type: 'numbered', text: 'three', listNumber: 3 },
+    { id: 'manual-ten', type: 'numbered', text: 'ten', listNumber: 10 },
+  ];
+
+  assert.equal(resolveNumberedBlockValue(blocks, 0), 1);
+  assert.equal(renumberInsertedListContinuation(blocks, 0), 2);
+  assert.deepEqual(blocks.map(block => block.listNumber), [1, 2, 3, 4, 10]);
+  assert.equal(resolveNumberedBlockValue(blocks, 3), 4);
+});
+
+test('numbered Enter continuations respect a custom starting number', () => {
+  const blocks = [
+    { id: 'five', type: 'numbered', text: 'five', listNumber: 5 },
+    { id: 'next', type: 'numbered', text: '' },
+  ];
+  assert.equal(renumberInsertedListContinuation(blocks, 0), 6);
+  assert.equal(blocks[1].listNumber, 6);
 });
 
 test('the add-block button exits the nearest toggle while Enter can keep its current level', () => {

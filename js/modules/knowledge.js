@@ -747,7 +747,9 @@ export function renderMemoCardPreview(blocks, maxBlocks = 7) {
     let numbered = 0;
     for (const block of (items || [])) {
       if (rendered >= maxBlocks) break;
-      numbered = block.type === 'numbered' ? numbered + 1 : 0;
+      numbered = block.type === 'numbered'
+        ? (Number.isFinite(Number(block.listNumber)) ? Math.max(1, Number(block.listNumber)) : numbered + 1)
+        : 0;
 
       if (block.type === 'divider') {
         rows.push('<hr class="kn-memo-preview-divider">');
@@ -3065,6 +3067,39 @@ function splitEditableAtCaret(editable) {
   return { before: extract(beforeRange), after: extract(afterRange) };
 }
 
+/** 現在位置までの番号付きリストを読み、画面上で使われる番号を返す。 */
+export function resolveNumberedBlockValue(blocks, index) {
+  if (!Array.isArray(blocks) || blocks[index]?.type !== 'numbered') return null;
+  let start = index;
+  while (start > 0 && blocks[start - 1]?.type === 'numbered') start--;
+  let value = 0;
+  for (let i = start; i <= index; i++) {
+    const explicit = Number(blocks[i]?.listNumber);
+    value = Number.isFinite(explicit) ? Math.max(1, explicit) : value + 1;
+  }
+  return value || 1;
+}
+
+/**
+ * Enterで差し込んだ番号項目を直前の続きにし、後続で重複する番号だけを繰り下げる。
+ * `10.`のように明示された大きい開始番号は、利用者の意図としてそのまま残す。
+ */
+export function renumberInsertedListContinuation(blocks, currentIndex) {
+  const currentNumber = resolveNumberedBlockValue(blocks, currentIndex);
+  const inserted = blocks?.[currentIndex + 1];
+  if (currentNumber == null || inserted?.type !== 'numbered') return null;
+  inserted.listNumber = currentNumber + 1;
+  let previous = inserted.listNumber;
+  for (let i = currentIndex + 2; blocks[i]?.type === 'numbered'; i++) {
+    const explicit = Number(blocks[i].listNumber);
+    if (!Number.isFinite(explicit) || explicit <= previous) {
+      blocks[i].listNumber = previous + 1;
+    }
+    previous = Math.max(1, Number(blocks[i].listNumber));
+  }
+  return inserted.listNumber;
+}
+
 /** 箇条書きでEnterを押した時、同じ種類の次項目を直後へ作ってフォーカスする。 */
 function continueListFromBlock(blockId, container, editable = null) {
   syncFocusedEditableBlock(container, blockId);
@@ -3077,6 +3112,7 @@ function continueListFromBlock(blockId, container, editable = null) {
   if (!(currentBlock.text || '').trim()) {
     currentBlock.type = 'paragraph';
     delete currentBlock.checked;
+    delete currentBlock.listNumber;
     rerenderBlocks(container);
     focusBlock(blockId, container, true);
     return;
@@ -3090,8 +3126,9 @@ function continueListFromBlock(blockId, container, editable = null) {
   const nextBlock = insertBlockAfter(blockId, currentBlock.type);
   if (!nextBlock) return;
   if (nextBlock.type === 'checklist') nextBlock.checked = false;
+  if (nextBlock.type === 'numbered') renumberInsertedListContinuation(loc.blocks, loc.idx);
   if (split) {
-    const nextSource = `${markdownPrefixForBlock(nextBlock, 1)}${split.after.text}`;
+    const nextSource = `${markdownPrefixForBlock(nextBlock, nextBlock.listNumber || 1)}${split.after.text}`;
     applyMarkdownSourceToBlock(nextBlock.id, nextSource);
   }
   rerenderBlocks(container);
