@@ -19,6 +19,7 @@ import {
   canMergeMemoTextBlocks,
   resolveMemoEnterAction,
   resolveMemoAddBlockAnchor,
+  removeBlockById,
   trimPastedMarkdownEdges,
   renderBlocksView,
   renderMemoCardPreview,
@@ -187,6 +188,71 @@ test('the add-block button exits the nearest toggle while Enter can keep its cur
   assert.equal(resolveMemoAddBlockAnchor('inner', blocks), 'inner');
   assert.equal(resolveMemoAddBlockAnchor('inner-child', blocks), 'inner');
   assert.equal(resolveMemoAddBlockAnchor('missing', blocks), null);
+});
+
+test('deleting a toggle promotes its children without losing their order or nesting', () => {
+  const nestedChild = {
+    id: 'nested-toggle',
+    type: 'toggle',
+    text: '入れ子',
+    children: [{ id: 'nested-text', type: 'paragraph', text: '深い本文' }],
+  };
+  const blocks = [
+    { id: 'before', type: 'paragraph', text: '前' },
+    {
+      id: 'parent-toggle',
+      type: 'toggle',
+      text: '',
+      children: [
+        { id: 'child-one', type: 'paragraph', text: '子1' },
+        nestedChild,
+        { id: 'child-two', type: 'paragraph', text: '子2' },
+      ],
+    },
+    { id: 'after', type: 'paragraph', text: '後' },
+  ];
+
+  assert.equal(removeBlockById('parent-toggle', blocks), true);
+  assert.deepEqual(blocks.map(block => block.id), [
+    'before',
+    'child-one',
+    'nested-toggle',
+    'child-two',
+    'after',
+  ]);
+  assert.equal(blocks[2].children[0].id, 'nested-text');
+  assert.equal(removeBlockById('missing', blocks), false);
+
+  assert.equal(removeBlockById('nested-toggle', blocks), true);
+  assert.deepEqual(blocks.map(block => block.id), [
+    'before',
+    'child-one',
+    'nested-text',
+    'child-two',
+    'after',
+  ]);
+
+  const deeplyNestedBlocks = [{
+    id: 'outer-toggle',
+    type: 'toggle',
+    children: [
+      {
+        id: 'inner-toggle',
+        type: 'toggle',
+        children: [
+          { id: 'inner-one', type: 'paragraph', text: '内側1' },
+          { id: 'inner-two', type: 'paragraph', text: '内側2' },
+        ],
+      },
+      { id: 'outer-sibling', type: 'paragraph', text: '外側の兄弟' },
+    ],
+  }];
+  assert.equal(removeBlockById('inner-toggle', deeplyNestedBlocks), true);
+  assert.deepEqual(deeplyNestedBlocks[0].children.map(block => block.id), [
+    'inner-one',
+    'inner-two',
+    'outer-sibling',
+  ]);
 });
 
 test('paste trimming removes only outer blank lines', () => {

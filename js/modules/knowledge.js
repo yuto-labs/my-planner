@@ -2946,15 +2946,18 @@ function handleBlockKeydown(e, blockId, container) {
   if (e.key === 'Backspace') {
     const el = e.target;
     const loc = findBlockLocation(blockId);
+    const currentBlock = loc?.blocks[loc.idx];
     const editableText = parseMarkdownBlockSource(readEditableMarkdownSource(el)).text;
-    if (editableText === '' && loc && (loc.parent || edState.blocks.length > 1)) {
+    const hasPromotableChildren = currentBlock?.type === 'toggle' && currentBlock.children?.length;
+    if (editableText === '' && loc && (loc.parent || edState.blocks.length > 1 || hasPromotableChildren)) {
       e.preventDefault();
       recordEditorHistory(container);
       const previousBlock = loc.blocks[loc.idx - 1] || loc.parent || null;
       const nextBlock = loc.blocks[loc.idx + 1] || null;
+      const firstPromotedChild = hasPromotableChildren ? currentBlock.children[0] : null;
       removeBlockById(blockId);
       if (!edState.blocks.length) edState.blocks.push(defaultBlock());
-      const focusTarget = previousBlock || nextBlock || edState.blocks[0];
+      const focusTarget = firstPromotedChild || previousBlock || nextBlock || edState.blocks[0];
       activeEditorBlockId = focusTarget?.id || null;
       // DOMだけを遅延削除すると、先頭ブロックのactive状態が残って保存時に
       // 古い本文を再同期する場合がある。状態を正として即座に全体を描き直す。
@@ -2962,7 +2965,6 @@ function handleBlockKeydown(e, blockId, container) {
       if (focusTarget) focusBlock(focusTarget.id, container, true);
       return;
     }
-    const currentBlock = loc?.blocks[loc.idx];
     const previousBlock = loc && loc.idx > 0 ? loc.blocks[loc.idx - 1] : null;
     if (caretIsAtBlockContentStart(el) && canMergeMemoTextBlocks(previousBlock, currentBlock)) {
       e.preventDefault();
@@ -4226,11 +4228,18 @@ function rerenderBlocks(container) {
   if (activeBlock) highlightToolbarType(container, activeBlock.type);
 }
 
-/** 入れ子のトグルを含む下書き配列から指定IDを探し、該当ブロック一件を取り除く。 */
-function removeBlockById(blockId, blocks = edState.blocks) {
+/**
+ * 指定ブロックだけを取り除く。
+ * トグルを削除するときは子を同じ位置へ昇格し、親の削除で本文まで失わないようにする。
+ */
+export function removeBlockById(blockId, blocks = edState.blocks) {
   const idx = blocks.findIndex(block => block.id === blockId);
   if (idx >= 0) {
-    blocks.splice(idx, 1);
+    const block = blocks[idx];
+    const promotedChildren = block?.type === 'toggle' && Array.isArray(block.children)
+      ? block.children
+      : [];
+    blocks.splice(idx, 1, ...promotedChildren);
     return true;
   }
   for (const block of blocks) {
