@@ -297,6 +297,35 @@ function normalizeGeography(value = {}) {
   return { scope, regionIds, countryCodes };
 }
 
+/** 検索グラウンディングのURLとタイトルを表示・保存に安全な最小形へそろえる。 */
+function normalizeKnowledgeEvidence(value = {}) {
+  const seen = new Set();
+  const sources = (Array.isArray(value?.sources) ? value.sources : [])
+    .map(source => {
+      const rawUrl = cleanKnowledgeText(source?.url).slice(0, 2048);
+      try {
+        const url = new URL(rawUrl);
+        if (!['http:', 'https:'].includes(url.protocol)) return null;
+        const normalizedUrl = url.href;
+        if (seen.has(normalizedUrl)) return null;
+        seen.add(normalizedUrl);
+        return {
+          title: cleanKnowledgeText(source?.title || url.hostname).slice(0, 240),
+          url: normalizedUrl,
+        };
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .slice(0, 8);
+  const searchQueries = (Array.isArray(value?.searchQueries) ? value.searchQueries : [])
+    .map(cleanKnowledgeText)
+    .filter(Boolean)
+    .slice(0, 8);
+  return { grounded: sources.length > 0, sources, searchQueries };
+}
+
 /** AI回答の表記揺れや欠損を補い、画面と保存処理が扱う共通形へそろえる。 */
 export function normalizeKnowledgeAnswer(raw, question = '') {
   const title = cleanKnowledgeText(raw?.title || question).slice(0, 80);
@@ -344,7 +373,7 @@ export function normalizeKnowledgeAnswer(raw, question = '') {
 
   const now = new Date().toISOString();
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     title,
     originalQuestion: cleanKnowledgeText(question || raw?.originalQuestion),
     titleSource: 'ai',
@@ -356,6 +385,7 @@ export function normalizeKnowledgeAnswer(raw, question = '') {
     facets: normalizeFacets(raw?.facets),
     timeline: normalizeTimeline(raw?.timeline),
     geography: normalizeGeography(raw?.geography),
+    evidence: normalizeKnowledgeEvidence(raw?.evidence),
     answer: {
       directAnswer: sanitizeSegments(normalizeKnowledgeSegments(raw?.answer?.directAnswer)),
       keyPoints: (Array.isArray(raw?.answer?.keyPoints) ? raw.answer.keyPoints : [])

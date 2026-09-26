@@ -12720,6 +12720,10 @@ button.atlas-nuance-map-row:focus-visible {
   margin-bottom: 26px;
   padding-top: 2px;
 }
+.learning-answer-section + .learning-answer-section {
+  padding-top: 20px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+}
 .learning-answer-section h3 {
   margin-bottom: 10px;
   padding-bottom: 7px;
@@ -12729,6 +12733,44 @@ button.atlas-nuance-map-row:focus-visible {
   font-weight: 600;
 }
 .learning-answer-section p + p { margin-top: 14px; }
+.learning-sources {
+  margin-top: 30px;
+  padding-top: 13px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.learning-sources summary {
+  width: fit-content;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  list-style-position: outside;
+}
+.learning-sources summary span {
+  margin-left: 5px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.learning-sources ol {
+  display: grid;
+  gap: 9px;
+  margin: 12px 0 0;
+  padding-left: 1.35em;
+}
+.learning-sources li { padding-left: 3px; line-height: 1.5; }
+.learning-sources a {
+  color: var(--text);
+  text-decoration-color: var(--primary-border);
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.learning-sources small {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-dim);
+  font-size: 9px;
+  overflow-wrap: anywhere;
+}
 .learning-rich {
   min-width: 0;
   max-width: 100%;

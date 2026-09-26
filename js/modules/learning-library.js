@@ -504,6 +504,7 @@ export function initLearningDetail(container) {
   const facets = Object.values(entry.facets || {}).flat().filter(Boolean);
   const sections = entry.answer?.sections || [];
   const keyPoints = entry.answer?.keyPoints || [];
+  const evidenceSources = entry.evidence?.sources || [];
   const showOriginalQuestion = hasDistinctKnowledgeQuestion(
     entry.title || entry.originalQuestion,
     entry.originalQuestion
@@ -559,6 +560,18 @@ export function initLearningDetail(container) {
             <strong>注意・例外</strong>
             ${(entry.answer.cautions || []).map(caution => `<p>${esc(caution)}</p>`).join('')}
           </aside>
+        ` : ''}
+        ${evidenceSources.length ? `
+          <details class="learning-sources">
+            <summary>確認した資料 <span>${evidenceSources.length}</span></summary>
+            <ol>
+              ${evidenceSources.map(source => {
+                let hostname = '';
+                try { hostname = new URL(source.url).hostname.replace(/^www\./, ''); } catch {}
+                return `<li><a href="${esc(source.url)}" target="_blank" rel="noopener noreferrer">${esc(source.title || hostname)}</a>${hostname ? `<small>${esc(hostname)}</small>` : ''}</li>`;
+              }).join('')}
+            </ol>
+          </details>
         ` : ''}
       </div>
 

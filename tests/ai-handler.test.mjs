@@ -16,14 +16,73 @@ function createResponseRecorder() {
   };
 }
 
-function geminiResponse(text) {
+function geminiResponse(text, groundingMetadata = null) {
+  const candidate = { content: { parts: [{ text }] }, finishReason: 'STOP' };
+  if (groundingMetadata) candidate.groundingMetadata = groundingMetadata;
   return new Response(JSON.stringify({
-    candidates: [{ content: { parts: [{ text }] }, finishReason: 'STOP' }],
+    candidates: [candidate],
   }), {
     status: 200,
     headers: { 'content-type': 'application/json' },
   });
 }
+
+test('knowledge generation enables search grounding and attaches only provider sources', async () => {
+  const previousFetch = globalThis.fetch;
+  const previousKey = process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY = 'test-key';
+  let geminiPayload = null;
+
+  globalThis.fetch = async (url, options = {}) => {
+    if (String(url).includes('/auth/v1/user')) {
+      return new Response(JSON.stringify({ id: 'user-1' }), { status: 200 });
+    }
+    geminiPayload = JSON.parse(options.body || '{}');
+    const answer = completeKnowledgeResponse();
+    answer.evidence = {
+      grounded: true,
+      sources: [{ title: 'AIが作った偽出典', url: 'https://invalid.example/fake' }],
+    };
+    return geminiResponse(JSON.stringify(answer), {
+      webSearchQueries: ['cloud computing official definition'],
+      groundingChunks: [
+        { web: { title: 'NIST Cloud Computing', uri: 'https://www.nist.gov/cloud' } },
+        { web: { title: '重複', uri: 'https://www.nist.gov/cloud' } },
+        { web: { title: '危険なURL', uri: 'javascript:alert(1)' } },
+      ],
+    });
+  };
+
+  try {
+    const res = createResponseRecorder();
+    await generateHandler({
+      method: 'POST',
+      headers: { authorization: 'Bearer test-token' },
+      body: {
+        modelPreference: 'quality',
+        actionType: 'knowledge_answer',
+        responseFormat: 'json',
+        maxTokens: 9000,
+        systemText: '事実を確認して答える。',
+        userText: JSON.stringify({ question: 'クラウドとは', taxonomy: [] }),
+      },
+    }, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(geminiPayload.tools, [{ google_search: {} }]);
+    const saved = JSON.parse(res.body.text);
+    assert.equal(saved.evidence.grounded, true);
+    assert.deepEqual(saved.evidence.searchQueries, ['cloud computing official definition']);
+    assert.deepEqual(saved.evidence.sources, [{
+      title: 'NIST Cloud Computing',
+      url: 'https://www.nist.gov/cloud',
+    }]);
+    assert.doesNotMatch(res.body.text, /invalid\.example|javascript:/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    restoreEnv('GEMINI_API_KEY', previousKey);
+  }
+});
 
 /** Knowledge検証を通る十分な長さの構造化回答を、通信テスト向けに作る。 */
 function completeKnowledgeResponse(title = 'クラウドの基本') {

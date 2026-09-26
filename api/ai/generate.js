@@ -775,6 +775,46 @@ function extractText(data) {
   return parts.map(part => part?.text || '').join('').trim();
 }
 
+/** Geminiの検索メタデータから、実在をAPI側で確認できた参照先だけを取り出す。 */
+function extractKnowledgeGrounding(data) {
+  const metadata = data?.candidates?.[0]?.groundingMetadata || {};
+  const seen = new Set();
+  const sources = (Array.isArray(metadata.groundingChunks) ? metadata.groundingChunks : [])
+    .map(chunk => chunk?.web)
+    .map(web => {
+      const rawUrl = String(web?.uri || '').trim();
+      try {
+        const url = new URL(rawUrl);
+        if (!['http:', 'https:'].includes(url.protocol)) return null;
+        const normalizedUrl = url.href.slice(0, 2048);
+        if (seen.has(normalizedUrl)) return null;
+        seen.add(normalizedUrl);
+        return {
+          title: String(web?.title || url.hostname).trim().slice(0, 240),
+          url: normalizedUrl,
+        };
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .slice(0, 8);
+  const searchQueries = [...new Set(
+    (Array.isArray(metadata.webSearchQueries) ? metadata.webSearchQueries : [])
+      .map(query => String(query || '').trim())
+      .filter(Boolean)
+  )].slice(0, 8);
+  return { grounded: sources.length > 0, sources, searchQueries };
+}
+
+/** Knowledge JSONへ、モデルが作文した引用ではなくGeminiの検索証跡を上書きして添付する。 */
+function attachKnowledgeGrounding(text, data) {
+  const parsed = parseStructuredResponse(text);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return text;
+  parsed.evidence = extractKnowledgeGrounding(data);
+  return JSON.stringify(parsed);
+}
+
 /** `extractGeminiIssue`: Geminiの失敗応答から、利用者へ示せる原因情報を取り出す。 */
 function extractGeminiIssue(data) {
   const blockReason = data?.promptFeedback?.blockReason;
@@ -1794,6 +1834,12 @@ export default async function handler(req, res) {
     generationConfig,
   };
 
+  // Knowledgeだけは回答生成時にGoogle Search groundingを許可する。
+  // 出典URLはモデル本文から信用せず、応答のgroundingMetadataから後で添付する。
+  if (body.actionType === 'knowledge_answer') {
+    payload.tools = [{ google_search: {} }];
+  }
+
   // The Atlas schema is intentionally rich and deeply nested. Some Gemini
   // revisions reject that schema before generation and force an expensive
   // second request. JSON mode plus the prompt contract and server validation
@@ -1857,6 +1903,9 @@ export default async function handler(req, res) {
     }
     let finalBlockReason = initialBlockReason;
     let text = normalizeStructuredResponse(body.actionType, extractText(data));
+    if (body.actionType === 'knowledge_answer') {
+      text = attachKnowledgeGrounding(text, data);
+    }
     const safeInitialNuanceEnrichment = body.actionType === 'nuance_generate'
       && hasSafeNuanceEnrichmentResponse(text, body.userText);
     const incompleteStructured = responseFormat === 'json'
@@ -1966,7 +2015,7 @@ The previous response was incomplete. Answer the learner's exact question direct
           parts: [{
             text: blockedRetryInstruction || `${String(body.systemText || '')}
 
-The previous response was incomplete or contained formatting noise. Return one complete, self-contained Japanese learning entry. Include 3-5 concise keyPoints. The explanatory body must contain at least 1200 Japanese characters and use natural paragraphs with only content-specific headings. Every section must include a richBlocks array; use an empty array when no list, table, equation, callout, or flow materially improves understanding. Keep one primary explanatory lens and add only secondary viewpoints that materially deepen, challenge, qualify, or apply it. Do not expose generic framework labels, force unrelated disciplines into the answer, turn analogies into factual identities, or use theatrical and grandiose wording. Do not output Markdown, HTML, **, __, or code fences. Put emphasis only in the marks arrays. Never ask the user to clarify when a reasonable interpretation is possible.`,
+The previous response was incomplete or contained formatting noise. Return one complete, self-contained Japanese learning entry. Include 3-5 concise keyPoints. The explanatory body must contain at least 1800 Japanese characters and normally use 3-5 content-specific sections with 1-3 connected paragraphs each. Fully answer the central question first, then develop 1-2 relevant consequences, changed conditions, applications, unresolved issues, or cross-field connections and explain how they follow. Verify central factual claims with the available Google Search tool, prefer primary, official, scholarly, and peer-reviewed sources, mark real uncertainty, and never invent a citation, URL, publication, quotation, or statistic. Do not write sources into the JSON because the server attaches verified grounding metadata. Every section must include a richBlocks array; use an empty array when no list, table, equation, callout, or flow materially improves understanding. Keep one primary explanatory lens and add only secondary viewpoints that materially deepen, challenge, qualify, or apply it. Do not expose generic framework labels, force unrelated disciplines into the answer, turn analogies into factual identities, or use theatrical and grandiose wording. Do not output Markdown, HTML, **, __, or code fences. Put emphasis only in the marks arrays. Never ask the user to clarify when a reasonable interpretation is possible.`,
           }],
         };
       }
@@ -1993,7 +2042,10 @@ The previous response was incomplete. Return a grounded title and at least one n
         return;
       }
       finalBlockReason = getGeminiBlockReason(data);
-      const retryText = normalizeStructuredResponse(body.actionType, extractText(data));
+      let retryText = normalizeStructuredResponse(body.actionType, extractText(data));
+      if (body.actionType === 'knowledge_answer') {
+        retryText = attachKnowledgeGrounding(retryText, data);
+      }
       const originalNuance = body.actionType === 'nuance_generate'
         ? parseStructuredResponse(text)
         : null;

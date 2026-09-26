@@ -69,6 +69,31 @@ test('normalizes structured answers without leaking Markdown', () => {
   assert.equal(validateKnowledgeEntry(entry).valid, true);
 });
 
+test('keeps only safe, unique grounding sources without breaking unsourced legacy entries', () => {
+  const entry = normalizeKnowledgeAnswer(rawAnswer({
+    evidence: {
+      grounded: true,
+      searchQueries: ['Rayleigh scattering sky blue', ''],
+      sources: [
+        { title: 'Academic source', url: 'https://example.edu/paper' },
+        { title: 'Duplicate', url: 'https://example.edu/paper' },
+        { title: 'Unsafe', url: 'javascript:alert(1)' },
+      ],
+    },
+  }), 'なぜ空は青いの？');
+  assert.equal(entry.schemaVersion, 3);
+  assert.equal(entry.evidence.grounded, true);
+  assert.deepEqual(entry.evidence.sources, [{
+    title: 'Academic source',
+    url: 'https://example.edu/paper',
+  }]);
+  assert.deepEqual(entry.evidence.searchQueries, ['Rayleigh scattering sky blue']);
+
+  const legacy = normalizeKnowledgeAnswer(rawAnswer(), 'なぜ空は青いの？');
+  assert.deepEqual(legacy.evidence, { grounded: false, sources: [], searchQueries: [] });
+  assert.equal(validateKnowledgeEntry(legacy).valid, true);
+});
+
 test('unwraps recoverable AI text objects without displaying object Object', () => {
   const raw = rawAnswer();
   raw.answer.directAnswer = [{ text: { content: '曖昧な質問は、最も自然な意味を明示して解釈します。' } }];
