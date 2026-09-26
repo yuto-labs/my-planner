@@ -22,6 +22,7 @@ import {
   removeBlockById,
   resolveNumberedBlockValue,
   renumberInsertedListContinuation,
+  resolveMemoArrowNavigation,
   trimPastedMarkdownEdges,
   renderBlocksView,
   renderMemoCardPreview,
@@ -192,6 +193,15 @@ test('numbered Enter continuations respect a custom starting number', () => {
   ];
   assert.equal(renumberInsertedListContinuation(blocks, 0), 6);
   assert.equal(blocks[1].listNumber, 6);
+});
+
+test('plain arrow keys cross blocks only at text boundaries', () => {
+  assert.equal(resolveMemoArrowNavigation({ key: 'ArrowUp' }, { atStart: true }), 'previous');
+  assert.equal(resolveMemoArrowNavigation({ key: 'ArrowDown' }, { atEnd: true }), 'next');
+  assert.equal(resolveMemoArrowNavigation({ key: 'ArrowUp' }, { atStart: false }), null);
+  assert.equal(resolveMemoArrowNavigation({ key: 'ArrowDown' }, { atEnd: false }), null);
+  assert.equal(resolveMemoArrowNavigation({ key: 'ArrowDown', shiftKey: true }, { atEnd: true }), null);
+  assert.equal(resolveMemoArrowNavigation({ key: 'ArrowUp', altKey: true }, { atStart: true }), null);
 });
 
 test('the add-block button exits the nearest toggle while Enter can keep its current level', () => {

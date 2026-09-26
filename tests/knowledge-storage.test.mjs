@@ -29,6 +29,7 @@ const {
   saveExpressionEntries,
   updateKnowledgeMemo,
 } = await import('../js/storage.js');
+const { normalizeKnowledgeAnswer, validateKnowledgeEntry } = await import('../js/knowledge-model.js');
 
 function entry(id, title, updatedAt = '2026-07-27T10:00:00.000Z') {
   return {
@@ -69,6 +70,50 @@ test('learning writes preserve ordinary memo records', () => {
   assert.equal(getKnowledgeMemos().length, 1);
   assert.equal(getKnowledgeMemos()[0].title, '既存メモ');
   assert.equal(getLearningEntries().length, 1);
+});
+
+test('a structured AI answer keeps emphasis and rich content through save and reload', () => {
+  const explanation = 'レイリー散乱では、光の波長が短いほど大気分子による散乱が強くなります。'
+    + '太陽光に含まれる青い光は赤い光より広い方向へ散乱され、その光が空の各方向から目へ届くため、昼の空は青く見えます。'
+    + 'これは太陽自体が青いのではなく、大気を通る間に光の進む方向が変わる現象です。';
+  const raw = {
+    title: 'レイリー散乱と空の色',
+    classification: {
+      majorId: 'natural_sciences', middleId: 'physics', specialty: '光学', relatedCategoryIds: [],
+    },
+    primaryConcept: { key: 'rayleigh-scattering', label: 'レイリー散乱', aliases: [], role: 'primary' },
+    concepts: [{ key: 'rayleigh-scattering', label: 'レイリー散乱', aliases: [], role: 'primary' }],
+    facets: {},
+    answer: {
+      directAnswer: [
+        { text: 'レイリー散乱', marks: ['strong'], conceptKey: 'rayleigh-scattering' },
+        { text: 'によって短波長の光が強く散乱されるため、空は青く見えます。', marks: [], conceptKey: '' },
+      ],
+      keyPoints: ['短波長ほど散乱が強い', '散乱光が広い方向から届く', '夕方は光路長が変わる'],
+      sections: [{
+        heading: '青い光が目へ届くまで',
+        paragraphs: [[
+          { text: explanation.repeat(6), marks: [], conceptKey: '' },
+          { text: '波長の違いが散乱の強さを変える', marks: ['highlight-yellow'], conceptKey: '' },
+          { text: '太陽自体の色が変わるわけではない', marks: ['highlight-blue'], conceptKey: '' },
+        ]],
+        richBlocks: [{
+          type: 'table', caption: '波長と散乱', headers: ['光', '散乱'], rows: [['青', '強い'], ['赤', '弱い']],
+        }],
+      }],
+      cautions: ['紫色が最も強く見えない理由には、太陽光の分布や人の視感度も関係します。'],
+    },
+  };
+  const normalized = normalizeKnowledgeAnswer(raw, 'レイリー散乱とは何か');
+  assert.equal(validateKnowledgeEntry(normalized).valid, true);
+  assert.ok(addLearningEntry(normalized));
+
+  const restored = getLearningEntries()[0];
+  assert.deepEqual(restored.answer.directAnswer[0].marks, ['strong']);
+  assert.deepEqual(restored.answer.sections[0].paragraphs[0][1].marks, ['highlight-yellow']);
+  assert.deepEqual(restored.answer.sections[0].paragraphs[0][2].marks, ['highlight-blue']);
+  assert.equal(restored.answer.sections[0].richBlocks[0].type, 'table');
+  assert.equal(restored.originalQuestion, 'レイリー散乱とは何か');
 });
 
 test('background AI jobs stay hidden and survive ordinary memo writes', () => {

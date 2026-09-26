@@ -2511,6 +2511,7 @@ function wireBlocksEdit(container) {
   // Keyboard shortcuts
   wrap.addEventListener('keydown', e => {
     const el = e.target;
+    if (navigateAcrossMemoBlocks(e, el, container, wrap)) return;
     if (el.contentEditable !== 'true') return;
     const blockId = el.dataset.blockId;
     if (!blockId) return;
@@ -2881,6 +2882,53 @@ export function resolveMemoEnterAction(event, blockType = 'paragraph', desktopKe
   if (blockType === 'toggle') return 'open-toggle';
   if (['bullet', 'numbered', 'checklist'].includes(blockType)) return 'continue-list';
   return 'split-block';
+}
+
+/**
+ * 上下矢印がブロック間移動になる条件を返す。
+ * 本文途中の通常移動、範囲選択、修飾キー付き操作はブラウザーへ任せる。
+ */
+export function resolveMemoArrowNavigation(event, { atStart = false, atEnd = false } = {}) {
+  if (!event || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) return null;
+  if (event.key === 'ArrowUp' && atStart) return 'previous';
+  if (event.key === 'ArrowDown' && atEnd) return 'next';
+  return null;
+}
+
+/** カーソルが端に達した上下矢印だけを、DOM順で隣接する編集ブロックへの移動に変える。 */
+function navigateAcrossMemoBlocks(event, editable, container, wrap) {
+  if (!editable?.matches?.('.kn-block-focusable')) return false;
+  const isTextArea = editable.tagName === 'TEXTAREA';
+  const textSelectionCollapsed = isTextArea && editable.selectionStart === editable.selectionEnd;
+  const direction = resolveMemoArrowNavigation(event, {
+    atStart: editable.contentEditable === 'true'
+      ? caretIsAtBlockContentStart(editable)
+      : textSelectionCollapsed && editable.selectionStart === 0,
+    atEnd: editable.contentEditable === 'true'
+      ? caretIsAtEditableEnd(editable)
+      : textSelectionCollapsed && editable.selectionEnd === editable.value.length,
+  });
+  if (!direction) return false;
+  const controls = [...wrap.querySelectorAll('.kn-block-focusable')];
+  const currentIndex = controls.indexOf(editable);
+  const target = controls[currentIndex + (direction === 'previous' ? -1 : 1)];
+  if (!target) return false;
+  event.preventDefault();
+  event.stopPropagation();
+  const targetId = target.dataset.blockId;
+  if (!targetId) return false;
+  activeEditorBlockId = targetId;
+  if (target.contentEditable === 'true') {
+    if (direction === 'previous') focusBlock(targetId, container, true);
+    else focusBlockAtMarkdownContentStart(targetId, container);
+  } else {
+    requestAnimationFrame(() => {
+      target.focus({ preventScroll: true });
+      const offset = direction === 'previous' ? target.value.length : 0;
+      target.setSelectionRange?.(offset, offset);
+    });
+  }
+  return true;
 }
 
 /** カーソルがMarkdown接頭辞を除いたブロック本文の先頭にあるか判定する。 */

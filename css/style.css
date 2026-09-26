@@ -12733,6 +12733,14 @@ button.atlas-nuance-map-row:focus-visible {
   font-weight: 600;
 }
 .learning-answer-section p + p { margin-top: 14px; }
+.learning-direct-answer strong,
+.learning-answer-section strong {
+  color: color-mix(in srgb, var(--primary-dark) 58%, var(--text));
+  font-weight: 700;
+}
+.learning-answer-section p {
+  color: color-mix(in srgb, var(--text) 94%, var(--text-muted));
+}
 .learning-sources {
   margin-top: 30px;
   padding-top: 13px;
@@ -12918,7 +12926,10 @@ button.atlas-nuance-map-row:focus-visible {
 }
 .learning-mark--yellow { background: color-mix(in srgb, #F5C542 32%, transparent); }
 .learning-mark--blue { background: color-mix(in srgb, #67B7FF 25%, transparent); }
-.learning-warning-text { color: color-mix(in srgb, var(--danger) 84%, var(--text)); }
+.learning-warning-text {
+  color: color-mix(in srgb, var(--danger) 78%, var(--text));
+  font-weight: 600;
+}
 .learning-inline-link {
   display: inline;
   padding: 0;
