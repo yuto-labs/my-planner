@@ -31,6 +31,7 @@ import {
   markdownBlockShortcut,
   markdownPrefixForBlock,
   parseMarkdownBlockSource,
+  markdownContentStartOffset,
   markdownDelimitersForCommand,
   resolvePastedOrderedListNumber,
   shouldPreferClipboardMarkdown,
@@ -3050,7 +3051,7 @@ function continueListFromBlock(blockId, container, editable = null) {
     currentBlock.type = 'paragraph';
     delete currentBlock.checked;
     rerenderBlocks(container);
-    focusBlock(blockId, container);
+    focusBlock(blockId, container, true);
     return;
   }
 
@@ -3067,7 +3068,7 @@ function continueListFromBlock(blockId, container, editable = null) {
     applyMarkdownSourceToBlock(nextBlock.id, nextSource);
   }
   rerenderBlocks(container);
-  focusBlock(nextBlock.id, container);
+  focusBlockAtMarkdownContentStart(nextBlock.id, container);
 }
 
 /** PCのEnter位置で本文を前後へ分け、後半を新しい通常ブロックとして直後へ置く。 */
@@ -4624,6 +4625,33 @@ function focusBlockAtTextOffset(id, container, characterOffset) {
       range.collapse(false);
     }
     range.collapse(true);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  });
+}
+
+/** リスト継続後、カーソルをMarkdown記号の前ではなく本文の開始位置へ置く。 */
+function focusBlockAtMarkdownContentStart(id, container) {
+  requestAnimationFrame(() => {
+    const editable = container.querySelector(`.kn-block-focusable[data-block-id="${id}"]`);
+    if (!editable || editable.contentEditable !== 'true') return;
+    const offset = markdownContentStartOffset(readEditableMarkdownSource(editable));
+    focusEditableWithoutScroll(editable);
+    const walker = document.createTreeWalker(editable, NodeFilter.SHOW_TEXT);
+    let remaining = offset;
+    let node = walker.nextNode();
+    while (node && remaining > node.textContent.length) {
+      remaining -= node.textContent.length;
+      node = walker.nextNode();
+    }
+    const range = document.createRange();
+    if (node) range.setStart(node, Math.min(remaining, node.textContent.length));
+    else {
+      range.selectNodeContents(editable);
+      range.collapse(false);
+    }
+    range.collapse(true);
+    const selection = window.getSelection();
     selection?.removeAllRanges();
     selection?.addRange(range);
   });

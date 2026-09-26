@@ -114,6 +114,13 @@ export function parseMarkdownBlockSource(source) {
   return { type: 'paragraph', text: value, checked: false };
 }
 
+/** 編集用Markdownの行頭記号が終わり、実際の本文入力が始まる文字位置を返す。 */
+export function markdownContentStartOffset(source) {
+  const value = String(source || '').replace(/\u200B/g, '');
+  const prefix = value.match(/^(?:#{1,6}[ \t]+|-\s+\[[ xX]\]\s+|\d+\.\s+|>>\s+|>\s+|[-*+]\s+)/);
+  return prefix?.[0]?.length || 0;
+}
+
 /** GPT等が全項目を`1.`で表すMarkdownリストを、貼り付け時だけ連番へ直す。 */
 export function resolvePastedOrderedListNumber(requestedNumber, previousNumber = 0) {
   const requested = Math.max(1, Number(requestedNumber) || 1);

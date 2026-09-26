@@ -9,6 +9,7 @@ import {
   completedInlineMarkdown,
   markdownPrefixForBlock,
   parseMarkdownBlockSource,
+  markdownContentStartOffset,
   markdownDelimitersForCommand,
   resolvePastedOrderedListNumber,
   shouldPreferClipboardMarkdown,
@@ -154,6 +155,15 @@ test('desktop Enter splits blocks while Shift+Enter keeps an inline line break',
   assert.equal(resolveMemoEnterAction({ key: 'Enter' }, 'paragraph', false), 'line-break');
   assert.equal(resolveMemoEnterAction({ key: 'Enter', isComposing: true }, 'paragraph', true), null);
   assert.equal(resolveMemoEnterAction({ key: 'Enter', ctrlKey: true }, 'paragraph', true), null);
+});
+
+test('continued list items place the caret after their visible Markdown marker', () => {
+  assert.equal(markdownContentStartOffset('- '), 2);
+  assert.equal(markdownContentStartOffset('- 次の項目'), 2);
+  assert.equal(markdownContentStartOffset('12. 続き'), 4);
+  assert.equal(markdownContentStartOffset('- [ ] 未完了'), 6);
+  assert.equal(markdownContentStartOffset('>> トグル'), 3);
+  assert.equal(markdownContentStartOffset('通常本文'), 0);
 });
 
 test('paste trimming removes only outer blank lines', () => {
