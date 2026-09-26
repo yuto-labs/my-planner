@@ -3551,8 +3551,8 @@ h1, h2, h3, h4, h5, h6,
 
 /* Compact editor controls and tables keep the writing surface primary. */
 .kn-edit-page .kn-block-text {
-  /* 編集中は完成後の見た目ではなくMarkdownソースを読むため、種類ごとの装飾を統一する。 */
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", "Yu Gothic UI", monospace;
+  /* Markdown記号は編集可能なまま、文字そのものは閲覧時と同じ通常書体で表示する。 */
+  font-family: var(--ui-font);
   font-size: 14px;
   font-weight: 400;
   font-style: normal;
