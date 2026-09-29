@@ -712,6 +712,14 @@ function contrastTextForRgb(rgb) {
   return darkContrast >= lightContrast ? '#0D0D15' : '#FFFFFF';
 }
 
+/** PWAやモバイルブラウザの外枠も、アプリ内の上下帯と同じ色へ揃える。 */
+function updateBrowserThemeColor(rgb) {
+  const color = rgbToCss(rgb);
+  document.querySelectorAll('meta[name="theme-color"]').forEach(meta => {
+    meta.setAttribute('content', color);
+  });
+}
+
 /**
  * ライト・ダークと調整値から、背景、カード、文字、境界線などのCSS変数を設定する。
  * 設定画面で背景を調整した時に、画面全体が同じ規則で変化する中心処理です。
@@ -823,6 +831,14 @@ function applyAccentTheme(rgb, tuningInput) {
   const darker = mixRgb(adjustedBase, { r: 20, g: 24, b: 36 }, 0.16 + vividness * 0.07 + neutralness * 0.08);
   const successTarget = neutralness > 0.45 ? { r: 168, g: 176, b: 186 } : { r: 130, g: 220, b: 235 };
   const success = mixRgb(adjustedBase, successTarget, 0.15 + vividness * 0.16 - neutralness * 0.08);
+  // Header/footer bands deliberately follow the accent. Keep enough of the neutral
+  // surface so text and icons remain readable even with a vivid custom color.
+  const bandBase = isDark ? { r: 13, g: 13, b: 21 } : { r: 242, g: 241, b: 253 };
+  const bandColor = mixRgb(bandBase, adjustedBase, isDark ? 0.22 : 0.18);
+  const bandBorder = mixRgb(bandBase, adjustedBase, isDark ? 0.48 : 0.38);
+  const bandAlpha = isDark
+    ? 0.82 + (tuning.cardContrast / 100) * 0.10
+    : 0.84 + (tuning.cardContrast / 100) * 0.08;
 
   root.style.setProperty('--primary', rgbToCss(adjustedBase));
   root.style.setProperty('--on-primary', contrastTextForRgb(adjustedBase));
@@ -836,6 +852,9 @@ function applyAccentTheme(rgb, tuningInput) {
   root.style.setProperty('--primary-border', rgbToCss(adjustedBase, 0.18 + vividness * 0.10 - neutralness * 0.05));
   root.style.setProperty('--success-bg', rgbToCss(success, 0.12 - neutralness * 0.03));
   root.style.setProperty('--success-border', rgbToCss(success, 0.22 - neutralness * 0.05));
+  root.style.setProperty('--app-band', rgbToCss(bandColor, bandAlpha));
+  root.style.setProperty('--app-band-border', rgbToCss(bandBorder, isDark ? 0.48 : 0.34));
+  updateBrowserThemeColor(bandColor);
 }
 
 // ---- App init ----

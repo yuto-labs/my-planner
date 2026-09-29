@@ -59,7 +59,7 @@ function renderMainSettings(container) {
           <div class="accent-preview-swatch"></div>
           <div class="accent-preview-text">
             <strong>RGB ${accent.r}, ${accent.g}, ${accent.b}</strong>
-            <span>Buttons, progress bars, highlights, and key accents</span>
+            <span>Buttons, highlights, and the top and bottom bars</span>
           </div>
           <button class="btn btn-ghost btn-sm" id="accent-reset-btn" type="button">Reset</button>
         </div>

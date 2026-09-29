@@ -52,6 +52,9 @@
   --shadow-sm:    0 2px 12px rgba(0,0,0,0.40);
   --scrollbar:    rgba(255,255,255,0.10);
   --surface-glass: rgba(13,13,21,0.88);
+  /* 上下の帯はアクセント色に追従する。固定色へ戻すと設定との連動が失われる。 */
+  --app-band:     rgba(52,61,65,0.88);
+  --app-band-border: rgba(190,230,216,0.25);
   --home-glow:    rgba(190,230,200,0.14);
 
   --primary:        #BEE6D8;
@@ -87,6 +90,8 @@
     --shadow-sm:    0 2px 12px rgba(142,201,187,0.06);
     --scrollbar:    rgba(142,201,187,0.18);
     --surface-glass: rgba(242,241,253,0.88);
+    --app-band:     rgba(224,234,237,0.88);
+    --app-band-border: rgba(142,201,187,0.27);
     --home-glow:    rgba(190,230,216,0.12);
 
     --primary:        #8EC9BB;
@@ -120,6 +125,8 @@
   --shadow-sm:    0 2px 12px rgba(142,201,187,0.06);
   --scrollbar:    rgba(142,201,187,0.18);
   --surface-glass: rgba(242,241,253,0.88);
+  --app-band:     rgba(224,234,237,0.88);
+  --app-band-border: rgba(142,201,187,0.27);
   --home-glow:    rgba(190,230,216,0.12);
   --primary:        #8EC9BB;
   --primary-dark:   #6EB6A7;
@@ -197,10 +204,10 @@ h1, h2, h3, h4, h5, h6,
 /* ---- Header ---- */
 #app-header {
   height: var(--header-h);
-  background: var(--surface-glass);
+  background: var(--app-band);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--app-band-border);
   flex-shrink: 0;
   z-index: 10;
 }
@@ -245,10 +252,10 @@ h1, h2, h3, h4, h5, h6,
 /* ---- Bottom navigation ---- */
 #bottom-nav {
   height: var(--nav-h);
-  background: var(--surface-glass);
+  background: var(--app-band);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--app-band-border);
   display: flex;
   align-items: stretch;
   flex-shrink: 0;
