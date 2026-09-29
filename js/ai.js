@@ -144,6 +144,8 @@ export async function refreshAiRuntimeStatus({ force = false } = {}) {
       configured: !!data.configured && data.available !== false,
       models: data.models || null,
       modelAvailability: data.modelAvailability || null,
+      capabilities: data.capabilities || null,
+      quotaChecked: data.quotaChecked === true,
       limits: null,
       usage: null,
       checkedAt: Date.now(),
@@ -785,16 +787,6 @@ export async function generateNuanceEntries(
   } = {},
   options = {}
 ) {
-  const resumeInput = {
-    language,
-    learningTarget,
-    category,
-    topic,
-    seedTerms,
-    existingExpressions,
-    referenceExpressions,
-    existingTaxonomy,
-  };
   const cleanCategory = String(category || '').trim();
   const cleanTopic = String(topic || '').trim();
   const cleanTarget = String(learningTarget || '').trim();
@@ -878,6 +870,19 @@ export async function generateNuanceEntries(
       };
     })
     .filter(entry => entry.term);
+  // バックグラウンド再開には、生成結果を既存項目へ統合するための要約だけを保存する。
+  // referenceExpressions全体を複製するとAtlasが育つほどジョブ行が巨大化するため、
+  // Geminiへ実際に渡した関連項目と同じ最大24件へ限定する。
+  const resumeInput = {
+    language: String(language || 'English').trim() || 'English',
+    learningTarget: cleanTarget,
+    category: cleanCategory,
+    topic: cleanTopic,
+    seedTerms: terms,
+    existingExpressions: knownExpressions,
+    referenceExpressions: catalogExpressions,
+    existingTaxonomy: (Array.isArray(existingTaxonomy) ? existingTaxonomy : []).slice(0, 40),
+  };
   const hasRequestedSavedHeadword = catalogExpressions.some(entry => entry.isRequestedHeadword);
   const generationMode = hasRequestedSavedHeadword
     ? 'saved_headword_enrichment'
@@ -1161,7 +1166,12 @@ export async function generateTranslationVariants(
     requiredStyles: ['natural_conversational', 'standard_faithful', 'expressive_polished'],
   });
 
-  const resumeInput = { sourceTextJa: source, contextJa: context, existingTaxonomy };
+  // 分類候補は生成時と同じ40件だけで十分。全履歴をジョブへ複製しない。
+  const resumeInput = {
+    sourceTextJa: source,
+    contextJa: context,
+    existingTaxonomy: (Array.isArray(existingTaxonomy) ? existingTaxonomy : []).slice(0, 40),
+  };
   const jobState = {};
   const raw = await callAPI(
     QUALITY_MODEL,

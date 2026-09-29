@@ -29,8 +29,8 @@ test('routes fast and quality work to separate default model pools', () => {
   delete process.env.GEMINI_FALLBACK_MODEL;
   try {
     assert.equal(pickModel('fast'), 'gemini-3.5-flash-lite');
-    assert.equal(pickModel('quality'), 'gemini-3.5-flash');
-    assert.equal(pickFallbackModel('quality'), 'gemini-3.5-flash-lite');
+    assert.equal(pickModel('quality'), 'gemini-3.8-flash');
+    assert.equal(pickFallbackModel('quality'), 'gemini-3.5-flash');
     assert.equal(pickFallbackModel('fast'), 'gemini-2.5-flash');
   } finally {
     if (previousFast === undefined) delete process.env.GEMINI_MODEL_FAST;

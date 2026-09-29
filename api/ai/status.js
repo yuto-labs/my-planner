@@ -26,7 +26,8 @@ export default async function handler(req, res) {
   const key = process.env.GEMINI_API_KEY;
   const configured = !!key;
   const fastModel = process.env.GEMINI_MODEL_FAST || 'gemini-3.5-flash-lite';
-  const qualityModel = process.env.GEMINI_MODEL_QUALITY || 'gemini-3.5-flash';
+  const qualityModel = process.env.GEMINI_MODEL_QUALITY || 'gemini-3.8-flash';
+  const searchGroundingEnabled = process.env.GEMINI_ENABLE_SEARCH_GROUNDING === 'true';
   let available = configured;
   let message = configured ? 'ok' : 'missing_gemini_api_key';
 
@@ -60,6 +61,10 @@ export default async function handler(req, res) {
     },
     modelAvailability,
     available,
+    capabilities: {
+      searchGrounding: searchGroundingEnabled,
+    },
+    quotaChecked: false,
     limits: null,
     message,
   });

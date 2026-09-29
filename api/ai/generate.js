@@ -76,7 +76,7 @@ function validateRequestBody(body) {
 // 保存形式を変える場合は、ここと後半の正規化処理をセットで見直す。
 function pickModel(pref) {
   const fastModel = process.env.GEMINI_MODEL_FAST || 'gemini-3.5-flash-lite';
-  const qualityModel = process.env.GEMINI_MODEL_QUALITY || 'gemini-3.5-flash';
+  const qualityModel = process.env.GEMINI_MODEL_QUALITY || 'gemini-3.8-flash';
   const raw = String(pref || '').toLowerCase();
   if (raw.includes('sonnet') || raw === 'quality') return qualityModel;
   return fastModel;
@@ -87,7 +87,7 @@ function pickFallbackModel(pref) {
   if (process.env.GEMINI_FALLBACK_MODEL) return process.env.GEMINI_FALLBACK_MODEL;
   const raw = String(pref || '').toLowerCase();
   if (raw.includes('sonnet') || raw === 'quality') {
-    return process.env.GEMINI_MODEL_FAST || 'gemini-3.5-flash-lite';
+    return 'gemini-3.5-flash';
   }
   return 'gemini-2.5-flash';
 }
@@ -1834,9 +1834,17 @@ export default async function handler(req, res) {
     generationConfig,
   };
 
-  // Knowledgeだけは回答生成時にGoogle Search groundingを許可する。
-  // 出典URLはモデル本文から信用せず、応答のgroundingMetadataから後で添付する。
-  if (body.actionType === 'knowledge_answer') {
+  // Search groundingはGemini無料枠の通常APIでは利用できない。明示的に有効化した
+  // 有料プロジェクトだけで使い、無料枠の初回質問が429になるのを防ぐ。
+  const searchGroundingEnabled = body.actionType === 'knowledge_answer'
+    && process.env.GEMINI_ENABLE_SEARCH_GROUNDING === 'true';
+  const knowledgeEvidenceInstruction = body.actionType === 'knowledge_answer'
+    ? (searchGroundingEnabled
+      ? '\nGoogle Search is available. Verify central factual claims and rely only on provider grounding metadata for source URLs.'
+      : '\nGoogle Search is not enabled for this request. Answer from established knowledge, clearly mark uncertainty, never claim that you browsed or verified a live source, and leave source evidence empty.')
+    : '';
+  const effectiveSystemText = `${String(body.systemText || '')}${knowledgeEvidenceInstruction}`.trim();
+  if (searchGroundingEnabled) {
     payload.tools = [{ google_search: {} }];
   }
 
@@ -1853,9 +1861,9 @@ export default async function handler(req, res) {
     : null;
   if (responseSchema) payload.generationConfig.responseSchema = responseSchema;
 
-  if (body.systemText) {
+  if (effectiveSystemText) {
     payload.systemInstruction = {
-      parts: [{ text: String(body.systemText) }],
+      parts: [{ text: effectiveSystemText }],
     };
   }
 
@@ -1946,7 +1954,7 @@ export default async function handler(req, res) {
       if (body.actionType === 'translation_variants') {
         retryPayload.systemInstruction = {
           parts: [{
-            text: `${String(body.systemText || '')}
+            text: `${effectiveSystemText}
 
 The previous response was incomplete. Return all three distinct translation variants in this exact order: natural_conversational, standard_faithful, expressive_polished. Even when the Japanese is short, fragmentary, colloquial, or ambiguous, never ask the user to make it more specific. Before returning JSON, silently audit and revise each English sentence for grammar, syntax, articles, prepositions, tense and aspect, collocations, idiomatic information structure, register, Japanese calques, and preservation of meaning. Set every naturalnessReview check to true only after the final wording passes. For every variant, make overallNuanceJa specific to the source content and actual English wording; include three to five substantial vocabulary or construction notes and two to four sentence-specific comparisons. State reasonable interpretations and assumptions in overallNuanceJa.`,
           }],
@@ -1965,7 +1973,7 @@ The previous response was incomplete. Return all three distinct translation vari
           .filter(Boolean);
         retryPayload.systemInstruction = {
           parts: [{
-            text: `${String(body.systemText || '')}
+            text: `${effectiveSystemText}
 
 The previous response was incomplete or too shallow. ${canSupplement
   ? `Keep the ${retainedEntries.length} complete entries already accepted by the application. Return exactly ${missingCount} additional complete expression${missingCount === 1 ? '' : 's'} only. Do not return these retained expressions again: ${retainedTerms.join(', ')}. The application will merge your supplement with them.`
@@ -2001,7 +2009,7 @@ The previous response was incomplete or too shallow. ${canSupplement
       if (body.actionType === 'english_question') {
         retryPayload.systemInstruction = {
           parts: [{
-            text: `${String(body.systemText || '')}
+            text: `${effectiveSystemText}
 
 The previous response was incomplete. Answer the learner's exact question directly even when it is short, colloquial, or ambiguous. Return a concise direct answer, a careful explanation, and at least two natural English examples with Japanese translations. Do not ask the learner to rewrite or clarify the question when a reasonable interpretation is possible.`,
           }],
@@ -2011,18 +2019,21 @@ The previous response was incomplete. Answer the learner's exact question direct
         const blockedRetryInstruction = initialBlockReason
           ? buildBlockedRetryInstruction(body.actionType)
           : '';
+        const verificationRetryInstruction = searchGroundingEnabled
+          ? 'Verify central factual claims with the available Google Search tool. Prefer primary, official, scholarly, and peer-reviewed sources. Never invent a citation, URL, publication, quotation, or statistic. Do not write sources into the JSON because the server attaches verified grounding metadata.'
+          : 'Google Search is not enabled for this request. Answer from established knowledge, clearly mark uncertainty, and never claim live source verification or invent a citation, URL, publication, quotation, or statistic.';
         retryPayload.systemInstruction = {
           parts: [{
-            text: blockedRetryInstruction || `${String(body.systemText || '')}
+            text: blockedRetryInstruction || `${effectiveSystemText}
 
-The previous response was incomplete or contained formatting noise. Return one complete, self-contained Japanese learning entry. Include 3-5 concise keyPoints. The explanatory body must contain at least 1800 Japanese characters and normally use 3-5 content-specific sections with 1-3 connected paragraphs each. Fully answer the central question first, then develop 1-2 relevant consequences, changed conditions, applications, unresolved issues, or cross-field connections and explain how they follow. Verify central factual claims with the available Google Search tool, prefer primary, official, scholarly, and peer-reviewed sources, mark real uncertainty, and never invent a citation, URL, publication, quotation, or statistic. Do not write sources into the JSON because the server attaches verified grounding metadata. Every section must include a richBlocks array; use an empty array when no list, table, equation, callout, or flow materially improves understanding. Keep one primary explanatory lens and add only secondary viewpoints that materially deepen, challenge, qualify, or apply it. Do not expose generic framework labels, force unrelated disciplines into the answer, turn analogies into factual identities, or use theatrical and grandiose wording. Do not output Markdown, HTML, **, __, or code fences. Put emphasis only in short marks-array segments: strong for a defining term, highlight-yellow for a core mechanism or causal relation, highlight-blue for a contrast or condition, and warning only for a real caveat. Never mark a whole paragraph. Never ask the user to clarify when a reasonable interpretation is possible.`,
+The previous response was incomplete or contained formatting noise. Return one complete, self-contained Japanese learning entry. Include 3-5 concise keyPoints. The explanatory body must contain at least 1800 Japanese characters and normally use 3-5 content-specific sections with 1-3 connected paragraphs each. Fully answer the central question first, then develop 1-2 relevant consequences, changed conditions, applications, unresolved issues, or cross-field connections and explain how they follow. ${verificationRetryInstruction} Every section must include a richBlocks array; use an empty array when no list, table, equation, callout, or flow materially improves understanding. Keep one primary explanatory lens and add only secondary viewpoints that materially deepen, challenge, qualify, or apply it. Do not expose generic framework labels, force unrelated disciplines into the answer, turn analogies into factual identities, or use theatrical and grandiose wording. Do not output Markdown, HTML, **, __, or code fences. Put emphasis only in short marks-array segments: strong for a defining term, highlight-yellow for a core mechanism or causal relation, highlight-blue for a contrast or condition, and warning only for a real caveat. Never mark a whole paragraph. Never ask the user to clarify when a reasonable interpretation is possible.`,
           }],
         };
       }
       if (body.actionType === 'memo_format') {
         retryPayload.systemInstruction = {
           parts: [{
-            text: `${String(body.systemText || '')}
+            text: `${effectiveSystemText}
 
 The previous response was incomplete. Return a grounded title and at least one non-empty memo block. Preserve every important name, number, qualification, heading, list item, and original fact. Never replace the memo with a generic summary or an empty structure.`,
           }],

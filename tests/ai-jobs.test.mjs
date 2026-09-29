@@ -149,3 +149,15 @@ test('background generation uses the public request host instead of a protected 
     else process.env.VERCEL_URL = previous;
   }
 });
+
+test('Atlas background jobs keep only the compact merge context', async () => {
+  const source = await readFile(new URL('../js/ai.js', import.meta.url), 'utf8');
+  const nuanceStart = source.indexOf('export async function generateNuanceEntries');
+  const translationStart = source.indexOf('export async function generateTranslationVariants');
+  const nuanceSource = source.slice(nuanceStart, translationStart);
+
+  assert.match(nuanceSource, /referenceExpressions:\s*catalogExpressions/);
+  assert.match(nuanceSource, /existingExpressions:\s*knownExpressions/);
+  assert.match(nuanceSource, /existingTaxonomy:[\s\S]*?\.slice\(0, 40\)/);
+  assert.doesNotMatch(nuanceSource, /referenceExpressions,\s*existingTaxonomy/);
+});

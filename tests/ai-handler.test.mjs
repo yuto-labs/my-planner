@@ -30,7 +30,9 @@ function geminiResponse(text, groundingMetadata = null) {
 test('knowledge generation enables search grounding and attaches only provider sources', async () => {
   const previousFetch = globalThis.fetch;
   const previousKey = process.env.GEMINI_API_KEY;
+  const previousGrounding = process.env.GEMINI_ENABLE_SEARCH_GROUNDING;
   process.env.GEMINI_API_KEY = 'test-key';
+  process.env.GEMINI_ENABLE_SEARCH_GROUNDING = 'true';
   let geminiPayload = null;
 
   globalThis.fetch = async (url, options = {}) => {
@@ -81,6 +83,49 @@ test('knowledge generation enables search grounding and attaches only provider s
   } finally {
     globalThis.fetch = previousFetch;
     restoreEnv('GEMINI_API_KEY', previousKey);
+    restoreEnv('GEMINI_ENABLE_SEARCH_GROUNDING', previousGrounding);
+  }
+});
+
+test('knowledge generation stays compatible with the free tier when search grounding is not enabled', async () => {
+  const previousFetch = globalThis.fetch;
+  const previousKey = process.env.GEMINI_API_KEY;
+  const previousGrounding = process.env.GEMINI_ENABLE_SEARCH_GROUNDING;
+  process.env.GEMINI_API_KEY = 'test-key';
+  delete process.env.GEMINI_ENABLE_SEARCH_GROUNDING;
+  let geminiPayload = null;
+
+  globalThis.fetch = async (url, options = {}) => {
+    if (String(url).includes('/auth/v1/user')) {
+      return new Response(JSON.stringify({ id: 'user-1' }), { status: 200 });
+    }
+    geminiPayload = JSON.parse(options.body || '{}');
+    return geminiResponse(JSON.stringify(completeKnowledgeResponse()));
+  };
+
+  try {
+    const res = createResponseRecorder();
+    await generateHandler({
+      method: 'POST',
+      headers: { authorization: 'Bearer test-token' },
+      body: {
+        modelPreference: 'quality',
+        actionType: 'knowledge_answer',
+        responseFormat: 'json',
+        maxTokens: 9000,
+        systemText: '事実を確認して答える。',
+        userText: JSON.stringify({ question: 'クラウドとは', taxonomy: [] }),
+      },
+    }, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(geminiPayload.tools, undefined);
+    assert.match(geminiPayload.systemInstruction.parts[0].text, /Google Search is not enabled/);
+    assert.equal(JSON.parse(res.body.text).evidence.grounded, false);
+  } finally {
+    globalThis.fetch = previousFetch;
+    restoreEnv('GEMINI_API_KEY', previousKey);
+    restoreEnv('GEMINI_ENABLE_SEARCH_GROUNDING', previousGrounding);
   }
 });
 
@@ -211,7 +256,7 @@ test('quality generation falls back after a model rate limit and reports the act
     assert.ok(match, `unexpected request: ${value}`);
     const model = decodeURIComponent(match[1]);
     requestedModels.push(model);
-    if (model === 'gemini-3.5-flash') {
+    if (model === 'gemini-3.8-flash') {
       return new Response(JSON.stringify({ error: { message: 'rate limited' } }), { status: 429 });
     }
     return geminiResponse(JSON.stringify({
@@ -237,8 +282,8 @@ test('quality generation falls back after a model rate limit and reports the act
     await generateHandler(req, res);
 
     assert.equal(res.statusCode, 200);
-    assert.equal(res.body.model, 'gemini-3.5-flash-lite');
-    assert.deepEqual(requestedModels, ['gemini-3.5-flash', 'gemini-3.5-flash-lite']);
+    assert.equal(res.body.model, 'gemini-3.5-flash');
+    assert.deepEqual(requestedModels, ['gemini-3.8-flash', 'gemini-3.5-flash']);
     assert.equal(JSON.parse(res.body.text).title, 'Meeting');
   } finally {
     globalThis.fetch = previousFetch;
@@ -309,6 +354,8 @@ test('AI status remains available when one configured model route is degraded', 
     assert.equal(res.body.available, true);
     assert.equal(res.body.message, 'gemini_model_degraded');
     assert.deepEqual(res.body.modelAvailability, { fast: true, quality: false });
+    assert.deepEqual(res.body.capabilities, { searchGrounding: false });
+    assert.equal(res.body.quotaChecked, false);
   } finally {
     globalThis.fetch = previousFetch;
     restoreEnv('GEMINI_API_KEY', previousKey);
@@ -433,7 +480,7 @@ test('a harmless knowledge question recovers from a prohibited-content false pos
     await generateHandler(req, res);
 
     assert.equal(res.statusCode, 200);
-    assert.deepEqual(requestedModels, ['gemini-3.5-flash', 'gemini-3.5-flash-lite']);
+    assert.deepEqual(requestedModels, ['gemini-3.8-flash', 'gemini-3.5-flash']);
     assert.match(instructions[1], /ordinary educational question/);
     assert.doesNotMatch(JSON.stringify(res.body), /PROHIBITED_CONTENT|protected|blocked/i);
     assert.equal(JSON.parse(res.body.text).title, 'クラウドの基本');

@@ -177,8 +177,8 @@ function renderAISettings(container) {
   const runtime = getAiRuntime();
   const hasLegacyKey = !!(settings.apiKey || '').trim();
   const serverReady = runtime.configured === true;
-  const modelLabel = runtime.models?.fast
-    ? runtime.models.fast.replace(/^gemini-/, 'Gemini ').replace(/-/g, ' ')
+  const modelLabel = runtime.models?.quality
+    ? runtime.models.quality.replace(/^gemini-/, 'Gemini ').replace(/-/g, ' ')
     : 'Gemini';
 
   container.innerHTML = `
@@ -203,11 +203,15 @@ function renderAISettings(container) {
             <strong>Geminiサーバー</strong>
             <span class="chip">${esc(modelLabel)}</span>
             <span class="chip" style="background:${serverReady ? 'rgba(50,212,154,0.14)' : 'rgba(245,197,66,0.14)'};color:${serverReady ? 'var(--success)' : 'var(--warning)'}">
-              ${serverReady ? '利用可能' : '未設定'}
+              ${serverReady ? '接続設定済み' : '未設定'}
             </span>
           </div>
           <p class="text-sm text-muted">
             AI処理はアプリのサーバー経由で実行されます。端末ごとのAPIキー入力は必要ありません。
+            Google側の分・日単位の利用枠は生成時に判定され、アプリ独自の回数制限はありません。
+          </p>
+          <p class="text-sm text-muted">
+            出典の自動検索: ${runtime.capabilities?.searchGrounding ? '有効' : '無効（無料枠互換）'}
           </p>
           <p class="text-sm text-muted">
             Geminiは入力した内容をその都度解析します。メモを勝手に学習したり、使うほど自動で成長したりはしません。

@@ -278,7 +278,9 @@ export default async function handler(req, res) {
     }
     const serializedSize = JSON.stringify(body).length;
     if (serializedSize > 900_000) {
-      res.status(413).json({ error: 'AI job is too large to save safely.' });
+      res.status(413).json({
+        error: 'AIジョブの保存情報が大きすぎます。既存データは変更されていません。アプリを更新して、もう一度お試しください。',
+      });
       return;
     }
 

@@ -27,5 +27,5 @@ test('accent application derives both band colors and updates browser chrome', (
 
 test('settings explain the visible accent scope and release refreshes offline CSS', () => {
   assert.match(settingsJs, /top and bottom bars/);
-  assert.match(serviceWorker, /const CACHE_VER\s*=\s*'v380'/);
+  assert.match(serviceWorker, /const CACHE_VER\s*=\s*'v381'/);
 });
