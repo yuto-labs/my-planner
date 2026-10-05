@@ -28,7 +28,6 @@
 - `media-model.js`: 画像パスの所有者判定、圧縮寸法、表示用エスケープ
 - `memo-model.js`: メモ一覧順、表、本文抽出、画像参照の純粋データ処理
 - `shared-calendar.js`: 共有カレンダーのデータ操作
-- `notion-import.js`: Notion由来データの変換
 - `markdown-shortcuts.js`: メモのMarkdown入力判定
 - `atlas-model.js`: 表現帳の保存形式と統合
 - `atlas-query.js`: 表現帳の入力種別判定と既存テーマの再利用

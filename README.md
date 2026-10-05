@@ -1,104 +1,115 @@
 # My Planner
 
-自己管理とナレッジ管理をひとつにまとめた、スマートフォン向けのPWAです。
-予定、タスク、目標、学習メモを日々の行動に結びつけて扱えるように設計しています。
+予定、タスク、メモ、学習内容を一か所で管理する個人開発のPWAです。
+単に情報を保存するだけでなく、「今日何をするか」と「蓄積した知識をどう使うか」を
+同じ操作の流れで扱えることを目指しています。
 
-## Demo
+**Production:** [my-planner-five-alpha.vercel.app](https://my-planner-five-alpha.vercel.app)
 
-https://my-planner-five-alpha.vercel.app
+## 主な機能
 
-## Features
+- **Home**: 今日の予定・優先タスク・習慣をまとめて確認
+- **Calendar**: 月・週・日表示、繰り返し予定、端末間同期
+- **Tasks**: 締め切り、重要度、サブタスク、作業時間を管理
+- **Memo**: ブロック編集、Markdown入力、画像、表、数式、Undo / Redo
+- **Knowledge**: 質問から構造化された解説を作成し、分野・時代・地域・概念で整理
+- **Nuance Atlas**: 英語表現のニュアンス、語源、用例、関連表現を保存・比較
+- **PWA / Offline**: Service Workerによるオフライン起動と静的ファイルキャッシュ
 
-- **Home**: 今日のフォーカス、予定、習慣、学習ブロックを一覧表示
-- **Calendar**: 月・週・日表示、カテゴリ色分け、複数日にまたがる予定に対応
-- **Tasks**: 締め切り、重要度、サブタスク、メモ、アーカイブを管理
-- **Schedule Blocks**: タスクを日ごとの作業ブロックとして配置
-- **Knowledge**: タグ付きメモ、KaTeX数式、関連メモ、知識グラフを表示
-- **Analytics**: タスクとナレッジの進捗を可視化
-- **PWA / Offline**: Service Workerでオフライン利用に対応
-- **Cloud Sync**: Supabase AuthとRow Level Securityでユーザーごとにデータを分離
+## この実装で重視したこと
+
+### データを消さない同期
+
+端末内のデータを先に保持し、Supabaseとの同期では更新時刻だけでなくフィールド単位の変更も考慮します。
+通信途中に別端末で編集された場合や、取得件数が一時的に欠けた場合に、空の状態で既存データを
+上書きしないよう保護しています。削除データはゴミ箱から復元できます。
+
+### AI回答をそのまま保存しない
+
+Geminiの回答はVercel Functionsで受け取り、用途ごとのJSON形式へ正規化・検証してから保存します。
+長時間の生成はバックグラウンドジョブとして管理し、画面を移動しても状態を確認できます。
+APIキーはブラウザへ配布しません。
+
+### スマートフォンを中心にした操作
+
+モバイル表示を基準にしながら、タブレットとPCでは情報量に合わせて表示幅を広げます。
+カレンダーのタップ、メモのブロック操作、画像表示などはタッチ操作とキーボード操作の両方を考慮しています。
 
 ## Architecture
 
-このアプリはビルドツールなしのVanilla JavaScriptで構成しています。
-各画面をES Modulesで分割し、`app.js` がルーティングと共通UIを管理します。
+```mermaid
+flowchart LR
+  Browser[Browser / PWA] --> Local[localStorage / Cache Storage]
+  Browser <--> Supabase[Supabase Auth / Database / Storage]
+  Browser --> Functions[Vercel Functions]
+  Functions --> Gemini[Gemini API]
+  Functions <--> Supabase
+```
+
+- **Frontend**: Vanilla JavaScript / ES Modules / CSS
+- **Backend**: Vercel Functions、Supabase
+- **Authentication & Sync**: Supabase Auth / Database / Realtime / RLS
+- **AI**: Gemini API
+- **Hosting**: Vercel
+- **PWA**: Web App Manifest / Service Worker
+
+## ディレクトリ構成
 
 ```text
 my-planner/
-├─ api/                 Vercel Functions（Gemini API中継）
-├─ assets/source/       アイコン制作時の元データ
-├─ css/                 共通スタイル
+├─ api/                 Vercel Functions（AI生成・ジョブ管理）
+├─ assets/source/       アプリアイコンの元画像
+├─ css/                 共通・レスポンシブスタイル
+├─ docs/                設計とコード読解資料
 ├─ js/
-│  ├─ modules/          各画面
+│  ├─ data/             学習用の組み込みデータ
+│  ├─ modules/          画面ごとのモジュール
 │  ├─ app.js            ルーティングと共通UI
 │  ├─ storage.js        ローカルデータモデル
 │  ├─ sync.js           Supabase同期
-│  └─ supabase.js       Supabase接続
+│  └─ ai.js             AIクライアント
 ├─ supabase/
-│  ├─ schema.sql        新規環境用の基本スキーマ
-│  └─ migrations/       既存環境へ順番に適用するSQL
+│  ├─ schema.sql        新規環境用スキーマ
+│  └─ migrations/       既存環境向けマイグレーション
+├─ tests/               Node.js標準テスト
 ├─ index.html
 ├─ manifest.json
-├─ sw.js
-└─ vercel.json
+└─ sw.js
 ```
 
-ルート直下の `icon-192.png` と `icon-512.png` はPWAが直接参照する完成画像です。
-編集用の元画像は `assets/source/` に分けています。
+## 品質確認
 
-## Code Reading Guide
+保存・同期・AI回答形式・メモ編集・カレンダー操作・レスポンシブ表示を自動テストしています。
 
-JavaScriptやHTMLを初めて読む場合は、まず [`docs/README.md`](docs/README.md) を入口にしてください。
-完全な初学者向けの順番と、各章で実際に開くファイルを案内しています。
+```bash
+npm install
+npm run build
+npm test
+```
 
-- [`docs/start-here.md`](docs/start-here.md) - VS Code、起動、最初の読み方
-- [`docs/html-css-basics.md`](docs/html-css-basics.md) - HTMLとCSSの基礎
-- [`docs/javascript-for-python-learners.md`](docs/javascript-for-python-learners.md) - Python学習者向けのJavaScriptとWeb機能
-- [`docs/javascript-first-course.md`](docs/javascript-first-course.md) - 初めてコードを読む人向けの文法・関数講座
-- [`docs/javascript-basics.md`](docs/javascript-basics.md) - このアプリで使うJavaScript
-- [`docs/javascript-browser-apis.md`](docs/javascript-browser-apis.md) - DOM、イベント、通信、保存、画像処理
-- [`docs/first-walkthrough.md`](docs/first-walkthrough.md) - 起動処理を実コードで追う
-- [`docs/architecture.md`](docs/architecture.md) - 全体設計
-- [`docs/data-and-sync.md`](docs/data-and-sync.md) - 保存と同期の安全設計
-- [`docs/database-basics.md`](docs/database-basics.md) - SupabaseとSQL
-- [`docs/ai-flow.md`](docs/ai-flow.md) - AI回答を生成・検証・保存する流れ
-- [`docs/debugging-and-tests.md`](docs/debugging-and-tests.md) - 不具合調査とテスト
-- [`docs/glossary.md`](docs/glossary.md) - 用語集
-
-## Tech Stack
-
-- Vanilla JavaScript / ES Modules
-- CSS Custom Properties
-- localStorage
-- Service Worker
-- Supabase Auth / Database / RLS
-- KaTeX
-- Vercel
-
-## Security Notes
-
-- ユーザーの予定・タスク・メモはSupabaseの `user_id` ごとに分離されます。
-- Supabaseのanon keyはブラウザアプリで利用する公開キーです。
-- データ保護はSupabase Row Level Securityを前提にしています。
-- Gemini APIキーはVercelの環境変数で管理し、ブラウザへ直接配布しません。
-- AI処理は同一オリジンのVercel Functionを通して実行します。
-
-## Supabase Setup
-
-新規環境では `supabase/schema.sql` をSupabase SQL Editorで実行します。
-既存環境への追加変更は `supabase/migrations/` をファイル名の日付順に実行してください。
-詳しい順序と役割は [`supabase/README.md`](supabase/README.md) にまとめています。
+`npm run build`ではJavaScript構文、関数コメント、ドキュメント内リンクを検査します。
+`npm test`では外部APIをモックし、既存データを変更せずに主要処理を確認します。
 
 ## Local Development
 
 ```bash
+npm install
 npx serve .
 ```
 
-その後、ブラウザで表示されたローカルURLを開きます。
-Windowsではルートの `start.bat` も利用できます。
+Windowsでは`start.bat`でもローカルサーバーを起動できます。
+AI機能とクラウド同期を利用するには、VercelとSupabase側の環境設定が必要です。
 
-## Project Goal
+## Security
 
-個人の予定管理だけではなく、タスク、学習メモ、振り返りをつなげて、
-「今日何をするか」と「何を学んできたか」を同じ場所で扱えるアプリを目指しています。
+- Gemini APIキーはVercelの環境変数で管理し、フロントエンドへ送信しません。
+- Supabaseのデータは`user_id`とRow Level Securityでユーザーごとに分離します。
+- Service Role Keyや`.env`はリポジトリへ含めません。
+- API・Supabaseの応答はService Workerでキャッシュしません。
+
+## Documentation
+
+コードを読む順番は[`docs/README.md`](docs/README.md)にまとめています。
+特に、[`docs/architecture.md`](docs/architecture.md)、
+[`docs/data-and-sync.md`](docs/data-and-sync.md)、
+[`docs/ai-flow.md`](docs/ai-flow.md)から主要設計を確認できます。
