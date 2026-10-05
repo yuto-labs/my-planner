@@ -58,7 +58,6 @@ flowchart LR
 ```text
 my-planner/
 ├─ api/                 Vercel Functions（AI生成・ジョブ管理）
-├─ assets/source/       アプリアイコンの元画像
 ├─ css/                 共通・レスポンシブスタイル
 ├─ docs/                設計とコード読解資料
 ├─ js/

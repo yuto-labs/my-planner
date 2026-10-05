@@ -26,6 +26,7 @@ JavaScriptやHTMLをまったく触ったことがない人を想定していま
 17. [`debugging-and-tests.md`](debugging-and-tests.md) - 不具合の調べ方
 18. [`glossary.md`](glossary.md) - 分からない単語を引く場所
 19. [`project-config.md`](project-config.md) - package、PWA、Vercel設定
+20. [`learning-library-taxonomy.md`](learning-library-taxonomy.md) - Knowledgeの分類体系とAI分類ルール
 
 ## コード内コメントの読み方
 
