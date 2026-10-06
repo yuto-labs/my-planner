@@ -6,7 +6,7 @@
 // JS/CSSの動作を変更したときはCACHE_VERも進め、古い端末キャッシュを更新する。
 // ============================================================
 
-const CACHE_VER  = 'v381';
+const CACHE_VER  = 'v382';
 const APP_CACHE  = `my-planner-app-${CACHE_VER}`;
 const CDN_CACHE  = `my-planner-cdn-${CACHE_VER}`;
 const PERSISTENT_IMAGE_CACHE = 'my-planner-images-v1';
@@ -33,6 +33,7 @@ const APP_ASSETS = [
   './js/ai-response.js',
   './js/atlas-model.js',
   './js/atlas-query.js',
+  './js/atlas-senses.js',
   './js/knowledge-model.js',
   './js/markdown-shortcuts.js',
   './js/data/learning-taxonomy.js',
@@ -54,15 +55,15 @@ const APP_ASSETS = [
   './js/modules/goals.js',
   './js/modules/settings.js',
   './js/modules/today.js',
-  './js/modules/knowledge.js',
-  './js/modules/knowledge-graph.js',
+  './js/modules/memo.js',
+  './js/modules/memo-graph.js',
   './js/modules/expression-atlas.js',
   './js/modules/analytics.js',
   './js/modules/learning-library.js',
   './js/modules/search.js',
   './js/modules/archive.js',
   './js/modules/review.js',
-  './js/modules/tagspage.js',
+  './js/modules/tags.js',
   './js/supabase.js',
   './js/sync.js',
   './js/shared-calendar.js',

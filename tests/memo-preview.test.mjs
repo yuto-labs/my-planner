@@ -6,7 +6,7 @@ const {
   renderMemoCardPreview,
   resolveNewMemoReviewEnabled,
   sameEditorHistoryContent,
-} = await import('../js/modules/knowledge.js');
+} = await import('../js/modules/memo.js');
 
 test('memo history ignores caret-only movement but detects block changes', () => {
   const base = {

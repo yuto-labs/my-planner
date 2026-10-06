@@ -86,8 +86,10 @@ npm run build
 npm test
 ```
 
-`npm run build`ではJavaScript構文、関数コメント、ドキュメント内リンクを検査します。
+`npm run build`ではJavaScript構文、関数コメント、ドキュメント内リンク、
+ブラウザのimport/exportとオフライン用ファイルの整合性を検査します。
 `npm test`では外部APIをモックし、既存データを変更せずに主要処理を確認します。
+GitHub ActionsでもWindowsとLinuxで検査します。実際の認証・AI応答・端末操作は別途確認が必要です。
 
 ## Local Development
 
@@ -98,6 +100,7 @@ npx serve .
 
 Windowsでは`start.bat`でもローカルサーバーを起動できます。
 AI機能とクラウド同期を利用するには、VercelとSupabase側の環境設定が必要です。
+検証環境の準備と本番公開の区別は[開発手順](docs/development.md)にまとめています。
 
 ## Security
 

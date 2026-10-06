@@ -1,18 +1,18 @@
-// js/とapi/以下のJavaScriptを再帰的に集め、Node.jsの構文検査へ一件ずつ渡す。
+// アプリ・API・検査・テストのJavaScriptを集め、Node.jsの構文検査へ渡す。
 // ブラウザを開く前に、括弧漏れや不正な構文でアプリ全体が起動しない事故を検出する。
 import { readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-const roots = ['js', 'api'];
-const files = [];
+const roots = ['js', 'api', 'scripts', 'tests'];
+const files = ['sw.js'];
 
-/** 指定フォルダをたどり、検査対象の.jsファイルをfilesへ集める。 */
+/** 指定フォルダをたどり、検査対象の.js/.mjsファイルをfilesへ集める。 */
 function collect(path) {
   for (const name of readdirSync(path)) {
     const full = join(path, name);
     if (statSync(full).isDirectory()) collect(full);
-    else if (name.endsWith('.js')) files.push(full);
+    else if (/\.m?js$/.test(name)) files.push(full);
   }
 }
 

@@ -12,7 +12,7 @@ import {
   getMyScheduleColor,
 } from '../storage.js';
 import { esc, today, formatDate, getEventsForDate, addDays, toDateStr } from '../utils.js';
-import { openNewKnowledgeMemo, getStudyPromptForBlock } from './knowledge.js';
+import { openNewKnowledgeMemo, getStudyPromptForBlock } from './memo.js';
 
 /** `nav`: 指定したハッシュ画面へ移動し、必要なら遷移元の状態を引き継ぐ。 */
 const nav   = (view) => window.AppNav?.navigate(view);

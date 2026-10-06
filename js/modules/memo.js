@@ -1,5 +1,5 @@
 // ============================================================
-// knowledge.js — Knowledge Memo: list + block editor + viewer
+// memo.js — Memo: list + block editor + viewer
 // ============================================================
 
 import {

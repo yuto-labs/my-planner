@@ -8,7 +8,7 @@ import {
   getReviewsForDate, getKnowledgeMemoById,
   rateReview, addReviewLog, previewReviewIntervals,
 } from '../storage.js';
-import { renderBlocksView } from './knowledge.js';
+import { renderBlocksView } from './memo.js';
 import { esc, fmtDays } from '../utils.js';
 
 /** `nav`: 指定したハッシュ画面へ移動し、必要なら遷移元の状態を引き継ぐ。 */

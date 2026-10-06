@@ -1,5 +1,5 @@
 // メモ入力の先頭記号をブロック種別へ変換する純粋関数群。
-// 画面操作はknowledge.jsが担当し、ここではMarkdown風記法の解釈だけを行う。
+// 画面操作はmemo.jsが担当し、ここではMarkdown風記法の解釈だけを行う。
 
 const BLOCK_MARKERS = new Map([
   ['#', 'h1'],

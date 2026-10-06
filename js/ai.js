@@ -555,7 +555,7 @@ export async function generateAnalyticsSummary(monthStr, data) {
 }
 
 // ---- 通常メモのAI補助 ----
-// 保存はknowledge.js / storage.jsが担当し、ここではタグ・用語解説・整理結果を作る。
+// 保存はmemo.js / storage.jsが担当し、ここではタグ・用語解説・整理結果を作る。
 export async function suggestKnowledgeTags(title, textPreview) {
   const cacheKey = `kn_tags_${title}_${textPreview.slice(0, 60)}`;
   const cached = getAiCache(cacheKey);

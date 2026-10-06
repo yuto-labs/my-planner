@@ -27,7 +27,7 @@ import {
   renderBlocksView,
   renderMemoCardPreview,
   resolveViewToggleCollapsed,
-} from '../js/modules/knowledge.js';
+} from '../js/modules/memo.js';
 import { normalizeMemoBlockIds } from '../js/storage.js';
 
 test('offline app shell includes the memo shortcut module', () => {

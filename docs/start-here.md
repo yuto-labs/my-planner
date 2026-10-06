@@ -38,10 +38,10 @@ Webサーバー経由の方がES ModulesやService Workerを本番に近い形�
 
 1. `index.html`: 固定の画面枠と読み込むファイル
 2. `js/app.js`: URLを見て表示画面を決める
-3. `js/modules/tagspage.js`: 比較的小さい画面の例
+3. `js/modules/tags.js`: 比較的小さい画面の例
 4. `js/storage.js`: データ保存の共通窓口
 
-`calendar.js`や`knowledge.js`から始めると、文法より機能量で迷いやすくなります。
+`calendar.js`や`memo.js`から始めると、文法より機能量で迷いやすくなります。
 
 ## コードを読むときの一単位
 

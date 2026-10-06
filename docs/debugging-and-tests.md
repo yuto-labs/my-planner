@@ -56,7 +56,8 @@ npm run build
 - `test`: `tests/*.test.mjs`をすべて実行
 - `comments:check`: 本番コードの名前付き関数に説明があるか確認
 - `docs:check`: `README.md`、`docs/`、`supabase/`内のローカルリンク切れを確認
-- `build`: 配信前の構文・関数注釈・ドキュメントリンク確認
+- `modules:check`: ブラウザのimport/exportと事前キャッシュの参照切れを検出
+- `build`: 配信前の構文・関数注釈・ドキュメントリンク・モジュール参照確認
 
 このアプリはVanilla JavaScriptなので、大規模な変換ビルドはありません。それでも`build`という共通名を
 用意し、Vercelや開発手順から同じ確認を呼べるようにしています。

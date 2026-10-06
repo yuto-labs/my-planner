@@ -10,7 +10,7 @@ import {
   getTasks, addTask, isAiAvailable, getKnowledgeMemos,
 } from '../storage.js';
 import { splitGoalToTasks, predictGoalCompletionLocal } from '../ai.js';
-import { openKnowledgeMemo, openNewKnowledgeMemo, getKnowledgeSuggestionsForGoal } from './knowledge.js';
+import { openKnowledgeMemo, openNewKnowledgeMemo, getKnowledgeSuggestionsForGoal } from './memo.js';
 import { esc, today, formatDate, generateId } from '../utils.js';
 
 /** `toast`: 短い通知メッセージを画面へ表示する。 */

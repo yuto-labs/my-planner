@@ -34,9 +34,9 @@ import {
   initKnowledge, initKnowledgeDetail, openKnowledgeMemo, backFromKnowledgeDetail,
   hasUnsavedKnowledgeChanges, confirmDiscardKnowledgeChanges, isKnowledgeEditorOpen,
   openKnowledgeAiOrganizer,
-} from './modules/knowledge.js';
+} from './modules/memo.js';
 import { initReview } from './modules/review.js';
-import { initKnowledgeGraph } from './modules/knowledge-graph.js';
+import { initKnowledgeGraph } from './modules/memo-graph.js';
 import {
   initExpressionAtlas,
   backFromExpressionAtlas,
@@ -51,7 +51,7 @@ import {
 } from './modules/learning-library.js';
 import { openSearch, closeSearch } from './modules/search.js';
 import { initArchive } from './modules/archive.js';
-import { initTagsPage, setTagFilter } from './modules/tagspage.js';
+import { initTagsPage, setTagFilter } from './modules/tags.js';
 
 // ---- Module registry ----
 // URLで使う画面名を、表示タイトルと初期化関数へ対応付けます。

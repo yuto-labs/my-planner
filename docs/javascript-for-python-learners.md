@@ -634,7 +634,7 @@ saveButton.addEventListener('click', (event) => {
 - `sync.js`: Supabaseとの同期
 - `media.js`: 画像の保存と表示
 - `modules/calendar.js`: カレンダー画面
-- `modules/knowledge.js`: メモ画面
+- `modules/memo.js`: メモ画面
 
 一つの巨大なファイルへ全機能を書くと、同じ関数名が衝突し、変更の影響範囲も分かりません。
 `export`で外部へ公開する機能を絞り、`import`で必要なものだけ受け取ります。

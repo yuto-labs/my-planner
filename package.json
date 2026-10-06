@@ -7,7 +7,8 @@
     "lint": "node scripts/check-syntax.mjs",
     "comments:check": "node scripts/check-function-comments.mjs",
     "docs:check": "node scripts/check-doc-links.mjs",
-    "build": "node scripts/check-syntax.mjs && node scripts/check-function-comments.mjs && node scripts/check-doc-links.mjs"
+    "modules:check": "node --experimental-vm-modules scripts/check-client-assets.mjs",
+    "build": "npm run lint && npm run comments:check && npm run docs:check && npm run modules:check"
   },
   "dependencies": {
     "@vercel/functions": "^3.9.9"

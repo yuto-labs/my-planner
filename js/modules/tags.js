@@ -1,5 +1,5 @@
 // ============================================================
-// tagspage.js - タスクとメモを横断するタグ別一覧
+// tags.js - タスクとメモを横断するタグ別一覧
 //
 // 一覧の入口だけを担当し、項目タップ後の編集は元の画面へ委譲する。
 // ============================================================
@@ -108,7 +108,7 @@ function render(container) {
 
   container.querySelectorAll('[data-memo-id]').forEach(card => {
     card.addEventListener('click', () => {
-      import('./knowledge.js').then(k => k.openKnowledgeMemo(card.dataset.memoId));
+      import('./memo.js').then(k => k.openKnowledgeMemo(card.dataset.memoId));
     });
   });
 }

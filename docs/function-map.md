@@ -71,7 +71,7 @@ Supabaseの列名も一緒に確認します。
 
 ## 通常メモ
 
-`js/modules/knowledge.js`は、一覧とブロックエディタの両方を持ちます。
+`js/modules/memo.js`は、一覧とブロックエディタの両方を持ちます。
 
 - `renderList` / `renderMemoCard`: 一覧とプレビュー
 - `openKnowledgeMemo`: 選択したメモのIDを保って詳細へ移動

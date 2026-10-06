@@ -1,6 +1,6 @@
 -- AI利用回数の更新をDB側で原子的に行う関数。
 -- 複数リクエストが同時に来てもカウントが消えないようにする。
--- アプリ固有の上限は使わず、認証済みユーザーの記録と監査のみを担当する。
+-- 旧利用枠管理の互換用定義。上限判定を含むが、現在のAI APIは呼び出さない。
 
 create or replace function claim_ai_usage(
   p_cost integer default 1,

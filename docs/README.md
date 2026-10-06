@@ -1,4 +1,15 @@
-# My Planner コード読解ガイド
+# My Planner ドキュメント
+
+## 設計・開発を確認する方へ
+
+- [開発・検証・公開手順](development.md)
+- [全体構造](architecture.md)
+- [ファイルの役割](file-map.md)
+- [保存と同期](data-and-sync.md)
+- [AI生成と保存](ai-flow.md)
+- [データベースのセットアップ](../supabase/README.md)
+
+## コードを学びながら読む方へ
 
 このディレクトリには、My Plannerを初めて読む人向けの資料を置いています。
 JavaScriptやHTMLをまったく触ったことがない人を想定しています。
@@ -18,7 +29,7 @@ JavaScriptやHTMLをまったく触ったことがない人を想定していま
 9. [`architecture.md`](architecture.md) - アプリ全体の設計
 10. [`feature-walkthroughs.md`](feature-walkthroughs.md) - 一機能をファイル横断で追う
 11. [`file-map.md`](file-map.md) - ファイルを探す地図
-12. 小さい画面モジュール（`tagspage.js`、`archive.js`、`search.js`）
+12. 小さい画面モジュール（`tags.js`、`archive.js`、`search.js`）
 13. [`data-and-sync.md`](data-and-sync.md) - 端末保存と同期
 14. [`database-basics.md`](database-basics.md) - SupabaseとSQL
 15. [`ai-flow.md`](ai-flow.md) - AI回答の生成と保存

@@ -43,7 +43,11 @@ URLの名前と各画面を初期化する関数の対応が登録されてい�
 ### 5. AI
 
 - `js/ai.js`: ブラウザ側のAI依頼、待機表示、再試行、回答検証
+- `js/ai-jobs.js`: 長時間生成の受付と状態確認
+- `js/ai-job-resume.js`: 画面復帰時の未処理結果の保存
+- `js/ai-job-status.js`: 生成状況と経過時間の表示
 - `api/ai/generate.js`: Geminiへ送るプロンプト、モデル選択、最終検証
+- `api/ai/jobs.js`: サーバー側で生成を継続し、ジョブ状態と結果を保持
 - `api/ai/status.js`: AIサーバーが利用可能かを確認
 
 ブラウザへGemini APIキーを渡さないため、必ずVercel上の`api/ai`を経由します。
@@ -70,4 +74,3 @@ initXxx(container)
 ```
 
 別画面へ移動すると`app.js`がcleanup関数を呼び、タイマーやイベント監視を解除します。
-
