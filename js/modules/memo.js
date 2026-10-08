@@ -40,6 +40,7 @@ import {
   collectMemoImagePaths as collectImagePaths,
   memoBlocksToText as blocksToText,
   normalizeMemoTable as normalizeTableData,
+  normalizeMemoTableCell, memoTableCellToMarkdown, parsePastedMemoTable,
   sortMemosForList,
   trimMemoEdgeEmptyBlocks,
 } from '../memo-model.js';
@@ -2249,7 +2250,7 @@ function renderBlockEdit(block, idx, listNumber = 0) {
     const table = normalizeTableData(block);
     return `
       <div class="kn-block kn-block--table${block.id === activeEditorBlockId ? ' kn-block--active' : ''}" data-block-id="${esc(block.id)}" tabindex="0">
-        <div class="kn-table-scroll"><table class="kn-edit-table"><thead><tr>${table.headers.map((cell, col) => `<th><input class="kn-table-input" data-table-header data-block-id="${esc(block.id)}" data-table-col="${col}" value="${esc(cell)}" aria-label="表の見出し ${col + 1}"></th>`).join('')}</tr></thead><tbody>${table.rows.map((row, rowIndex) => `<tr>${row.map((cell, col) => `<td><input class="kn-table-input" data-table-cell data-block-id="${esc(block.id)}" data-table-row="${rowIndex}" data-table-col="${col}" value="${esc(cell)}" aria-label="表の${rowIndex + 1}行${col + 1}列"></td>`).join('')}</tr>`).join('')}</tbody></table></div>
+        <div class="kn-table-scroll"><table class="kn-edit-table"><thead><tr>${table.headers.map((cell, col) => `<th><textarea class="kn-table-input" rows="${Math.min(8, cell.split('\n').length)}" data-table-header data-block-id="${esc(block.id)}" data-table-col="${col}" aria-label="表の見出し ${col + 1}">${esc(cell)}</textarea></th>`).join('')}</tr></thead><tbody>${table.rows.map((row, rowIndex) => `<tr>${row.map((cell, col) => `<td><textarea class="kn-table-input" rows="${Math.min(8, cell.split('\n').length)}" data-table-cell data-block-id="${esc(block.id)}" data-table-row="${rowIndex}" data-table-col="${col}" aria-label="表の${rowIndex + 1}行${col + 1}列">${esc(cell)}</textarea></td>`).join('')}</tr>`).join('')}</tbody></table></div>
         <div class="kn-table-actions" aria-label="表の編集"><button type="button" data-table-action="add-row" data-block-id="${esc(block.id)}">行を追加</button><button type="button" data-table-action="remove-row" data-block-id="${esc(block.id)}" ${table.rows.length <= 1 ? 'disabled' : ''}>行を削除</button><button type="button" data-table-action="add-column" data-block-id="${esc(block.id)}">列を追加</button><button type="button" data-table-action="remove-column" data-block-id="${esc(block.id)}" ${table.headers.length <= 2 ? 'disabled' : ''}>列を削除</button></div>
         ${controls}
       </div>
@@ -3535,9 +3536,9 @@ function memoBlocksToMarkdownSource(blocks, depth = 0) {
     else if (block.type === 'table') {
       const table = normalizeTableData(block);
       source = [
-        `| ${table.headers.join(' | ')} |`,
+        `| ${table.headers.map(memoTableCellToMarkdown).join(' | ')} |`,
         `| ${table.headers.map(() => '---').join(' | ')} |`,
-        ...table.rows.map(row => `| ${row.join(' | ')} |`),
+        ...table.rows.map(row => `| ${row.map(memoTableCellToMarkdown).join(' | ')} |`),
       ].join('\n');
     } else source = getBlockEditorMarkdown(block, listNumber || 1);
 
@@ -3751,7 +3752,12 @@ export function clipboardBlocksFromHtml(html) {
   /** HTML表のセルを文字列行列へ変換し、見出し付きtableブロックとして追加する。 */
   const addTable = table => {
     const rows = [...table.querySelectorAll('tr')].map(row => (
-      [...row.querySelectorAll('th,td')].map(cell => String(cell.textContent || '').trim())
+      [...row.querySelectorAll('th,td')].map(cell => {
+        const copy = cell.cloneNode(true);
+        copy.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+        copy.querySelectorAll('p,div').forEach(element => element.append('\n'));
+        return normalizeMemoTableCell(copy.textContent).trim();
+      })
     )).filter(row => row.some(Boolean));
     if (!rows.length) return;
     const headerRow = rows.shift() || [];
@@ -3836,7 +3842,7 @@ export function trimPastedMarkdownEdges(value) {
  * 外部から貼られたMarkdownを既存のメモブロックへ変換する。
  * 記号付き行は独立ブロックにし、普通の文章の連続行は同じ段落として改行を保つ。
  */
-function clipboardBlocksFromMarkdown(text) {
+export function clipboardBlocksFromMarkdown(text) {
   const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
   const blocks = [];
   let paragraphLines = [];
@@ -3860,7 +3866,16 @@ function clipboardBlocksFromMarkdown(text) {
     }
   };
 
-  for (const line of lines) {
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
+    const pastedTable = parsePastedMemoTable(lines, index);
+    if (pastedTable) {
+      flushParagraph();
+      blocks.push({ id: generateId(), type: 'table', text: '', color: null, table: pastedTable.table });
+      orderedListNumber = 0;
+      index = pastedTable.end - 1;
+      continue;
+    }
     if (!line.trim()) {
       flushParagraph();
       continue;
@@ -3986,7 +4001,10 @@ function handleEditorPaste(event, container) {
   const html = clipboard.getData('text/html');
   // 本物の見出し・リストを持つHTMLではHTML側の書式を優先する。GPTの番号リストを
   // Markdownと誤認すると、同時にコピーされた太字や見出しが失われるためである。
-  if (shouldPreferClipboardMarkdown(plainText, html)) {
+  const plainLines = plainText.replace(/\r\n?/g, '\n').split('\n');
+  const hasPlainTable = !/<(?:h[1-6]|ul|ol|li|blockquote|table|hr)\b/i.test(html)
+    && plainLines.some((_, index) => parsePastedMemoTable(plainLines, index));
+  if (hasPlainTable || shouldPreferClipboardMarkdown(plainText, html)) {
     const blocks = clipboardBlocksFromMarkdown(plainText);
     if (blocks.length) {
       event.preventDefault();

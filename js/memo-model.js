@@ -16,16 +16,51 @@ export function sortMemosForList(memos) {
   });
 }
 
+/** 表で使われる改行タグだけを改行へ戻す。他のHTMLは実行せず文字列のまま残す。 */
+export function normalizeMemoTableCell(value) {
+  return String(value ?? '').replace(/\r\n?/g, '\n').replace(/<br\s*\/?\s*>/gi, '\n');
+}
+
+/** Markdown表の一行に収まるよう、セル内の改行と区切り文字をエスケープする。 */
+export function memoTableCellToMarkdown(value) {
+  return normalizeMemoTableCell(value).replace(/\|/g, '\\|').replace(/\n/g, '<br>');
+}
+
+/** 貼り付けの現在行から、タブ区切り表または区切り行付きMarkdown表だけを読み取る。 */
+export function parsePastedMemoTable(lines, start = 0) {
+  const first = lines[start] || '';
+  const tabs = first.includes('\t');
+  /** 区切りだけを解析し、セルの文字列はHTMLとして扱わない。 */
+  const split = line => tabs
+    ? line.split('\t').map(cell => normalizeMemoTableCell(cell.trim()))
+    : line.trim().replace(/^\|/, '').replace(/(?<!\\)\|$/, '').split(/(?<!\\)\|/)
+      .map(cell => normalizeMemoTableCell(cell.trim().replace(/\\\|/g, '|')));
+  const headers = split(first);
+  if (headers.length < 2) return null;
+  const separator = split(lines[start + 1] || '');
+  if (!tabs && (separator.length !== headers.length || !separator.every(cell => /^:?-{3,}:?$/.test(cell)))) return null;
+  let end = start + (tabs ? 1 : 2);
+  const rows = [];
+  while (end < lines.length && lines[end].trim()) {
+    const row = split(lines[end]);
+    if (row.length !== headers.length) break;
+    rows.push(row);
+    end++;
+  }
+  if (tabs && !rows.length) return null;
+  return { table: { headers, rows }, end };
+}
+
 /** 古い表や一部欠けた表も、最低2列の安全な表示用データとして読む。 */
 export function normalizeMemoTable(block) {
   const source = block?.table || {};
-  const headers = Array.isArray(source.headers) ? source.headers.map(value => String(value ?? '')) : [];
+  const headers = Array.isArray(source.headers) ? source.headers.map(normalizeMemoTableCell) : [];
   const width = Math.max(2, headers.length);
   const normalizedHeaders = Array.from({ length: width }, (_, index) => headers[index] || `列${index + 1}`);
   const rows = Array.isArray(source.rows) && source.rows.length ? source.rows : [['', '']];
   return {
     headers: normalizedHeaders,
-    rows: rows.map(row => Array.from({ length: width }, (_, index) => String((row || [])[index] ?? ''))),
+    rows: rows.map(row => Array.from({ length: width }, (_, index) => normalizeMemoTableCell((row || [])[index]))),
   };
 }
 

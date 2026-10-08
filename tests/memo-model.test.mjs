@@ -6,9 +6,38 @@ import {
   collectMemoImagePaths,
   memoBlocksToText,
   normalizeMemoTable,
+  normalizeMemoTableCell, memoTableCellToMarkdown, parsePastedMemoTable,
   sortMemosForList,
   trimMemoEdgeEmptyBlocks,
 } from '../js/memo-model.js';
+
+test('table break tags become newlines without executing unrelated HTML or mutating saved data', () => {
+  const source = { table: { headers: ['項目<br>補足', '説明'], rows: [['A<BR>B<br/>C<br />D', '<img onerror=alert(1)>']] } };
+  const copy = JSON.stringify(source);
+  const normalized = normalizeMemoTable(source);
+  assert.equal(normalized.headers[0], '項目\n補足');
+  assert.equal(normalized.rows[0][0], 'A\nB\nC\nD');
+  assert.equal(normalized.rows[0][1], '<img onerror=alert(1)>');
+  assert.equal(JSON.stringify(source), copy);
+  assert.deepEqual(normalizeMemoTable({ table: JSON.parse(JSON.stringify(normalized)) }), normalized);
+});
+
+test('table copy preserves line breaks and literal pipes through Markdown round trip', () => {
+  const cell = 'A | B\nC';
+  const lines = ['| 項目 | 説明 |', '| --- | --- |', `| ${memoTableCellToMarkdown(cell)} | D |`];
+  assert.equal(parsePastedMemoTable(lines).table.rows[0][0], cell);
+  assert.equal(normalizeMemoTableCell('A\r\nB'), 'A\nB');
+});
+
+test('tab separated pasted report keeps cell breaks and stops before following prose', () => {
+  const lines = ['前の段落', '課題\t解決策', '紙伝票<br>印鑑\t入力<BR>確認', '次の段落'];
+  assert.deepEqual(parsePastedMemoTable(lines, 1), {
+    table: { headers: ['課題', '解決策'], rows: [['紙伝票\n印鑑', '入力\n確認']] }, end: 3,
+  });
+  assert.equal(parsePastedMemoTable(['a | b', 'ただの文章']), null);
+  assert.equal(parsePastedMemoTable(['a\tb']), null);
+  assert.equal(parsePastedMemoTable(['a | b', '---']), null);
+});
 
 test('sorts starred memos first and then uses the latest edit time', () => {
   const source = [

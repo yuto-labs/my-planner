@@ -3662,7 +3662,9 @@ h1, h2, h3, h4, h5, h6,
 }
 .kn-table-input:focus { background: var(--primary-bg); box-shadow: inset 0 0 0 1px var(--primary-border); }
 .kn-view-table th,
-.kn-view-table td { padding: 8px 10px; line-height: 1.5; }
+.kn-view-table td { padding: 8px 10px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* セル内改行はtextareaで保持する。後段の共通input寸法より詳細度を高くする。 */
+.kn-edit-table textarea.kn-table-input { height: auto; min-height: 34px; line-height: 1.5; resize: vertical; display: block; }
 .kn-table-actions { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 7px; }
 .kn-table-actions button {
   min-height: 29px;
