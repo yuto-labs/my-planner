@@ -52,6 +52,7 @@ import {
 import { openSearch, closeSearch } from './modules/search.js';
 import { initArchive } from './modules/archive.js';
 import { initTagsPage, setTagFilter } from './modules/tags.js';
+import { captureHorizontalTableScroll, restoreHorizontalTableScroll } from './horizontal-scroll-state.js';
 
 // ---- Module registry ----
 // URLで使う画面名を、表示タイトルと初期化関数へ対応付けます。
@@ -354,16 +355,19 @@ export function navigate(view, options = {}) {
   const main = document.getElementById('main-content');
   const shouldRestoreScroll = preserveScroll && main.dataset.view === view;
   const preservedScrollTop = shouldRestoreScroll ? main.scrollTop : 0;
+  const preservedTables = shouldRestoreScroll ? captureHorizontalTableScroll(main) : [];
   main.style.scrollBehavior = 'auto';
   if (!preserveScroll) main.scrollTop = 0;
   main.innerHTML = '';
   main.dataset.view = view; // for CSS glow on home
   cleanupFn = MODULES[view].init(main) || null;
+  restoreHorizontalTableScroll(main, preservedTables);
   if (shouldRestoreScroll) main.scrollTop = preservedScrollTop;
   else if (!preserveScroll) main.scrollTop = 0;
   requestAnimationFrame(() => {
     if (shouldRestoreScroll) main.scrollTop = preservedScrollTop;
     else if (!preserveScroll) main.scrollTop = 0;
+    restoreHorizontalTableScroll(main, preservedTables);
     main.style.scrollBehavior = '';
   });
   document.dispatchEvent(new CustomEvent('appNavigated', { detail: { view } }));

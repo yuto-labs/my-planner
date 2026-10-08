@@ -27,6 +27,7 @@ import {
   wirePlannerImageViewer,
 } from '../media.js';
 import { flushPendingSync } from '../sync.js';
+import { captureHorizontalTableScroll, restoreHorizontalTableScroll } from '../horizontal-scroll-state.js';
 import {
   markdownBlockShortcut,
   markdownPrefixForBlock,
@@ -1384,6 +1385,7 @@ function renderDetail(container, options = {}) {
   const restoreScrollTop = options.preserveScroll
     ? document.getElementById('main-content')?.scrollTop || 0
     : 0;
+  const preservedTables = options.preserveScroll ? captureHorizontalTableScroll(container) : [];
   const { isEdit, title, blocks, tags, url, starred, id } = edState;
 
   // Update header title
@@ -1398,6 +1400,7 @@ function renderDetail(container, options = {}) {
     renderViewMode(container);
   }
 
+  restoreHorizontalTableScroll(container, preservedTables);
   if (options.preserveScroll) restoreDetailScroll(restoreScrollTop);
 }
 
