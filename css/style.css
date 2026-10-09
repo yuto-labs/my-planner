@@ -13188,8 +13188,27 @@ button.atlas-nuance-map-row:focus-visible {
 .kn-block { padding-left: 0; }
 .kn-block-drag-handle { display: none !important; }
 .kn-block--dragging {
-  opacity: .62;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
+  opacity: .22;
+}
+.kn-block-drag-preview {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 10000;
+  width: min(216px, calc(100vw - 16px));
+  padding: 9px 12px;
+  border: 1px solid var(--primary-border);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--bg-card);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .16);
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  user-select: none;
 }
 
 /* A calmer, editorial Atlas input surface. */

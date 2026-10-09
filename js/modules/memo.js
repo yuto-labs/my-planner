@@ -2038,18 +2038,26 @@ function renderEditMode(container, { preserveHistory = false } = {}) {
     if (performance.now() - lastKeyboardHistoryAt < 120) return;
     restoreEditorHistory(container, event.inputType === 'historyRedo' ? 'redo' : 'undo');
   }, true);
+  let lastCtrlABlockId = null;
   editPage?.addEventListener('keydown', event => {
-    if (event.isComposing || !(event.ctrlKey || event.metaKey)) return;
+    if (event.isComposing) return;
+    if (!(event.ctrlKey || event.metaKey)) {
+      if (!['Control', 'Meta', 'Shift', 'Alt'].includes(event.key)) lastCtrlABlockId = null;
+      return;
+    }
     const key = event.key.toLowerCase();
+    if (key !== 'a') lastCtrlABlockId = null;
     if (key === 'a') {
-      const isMemoBody = crossBlockSelectionMode
-        || !!event.target?.closest?.('#kn-blocks-wrap, .kn-block-text');
-      // ブロックはDOM上では別々の編集領域だが、利用者には一つの文書として見える。
-      // そのため本文内のCtrl/Cmd+Aは一度で全ブロックを選び、タイトルやタグ欄は
-      // 各入力欄の通常の全選択を保つ。
-      if (isMemoBody) {
+      const blockInput = event.target?.closest?.('.kn-block-focusable');
+      if (crossBlockSelectionMode) {
         event.preventDefault();
         selectAllMemoBlocks(container);
+      } else if (blockInput) {
+        event.preventDefault();
+        // 空ブロックでは選択範囲だけで一回目・二回目を区別できないため、押した順を保持する。
+        if (lastCtrlABlockId === blockInput.dataset.blockId) selectAllMemoBlocks(container);
+        else selectBlockContents(blockInput);
+        lastCtrlABlockId = blockInput.dataset.blockId;
       }
     } else if (key === 'z') {
       event.preventDefault();
@@ -2085,6 +2093,13 @@ function renderEditMode(container, { preserveHistory = false } = {}) {
     rerenderBlocks(container);
     focusBlock(activeEditorBlockId, container);
   });
+  editPage?.addEventListener('pointerdown', event => {
+    lastCtrlABlockId = null;
+    if (!crossBlockSelectionMode || !event.target?.closest?.('#kn-blocks-wrap')) return;
+    if (event.target.closest('button, select, input')) return;
+    // 全文選択後に本文をタップすれば、解除ボタンを探さずその場で編集へ戻れる。
+    setCrossBlockSelectionMode(container, false);
+  }, true);
   editPage?.addEventListener('keydown', event => {
     if (!crossBlockSelectionMode) return;
     if (event.key === 'Escape') {
@@ -2679,17 +2694,31 @@ function wireBlockDrag(container, wrap) {
     wrap.querySelectorAll('.kn-block--drop-before, .kn-block--drop-after, .kn-block--drop-inside')
       .forEach(el => el.classList.remove('kn-block--drop-before', 'kn-block--drop-after', 'kn-block--drop-inside'));
   };
+  /** 長押しが画面外で終わっても、移動中の表示やタイマーを残さない。 */
+  const clearGlobalDragListeners = () => {
+    window.removeEventListener('pointerup', onGlobalPointerUp);
+    window.removeEventListener('pointercancel', onGlobalPointerCancel);
+    window.removeEventListener('blur', onWindowBlur);
+  };
   /** 指を離した位置から移動先を確定し、ブロック移動後にドラッグ表示を片付ける。 */
   const finishDrag = (cancelled = false) => {
     clearHoldTimer();
+    clearGlobalDragListeners();
     if (!dragState) return;
     const state = dragState;
     dragState = null;
     clearIndicators();
     document.body.classList.remove('kn-block-drag-active');
-    wrap.querySelector(`[data-block-id="${state.blockId}"]`)?.classList.remove('kn-block--dragging');
+    state.blockEl.classList.remove('kn-block--dragging');
+    state.preview?.remove();
+    try {
+      if (state.blockEl.hasPointerCapture?.(state.pointerId)) {
+        state.blockEl.releasePointerCapture(state.pointerId);
+      }
+    } catch {}
 
     if (!cancelled && state.dragging && state.targetId && state.placement) {
+      syncEditorDomToState(container);
       recordEditorHistory(container);
       if (moveBlockByDrop(state.blockId, state.targetId, state.placement)) {
         activeEditorBlockId = state.blockId;
@@ -2698,7 +2727,7 @@ function wireBlockDrag(container, wrap) {
       return;
     }
 
-    if (!state.dragging) {
+    if (!cancelled && !state.dragging) {
       activeEditorBlockId = state.blockId;
       wrap.querySelectorAll('.kn-block--active').forEach(el => el.classList.remove('kn-block--active'));
       const blockEl = wrap.querySelector(`[data-block-id="${state.blockId}"]`);
@@ -2707,6 +2736,16 @@ function wireBlockDrag(container, wrap) {
       if (block) highlightToolbarType(container, block.type);
     }
   };
+  /** ラッパー外で指を離した場合は移動を中止する。 */
+  const onGlobalPointerUp = e => {
+    if (dragState?.pointerId === e.pointerId) finishDrag(true);
+  };
+  /** OS側にポインター操作を取り消された場合の後始末。 */
+  const onGlobalPointerCancel = e => {
+    if (dragState?.pointerId === e.pointerId) finishDrag(true);
+  };
+  /** アプリが背面に移った場合に移動中の表示を残さない。 */
+  const onWindowBlur = () => finishDrag(true);
 
   wrap.addEventListener('pointerdown', e => {
     if (crossBlockSelectionMode) return;
@@ -2716,6 +2755,7 @@ function wireBlockDrag(container, wrap) {
     const blockId = blockEl.dataset.blockId;
     const movingBlock = findBlockInAllBlocks(edState.blocks, blockId);
     if (!movingBlock) return;
+    if (dragState) finishDrag(true);
     dragState = {
       blockId,
       pointerId: e.pointerId,
@@ -2727,16 +2767,28 @@ function wireBlockDrag(container, wrap) {
       blockedIds: collectBlockIds(movingBlock),
       blockEl,
     };
+    window.addEventListener('pointerup', onGlobalPointerUp);
+    window.addEventListener('pointercancel', onGlobalPointerCancel);
+    window.addEventListener('blur', onWindowBlur);
     activeEditorBlockId = blockId;
     holdTimer = setTimeout(() => {
       if (!dragState || dragState.pointerId !== e.pointerId) return;
+      if (!blockEl.isConnected) { finishDrag(true); return; }
       dragState.dragging = true;
       // 長押し後は文字選択ではなくブロック移動として扱う。表示上のハンドルを
       // 増やさず、本文のどこからでも掴める現在のUIを維持する。
       window.getSelection()?.removeAllRanges();
       document.body.classList.add('kn-block-drag-active');
       blockEl.classList.add('kn-block--dragging');
-      blockEl.setPointerCapture?.(e.pointerId);
+      const preview = document.createElement('div');
+      preview.className = 'kn-block-drag-preview';
+      preview.setAttribute('aria-hidden', 'true');
+      preview.textContent = String(movingBlock.text || movingBlock.caption || (movingBlock.type === 'table' ? '表' : 'ブロック'))
+        .replace(/\s+/g, ' ').slice(0, 90);
+      document.body.append(preview);
+      dragState.preview = preview;
+      positionMemoDragPreview(preview, e.clientX, e.clientY);
+      try { blockEl.setPointerCapture?.(e.pointerId); } catch {}
       navigator.vibrate?.(12);
     }, e.pointerType === 'mouse' ? 280 : 380);
   });
@@ -2746,16 +2798,22 @@ function wireBlockDrag(container, wrap) {
     const distance = Math.hypot(e.clientX - dragState.startX, e.clientY - dragState.startY);
     if (!dragState.dragging) {
       if (distance > 8) {
-        clearHoldTimer();
-        dragState = null;
+        finishDrag(true);
       }
       return;
     }
     e.preventDefault();
     clearIndicators();
+    positionMemoDragPreview(dragState.preview, e.clientX, e.clientY);
 
     const hit = document.elementFromPoint(e.clientX, e.clientY);
-    const targetEl = hit?.closest?.('.kn-block[data-block-id]');
+    const direct = hit?.closest?.('.kn-block[data-block-id]');
+    const bounds = wrap.getBoundingClientRect();
+    const inWrap = e.clientX >= bounds.left && e.clientX <= bounds.right
+      && e.clientY >= bounds.top - 20 && e.clientY <= bounds.bottom + 20;
+    const targetEl = direct || (inWrap ? nearestMemoDropBlock(
+      [...wrap.querySelectorAll('.kn-block[data-block-id]')], dragState.blockedIds, e.clientX, e.clientY,
+    ) : null);
     const targetId = targetEl?.dataset.blockId;
     if (!targetEl || !targetId || dragState.blockedIds.has(targetId)) {
       dragState.targetId = null;
@@ -2777,9 +2835,15 @@ function wireBlockDrag(container, wrap) {
 
   wrap.addEventListener('pointerup', e => {
     if (!dragState || dragState.pointerId !== e.pointerId) return;
-    finishDrag(false);
+    const bounds = wrap.getBoundingClientRect();
+    const outside = e.clientX < bounds.left || e.clientX > bounds.right
+      || e.clientY < bounds.top - 20 || e.clientY > bounds.bottom + 20;
+    finishDrag(outside);
   });
   wrap.addEventListener('pointercancel', () => finishDrag(true));
+  wrap.addEventListener('lostpointercapture', e => {
+    if (dragState?.pointerId === e.pointerId) finishDrag(true);
+  });
   wrap.addEventListener('contextmenu', e => {
     if (!dragState?.dragging) return;
     e.preventDefault();
@@ -2918,6 +2982,32 @@ export function resolveMemoEnterAction(event, blockType = 'paragraph', desktopKe
   if (blockType === 'toggle') return 'open-toggle';
   if (['bullet', 'numbered', 'checklist'].includes(blockType)) return 'continue-list';
   return 'split-block';
+}
+
+/** 長押し移動中のラベルを指のそばへ置き、元位置の薄い表示だけに頼らず移動を示す。 */
+function positionMemoDragPreview(preview, x, y) {
+  if (!preview) return;
+  const left = Math.max(8, Math.min(x + 12, window.innerWidth - 228));
+  preview.style.transform = `translate3d(${left}px, ${Math.max(8, y - 54)}px, 0)`;
+}
+
+/** ブロック間の隙間へ離した場合も、最も近い移動先を一つだけ選ぶ。 */
+export function nearestMemoDropBlock(elements, blockedIds, x, y) {
+  let nearest = null;
+  let distance = Infinity;
+  for (const element of elements) {
+    if (blockedIds.has(element.dataset.blockId)) continue;
+    const rect = element.getBoundingClientRect();
+    if (!rect.height || !rect.width) continue;
+    const vertical = Math.max(rect.top - y, y - rect.bottom, 0);
+    const horizontal = Math.max(rect.left - x, x - rect.right, 0);
+    const nextDistance = vertical + horizontal;
+    if (nextDistance < distance) {
+      nearest = element;
+      distance = nextDistance;
+    }
+  }
+  return nearest;
 }
 
 /**
@@ -3597,6 +3687,19 @@ function selectAllMemoBlocks(container) {
   selection?.removeAllRanges();
   selection?.addRange(range);
   return true;
+}
+
+/** 編集可能な一ブロックだけを選択し、通常の入力や書式操作は使えるままにする。 */
+function selectBlockContents(editable) {
+  if (editable.tagName === 'TEXTAREA' || editable.tagName === 'INPUT') {
+    editable.select();
+    return;
+  }
+  const selection = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(editable);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
 }
 
 /** 現在のDOM選択が本文ラッパーの先頭から末尾までを完全に覆うか判定する。 */

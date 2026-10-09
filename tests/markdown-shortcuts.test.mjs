@@ -23,12 +23,20 @@ import {
   resolveNumberedBlockValue,
   renumberInsertedListContinuation,
   resolveMemoArrowNavigation,
+  nearestMemoDropBlock,
   trimPastedMarkdownEdges,
   renderBlocksView,
   renderMemoCardPreview,
   resolveViewToggleCollapsed,
 } from '../js/modules/memo.js';
 import { normalizeMemoBlockIds } from '../js/storage.js';
+
+test('block drop can target the nearest block through a visual gap without selecting the source', () => {
+  const source = { dataset: { blockId: 'source' }, getBoundingClientRect: () => ({ left: 0, right: 300, top: 0, bottom: 30, width: 300, height: 30 }) };
+  const destination = { dataset: { blockId: 'destination' }, getBoundingClientRect: () => ({ left: 0, right: 300, top: 50, bottom: 80, width: 300, height: 30 }) };
+  assert.equal(nearestMemoDropBlock([source, destination], new Set(['source']), 120, 40), destination);
+  assert.equal(nearestMemoDropBlock([source], new Set(['source']), 120, 40), null);
+});
 
 test('offline app shell includes the memo shortcut module', () => {
   const serviceWorker = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
