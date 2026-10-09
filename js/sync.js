@@ -91,6 +91,7 @@ const DELETE_GRACE_MS = 250;
 const DELETE_RETRY_MS = 5000;
 const DELETE_TOMBSTONE_KEY = 'mp_sync_pending_deletes';
 const RECENT_UPSERT_KEY = 'mp_sync_recent_upserts';
+const RECENT_UPSERT_SESSION_KEY = 'mp_sync_recent_upserts_fallback';
 const SYNC_STATUS_KEY = 'mp_sync_status';
 const EVENT_BACKFILL_VERSION = 1;
 const EVENT_REMOTE_SNAPSHOT_VERSION = 1;
@@ -111,6 +112,7 @@ let _realtimeChannel = null;
 let _realtimeUserId = null;
 let _realtimePullTimer = null;
 let _syncEpoch = 0;
+let _recentUpsertsMemory = null;
 
 // ---- init ----
 
@@ -228,6 +230,8 @@ export async function resetSyncForUserSwitch({ flush = false } = {}) {
   await Promise.allSettled([..._pushPromises.values()]);
   localStorage.removeItem(DELETE_TOMBSTONE_KEY);
   localStorage.removeItem(RECENT_UPSERT_KEY);
+  _recentUpsertsMemory = null;
+  try { sessionStorage.removeItem(RECENT_UPSERT_SESSION_KEY); } catch {}
   localStorage.removeItem(SYNC_STATUS_KEY);
   return true;
 }
@@ -1356,7 +1360,14 @@ function _filterPendingTagDeletes(tags) {
 function _getRecentUpserts() {
   const now = Date.now();
   const activeUserId = getActiveUserId();
-  const all = _ls(RECENT_UPSERT_KEY, []);
+  let all = _recentUpsertsMemory;
+  if (!all) {
+    try {
+      const fallback = sessionStorage.getItem(RECENT_UPSERT_SESSION_KEY);
+      if (fallback !== null) all = JSON.parse(fallback);
+    } catch {}
+  }
+  if (!Array.isArray(all)) all = _ls(RECENT_UPSERT_KEY, []);
   const filtered = all.filter(entry => {
     if (!entry?.table) return false;
     if (entry.userId && activeUserId && entry.userId !== activeUserId) return false;
@@ -1365,14 +1376,24 @@ function _getRecentUpserts() {
     return true;
   });
   if (JSON.stringify(filtered) !== JSON.stringify(all)) {
-    localStorage.setItem(RECENT_UPSERT_KEY, JSON.stringify(filtered));
+    _saveRecentUpserts(filtered);
   }
   return filtered;
 }
 
 /** 同期完了までクラウドの古い値で上書きさせない直近更新記録を端末へ保存する。 */
 function _saveRecentUpserts(entries) {
-  localStorage.setItem(RECENT_UPSERT_KEY, JSON.stringify(entries));
+  const serialized = JSON.stringify(entries);
+  try {
+    localStorage.setItem(RECENT_UPSERT_KEY, serialized);
+    _recentUpsertsMemory = null;
+    try { sessionStorage.removeItem(RECENT_UPSERT_SESSION_KEY); } catch {}
+  } catch (error) {
+    // 本文の保存は既に成功している。同期保護をこのタブとセッションに残し、送信を続ける。
+    _recentUpsertsMemory = entries;
+    try { sessionStorage.setItem(RECENT_UPSERT_SESSION_KEY, serialized); } catch {}
+    console.warn('[Sync] recent edit marker uses session fallback:', error);
+  }
 }
 
 /** 指定コレクションの最近更新された項目を、期限付きの送信保護記録へ追加する。 */
