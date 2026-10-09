@@ -61,7 +61,7 @@ test('memo list uses two rows with creation date and right-aligned star', () => 
     createdAt: '2026-10-09T12:00:00Z',
     updatedAt: '2026-10-10T12:00:00Z',
     starred: true,
-    tags: ['資料'],
+    tags: ['資料', '研究', 'あとで'],
     blocks: [
       { type: 'paragraph', text: '最初の文章' },
       { type: 'paragraph', text: '次の文章' },
@@ -69,9 +69,14 @@ test('memo list uses two rows with creation date and right-aligned star', () => 
   });
   assert.match(html, /研究メモ/);
   assert.match(html, /2026\/10\/09/);
+  assert.match(html, /kn-memo-card-tags/);
+  assert.match(html, /資料/);
+  assert.match(html, /研究/);
+  assert.match(html, /\+1/);
+  assert.ok(html.indexOf('kn-memo-card-tags') < html.indexOf('kn-memo-date'));
   assert.match(html, /kn-star-btn starred/);
   assert.match(html, /最初の文章/);
-  assert.doesNotMatch(html, /2026\/10\/10|次の文章|kn-tag-chip|資料/);
+  assert.doesNotMatch(html, /2026\/10\/10|次の文章/);
   assert.ok(html.indexOf('kn-memo-title') < html.indexOf('kn-memo-date'));
   assert.ok(html.indexOf('kn-memo-date') < html.indexOf('kn-star-btn'));
   assert.ok(html.indexOf('kn-star-btn') < html.indexOf('kn-memo-card-sub'));

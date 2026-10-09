@@ -82,3 +82,8 @@ test('narrow Atlas and Knowledge controls keep their labels readable', () => {
   assert.match(styleCss, /\.kn-memo-title,\s*\.kn-view-title,\s*\.kn-edit-title\s*\{[\s\S]*?font-family:\s*var\(--ui-font\)/);
   assert.match(styleCss, /\.kn-edit-page \.kn-block-text\s*\{[\s\S]*?font-family:\s*var\(--ui-font\)/);
 });
+
+test('narrow desktop windows do not inherit mobile editor font enlargement', () => {
+  assert.match(styleCss, /@media \(max-width: 640px\) and \(pointer: coarse\)\s*\{[\s\S]*?\[contenteditable="true"\]\s*\{\s*font-size:\s*16px !important/);
+  assert.match(styleCss, /@media \(max-width: 640px\) and \(pointer: fine\)\s*\{\s*\.kn-blocks-wrap\s*\{\s*padding-left:\s*18px/);
+});

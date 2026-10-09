@@ -176,7 +176,7 @@ h1, h2, h3, h4, h5, h6,
 }
 
 /* Keep iOS from auto-zooming the whole page when a compact editor gains focus. */
-@media (max-width: 640px) {
+@media (max-width: 640px) and (pointer: coarse) {
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
   textarea,
   select,
@@ -13154,6 +13154,22 @@ button.atlas-nuance-map-row:focus-visible {
   font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
+.kn-memo-card-tags {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  max-width: min(34%, 150px);
+  min-width: 0;
+  overflow: hidden;
+}
+.kn-memo-card-tags .kn-tag-chip {
+  max-width: 90px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+}
+.kn-memo-card-tags .kn-tag-chip--more { flex-shrink: 0; }
 .kn-memo-card-top .kn-star-btn { width: 40px; height: 40px; }
 .kn-memo-card-sub { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .kn-memo-preview {
@@ -13200,10 +13216,13 @@ button.atlas-nuance-map-row:focus-visible {
 @media (max-width: 640px) {
   .kn-blocks-wrap { padding-left: 12px; padding-right: 0; }
 }
+@media (max-width: 640px) and (pointer: fine) {
+  .kn-blocks-wrap { padding-left: 18px; }
+}
 .kn-block { padding-left: 0; }
 .kn-block-drag-handle {
   display: inline-grid;
-  left: -12px;
+  left: -18px;
   width: 24px;
   height: 30px;
   opacity: 0;
@@ -13212,6 +13231,9 @@ button.atlas-nuance-map-row:focus-visible {
   color: var(--text-muted);
   font-size: 13px;
   letter-spacing: 0;
+}
+@media (max-width: 640px) and (pointer: coarse) {
+  .kn-block-drag-handle { left: -12px; }
 }
 @media (hover: hover) and (pointer: fine) {
   .kn-block:hover > .kn-block-drag-handle { opacity: 1; pointer-events: auto; }

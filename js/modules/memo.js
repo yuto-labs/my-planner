@@ -712,6 +712,7 @@ function renderList() {
 export function renderMemoCard(m) {
   const preview = renderMemoCardPreview(m.blocks || [], 1);
   const dateStr = formatDate(m.createdAt || m.updatedAt, 'ymd-padded');
+  const tags = Array.isArray(m.tags) ? m.tags : [];
 
   return `
     <div class="kn-memo-card" data-memo-id="${esc(m.id)}" role="group" tabindex="0"
@@ -720,6 +721,10 @@ export function renderMemoCard(m) {
         <div class="kn-memo-heading">
           <span class="kn-memo-title">${esc(m.title || '無題のメモ')}</span>
         </div>
+        ${tags.length ? `<div class="kn-memo-card-tags" title="${esc(tags.join(', '))}">
+          ${tags.slice(0, 2).map(tag => `<span class="kn-tag-chip kn-tag-chip--sm">${esc(tag)}</span>`).join('')}
+          ${tags.length > 2 ? `<span class="kn-tag-chip kn-tag-chip--more">+${tags.length - 2}</span>` : ''}
+        </div>` : ''}
         <span class="kn-memo-date" title="作成日">${dateStr}</span>
         <button class="kn-star-btn${m.starred ? ' starred' : ''}" data-star-id="${esc(m.id)}" aria-label="${m.starred ? 'スター解除' : 'スター'}">
           ${m.starred
@@ -1450,7 +1455,7 @@ function renderViewMode(container) {
         const todayStr   = new Date().toISOString().slice(0, 10);
         const srsEntry   = getReviewEntry(id);
         if (srsEntry?.stage === REVIEW_DISABLED_STAGE) {
-          return `<div class="kn-review-disabled-note">このメモは復習対象外です。編集画面からいつでも変更できます。</div>`;
+          return '';
         }
         const stage      = srsEntry?.stage ?? 0;
         const isMastered = stage >= MASTERY_STAGE;
@@ -4941,11 +4946,35 @@ async function saveMemo(container) {
     await persistMemo(container);
   } catch (error) {
     console.error('Memo save failed:', error);
-    toast('保存できませんでした。入力内容は画面に残しています', 'error');
+    // The local write may have succeeded before a sync hook or view update threw.
+    // Confirm the stored draft before telling the user that saving failed.
+    const stored = edState.id ? getKnowledgeMemoById(edState.id) : null;
+    const expectedTags = edState.tags.length ? edState.tags : ['General'];
+    const isStored = stored && editableMemoSignature(stored) === editableMemoSignature({
+      title: edState.title.trim() || '無題のメモ',
+      blocks: edState.blocks,
+      tags: expectedTags,
+      url: edState.url,
+      starred: edState.starred,
+    });
+    toast(isStored
+      ? 'メモ本文はこの端末に保存されました。画面更新または同期の確認に失敗しました'
+      : '保存できませんでした。入力内容は画面に残しています', 'error');
   } finally {
     memoSaveInFlight = false;
     if (saveButton?.isConnected) saveButton.disabled = false;
   }
+}
+
+/** Compare only user-editable memo fields, ignoring timestamps and sync metadata. */
+function editableMemoSignature(memo) {
+  return JSON.stringify({
+    title: memo?.title || '',
+    blocks: memo?.blocks || [],
+    tags: memo?.tags || [],
+    url: memo?.url || '',
+    starred: !!memo?.starred,
+  });
 }
 
 /** 正規化済み下書きを新規追加または既存更新し、画像削除・復習設定・編集基準も確定する。 */
@@ -4983,15 +5012,6 @@ async function persistMemo(container) {
     starred: edState.starred,
     summary: blocksToText(edState.blocks, 200),
   };
-  /** 編集要素のMarkdown文字列を結合し、保存前後でDOM入力が変化したか比較できる値を作る。 */
-  const editableSignature = memo => JSON.stringify({
-    title: memo?.title || '',
-    blocks: memo?.blocks || [],
-    tags: memo?.tags || [],
-    url: memo?.url || '',
-    starred: !!memo?.starred,
-  });
-
   if (edState.id) {
     // Clear pendingAI if tags were added during this edit
     if (memoData.tags?.length) memoData.pendingAI = false;
@@ -5004,7 +5024,7 @@ async function persistMemo(container) {
       return;
     }
     const persisted = getKnowledgeMemoById(edState.id);
-    if (editableSignature(persisted) !== editableSignature(memoData)) {
+    if (editableMemoSignature(persisted) !== editableMemoSignature(memoData)) {
       toast('変更を確認できなかったため、編集画面を保持しました。もう一度保存してください', 'error');
       return;
     }
@@ -5020,7 +5040,7 @@ async function persistMemo(container) {
       return;
     }
     const persisted = getKnowledgeMemoById(saved.id);
-    if (editableSignature(persisted) !== editableSignature(memoData)) {
+    if (editableMemoSignature(persisted) !== editableMemoSignature(memoData)) {
       toast('作成内容を確認できなかったため、編集画面を保持しました。もう一度保存してください', 'error');
       return;
     }
