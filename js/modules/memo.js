@@ -42,6 +42,7 @@ import {
   memoBlocksToText as blocksToText,
   normalizeMemoTable as normalizeTableData,
   normalizeMemoTableCell, memoTableCellToMarkdown, parsePastedMemoTable,
+  normalizeMemoUrl, splitMemoTextUrls,
   sortMemosForList,
   trimMemoEdgeEmptyBlocks,
 } from '../memo-model.js';
@@ -1411,6 +1412,7 @@ function renderDetail(container, options = {}) {
 function renderViewMode(container) {
   const { id, title, blocks, tags, url, starred } = edState;
   const relatedMemos = getRelatedMemos(id, tags);
+  const safeUrl = normalizeMemoUrl(url);
 
   container.innerHTML = `
     <div class="kn-view-page">
@@ -1436,10 +1438,10 @@ function renderViewMode(container) {
           <div class="kn-tag-list">
             ${tags.map(t => `<span class="kn-tag-chip">${esc(t)}</span>`).join('')}
           </div>
-          ${url ? `<a class="kn-url-link" href="${esc(url)}" target="_blank" rel="noopener">
+          ${safeUrl ? `<a class="kn-url-link" href="${esc(safeUrl)}" target="_blank" rel="noopener noreferrer">
             <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>
             ${esc(url.replace(/^https?:\/\//, '').split('/')[0])}
-          </a>` : ''}
+          </a>` : url ? `<span class="kn-url-link">${esc(url)}</span>` : ''}
         </div>
       ` : ''}
 
@@ -1620,8 +1622,10 @@ function renderViewMode(container) {
     card.addEventListener('click', () => openKnowledgeMemo(card.dataset.relatedId));
   });
 
-  // Setup term selection
-  setupTermSelection(container.querySelector('#kn-view-content'), container);
+  // 装飾HTMLや既存のMarkdownリンクを保ちつつ、本文に貼った裸のURLも開けるようにする。
+  const viewContent = container.querySelector('#kn-view-content');
+  linkifyMemoViewUrls(viewContent);
+  setupTermSelection(viewContent, container);
 
   // Render KaTeX after DOM is ready
   requestAnimationFrame(() => {
@@ -1739,6 +1743,34 @@ function renderInlineMarkdown(text) {
 function getBlockRichHtml(block) {
   if (block.html) return sanitizeBlockHtml(block.html);
   return renderInlineMarkdown(esc(block.text || ''));
+}
+
+/** 閲覧中のテキストノードだけをリンク化し、既存リンク・コード・保存本文は触らない。 */
+function linkifyMemoViewUrls(content) {
+  if (!content) return;
+  const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach(node => {
+    if (node.parentElement?.closest('a, code, pre, button, [contenteditable="true"]')) return;
+    const parts = splitMemoTextUrls(node.textContent);
+    if (!parts.some(part => part.href)) return;
+    const fragment = document.createDocumentFragment();
+    parts.forEach(part => {
+      if (!part.href) {
+        fragment.append(document.createTextNode(part.text));
+        return;
+      }
+      const anchor = document.createElement('a');
+      anchor.className = 'kn-inline-link';
+      anchor.href = part.href;
+      anchor.target = '_blank';
+      anchor.rel = 'noopener noreferrer';
+      anchor.textContent = part.text;
+      fragment.append(anchor);
+    });
+    node.replaceWith(fragment);
+  });
 }
 
 /** 詳細画面内の未描画数式をKaTeXへ渡し、失敗した式は原文を残して画面停止を防ぐ。 */

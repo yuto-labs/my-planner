@@ -7,9 +7,23 @@ import {
   memoBlocksToText,
   normalizeMemoTable,
   normalizeMemoTableCell, memoTableCellToMarkdown, parsePastedMemoTable,
+  normalizeMemoUrl, splitMemoTextUrls,
   sortMemosForList,
   trimMemoEdgeEmptyBlocks,
 } from '../js/memo-model.js';
+
+test('plain memo URLs become safe links without including Japanese punctuation', () => {
+  assert.deepEqual(splitMemoTextUrls('資料は https://example.com/a?q=1&b=2 。次は www.example.org/path。'), [
+    { text: '資料は ' },
+    { text: 'https://example.com/a?q=1&b=2', href: 'https://example.com/a?q=1&b=2' },
+    { text: ' 。次は ' },
+    { text: 'www.example.org/path', href: 'https://www.example.org/path' },
+    { text: '。' },
+  ]);
+  assert.equal(normalizeMemoUrl('javascript:alert(1)'), null);
+  assert.equal(normalizeMemoUrl('ftp://example.com/file'), null);
+  assert.deepEqual(splitMemoTextUrls('ただの文章'), [{ text: 'ただの文章' }]);
+});
 
 test('table break tags become newlines without executing unrelated HTML or mutating saved data', () => {
   const source = { table: { headers: ['項目<br>補足', '説明'], rows: [['A<BR>B<br/>C<br />D', '<img onerror=alert(1)>']] } };

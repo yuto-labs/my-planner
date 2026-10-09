@@ -16,6 +16,38 @@ export function sortMemosForList(memos) {
   });
 }
 
+/** 本文に表示するURLだけを検証する。保存値は書き換えない。 */
+export function normalizeMemoUrl(value) {
+  const source = String(value || '').trim();
+  if (!/^(?:https?:\/\/|www\.)/i.test(source)) return null;
+  try {
+    const url = new URL(/^www\./i.test(source) ? `https://${source}` : source);
+    return ['http:', 'https:'].includes(url.protocol) && url.hostname ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 裸のURLを表示用の文字列とリンク先へ分け、句読点はリンクに含めない。 */
+export function splitMemoTextUrls(value) {
+  const source = String(value ?? '');
+  const urlPattern = /(?:https?:\/\/|www\.)[^\s<>"']+/gi;
+  const parts = [];
+  let cursor = 0;
+  for (const match of source.matchAll(urlPattern)) {
+    const start = match.index;
+    if (start > 0 && /[a-z\d@_]/i.test(source[start - 1])) continue;
+    const label = match[0].replace(/[.,!?;:、。！？，．）)\]}]+$/u, '');
+    const href = normalizeMemoUrl(label);
+    if (!href) continue;
+    if (start > cursor) parts.push({ text: source.slice(cursor, start) });
+    parts.push({ text: label, href });
+    cursor = start + label.length;
+  }
+  if (cursor < source.length) parts.push({ text: source.slice(cursor) });
+  return parts.length ? parts : [{ text: source }];
+}
+
 /** 表で使われる改行タグだけを改行へ戻す。他のHTMLは実行せず文字列のまま残す。 */
 export function normalizeMemoTableCell(value) {
   return String(value ?? '').replace(/\r\n?/g, '\n').replace(/<br\s*\/?\s*>/gi, '\n');
