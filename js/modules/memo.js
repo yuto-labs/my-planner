@@ -708,11 +708,10 @@ function renderList() {
   });
 }
 
-/** 一覧用に、題名・一行プレビュー・星・削除操作を含む一件分のカードHTMLを作る。 */
-function renderMemoCard(m) {
+/** 一覧用に、題名・作成日・星と一行プレビューだけのカードHTMLを作る。 */
+export function renderMemoCard(m) {
   const preview = renderMemoCardPreview(m.blocks || [], 1);
-  const dateStr = formatDate(m.updatedAt || m.createdAt, 'short');
-  const tags    = m.tags || [];
+  const dateStr = formatDate(m.createdAt || m.updatedAt, 'ymd-padded');
 
   return `
     <div class="kn-memo-card" data-memo-id="${esc(m.id)}" role="group" tabindex="0"
@@ -721,20 +720,16 @@ function renderMemoCard(m) {
         <div class="kn-memo-heading">
           <span class="kn-memo-title">${esc(m.title || '無題のメモ')}</span>
         </div>
-        ${m.pendingAI ? '<span class="kn-pending-badge">🤖 AI処理待ち</span>' : ''}
+        <span class="kn-memo-date" title="作成日">${dateStr}</span>
         <button class="kn-star-btn${m.starred ? ' starred' : ''}" data-star-id="${esc(m.id)}" aria-label="${m.starred ? 'スター解除' : 'スター'}">
           ${m.starred
             ? '<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>'
             : '<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z"/></svg>'}
         </button>
       </div>
-      ${preview ? `<div class="kn-memo-preview">${preview}</div>` : ''}
-      <div class="kn-memo-footer">
-        <div class="kn-tag-list">
-          ${tags.slice(0, 4).map(t => `<span class="kn-tag-chip">${esc(t)}</span>`).join('')}
-          ${tags.length > 4 ? `<span class="kn-tag-chip kn-tag-chip--more">+${tags.length - 4}</span>` : ''}
-        </div>
-        <span class="kn-memo-date">${dateStr}</span>
+      <div class="kn-memo-card-sub">
+        ${m.pendingAI ? '<span class="kn-pending-badge">AI処理待ち</span>' : ''}
+        <div class="kn-memo-preview">${preview || '<span class="kn-memo-preview-empty">本文なし</span>'}</div>
       </div>
     </div>
   `;

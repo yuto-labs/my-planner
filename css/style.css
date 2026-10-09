@@ -13139,8 +13139,9 @@ button.atlas-nuance-map-row:focus-visible {
 }
 
 /* Memo library: compact scanning without changing stored block content. */
-.kn-memo-card { padding-block: 9px; }
-.kn-memo-card-top { align-items: center; margin-bottom: 3px; }
+.kn-memo-list { gap: 6px; padding: 10px 12px 24px; }
+.kn-memo-card { padding: 5px 10px 7px; }
+.kn-memo-card-top { align-items: center; gap: 4px; margin-bottom: 0; }
 .kn-memo-title {
   display: block;
   max-width: 100%;
@@ -13148,12 +13149,22 @@ button.atlas-nuance-map-row:focus-visible {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+.kn-memo-card-top .kn-memo-date {
+  margin-left: auto;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.kn-memo-card-top .kn-star-btn { width: 40px; height: 40px; }
+.kn-memo-card-sub { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .kn-memo-preview {
+  flex: 1;
+  min-width: 0;
   max-height: 1.5em;
-  margin-bottom: 5px;
+  margin: 0;
   overflow: hidden;
   white-space: nowrap;
 }
+.kn-memo-preview-empty { color: var(--text-dim); }
 .kn-memo-preview-line { display: flex; flex-wrap: nowrap; overflow: hidden; }
 .kn-memo-preview-text {
   display: block;

@@ -174,6 +174,7 @@ export function formatDate(dateOrStr, style = 'short') {
   if (style === 'medium') return `${y}\u5e74${m}\u6708${day}\u65e5(${wd})`;  
   if (style === 'month') return `${y}\u5e74${m}\u6708`;  
   if (style === 'ymd') return `${y}/${m}/${day}`;
+  if (style === 'ymd-padded') return `${y}/${String(m).padStart(2, '0')}/${String(day).padStart(2, '0')}`;
   return `${m}/${day}`;
 }
 
