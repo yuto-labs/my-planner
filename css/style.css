@@ -13195,11 +13195,15 @@ button.atlas-nuance-map-row:focus-visible {
 .kn-delete-action:hover,
 .kn-delete-action:focus-visible { background: color-mix(in srgb, var(--danger) 15%, transparent); }
 
-/* The grip overlays only the active or hovered block, so typing width never changes. */
+/* Move the grip into the outer edge without changing the usable line width. */
+.kn-blocks-wrap { padding-left: 18px; padding-right: 6px; }
+@media (max-width: 640px) {
+  .kn-blocks-wrap { padding-left: 12px; padding-right: 0; }
+}
 .kn-block { padding-left: 0; }
 .kn-block-drag-handle {
   display: inline-grid;
-  left: -6px;
+  left: -12px;
   width: 24px;
   height: 30px;
   opacity: 0;
@@ -13217,7 +13221,7 @@ button.atlas-nuance-map-row:focus-visible {
 }
 .kn-block--active > .kn-block-drag-handle,
 .kn-block-drag-handle:focus-visible { opacity: 1; pointer-events: auto; }
-.kn-range-select-mode .kn-block-drag-handle { opacity: 0; pointer-events: none; }
+.kn-range-select-mode .kn-block-drag-handle { display: none; }
 .kn-block--dragging {
   opacity: .22;
 }

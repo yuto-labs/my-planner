@@ -2033,26 +2033,14 @@ function renderEditMode(container, { preserveHistory = false } = {}) {
     if (performance.now() - lastKeyboardHistoryAt < 120) return;
     restoreEditorHistory(container, event.inputType === 'historyRedo' ? 'redo' : 'undo');
   }, true);
-  let lastCtrlABlockId = null;
   editPage?.addEventListener('keydown', event => {
-    if (event.isComposing) return;
-    if (!(event.ctrlKey || event.metaKey)) {
-      if (!['Control', 'Meta', 'Shift', 'Alt'].includes(event.key)) lastCtrlABlockId = null;
-      return;
-    }
+    if (event.isComposing || !(event.ctrlKey || event.metaKey)) return;
     const key = event.key.toLowerCase();
-    if (key !== 'a') lastCtrlABlockId = null;
     if (key === 'a') {
-      const blockInput = event.target?.closest?.('.kn-block-focusable');
-      if (crossBlockSelectionMode) {
+      if (crossBlockSelectionMode || event.target?.closest?.('#kn-blocks-wrap')) {
         event.preventDefault();
+        // ブロック単位の選択は取っ手に任せ、Ctrl/Cmd+Aは一度でメモ全文を選ぶ。
         selectAllMemoBlocks(container);
-      } else if (blockInput) {
-        event.preventDefault();
-        // 空ブロックでは選択範囲だけで一回目・二回目を区別できないため、押した順を保持する。
-        if (lastCtrlABlockId === blockInput.dataset.blockId) selectAllMemoBlocks(container);
-        else selectBlockContents(blockInput);
-        lastCtrlABlockId = blockInput.dataset.blockId;
       }
     } else if (key === 'z') {
       event.preventDefault();
@@ -2089,10 +2077,8 @@ function renderEditMode(container, { preserveHistory = false } = {}) {
     focusBlock(activeEditorBlockId, container);
   });
   editPage?.addEventListener('pointerdown', event => {
-    lastCtrlABlockId = null;
-    if (!crossBlockSelectionMode || !event.target?.closest?.('#kn-blocks-wrap')) return;
-    if (event.target.closest('button, select, input')) return;
-    // 全文選択後に本文をタップすれば、解除ボタンを探さずその場で編集へ戻れる。
+    if (!crossBlockSelectionMode || !event.target?.closest?.('#kn-edit-title, #kn-tag-input')) return;
+    // 本文の範囲選択中でも、タイトルやタグの入力は通常どおり続けられる。
     setCrossBlockSelectionMode(container, false);
   }, true);
   editPage?.addEventListener('keydown', event => {
@@ -3475,9 +3461,8 @@ function wireToolbar(container) {
       setCrossBlockSelectionMode(container, false);
       return;
     }
-    // スマートフォンでは複数のcontenteditableを指でまたいで選び始めにくい。
-    // ボタン一回で全文を選び、OSの選択ハンドルから必要な範囲へ狭められるようにする。
-    if (selectAllMemoBlocks(container)) toast('メモ本文を全選択しました', 'info');
+    // 選択モードでは本文を一時的に非編集にし、複数ブロックをまたぐ任意の範囲を選べる。
+    setCrossBlockSelectionMode(container, true);
   });
   const blockMenuToggle = container.querySelector('#kn-block-actions-toggle');
   const blockMenu = container.querySelector('.kn-toolbar-block-actions');
@@ -3705,19 +3690,6 @@ function selectAllMemoBlocks(container) {
   return true;
 }
 
-/** 編集可能な一ブロックだけを選択し、通常の入力や書式操作は使えるままにする。 */
-function selectBlockContents(editable) {
-  if (editable.tagName === 'TEXTAREA' || editable.tagName === 'INPUT') {
-    editable.select();
-    return;
-  }
-  const selection = window.getSelection();
-  const range = document.createRange();
-  range.selectNodeContents(editable);
-  selection?.removeAllRanges();
-  selection?.addRange(range);
-}
-
 /** 現在のDOM選択が本文ラッパーの先頭から末尾までを完全に覆うか判定する。 */
 function selectionCoversMemoContents(container) {
   const wrap = container.querySelector('#kn-blocks-wrap');
@@ -3744,22 +3716,22 @@ function copyWholeMemoSelection(event) {
   return true;
 }
 
-/** 複数ブロックをまたぐ文字選択中かをCSS状態へ反映し、通常のドラッグ操作と競合させない。 */
-function setCrossBlockSelectionMode(container, enabled) {
+/** ブロック間の任意範囲を選べる状態へ切り替え、編集中のドラッグと競合させない。 */
+export function setCrossBlockSelectionMode(container, enabled) {
   const editPage = container.querySelector('.kn-edit-page');
   const wrap = container.querySelector('#kn-blocks-wrap');
   const button = container.querySelector('#kn-range-select-btn');
   if (!editPage || !wrap || !button) return;
 
   if (enabled) syncEditorDomToState(container);
-  else window.getSelection()?.removeAllRanges?.();
+  window.getSelection()?.removeAllRanges?.();
 
   crossBlockSelectionMode = enabled;
   editPage.classList.toggle('kn-range-select-mode', enabled);
   button.classList.toggle('active', enabled);
   button.setAttribute('aria-pressed', String(enabled));
-  button.setAttribute('title', enabled ? '範囲選択を終了' : 'ブロックをまたいで選択');
-  button.setAttribute('aria-label', enabled ? '範囲選択を終了' : 'ブロックをまたいで選択');
+  button.setAttribute('title', enabled ? '編集に戻る' : 'ブロックをまたいで選択');
+  button.setAttribute('aria-label', enabled ? '編集に戻る' : 'ブロックをまたいで選択');
 
   wrap.querySelectorAll('.kn-block-text[contenteditable]').forEach(editable => {
     editable.setAttribute('contenteditable', enabled ? 'false' : 'true');

@@ -7,7 +7,52 @@ const {
   renderMemoCardPreview,
   resolveNewMemoReviewEnabled,
   sameEditorHistoryContent,
+  setCrossBlockSelectionMode,
 } = await import('../js/modules/memo.js');
+
+test('range selection leaves text unselected until drag and restores editing', () => {
+  const originalWindow = globalThis.window;
+  const originalDocument = globalThis.document;
+  const attributes = new Map();
+  const editable = { setAttribute: (key, value) => attributes.set(key, value) };
+  const classes = new Map();
+  const page = { classList: { toggle: (key, enabled) => classes.set(key, enabled) } };
+  const button = {
+    classList: { toggle: (key, enabled) => classes.set(key, enabled) },
+    setAttribute: (key, value) => attributes.set(key, value),
+  };
+  const wrap = {
+    querySelectorAll: () => [editable],
+    contains: () => false,
+  };
+  const container = {
+    querySelector: selector => ({
+      '.kn-edit-page': page,
+      '#kn-blocks-wrap': wrap,
+      '#kn-range-select-btn': button,
+    })[selector] || null,
+    querySelectorAll: () => [],
+  };
+  let cleared = 0;
+  globalThis.window = { getSelection: () => ({ removeAllRanges: () => { cleared += 1; } }) };
+  globalThis.document = { activeElement: null };
+  try {
+    setCrossBlockSelectionMode(container, true);
+    assert.equal(attributes.get('contenteditable'), 'false');
+    assert.equal(attributes.get('aria-pressed'), 'true');
+    assert.equal(classes.get('kn-range-select-mode'), true);
+    assert.equal(cleared, 1);
+
+    setCrossBlockSelectionMode(container, false);
+    assert.equal(attributes.get('contenteditable'), 'true');
+    assert.equal(attributes.get('aria-pressed'), 'false');
+    assert.equal(classes.get('kn-range-select-mode'), false);
+    assert.equal(cleared, 2);
+  } finally {
+    globalThis.window = originalWindow;
+    globalThis.document = originalDocument;
+  }
+});
 
 test('memo list uses two rows with creation date and right-aligned star', () => {
   const html = renderMemoCard({
