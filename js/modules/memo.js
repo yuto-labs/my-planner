@@ -2231,13 +2231,15 @@ function renderBlocksEdit(blocks) {
 }
 
 /** 一つの下書きブロックを、種類選択・編集領域・画像操作を持つ編集用HTMLへ変換する。 */
-function renderBlockEdit(block, idx, listNumber = 0) {
+export function renderBlockEdit(block, idx, listNumber = 0) {
   const colorStyle = block.color ? `style="color:${block.color}"` : '';
   const typeClass  = `kn-block--${block.type}`;
   const toggleCollapsed = block.type === 'toggle'
     ? (block.collapsed ?? !(block.children?.length))
     : false;
   const insertRow = renderBlockInsertRow(block.id);
+  const dragHandle = `<button type="button" class="kn-block-drag-handle" data-block-drag-handle="${esc(block.id)}"
+    aria-label="ブロックを移動" title="ドラッグしてブロックを移動">⋮⋮</button>`;
   const controls = `
     <div class="kn-block-controls">
       <button type="button" class="kn-block-move" data-block-action="up" data-block-id="${esc(block.id)}" title="上へ" aria-label="上へ移動">↑</button>
@@ -2250,6 +2252,7 @@ function renderBlockEdit(block, idx, listNumber = 0) {
     return `
       <div class="kn-block kn-block--image${block.id === activeEditorBlockId ? ' kn-block--active' : ''}"
         data-block-id="${esc(block.id)}" tabindex="0">
+        ${dragHandle}
         <div class="kn-edit-image media-frame media-frame--loading">
           <img data-media-path="${esc(block.path || '')}" data-media-view="1"
             ${Number(block.width) > 0 && Number(block.height) > 0
@@ -2272,6 +2275,7 @@ function renderBlockEdit(block, idx, listNumber = 0) {
   if (block.type === 'math') {
     return `
       <div class="kn-block kn-block--math${block.id === activeEditorBlockId ? ' kn-block--active' : ''}" data-block-id="${esc(block.id)}">
+        ${dragHandle}
         <div class="kn-block-math-label">∑ KaTeX</div>
         <textarea class="kn-block-math-input kn-block-focusable" data-block-id="${esc(block.id)}"
           placeholder="数式を入力 (例: E=mc^2, \frac{a}{b})">${esc(block.text)}</textarea>
@@ -2284,6 +2288,7 @@ function renderBlockEdit(block, idx, listNumber = 0) {
   if (block.type === 'codeblock') {
     return `
       <div class="kn-block kn-block--codeblock${block.id === activeEditorBlockId ? ' kn-block--active' : ''}" data-block-id="${esc(block.id)}">
+        ${dragHandle}
         <textarea class="kn-block-code-input kn-block-focusable" data-block-id="${esc(block.id)}"
           spellcheck="false" aria-label="コードブロック" placeholder="コードを入力">${esc(block.text || '')}</textarea>
         ${controls}
@@ -2295,6 +2300,7 @@ function renderBlockEdit(block, idx, listNumber = 0) {
     const table = normalizeTableData(block);
     return `
       <div class="kn-block kn-block--table${block.id === activeEditorBlockId ? ' kn-block--active' : ''}" data-block-id="${esc(block.id)}" tabindex="0">
+        ${dragHandle}
         <div class="kn-table-scroll"><table class="kn-edit-table"><thead><tr>${table.headers.map((cell, col) => `<th><textarea class="kn-table-input" rows="${Math.min(8, cell.split('\n').length)}" data-table-header data-block-id="${esc(block.id)}" data-table-col="${col}" aria-label="表の見出し ${col + 1}">${esc(cell)}</textarea></th>`).join('')}</tr></thead><tbody>${table.rows.map((row, rowIndex) => `<tr>${row.map((cell, col) => `<td><textarea class="kn-table-input" rows="${Math.min(8, cell.split('\n').length)}" data-table-cell data-block-id="${esc(block.id)}" data-table-row="${rowIndex}" data-table-col="${col}" aria-label="表の${rowIndex + 1}行${col + 1}列">${esc(cell)}</textarea></td>`).join('')}</tr>`).join('')}</tbody></table></div>
         <div class="kn-table-actions" aria-label="表の編集"><button type="button" data-table-action="add-row" data-block-id="${esc(block.id)}">行を追加</button><button type="button" data-table-action="remove-row" data-block-id="${esc(block.id)}" ${table.rows.length <= 1 ? 'disabled' : ''}>行を削除</button><button type="button" data-table-action="add-column" data-block-id="${esc(block.id)}">列を追加</button><button type="button" data-table-action="remove-column" data-block-id="${esc(block.id)}" ${table.headers.length <= 2 ? 'disabled' : ''}>列を削除</button></div>
         ${controls}
@@ -2328,6 +2334,7 @@ function renderBlockEdit(block, idx, listNumber = 0) {
 
   return `
     <div class="kn-block ${typeClass}${block.checked && block.type === 'checklist' ? ' is-checked' : ''}${block.id === activeEditorBlockId ? ' kn-block--active' : ''}" data-block-id="${esc(block.id)}">
+      ${dragHandle}
       ${prefix}
       <div class="kn-block-text kn-block-focusable" contenteditable="true"
         data-block-id="${esc(block.id)}"
@@ -2741,10 +2748,54 @@ function wireBlockDrag(container, wrap) {
   };
   /** アプリが背面に移った場合に移動中の表示を残さない。 */
   const onWindowBlur = () => finishDrag(true);
+  /** 取っ手からはすぐ、本文からは長押し後に移動表示を開始する。 */
+  const beginDrag = (x, y) => {
+    const state = dragState;
+    if (!state || state.dragging) return;
+    if (!state.blockEl.isConnected) { finishDrag(true); return; }
+    state.dragging = true;
+    window.getSelection()?.removeAllRanges();
+    document.body.classList.add('kn-block-drag-active');
+    state.blockEl.classList.add('kn-block--dragging');
+    const block = findBlockInAllBlocks(edState.blocks, state.blockId);
+    const preview = document.createElement('div');
+    preview.className = 'kn-block-drag-preview';
+    preview.setAttribute('aria-hidden', 'true');
+    preview.textContent = String(block?.text || block?.caption || (block?.type === 'table' ? '表' : 'ブロック'))
+      .replace(/\s+/g, ' ').slice(0, 90);
+    document.body.append(preview);
+    state.preview = preview;
+    positionMemoDragPreview(preview, x, y);
+    try { state.blockEl.setPointerCapture?.(state.pointerId); } catch {}
+    navigator.vibrate?.(12);
+  };
+  /** ポインターの実位置から移動先を更新し、離した瞬間にも同じ判定を使う。 */
+  const updateDropTarget = (x, y) => {
+    clearIndicators();
+    const hit = document.elementFromPoint(x, y);
+    const direct = hit?.closest?.('.kn-block[data-block-id]');
+    const bounds = wrap.getBoundingClientRect();
+    const inWrap = x >= bounds.left && x <= bounds.right
+      && y >= bounds.top - 20 && y <= bounds.bottom + 20;
+    const targetEl = direct || (inWrap ? nearestMemoDropBlock(
+      [...wrap.querySelectorAll('.kn-block[data-block-id]')], dragState.blockedIds, x, y,
+    ) : null);
+    const targetId = targetEl?.dataset.blockId;
+    if (!inWrap || !targetEl || !targetId || dragState.blockedIds.has(targetId)) {
+      dragState.targetId = null;
+      dragState.placement = null;
+      return;
+    }
+    const placement = resolveBlockDropPlacement(targetEl, x, y);
+    dragState.targetId = targetId;
+    dragState.placement = placement;
+    targetEl.classList.add(`kn-block--drop-${placement}`);
+  };
 
   wrap.addEventListener('pointerdown', e => {
     if (crossBlockSelectionMode) return;
-    if (e.target.closest('button, select, input, textarea, a, [data-media-view]')) return;
+    const fromHandle = !!e.target.closest('[data-block-drag-handle]');
+    if (!fromHandle && e.target.closest('button, select, input, textarea, a, [data-media-view]')) return;
     const blockEl = e.target.closest('.kn-block[data-block-id]');
     if (!blockEl || (e.pointerType === 'mouse' && e.button !== 0)) return;
     const blockId = blockEl.dataset.blockId;
@@ -2761,30 +2812,18 @@ function wireBlockDrag(container, wrap) {
       placement: null,
       blockedIds: collectBlockIds(movingBlock),
       blockEl,
+      fromHandle,
     };
     window.addEventListener('pointerup', onGlobalPointerUp);
     window.addEventListener('pointercancel', onGlobalPointerCancel);
     window.addEventListener('blur', onWindowBlur);
     activeEditorBlockId = blockId;
-    holdTimer = setTimeout(() => {
-      if (!dragState || dragState.pointerId !== e.pointerId) return;
-      if (!blockEl.isConnected) { finishDrag(true); return; }
-      dragState.dragging = true;
-      // 長押し後は文字選択ではなくブロック移動として扱う。表示上のハンドルを
-      // 増やさず、本文のどこからでも掴める現在のUIを維持する。
-      window.getSelection()?.removeAllRanges();
-      document.body.classList.add('kn-block-drag-active');
-      blockEl.classList.add('kn-block--dragging');
-      const preview = document.createElement('div');
-      preview.className = 'kn-block-drag-preview';
-      preview.setAttribute('aria-hidden', 'true');
-      preview.textContent = String(movingBlock.text || movingBlock.caption || (movingBlock.type === 'table' ? '表' : 'ブロック'))
-        .replace(/\s+/g, ' ').slice(0, 90);
-      document.body.append(preview);
-      dragState.preview = preview;
-      positionMemoDragPreview(preview, e.clientX, e.clientY);
+    if (fromHandle) {
+      e.preventDefault();
       try { blockEl.setPointerCapture?.(e.pointerId); } catch {}
-      navigator.vibrate?.(12);
+    }
+    else holdTimer = setTimeout(() => {
+      if (dragState?.pointerId === e.pointerId) beginDrag(e.clientX, e.clientY);
     }, e.pointerType === 'mouse' ? 280 : 380);
   });
 
@@ -2792,34 +2831,15 @@ function wireBlockDrag(container, wrap) {
     if (!dragState || dragState.pointerId !== e.pointerId) return;
     const distance = Math.hypot(e.clientX - dragState.startX, e.clientY - dragState.startY);
     if (!dragState.dragging) {
-      if (distance > 8) {
+      if (dragState.fromHandle && distance >= 4) beginDrag(e.clientX, e.clientY);
+      else if (!dragState.fromHandle && distance > 8) {
         finishDrag(true);
       }
-      return;
+      if (!dragState?.dragging) return;
     }
     e.preventDefault();
-    clearIndicators();
     positionMemoDragPreview(dragState.preview, e.clientX, e.clientY);
-
-    const hit = document.elementFromPoint(e.clientX, e.clientY);
-    const direct = hit?.closest?.('.kn-block[data-block-id]');
-    const bounds = wrap.getBoundingClientRect();
-    const inWrap = e.clientX >= bounds.left && e.clientX <= bounds.right
-      && e.clientY >= bounds.top - 20 && e.clientY <= bounds.bottom + 20;
-    const targetEl = direct || (inWrap ? nearestMemoDropBlock(
-      [...wrap.querySelectorAll('.kn-block[data-block-id]')], dragState.blockedIds, e.clientX, e.clientY,
-    ) : null);
-    const targetId = targetEl?.dataset.blockId;
-    if (!targetEl || !targetId || dragState.blockedIds.has(targetId)) {
-      dragState.targetId = null;
-      dragState.placement = null;
-      return;
-    }
-
-    const placement = resolveBlockDropPlacement(targetEl, e.clientX, e.clientY);
-    dragState.targetId = targetId;
-    dragState.placement = placement;
-    targetEl.classList.add(`kn-block--drop-${placement}`);
+    updateDropTarget(e.clientX, e.clientY);
 
     const scrollOwner = document.getElementById('main-content');
     if (scrollOwner) {
@@ -2833,6 +2853,7 @@ function wireBlockDrag(container, wrap) {
     const bounds = wrap.getBoundingClientRect();
     const outside = e.clientX < bounds.left || e.clientX > bounds.right
       || e.clientY < bounds.top - 20 || e.clientY > bounds.bottom + 20;
+    if (dragState.dragging && !outside) updateDropTarget(e.clientX, e.clientY);
     finishDrag(outside);
   });
   wrap.addEventListener('pointercancel', () => finishDrag(true));

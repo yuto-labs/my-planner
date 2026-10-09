@@ -13195,9 +13195,29 @@ button.atlas-nuance-map-row:focus-visible {
 .kn-delete-action:hover,
 .kn-delete-action:focus-visible { background: color-mix(in srgb, var(--danger) 15%, transparent); }
 
-/* Blocks keep drag-and-drop through long press; the old visual grip is intentionally absent. */
+/* The grip overlays only the active or hovered block, so typing width never changes. */
 .kn-block { padding-left: 0; }
-.kn-block-drag-handle { display: none !important; }
+.kn-block-drag-handle {
+  display: inline-grid;
+  left: -6px;
+  width: 24px;
+  height: 30px;
+  opacity: 0;
+  pointer-events: none;
+  background: var(--bg-card);
+  color: var(--text-muted);
+  font-size: 13px;
+  letter-spacing: 0;
+}
+@media (hover: hover) and (pointer: fine) {
+  .kn-block:hover > .kn-block-drag-handle { opacity: 1; pointer-events: auto; }
+}
+@media (hover: none) {
+  .kn-block:not(.kn-block--active) > .kn-block-drag-handle { opacity: 0; pointer-events: none; }
+}
+.kn-block--active > .kn-block-drag-handle,
+.kn-block-drag-handle:focus-visible { opacity: 1; pointer-events: auto; }
+.kn-range-select-mode .kn-block-drag-handle { opacity: 0; pointer-events: none; }
 .kn-block--dragging {
   opacity: .22;
 }

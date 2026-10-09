@@ -24,12 +24,40 @@ import {
   renumberInsertedListContinuation,
   resolveMemoArrowNavigation,
   nearestMemoDropBlock,
+  renderBlockEdit,
   trimPastedMarkdownEdges,
   renderBlocksView,
   renderMemoCardPreview,
   resolveViewToggleCollapsed,
 } from '../js/modules/memo.js';
 import { normalizeMemoBlockIds } from '../js/storage.js';
+
+test('all memo block types expose a contextual drag grip without replacing their editor', () => {
+  const oldDocument = globalThis.document;
+  globalThis.document = {
+    createElement: () => ({ content: { childNodes: [] }, innerHTML: '' }),
+  };
+  try {
+    const blocks = [
+      { id: 'text', type: 'paragraph', text: '本文' },
+      { id: 'toggle', type: 'toggle', text: '親', collapsed: false, children: [{ id: 'child', type: 'paragraph', text: '子' }] },
+      { id: 'image', type: 'image', path: 'photo.png', caption: '写真' },
+      { id: 'math', type: 'math', text: 'x^2' },
+      { id: 'code', type: 'codeblock', text: 'const x = 1' },
+      { id: 'table', type: 'table', table: { headers: ['A', 'B'], rows: [['1', '2']] } },
+    ];
+    for (const block of blocks) {
+      const html = renderBlockEdit(block, 0);
+      assert.match(html, new RegExp(`data-block-drag-handle="${block.id}"`));
+      assert.match(html, /aria-label="ブロックを移動"/);
+      assert.match(html, new RegExp(`data-block-id="${block.id}"`));
+    }
+    assert.match(renderBlockEdit(blocks[1], 0), /data-block-drag-handle="child"/);
+  } finally {
+    if (oldDocument === undefined) delete globalThis.document;
+    else globalThis.document = oldDocument;
+  }
+});
 
 test('block drop can target the nearest block through a visual gap without selecting the source', () => {
   const source = { dataset: { blockId: 'source' }, getBoundingClientRect: () => ({ left: 0, right: 300, top: 0, bottom: 30, width: 300, height: 30 }) };
