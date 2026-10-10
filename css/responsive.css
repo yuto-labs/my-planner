@@ -168,7 +168,8 @@
 
 /* PC workspace. Touch devices keep the existing bottom navigation and single-column pages. */
 #desktop-context,
-.cal-desktop-agenda { display: none; }
+.cal-desktop-agenda,
+#desktop-page-resizer { display: none; }
 
 @media (min-width: 1000px) and (pointer: fine) {
   #app {
@@ -223,6 +224,8 @@
   }
 
   .desktop-context-toggle { display: inline-flex; }
+  #desktop-context-toggle { align-items: center; justify-content: center; flex: 0 0 40px; }
+  #desktop-context-toggle svg { display: block; width: 20px; height: 20px; }
   #app[data-desktop-context-open="true"] > #desktop-context {
     display: flex;
     flex-direction: column;
@@ -230,6 +233,7 @@
     background: var(--bg-card);
     border-right: 1px solid var(--border);
     z-index: 9;
+    position: relative;
   }
   #desktop-context[hidden] { display: none !important; }
   .desktop-context-head {
@@ -278,6 +282,52 @@
   .desktop-context-item span { margin-top: 3px; font-size: 11px; color: var(--text-muted); }
   .desktop-context-empty,
   .desktop-context-more { padding: 10px; color: var(--text-muted); font-size: 12px; }
+  .desktop-context-resizer {
+    position: absolute;
+    z-index: 2;
+    top: 0;
+    right: -5px;
+    bottom: 0;
+    width: 10px;
+    cursor: col-resize;
+    touch-action: none;
+  }
+  .desktop-context-resizer::after {
+    content: '';
+    position: absolute;
+    top: calc(50% - 24px);
+    left: 3px;
+    width: 4px;
+    height: 48px;
+    border-radius: 3px;
+    background: var(--border);
+  }
+  .desktop-context-resizer:hover::after,
+  .desktop-context-resizer:focus-visible::after { background: var(--primary); }
+  #desktop-page-resizer:not([hidden]) {
+    display: block;
+    position: fixed;
+    z-index: 20;
+    top: 48%;
+    width: 12px;
+    height: 76px;
+    border: 0;
+    border-radius: 5px;
+    background: var(--bg-card);
+    box-shadow: 0 0 0 1px var(--border);
+    cursor: col-resize;
+    touch-action: none;
+  }
+  #desktop-page-resizer::after {
+    content: '⋮';
+    display: block;
+    color: var(--text-muted);
+    font-size: 24px;
+    line-height: 76px;
+    text-align: center;
+  }
+  #desktop-page-resizer:hover,
+  #desktop-page-resizer:focus-visible { box-shadow: 0 0 0 2px var(--primary); }
 
   .home-page {
     display: grid;
@@ -285,7 +335,8 @@
     align-content: start;
     gap: 16px 22px;
     width: 100%;
-    max-width: 1480px;
+    max-width: var(--desktop-page-width, 1480px);
+    margin-inline: auto;
     padding: 0 28px 36px;
   }
   .home-intro,
@@ -304,6 +355,15 @@
   #focus-card { grid-column: 2; grid-row: 1; margin-top: 0; }
   .home-page .card + .card { margin-top: 0; }
 
+  #main-content[data-view="calendar"] .cal-toolbar,
+  #main-content[data-view="calendar"] .cal-source-bar,
+  #main-content[data-view="calendar"] .cal-shared-error,
+  #main-content[data-view="calendar"] .cal-shared-loading,
+  #main-content[data-view="calendar"] #cal-view {
+    width: 100%;
+    max-width: var(--desktop-page-width, 1480px);
+    margin-inline: auto;
+  }
   #main-content[data-view="calendar"] #cal-view { padding: 12px 20px 28px; }
   .cal-desktop-month-layout {
     display: grid;
@@ -379,15 +439,19 @@
   .kn-list-page { max-width: 1500px; margin-inline: auto; }
   .kn-memo-list { max-width: 1400px; }
   .learning-page { max-width: 1500px; padding-inline: 28px; }
-  .learning-detail { max-width: 1150px; padding-inline: 28px; }
-  .atlas-page { width: min(100%, 1280px); padding-inline: 28px; }
+  .learning-detail { max-width: none; width: 100%; padding-inline: 28px; }
+  .learning-answer-section p { max-width: 94ch; }
+  .atlas-page { width: 100%; max-width: none; padding-inline: 28px; }
+  .atlas-detail-page { max-width: none; }
+  .atlas-detail-section > p { max-width: 94ch; }
+  .atlas-generator-page { max-width: min(100%, 1200px); }
   .fab { right: 24px; }
   .search-overlay { max-width: none; }
 }
 
 @media (min-width: 1280px) and (pointer: fine) {
   #app[data-desktop-context-open="true"] {
-    grid-template-columns: 80px 250px minmax(0, 1fr);
+    grid-template-columns: 80px var(--desktop-context-width, 250px) minmax(0, 1fr);
   }
   #app[data-desktop-context-open="true"] > #desktop-context {
     grid-column: 2;
@@ -402,7 +466,7 @@
     top: var(--header-h);
     bottom: 0;
     left: 80px;
-    width: 260px;
+    width: var(--desktop-context-width, 260px);
     box-shadow: var(--shadow);
   }
 }

@@ -23,7 +23,7 @@
 
   <!-- style.cssが基本、responsive.cssがタブレット・PC向けの上書きです。 -->
   <link rel="stylesheet" href="css/style.css?v=301">
-  <link rel="stylesheet" href="css/responsive.css?v=5">
+  <link rel="stylesheet" href="css/responsive.css?v=6">
 
   <!-- メモ内の数式を表示する外部ライブラリKaTeX。deferによりHTML解析後に実行します。 -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
@@ -77,6 +77,10 @@
 
     <!-- PCの詳細画面だけで使う補助一覧。スマホでは常に非表示。 -->
     <aside id="desktop-context" class="desktop-context" aria-label="項目一覧" hidden></aside>
+
+    <!-- PCのホームとカレンダーだけで使う表示幅の調整ハンドル。 -->
+    <div id="desktop-page-resizer" class="desktop-page-resizer" role="separator"
+      aria-label="表示幅を調整" aria-orientation="vertical" tabindex="0" hidden></div>
 
     <!-- 現在の画面モジュールが、ここへHTMLを描画します。 -->
     <main id="main-content"></main>

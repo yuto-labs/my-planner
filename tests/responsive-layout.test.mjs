@@ -29,7 +29,7 @@ test('installed tablet app supports both orientations', () => {
 
 test('responsive stylesheet loads after the established design stylesheet', () => {
   const baseIndex = indexHtml.indexOf('css/style.css?v=301');
-  const responsiveIndex = indexHtml.indexOf('css/responsive.css?v=5');
+  const responsiveIndex = indexHtml.indexOf('css/responsive.css?v=6');
 
   assert.ok(baseIndex >= 0);
   assert.ok(responsiveIndex > baseIndex);
@@ -37,7 +37,7 @@ test('responsive stylesheet loads after the established design stylesheet', () =
 
 test('offline cache includes the responsive stylesheet', () => {
   assert.match(serviceWorker, /const CACHE_VER\s*=\s*'v\d+'/);
-  assert.match(serviceWorker, /'\.\/css\/responsive\.css\?v=5'/);
+  assert.match(serviceWorker, /'\.\/css\/responsive\.css\?v=6'/);
   assert.match(serviceWorker, /'\.\/js\/desktop-workspace\.js'/);
   assert.match(serviceWorker, /'\.\/js\/planning-time\.js'/);
   assert.match(serviceWorker, /'\.\/js\/calendar-gesture\.js'/);
@@ -54,6 +54,7 @@ test('knowledge layout uses its current learning classes on larger screens', () 
   assert.match(responsiveCss, /\.learning-detail\s*\{[\s\S]*?max-width:\s*940px/);
   assert.match(responsiveCss, /\.learning-detail\s*\{[\s\S]*?max-width:\s*1000px/);
   assert.match(responsiveCss, /@media \(min-width: 1000px\)[\s\S]*?\.learning-list/);
+  assert.match(responsiveCss, /\.learning-detail\s*\{\s*max-width:\s*none/);
 });
 
 test('home cover and memo chrome can use the wider shell', () => {
