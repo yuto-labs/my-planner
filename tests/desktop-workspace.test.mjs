@@ -27,6 +27,8 @@ test('PC workspace stays behind a fine-pointer breakpoint and mobile calendar ag
   assert.match(indexHtml, /id="desktop-page-resizer"[^>]*role="separator"/);
   assert.match(responsiveCss, /--desktop-context-width/);
   assert.match(responsiveCss, /--desktop-page-width/);
+  assert.match(responsiveCss, /@media \(min-width: 1000px\) and \(pointer: fine\)\s*\{\s*#app\[data-desktop-context-open="true"\]\s*\{\s*grid-template-columns:/);
+  assert.doesNotMatch(responsiveCss, /@media \(min-width: 1000px\) and \(max-width: 1279px\) and \(pointer: fine\)/);
 });
 
 test('calendar agenda does not replace the existing two-step day interaction', () => {

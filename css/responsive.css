@@ -449,7 +449,8 @@
   .search-overlay { max-width: none; }
 }
 
-@media (min-width: 1280px) and (pointer: fine) {
+/* PC幅なら一覧は常に本文と別カラムに置き、狭いウィンドウでも重ねない。 */
+@media (min-width: 1000px) and (pointer: fine) {
   #app[data-desktop-context-open="true"] {
     grid-template-columns: 80px var(--desktop-context-width, 250px) minmax(0, 1fr);
   }
@@ -458,15 +459,4 @@
     grid-row: 2;
   }
   #app[data-desktop-context-open="true"] > #main-content { grid-column: 3; }
-}
-
-@media (min-width: 1000px) and (max-width: 1279px) and (pointer: fine) {
-  #app[data-desktop-context-open="true"] > #desktop-context {
-    position: absolute;
-    top: var(--header-h);
-    bottom: 0;
-    left: 80px;
-    width: var(--desktop-context-width, 260px);
-    box-shadow: var(--shadow);
-  }
 }
