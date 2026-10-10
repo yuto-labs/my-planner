@@ -57,6 +57,9 @@ let listState = {
 let questionDraft = '';
 let generationController = null;
 
+/** PCの補助一覧へ、現在開いているKnowledgeのIDだけを渡す。 */
+export function getSelectedLearningEntryId() { return selectedEntryId || ''; }
+
 /** 指定Knowledgeを詳細表示し、戻るための閲覧履歴も必要に応じて残す。 */
 export function openLearningEntry(id, { remember = true } = {}) {
   if (!getLearningEntryById(id)) return;
@@ -65,6 +68,7 @@ export function openLearningEntry(id, { remember = true } = {}) {
   const main = document.getElementById('main-content');
   if (main?.dataset.view === 'learning-detail') {
     initLearningDetail(main);
+    window.AppNav?.refreshDesktopContext?.();
   } else {
     nav('learning-detail');
   }
@@ -76,7 +80,10 @@ export function backFromLearningDetail() {
   if (previous && getLearningEntryById(previous)) {
     selectedEntryId = previous;
     const main = document.getElementById('main-content');
-    if (main) initLearningDetail(main);
+    if (main) {
+      initLearningDetail(main);
+      window.AppNav?.refreshDesktopContext?.();
+    }
     return;
   }
   selectedEntryId = null;

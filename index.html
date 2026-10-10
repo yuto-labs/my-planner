@@ -23,7 +23,7 @@
 
   <!-- style.cssが基本、responsive.cssがタブレット・PC向けの上書きです。 -->
   <link rel="stylesheet" href="css/style.css?v=301">
-  <link rel="stylesheet" href="css/responsive.css?v=4">
+  <link rel="stylesheet" href="css/responsive.css?v=5">
 
   <!-- メモ内の数式を表示する外部ライブラリKaTeX。deferによりHTML解析後に実行します。 -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
@@ -49,6 +49,13 @@
         </button>
         <h1 id="page-title">My planner</h1>
         <div class="header-actions" id="header-actions">
+          <button class="btn-icon desktop-context-toggle hidden" id="desktop-context-toggle" type="button"
+            aria-label="項目一覧を表示" aria-controls="desktop-context" aria-expanded="false" title="項目一覧">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="16" rx="1"></rect>
+              <path d="M9 4v16"></path>
+            </svg>
+          </button>
           <button class="btn-icon" id="header-settings-btn" aria-label="Settings">
             <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
               <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.11-.22.06-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
@@ -67,6 +74,9 @@
         </div>
       </div>
     </header>
+
+    <!-- PCの詳細画面だけで使う補助一覧。スマホでは常に非表示。 -->
+    <aside id="desktop-context" class="desktop-context" aria-label="項目一覧" hidden></aside>
 
     <!-- 現在の画面モジュールが、ここへHTMLを描画します。 -->
     <main id="main-content"></main>

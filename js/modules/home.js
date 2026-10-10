@@ -116,6 +116,7 @@ export function initHome(container) {
         </div>
       ` : ''}
 
+      <div class="home-dashboard-grid">
       <!-- Today's focus tasks -->
       <div class="card" id="focus-card">
         <div class="card-title">
@@ -172,6 +173,7 @@ export function initHome(container) {
               <div class="empty-state-text">No schedule today</div>
              </div>`
         }
+      </div>
       </div>
 
       <!-- 今日の復習 -->

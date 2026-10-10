@@ -593,6 +593,7 @@ function renderView() {
 function renderMonth() {
   const { cursor } = state;
   const events = getMonthVisibleEvents();
+  const agendaEvents = getVisibleEvents();
   const view = state.container.querySelector('#cal-view');
 
   const monthStart = startOfMonth(cursor);
@@ -616,6 +617,7 @@ function renderMonth() {
   const dayLabels = ['日', '月', '火', '水', '木', '金', '土'];
 
   let html = `
+    <div class="cal-desktop-month-layout">
     <div class="cal-month">
       <div class="cal-day-headers">
         ${dayLabels.map(d => `<div class="cal-day-header">${d}</div>`).join('')}
@@ -664,8 +666,35 @@ function renderMonth() {
     }
   }
 
-  html += '</div></div>';
+  html += '</div></div><aside class="cal-desktop-agenda" aria-label="選択日の予定"></aside></div>';
   view.innerHTML = html;
+
+  // PCの右欄は選択日の予定の読み取り専用プレビュー。
+  // 日付の再タップで予定一覧を開く既存の操作は変更しない。
+  const updateDesktopAgenda = dateStr => {
+    const agenda = view.querySelector('.cal-desktop-agenda');
+    if (!agenda) return;
+    const dayEvents = getEventsForDate(agendaEvents, dateStr).sort((a, b) =>
+      new Date(a._displayStart ?? a.start).getTime() - new Date(b._displayStart ?? b.start).getTime()
+    );
+    agenda.innerHTML = `
+      <div class="cal-desktop-agenda-head">
+        <strong>${esc(formatPickerDate(dateStr))}</strong>
+        <span>${dayEvents.length}件</span>
+      </div>
+      <div class="cal-desktop-agenda-list">
+        ${dayEvents.length ? dayEvents.map(event => {
+          const start = event._displayStart ?? event.start;
+          const label = event._isAllDay ? '終日' : (start ? formatTime(start) : '');
+          return `<div class="cal-desktop-agenda-item">
+            <span class="cal-desktop-agenda-time">${esc(label)}</span>
+            <span>${esc(getEventDisplayTitle(event))}</span>
+          </div>`;
+        }).join('') : '<p class="cal-desktop-agenda-empty">予定はありません</p>'}
+      </div>`;
+  };
+  updateDesktopAgenda(eventsByDate.has(_selectedDate) ? _selectedDate :
+    eventsByDate.has(todayStr) ? todayStr : toDateStr(monthStart));
 
   // Restore selected-date highlight after re-render
   if (_selectedDate) {
@@ -684,6 +713,7 @@ function renderMonth() {
         _selectedDate = dateStr;
         view.querySelectorAll('.cal-cell').forEach(c => c.classList.remove('cal-cell--selected'));
         cell.classList.add('cal-cell--selected');
+        updateDesktopAgenda(dateStr);
       }
     });
     cell.addEventListener('keydown', e => {

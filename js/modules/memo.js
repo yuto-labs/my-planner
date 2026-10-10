@@ -110,6 +110,7 @@ export function openKnowledgeMemo(id) {
   } else nav('knowledge-detail', { routeHash });
 
   if (fromDetail && main) main.scrollTop = 0;
+  window.AppNav?.refreshDesktopContext?.();
 }
 
 /** 詳細を開く前の一覧状態とスクロール位置を復元し、Knowledge一覧へ戻る。 */
@@ -5030,6 +5031,7 @@ async function persistMemo(container) {
     }
     setMemoReviewEnabled(edState.id, edState.reviewEnabled);
     toast('メモを保存しました ✓', 'success');
+    window.AppNav?.refreshDesktopContext?.({ force: true });
     markEditorBaseline();
     edState.isEdit = false;
     renderDetail(container, { preserveScroll: true });

@@ -352,6 +352,8 @@ export function backFromExpressionAtlas() {
 /** 現在のモードと選択状態から、必要な画面だけを描画する。 */
 function render() {
   if (!state.container) return;
+  // 詳細切替時だけPCの補助一覧を追従させる。本文の再描画は増やさない。
+  queueMicrotask(() => window.AppNav?.refreshDesktopContext?.());
   clearTimeout(state.searchTimer);
   state.searchTimer = null;
   if (state.screen === 'generate') {
@@ -395,6 +397,18 @@ function render() {
     return;
   }
   renderLibrary();
+}
+
+/** PCの補助一覧は、保存済み英単語の詳細を開いているときだけ表示する。 */
+export function getAtlasDesktopSelectedId() {
+  return state.screen === 'library' ? state.entryId || '' : '';
+}
+
+/** 既存の関連語リンクと同じ履歴・メモ保存処理で項目を開く。 */
+export function openAtlasDesktopEntry(id) {
+  if (!id || !getExpressionEntries().some(item => item.id === id)) return false;
+  openLinkedExpression(id);
+  return true;
 }
 
 /** 現在libraryModeの検索・階層・カード一覧を描画する。 */

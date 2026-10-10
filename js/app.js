@@ -53,6 +53,7 @@ import { openSearch, closeSearch } from './modules/search.js';
 import { initArchive } from './modules/archive.js';
 import { initTagsPage, setTagFilter } from './modules/tags.js';
 import { captureHorizontalTableScroll, restoreHorizontalTableScroll } from './horizontal-scroll-state.js';
+import { initDesktopWorkspace, refreshDesktopWorkspace } from './desktop-workspace.js';
 
 // ---- Module registry ----
 // URLで使う画面名を、表示タイトルと初期化関数へ対応付けます。
@@ -361,6 +362,7 @@ export function navigate(view, options = {}) {
   main.innerHTML = '';
   main.dataset.view = view; // for CSS glow on home
   cleanupFn = MODULES[view].init(main) || null;
+  refreshDesktopWorkspace(view, { force: true });
   restoreHorizontalTableScroll(main, preservedTables);
   if (shouldRestoreScroll) main.scrollTop = preservedScrollTop;
   else if (!preserveScroll) main.scrollTop = 0;
@@ -380,7 +382,10 @@ export function navigate(view, options = {}) {
  */
 export function refreshCurrentView(options = {}) {
   if (!currentView) return;
-  if (currentView === 'expression-atlas' && shouldPreserveExpressionAtlasView()) return;
+  if (currentView === 'expression-atlas' && shouldPreserveExpressionAtlasView()) {
+    refreshDesktopWorkspace(currentView, { force: true });
+    return;
+  }
   if (isUserEditing()) {
     deferSyncWhileEditing();
     return;
@@ -942,6 +947,7 @@ async function init() {
   document.getElementById('loading-screen').classList.add('hidden');
   document.getElementById('app-header').classList.remove('hidden');
   document.getElementById('bottom-nav').classList.remove('hidden');
+  initDesktopWorkspace();
   initAIJobStatus();
 
   // 一部のスマートフォンは横スワイプを、指を離した位置へのclickとして合成する。
@@ -1159,7 +1165,10 @@ async function setupServiceWorkerAutoUpdate() {
 }
 
 // Expose to global for modules without introducing circular imports.
-window.AppNav = { navigate, refreshCurrentView, showToast, showUndoToast, openSearch, closeSearch, openModal };
+window.AppNav = {
+  navigate, refreshCurrentView, showToast, showUndoToast, openSearch, closeSearch, openModal,
+  refreshDesktopContext: options => refreshDesktopWorkspace(currentView, options),
+};
 window.AppTheme = { apply: applyTheme };
 // Knowledge graph uses this to open memos without circular import
 window._knNav = (id) => { openKnowledgeMemo(id); };
