@@ -13247,6 +13247,21 @@ button.atlas-nuance-map-row:focus-visible {
 .kn-block--active > .kn-block-drag-handle,
 .kn-block-drag-handle:focus-visible { opacity: 1; pointer-events: auto; }
 .kn-range-select-mode .kn-block-drag-handle { display: none; }
+/* スマホでは取っ手と選択枠を文字の開始位置から離し、指で行を選びやすくする。 */
+@media (max-width: 640px) and (pointer: coarse) {
+  .kn-edit-page .kn-blocks-wrap { padding-left: 26px; padding-right: 8px; }
+  .kn-edit-page .kn-block-drag-handle { left: -24px; width: 22px; }
+  .kn-edit-page .kn-block--active { box-shadow: none; }
+  .kn-edit-page .kn-block-text {
+    min-height: 38px;
+    padding: 4px 2px;
+    font-size: 17px !important;
+    line-height: 1.75;
+    caret-color: var(--text);
+    font-kerning: none;
+    font-variant-ligatures: none;
+  }
+}
 .kn-block--dragging {
   opacity: .22;
 }

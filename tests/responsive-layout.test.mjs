@@ -90,3 +90,9 @@ test('narrow desktop windows do not inherit mobile editor font enlargement', () 
   assert.match(styleCss, /@media \(max-width: 640px\) and \(pointer: coarse\)\s*\{[\s\S]*?\[contenteditable="true"\]\s*\{\s*font-size:\s*16px !important/);
   assert.match(styleCss, /@media \(max-width: 640px\) and \(pointer: fine\)\s*\{\s*\.kn-blocks-wrap\s*\{\s*padding-left:\s*18px/);
 });
+
+test('mobile memo editor keeps the drag grip clear of the text caret', () => {
+  assert.match(styleCss, /@media \(max-width: 640px\) and \(pointer: coarse\)\s*\{\s*\.kn-edit-page \.kn-blocks-wrap\s*\{\s*padding-left:\s*26px/);
+  assert.match(styleCss, /\.kn-edit-page \.kn-block-drag-handle\s*\{\s*left:\s*-24px;\s*width:\s*22px/);
+  assert.match(styleCss, /\.kn-edit-page \.kn-block-text\s*\{[\s\S]*?min-height:\s*38px;[\s\S]*?font-size:\s*17px !important;[\s\S]*?caret-color:\s*var\(--text\)/);
+});
