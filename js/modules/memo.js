@@ -62,6 +62,7 @@ const undoToast = (msg, cb)   => window.AppNav?.showUndoToast(msg, cb);
 let currentMemoId  = null;  // null = new memo
 let pendingNewOpts = null;  // { tags:[], content:'' }
 let activeEditorBlockId = null;
+let lastInteractedEditorBlockId = null;
 let editorBaseline = '';
 let pendingImageUploads = new Set();
 let pendingImageDeletes = new Set();
@@ -1883,7 +1884,10 @@ function showTermPopup(term, text, anchorEl, rootContainer) {
 function renderEditMode(container, { preserveHistory = false } = {}) {
   const { title, blocks, tags, id } = edState;
   const hasApi = isAiAvailable();
-  if (!preserveHistory) resetEditorHistory();
+  if (!preserveHistory) {
+    resetEditorHistory();
+    lastInteractedEditorBlockId = null;
+  }
   crossBlockSelectionMode = false;
 
   container.innerHTML = `
@@ -2170,9 +2174,9 @@ function renderEditMode(container, { preserveHistory = false } = {}) {
   // Wire add block button
   container.querySelector('#kn-add-block-btn')?.addEventListener('click', () => {
     recordEditorHistory(container);
-    const focusedBlockId = resolveActiveEditorBlockId(container);
+    const focusedBlockId = getFocusedBlockId(container) || lastInteractedEditorBlockId;
     if (focusedBlockId) syncFocusedEditableBlock(container, focusedBlockId);
-    const insertionAnchorId = resolveMemoAddBlockAnchor(focusedBlockId, edState.blocks);
+    const insertionAnchorId = resolveMemoAddBlockInsertionAnchor(focusedBlockId, edState.blocks);
     const inserted = insertionAnchorId ? insertBlockAfter(insertionAnchorId) : null;
     if (!inserted) edState.blocks.push(defaultBlock());
     rerenderBlocks(container);
@@ -2209,6 +2213,11 @@ export function resolveMemoAddBlockAnchor(blockId, blocks = []) {
   return found.block.type === 'toggle'
     ? found.block.id
     : (found.parentToggle?.id || found.block.id);
+}
+
+/** 明示的な編集対象がなければ、画面下の追加ボタンは末尾へ挿入する。 */
+export function resolveMemoAddBlockInsertionAnchor(blockId, blocks = []) {
+  return resolveMemoAddBlockAnchor(blockId, blocks) || blocks.at(-1)?.id || null;
 }
 
 /** edState.blocksを編集可能なブロックDOMへ変換する。 */
@@ -2294,7 +2303,7 @@ export function renderBlockEdit(block, idx, listNumber = 0) {
       <div class="kn-block kn-block--table${block.id === activeEditorBlockId ? ' kn-block--active' : ''}" data-block-id="${esc(block.id)}" tabindex="0">
         ${dragHandle}
         <div class="kn-table-scroll"><table class="kn-edit-table"><thead><tr>${table.headers.map((cell, col) => `<th><textarea class="kn-table-input" rows="${Math.min(8, cell.split('\n').length)}" data-table-header data-block-id="${esc(block.id)}" data-table-col="${col}" aria-label="表の見出し ${col + 1}">${esc(cell)}</textarea></th>`).join('')}</tr></thead><tbody>${table.rows.map((row, rowIndex) => `<tr>${row.map((cell, col) => `<td><textarea class="kn-table-input" rows="${Math.min(8, cell.split('\n').length)}" data-table-cell data-block-id="${esc(block.id)}" data-table-row="${rowIndex}" data-table-col="${col}" aria-label="表の${rowIndex + 1}行${col + 1}列">${esc(cell)}</textarea></td>`).join('')}</tr>`).join('')}</tbody></table></div>
-        <div class="kn-table-actions" aria-label="表の編集"><button type="button" data-table-action="add-row" data-block-id="${esc(block.id)}">行を追加</button><button type="button" data-table-action="remove-row" data-block-id="${esc(block.id)}" ${table.rows.length <= 1 ? 'disabled' : ''}>行を削除</button><button type="button" data-table-action="add-column" data-block-id="${esc(block.id)}">列を追加</button><button type="button" data-table-action="remove-column" data-block-id="${esc(block.id)}" ${table.headers.length <= 2 ? 'disabled' : ''}>列を削除</button></div>
+        <div class="kn-table-actions" aria-label="表の編集"><button type="button" data-table-action="add-row" data-block-id="${esc(block.id)}">行を追加</button><button type="button" data-table-action="remove-row" data-block-id="${esc(block.id)}" ${table.rows.length <= 1 ? 'disabled' : ''}>行を削除</button><button type="button" data-table-action="add-column" data-block-id="${esc(block.id)}">列を追加</button><button type="button" data-table-action="remove-column" data-block-id="${esc(block.id)}" ${table.headers.length <= 2 ? 'disabled' : ''}>列を削除</button><button type="button" class="kn-table-delete" data-table-action="delete-table" data-block-id="${esc(block.id)}" aria-label="表全体を削除" title="表全体を削除"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"/></svg><span>表を削除</span></button></div>
         ${controls}
       </div>
       ${insertRow}`;
@@ -2602,6 +2611,7 @@ function wireBlocksEdit(container) {
     const blockId = el.dataset.blockId;
     if (!blockId) return;
     activeEditorBlockId = blockId;
+    lastInteractedEditorBlockId = blockId;
     wrap.querySelectorAll('.kn-block--active').forEach(blockEl => blockEl.classList.remove('kn-block--active'));
     el.closest('.kn-block')?.classList.add('kn-block--active');
     const block = findBlockInAllBlocks(edState.blocks, blockId);
@@ -2614,6 +2624,7 @@ function wireBlocksEdit(container) {
     const selectedBlock = e.target.closest('.kn-block[data-block-id]');
     if (selectedBlock) {
       activeEditorBlockId = selectedBlock.dataset.blockId;
+      lastInteractedEditorBlockId = activeEditorBlockId;
       wrap.querySelectorAll('.kn-block--active').forEach(blockEl => blockEl.classList.remove('kn-block--active'));
       selectedBlock.classList.add('kn-block--active');
       const selected = findBlockInAllBlocks(edState.blocks, activeEditorBlockId);
@@ -2622,7 +2633,11 @@ function wireBlocksEdit(container) {
 
     const tableAction = e.target.closest('[data-table-action]');
     if (tableAction) {
-      changeTableShape(tableAction.dataset.blockId, tableAction.dataset.tableAction, container);
+      if (tableAction.dataset.tableAction === 'delete-table') {
+        removeEditorTableBlock(tableAction.dataset.blockId, container);
+      } else {
+        changeTableShape(tableAction.dataset.blockId, tableAction.dataset.tableAction, container);
+      }
       return;
     }
 
@@ -5158,6 +5173,22 @@ function changeTableShape(blockId, action, container) {
   activeEditorBlockId = blockId;
   rerenderBlocks(container);
   container.querySelector(`[data-block-id="${blockId}"] .kn-table-input`)?.focus();
+}
+
+/** 表全体の削除を確認し、下書きとUndo履歴だけを更新する。保存までは元データを変更しない。 */
+function removeEditorTableBlock(blockId, container) {
+  const loc = findBlockLocation(blockId);
+  if (loc?.blocks[loc.idx]?.type !== 'table') return false;
+  if (!window.confirm('この表全体を削除しますか？')) return false;
+  recordEditorHistory(container);
+  const focusTarget = loc.blocks[loc.idx + 1] || loc.blocks[loc.idx - 1] || loc.parent;
+  removeBlockById(blockId);
+  if (!edState.blocks.length) edState.blocks.push(defaultBlock());
+  activeEditorBlockId = focusTarget?.id || edState.blocks[0]?.id || null;
+  lastInteractedEditorBlockId = activeEditorBlockId;
+  rerenderBlocks(container);
+  if (activeEditorBlockId) focusBlock(activeEditorBlockId, container);
+  return true;
 }
 
 /** 保存確定前に追加後削除された画像をStorageから片付け、使用中画像は残す。 */

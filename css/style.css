@@ -3679,6 +3679,9 @@ h1, h2, h3, h4, h5, h6,
 }
 .kn-table-actions button:disabled { opacity: .42; cursor: default; }
 .kn-table-actions button:not(:disabled):active { background: var(--primary-bg); color: var(--primary); }
+.kn-table-actions .kn-table-delete { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; color: var(--danger, #b53d3d); }
+.kn-table-delete svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.kn-table-actions .kn-table-delete:hover, .kn-table-actions .kn-table-delete:focus-visible { background: var(--bg-hover); outline: 2px solid currentColor; outline-offset: 1px; }
 
 /* The library list is intentionally denser than the full memo reading view. */
 .kn-memo-card { padding: 11px 14px; }

@@ -19,6 +19,7 @@ import {
   canMergeMemoTextBlocks,
   resolveMemoEnterAction,
   resolveMemoAddBlockAnchor,
+  resolveMemoAddBlockInsertionAnchor,
   removeBlockById,
   resolveNumberedBlockValue,
   renumberInsertedListContinuation,
@@ -260,6 +261,24 @@ test('the add-block button exits the nearest toggle while Enter can keep its cur
   assert.equal(resolveMemoAddBlockAnchor('inner', blocks), 'inner');
   assert.equal(resolveMemoAddBlockAnchor('inner-child', blocks), 'inner');
   assert.equal(resolveMemoAddBlockAnchor('missing', blocks), null);
+  assert.equal(resolveMemoAddBlockInsertionAnchor('root', blocks), 'root');
+  assert.equal(resolveMemoAddBlockInsertionAnchor('inner-child', blocks), 'inner');
+  assert.equal(resolveMemoAddBlockInsertionAnchor(null, blocks), 'outer');
+  assert.equal(resolveMemoAddBlockInsertionAnchor('stale-id', blocks), 'outer');
+  assert.equal(resolveMemoAddBlockInsertionAnchor(null, []), null);
+});
+
+test('a table has a whole-table delete control and removing it keeps adjacent blocks', () => {
+  const blocks = [
+    { id: 'before', type: 'paragraph', text: '前' },
+    { id: 'table', type: 'table', table: { headers: ['項目', '内容'], rows: [['a', 'b']] } },
+    { id: 'after', type: 'paragraph', text: '後' },
+  ];
+  const html = renderBlockEdit(blocks[1], 1);
+  assert.match(html, /data-table-action="delete-table"/);
+  assert.match(html, /aria-label="表全体を削除"/);
+  assert.equal(removeBlockById('table', blocks), true);
+  assert.deepEqual(blocks.map(block => block.id), ['before', 'after']);
 });
 
 test('deleting a toggle promotes its children without losing their order or nesting', () => {
