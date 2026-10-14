@@ -16,8 +16,8 @@ import {
 import { processBatchQueue, refreshAiRuntimeStatus } from '../ai.js';
 import { esc, generateId } from '../utils.js';
 import {
-  getSession, getUserEmail, getStoredConfig,
-  signInWithEmail, verifyEmailOtp, signOut, isMigratedForCurrentUser,
+  getSession, getUserEmail,
+  signInWithEmail, getAuthSendErrorMessage, verifyEmailOtp, signOut, isMigratedForCurrentUser,
   getActiveUserId, setActiveUserId,
 } from '../supabase.js';
 import { migrateToSupabase } from '../migrate.js';
@@ -289,15 +289,10 @@ function renderCategoryRow(cat) {
 /** ログイン状態に応じて、認証または同期管理のUIを返す。 */
 function renderAccountSection() {
   const syncStatus = getSyncStatus();
-  const cfg = getStoredConfig();
-  const cloudHost = safeCloudHost(cfg.url);
   return `
     <div class="settings-heading">アカウント</div>
     <div id="sb-auth-area">
       <div id="sb-status" class="text-sm text-muted" style="margin-bottom:10px">確認中...</div>
-      <div class="text-sm text-muted" style="margin-bottom:10px">
-        同期先: ${esc(cloudHost)}
-      </div>
       <div id="sb-sync-status" class="text-sm text-muted" style="margin-bottom:10px">
         ${renderSyncStatus(syncStatus)}
       </div>
@@ -309,6 +304,7 @@ function renderAccountSection() {
             placeholder="you@example.com" autocomplete="email">
         </div>
         <button class="btn btn-primary btn-sm" id="sb-signin-btn">ログインコードを送信</button>
+        <p id="sb-signin-error" class="text-sm hidden" role="alert" style="color:var(--danger);margin-top:8px"></p>
         <p class="text-sm text-muted" style="margin-top:6px">
           メールに届くコードでログインします。パスワードは不要です。
         </p>
@@ -336,15 +332,6 @@ function renderAccountSection() {
       </div>
     </div>
   `;
-}
-
-/** 接続先URLから表示して安全なホスト名だけを取り出し、解析失敗時は空文字を返す。 */
-function safeCloudHost(url) {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return '未設定';
-  }
 }
 
 /** 内部同期状態を、利用者が判断できる短い表示へ変換する。 */
@@ -710,23 +697,33 @@ function wireAccount(container, options = {}) {
 
   container.querySelector('#sb-signin-btn')?.addEventListener('click', async () => {
     const email = container.querySelector('#sb-email-input')?.value.trim();
+    const errorMessage = container.querySelector('#sb-signin-error');
     if (!email) {
-      toast('メールアドレスを入力してください', 'error');
+      if (errorMessage) {
+        errorMessage.textContent = 'メールアドレスを入力してください。';
+        errorMessage.classList.remove('hidden');
+      }
       return;
     }
     const btn = container.querySelector('#sb-signin-btn');
+    errorMessage?.classList.add('hidden');
     btn.disabled = true;
     btn.textContent = '送信中...';
+    let sent = false;
     try {
       await signInWithEmail(email);
+      sent = true;
       container.querySelector('#sb-otp-wrap')?.classList.remove('hidden');
       container.querySelector('#sb-otp-input')?.focus();
-      toast(`${email} にログインコードを送信しました`, 'success');
+      toast('ログインコードを送信しました。メールを確認してください', 'success');
     } catch (e) {
-      toast('送信エラー: ' + e.message, 'error');
+      if (errorMessage) {
+        errorMessage.textContent = getAuthSendErrorMessage(e);
+        errorMessage.classList.remove('hidden');
+      }
     } finally {
       btn.disabled = false;
-      btn.textContent = 'ログインコードを再送';
+      btn.textContent = sent ? 'ログインコードを再送' : 'ログインコードを送信';
     }
   });
 

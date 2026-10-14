@@ -226,6 +226,26 @@ export async function signInWithEmail(email) {
   if (error) throw error;
 }
 
+/** 認証メールの失敗理由を、再試行の判断ができる短い案内へ変換する。 */
+export function getAuthSendErrorMessage(error) {
+  const status = Number(error?.status);
+  const code = String(error?.code || '').toLowerCase();
+  const message = String(error?.message || '');
+  if (status === 429 || /rate.limit|over_email_send_rate_limit|too many requests/i.test(`${code} ${message}`)) {
+    return '送信回数の上限に達しました。少し時間を置いてから再試行してください。アプリ独自の制限ではありません。';
+  }
+  if (/email.address.not.authorized|email_not_authorized/i.test(`${code} ${message}`)) {
+    return 'このメールアドレスへの送信が認証サービス側で許可されていません。Supabaseのチーム登録またはメール送信設定を確認してください。';
+  }
+  if (status === 0 || /failed to fetch|networkerror|network request failed/i.test(message)) {
+    return '認証サービスに接続できません。通信状態を確認してから再試行してください。';
+  }
+  if (status === 400 && /invalid.email|valid.email/i.test(`${code} ${message}`)) {
+    return 'メールアドレスの形式を確認してください。';
+  }
+  return message ? `送信できませんでした: ${message}` : 'ログインコードを送信できませんでした。時間を置いて再試行してください。';
+}
+
 /** `verifyEmailOtp`: メールへ届いた確認コードをSupabaseへ送り、ログインを確定する。 */
 export async function verifyEmailOtp(email, token) {
   const client = await getClient();
