@@ -9,6 +9,7 @@ import {
   errorMessage,
   generationApiUrl,
   rowToJob,
+  default as jobsHandler,
 } from '../api/ai/jobs.js';
 import { createAIJobId } from '../js/ai-jobs.js';
 import {
@@ -95,6 +96,52 @@ test('malformed knowledge memo rows are never treated as AI jobs', () => {
 test('background jobs persist a readable nested upstream error', () => {
   assert.equal(errorMessage({ error: { message: 'Gemini request rejected' } }), 'Gemini request rejected');
   assert.equal(errorMessage({ message: '[object Object]' }, 'AI生成に失敗しました。'), 'AI生成に失敗しました。');
+});
+
+test('a Knowledge job survives one provider 503 and saves the later answer', async () => {
+  const originalFetch = globalThis.fetch;
+  let storedRow = null;
+  let generationCalls = 0;
+  globalThis.fetch = async (url, options = {}) => {
+    const path = String(url);
+    if (path.includes('/auth/v1/user')) return new Response(JSON.stringify({ id: 'user-1' }), { status: 200 });
+    if (path.includes('/rest/v1/knowledge_memos')) {
+      if (options.method === 'POST') {
+        storedRow = JSON.parse(options.body);
+        return new Response(JSON.stringify([storedRow]), { status: 201 });
+      }
+      return new Response(JSON.stringify(storedRow ? [storedRow] : []), { status: 200 });
+    }
+    if (path.endsWith('/api/ai/generate')) {
+      generationCalls++;
+      return generationCalls === 1
+        ? new Response(JSON.stringify({ error: 'This model is currently experiencing high demand.' }), { status: 503 })
+        : new Response(JSON.stringify({ text: '{"title":"レイリー散乱"}', model: 'gemini-3.8-flash' }), { status: 200 });
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  };
+  const res = {
+    statusCode: 200,
+    setHeader() {},
+    status(code) { this.statusCode = code; return this; },
+    json(body) { this.body = body; return this; },
+  };
+  try {
+    await jobsHandler({
+      method: 'POST', headers: { authorization: 'Bearer test-token', host: '127.0.0.1:5180' },
+      body: {
+        id: 'ai-job-knowledge-503-retry',
+        request: { actionType: 'knowledge_answer', userText: '夕焼けとレイリー散乱の関係' },
+        clientContext: { kind: 'knowledge', question: '夕焼けとレイリー散乱の関係' },
+      },
+    }, res);
+    assert.equal(res.statusCode, 202);
+    assert.equal(generationCalls, 2);
+    assert.equal(res.body.job.status, 'completed');
+    assert.equal(res.body.job.resultText, '{"title":"レイリー散乱"}');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test('offline app shell contains both background job modules', async () => {

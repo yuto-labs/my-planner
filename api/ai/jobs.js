@@ -162,21 +162,33 @@ async function runJob({ row, job, userId, token, generateUrl }) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 270_000);
     let response;
+    let payload;
     try {
-      response = await fetch(generateUrl, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'X-AI-Background-Job': job.id,
-        },
-        body: JSON.stringify(job.request),
-        signal: controller.signal,
-      });
+      for (let attempt = 0; attempt < 2; attempt++) {
+        response = await fetch(generateUrl, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'X-AI-Background-Job': job.id,
+          },
+          body: JSON.stringify(job.request),
+          signal: controller.signal,
+        });
+        payload = await response.json().catch(() => ({}));
+        if (response.status !== 503 || job.actionType !== 'knowledge_answer'
+          || attempt > 0 || Date.now() - runStartedAt > 125_000) break;
+        // 503はGoogle側の一時的な混雑。長い生成を繰り返し過ぎず、一度だけ間隔を空ける。
+        await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => { controller.signal.removeEventListener('abort', onAbort); resolve(); }, 15_000);
+          /** ジョブの制限時間に達したら待機を解除し、通常の失敗記録へ渡す。 */
+          function onAbort() { clearTimeout(timer); reject(new DOMException('AI job timed out', 'AbortError')); }
+          controller.signal.addEventListener('abort', onAbort, { once: true });
+        });
+      }
     } finally {
       clearTimeout(timeoutId);
     }
-    const payload = await response.json().catch(() => ({}));
     if (!response.ok || !String(payload?.text || '').trim()) {
       throw new Error(errorMessage(payload?.error ?? payload, `AI生成に失敗しました (${response.status})`));
     }
