@@ -1709,6 +1709,12 @@ async function requestGeminiResilient(key, model, fallbackModel, payload, timeou
 
   // A model-specific 5xx can persist longer than a normal retry. Use one
   // compatible stable fallback before returning the failure to the client.
+  console.warn('[ai] switching Gemini model after upstream failure', {
+    primaryModel: model,
+    primaryStatus: first.upstream.status,
+    fallbackModel,
+    elapsedMs: Date.now() - startedAt,
+  });
   const remainingMs = timeoutMs - (Date.now() - startedAt);
   if (remainingMs < 8_000) return { ...first, model };
   const fallback = await requestGemini(key, fallbackModel, payload, Math.min(remainingMs, 90_000));

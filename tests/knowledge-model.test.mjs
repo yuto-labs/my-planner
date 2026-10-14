@@ -15,6 +15,7 @@ import {
 } from '../js/knowledge-model.js';
 import { getLearningCountryCodes } from '../js/data/learning-geography.js';
 import { serializeLearningTaxonomyForAI } from '../js/data/learning-taxonomy.js';
+import { generateKnowledgeAnswer } from '../js/ai.js';
 
 function rawAnswer(overrides = {}) {
   const paragraph = '空気中の分子は、太陽光のうち波長が短い青い光を赤い光より強く散乱します。'
@@ -67,6 +68,25 @@ test('normalizes structured answers without leaking Markdown', () => {
   assert.equal(entry.answer.directAnswer[0].marks[0], 'strong');
   assert.equal(entry.answer.keyPoints.length, 3);
   assert.equal(validateKnowledgeEntry(entry).valid, true);
+});
+
+test('the exact deity-name question accepts a completed answer through the client save validator', async () => {
+  const question = '神の名前が由来になっているものについて';
+  const raw = rawAnswer({
+    title: '神の名前に由来する名称',
+    classification: {
+      majorId: 'language_communication', middleId: 'linguistics', specialty: '語源', relatedCategoryIds: [],
+    },
+    primaryConcept: { key: 'mythological-eponyms', label: '神名に由来する名称', aliases: [], role: 'primary' },
+    concepts: [{ key: 'mythological-eponyms', label: '神名に由来する名称', aliases: [], role: 'primary' }],
+  });
+  const parsed = await generateKnowledgeAnswer(question, serializeLearningTaxonomyForAI(), {
+    completedText: JSON.stringify(raw),
+  });
+  const entry = normalizeKnowledgeAnswer(parsed, question);
+  assert.equal(entry.originalQuestion, question);
+  assert.equal(entry.classification.middleId, 'linguistics');
+  assert.deepEqual(validateKnowledgeEntry(entry), { valid: true, errors: [] });
 });
 
 test('keeps only safe, unique grounding sources without breaking unsourced legacy entries', () => {
