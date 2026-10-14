@@ -5,6 +5,8 @@ import assert from 'node:assert/strict';
 // Node.jsにはブラウザのlocalStorageがないため、Mapで必要な動作だけ再現する。
 const values = new Map();
 globalThis.localStorage = {
+  get length() { return values.size; },
+  key(index) { return [...values.keys()][index] ?? null; },
   getItem(key) { return values.has(key) ? values.get(key) : null; },
   setItem(key, value) { values.set(key, String(value)); },
   removeItem(key) { values.delete(key); },
@@ -30,6 +32,7 @@ const {
   saveExpressionEntries,
   setAiCache,
   updateKnowledgeMemo,
+  archiveLocalSyncBackups,
 } = await import('../js/storage.js');
 const { normalizeKnowledgeAnswer, validateKnowledgeEntry } = await import('../js/knowledge-model.js');
 
@@ -56,6 +59,101 @@ function entry(id, title, updatedAt = '2026-07-27T10:00:00.000Z') {
 }
 
 test.beforeEach(() => values.clear());
+
+function fakeBackupDb({ failWrite = false } = {}) {
+  const records = new Map();
+  return {
+    records,
+    open() {
+      const request = { result: {
+        createObjectStore() {},
+        close() {},
+        transaction() {
+          const tx = {
+            objectStore() {
+              return {
+                put(value, key) {
+                  queueMicrotask(() => {
+                    if (failWrite) tx.onerror?.();
+                    else { records.set(key, value); tx.oncomplete?.(); }
+                  });
+                },
+                get(key) {
+                  const read = { result: null };
+                  queueMicrotask(() => {
+                    read.result = records.get(key);
+                    read.onsuccess?.();
+                  });
+                  return read;
+                },
+              };
+            },
+          };
+          return tx;
+        },
+      } };
+      queueMicrotask(() => { request.onupgradeneeded?.(); request.onsuccess?.(); });
+      return request;
+    },
+  };
+}
+
+test('sync backups move to verified IndexedDB without touching the active memo', async () => {
+  const previousDb = globalThis.indexedDB;
+  const fakeDb = fakeBackupDb();
+  globalThis.indexedDB = fakeDb;
+  const memo = JSON.stringify([{ id: 'keep', title: '本文' }]);
+  const backup = JSON.stringify([{ at: 'yesterday', data: 'x'.repeat(1500) }]);
+  values.set('mp_knowledge', memo);
+  values.set('mp_sync_backups:knowledge_memos:user', backup);
+  values.set('mp_trash', '[{"id":"keep-trash"}]');
+  try {
+    assert.equal(await archiveLocalSyncBackups(), backup.length);
+    assert.equal(values.get('mp_knowledge'), memo);
+    assert.equal(values.get('mp_trash'), '[{"id":"keep-trash"}]');
+    assert.equal(values.has('mp_sync_backups:knowledge_memos:user'), false);
+    assert.deepEqual([...fakeDb.records.values()].map(record => record.value), [backup]);
+  } finally {
+    globalThis.indexedDB = previousDb;
+  }
+});
+
+test('failed backup archive leaves the original backup and memo untouched', async () => {
+  const previousDb = globalThis.indexedDB;
+  globalThis.indexedDB = fakeBackupDb({ failWrite: true });
+  values.set('mp_knowledge', '[{"id":"keep"}]');
+  values.set('mp_sync_backups:knowledge_memos:user', '[{"data":"keep"}]');
+  try {
+    assert.equal(await archiveLocalSyncBackups(), 0);
+    assert.equal(values.get('mp_sync_backups:knowledge_memos:user'), '[{"data":"keep"}]');
+    assert.equal(values.get('mp_knowledge'), '[{"id":"keep"}]');
+  } finally {
+    globalThis.indexedDB = previousDb;
+  }
+});
+
+test('memo saves under a full local quota after verified sync-backup archive', async () => {
+  const previousDb = globalThis.indexedDB;
+  const originalSetItem = localStorage.setItem;
+  globalThis.indexedDB = fakeBackupDb();
+  values.set('mp_knowledge', JSON.stringify([{ id: 'keep', title: '既存', blocks: [] }]));
+  values.set('mp_sync_backups:knowledge_memos:user', 'x'.repeat(1500));
+  localStorage.setItem = (key, value) => {
+    const total = [...values].reduce((size, [storedKey, storedValue]) =>
+      size + (storedKey === key ? 0 : storedValue.length), String(value).length);
+    if (total > 1600) throw new DOMException('Storage full', 'QuotaExceededError');
+    originalSetItem(key, value);
+  };
+  try {
+    assert.equal(addKnowledgeMemo({ title: '保存したい', blocks: [] }), null);
+    assert.equal(await archiveLocalSyncBackups(), 1500);
+    assert.ok(addKnowledgeMemo({ title: '保存したい', blocks: [] }));
+    assert.deepEqual(getKnowledgeMemos().map(memo => memo.title), ['保存したい', '既存']);
+  } finally {
+    globalThis.indexedDB = previousDb;
+    localStorage.setItem = originalSetItem;
+  }
+});
 
 test('memo save retries after removing only regenerable AI cache on browser quota', () => {
   const existing = {

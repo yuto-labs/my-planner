@@ -13,7 +13,7 @@ import {
   addToPendingAIQueue, removeFromPendingAIQueue,
   pushUndo, applyUndo, addReviewLog, getReviewLog,
   getTags, addTag,
-  normalizeMemoBlockIds,
+  normalizeMemoBlockIds, archiveLocalSyncBackups,
 } from '../storage.js';
 import {
   suggestKnowledgeTags, explainTerm, summarizeAndTagText,
@@ -5028,6 +5028,8 @@ async function persistMemo(container) {
     starred: edState.starred,
     summary: blocksToText(edState.blocks, 200),
   };
+  // 同期バックアップは別領域へ検証付きで退避し、本文の保存枠を先に確保する。
+  await archiveLocalSyncBackups();
   if (edState.id) {
     // Clear pendingAI if tags were added during this edit
     if (memoData.tags?.length) memoData.pendingAI = false;

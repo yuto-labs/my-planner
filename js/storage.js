@@ -181,6 +181,62 @@ function save(key, value) {
   }
 }
 
+/**
+ * 同期の世代バックアップを容量の大きいIndexedDBへ退避する。
+ * 書き込み完了後に同一内容を読み返せた場合だけ、元のlocalStorageを空ける。
+ * メモ・予定・ごみ箱などの現行データは一切対象にしない。
+ */
+export async function archiveLocalSyncBackups() {
+  if (typeof indexedDB === 'undefined') return 0;
+  let keys;
+  try {
+    keys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index))
+      .filter(key => key?.startsWith('mp_sync_backups:') || key?.startsWith('mp_event_sync_backups:'));
+  } catch {
+    return 0;
+  }
+  if (!keys.length) return 0;
+
+  let db;
+  try {
+    db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open('my-planner-sync-backup-archive', 1);
+      request.onupgradeneeded = () => request.result.createObjectStore('backups');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    let archived = 0;
+    for (const key of keys) {
+      const original = localStorage.getItem(key);
+      if (original === null) continue;
+      const archiveKey = `${key}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction('backups', 'readwrite');
+        tx.objectStore('backups').put({ key, value: original, archivedAt: new Date().toISOString() }, archiveKey);
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
+      const verified = await new Promise((resolve, reject) => {
+        const tx = db.transaction('backups', 'readonly');
+        const request = tx.objectStore('backups').get(archiveKey);
+        request.onsuccess = () => resolve(request.result?.value === original);
+        request.onerror = () => reject(request.error);
+      });
+      if (verified && localStorage.getItem(key) === original) {
+        localStorage.removeItem(key);
+        archived += original.length;
+      }
+    }
+    return archived;
+  } catch (error) {
+    console.warn('Could not archive local sync backups:', error);
+    return 0;
+  } finally {
+    db?.close();
+  }
+}
+
 // ---- Events（カレンダー予定）----
 // 配列全体を保存した後に同期へ通知する。個別操作は必ず updatedAt を更新する。
 
