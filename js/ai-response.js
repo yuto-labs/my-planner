@@ -71,6 +71,9 @@ export function getFriendlyAiError(status, message) {
 /** バックグラウンドジョブに残ったGemini内部理由を、再試行可能な日本語へ置き換える。 */
 export function getFriendlyAIJobError(message, fallback = 'AI生成に失敗しました。') {
   const raw = extractAIErrorMessage(message, fallback);
+  if (/high demand|temporarily overloaded|service unavailable/i.test(raw)) {
+    return 'Geminiが一時的に混雑しています。質問文は残っています。少し時間を置いて、もう一度お試しください。';
+  }
   if (/quota|rate limit|resource[_ ]exhausted|too many requests|contact google|exceeded/i.test(raw)) {
     return 'Google Gemini API側の利用枠に達しました。アプリ独自の回数制限ではありません。時間を置いてもう一度お試しください。';
   }

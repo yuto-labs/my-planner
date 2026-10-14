@@ -135,7 +135,7 @@ function latestActiveJob() {
 /** 回答生成後、端末保存を確認している最中の最新ジョブを選ぶ。 */
 function latestCompletedJob() {
   return [...jobs.values()]
-    .filter(job => job?.status === 'completed')
+    .filter(job => job?.status === 'completed' && !hasShownAIJobNotice(readNoticeHistory(), job.id, 'save-failed'))
     .sort((a, b) => new Date(b.completedAt || b.updatedAt || 0) - new Date(a.completedAt || a.updatedAt || 0))[0] || null;
 }
 
@@ -240,8 +240,10 @@ export function initAIJobStatus() {
     terminal = {
       jobId: job.id,
       kind: 'success',
-      title: `${aiJobLabel(job)}を保存しました`,
-      message: `完了まで ${formatAIElapsed(job.startedAt || job.createdAt, new Date(job.completedAt || Date.now()).getTime())}`,
+      title: event.detail?.syncPending ? `${aiJobLabel(job)}を端末に保存しました` : `${aiJobLabel(job)}を保存しました`,
+      message: event.detail?.syncPending
+        ? 'クラウド同期を待っています。回答は端末とAIジョブに保持されています。'
+        : `完了まで ${formatAIElapsed(job.startedAt || job.createdAt, new Date(job.completedAt || Date.now()).getTime())}`,
       expiresAt: Date.now() + SUCCESS_VISIBLE_MS,
     };
     render();

@@ -48,4 +48,5 @@ test('extracts nested API failures without leaking object Object', () => {
 test('background jobs translate provider quota errors instead of leaking English text', () => {
   assert.match(getFriendlyAIJobError('RESOURCE_EXHAUSTED: quota exceeded; contact Google'), /Gemini API側の利用枠/);
   assert.doesNotMatch(getFriendlyAIJobError('RESOURCE_EXHAUSTED: quota exceeded; contact Google'), /contact Google/i);
+  assert.match(getFriendlyAIJobError('This model is currently experiencing high demand.'), /一時的に混雑/);
 });

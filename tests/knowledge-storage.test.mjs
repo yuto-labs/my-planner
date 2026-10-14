@@ -60,6 +60,21 @@ function entry(id, title, updatedAt = '2026-07-27T10:00:00.000Z') {
 
 test.beforeEach(() => values.clear());
 
+test('unusual Knowledge questions persist independently without replacing ordinary memos', () => {
+  const memo = addKnowledgeMemo({ title: '残しておくメモ', blocks: [{ type: 'text', content: '元の本文' }] });
+  assert.ok(memo);
+  const questions = [
+    '利上げしても必ず円高にならないのはなぜ？',
+    '夕焼けとレイリー散乱はどう関係する？',
+    '金本位制を離脱した時期が国ごとに違う理由は？',
+  ];
+  for (const [index, question] of questions.entries()) {
+    assert.ok(addLearningEntry({ ...entry(`unusual-${index}`, question), originalQuestion: question }));
+  }
+  assert.deepEqual(getLearningEntries().map(item => item.originalQuestion).sort(), [...questions].sort());
+  assert.equal(getKnowledgeMemos().find(item => item.id === memo.id)?.blocks[0].content, '元の本文');
+});
+
 function fakeBackupDb({ failWrite = false } = {}) {
   const records = new Map();
   return {

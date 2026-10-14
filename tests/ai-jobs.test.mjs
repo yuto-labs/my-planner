@@ -122,7 +122,8 @@ test('a surfaced generation failure is not automatically submitted again', async
   const source = await readFile(new URL('../js/ai-job-resume.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /retryableFailure/);
   assert.match(source, /if \(!stalled \|\| !job\.request\) return false/);
-  assert.match(source, /await acknowledgeAIJob\(job\.id\)/);
+  assert.match(source, /failedApplyThisSession\.add\(job\.id\)/);
+  assert.doesNotMatch(source, /await acknowledgeAIJob\(job\.id\)/);
 });
 
 test('an actively awaited result has only one save owner', async () => {

@@ -1667,15 +1667,20 @@ async function requestGeminiOnce(key, model, payload, timeoutMs = 50_000) {
 /** `requestGemini`: 指定モデルと生成設定でGemini APIを呼び、本文または失敗理由を返す。 */
 async function requestGemini(key, model, payload, timeoutMs = 50_000) {
   const startedAt = Date.now();
-  const first = await requestGeminiOnce(key, model, payload, timeoutMs);
-  if (first.upstream.ok || !RETRYABLE_GEMINI_STATUSES.has(first.upstream.status)) return first;
-
-  // Gemini 5xx responses are commonly brief service interruptions. Retry once
-  // before surfacing the error, without retrying user-caused 4xx responses.
-  const remainingMs = timeoutMs - (Date.now() - startedAt) - 1_000;
-  if (remainingMs < 8_000) return first;
-  await delay(700);
-  return requestGeminiOnce(key, model, payload, Math.min(remainingMs, 25_000));
+  let last;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const remainingMs = timeoutMs - (Date.now() - startedAt) - 1_000;
+    if (remainingMs < 8_000 && last) return last;
+    last = await requestGeminiOnce(
+      key, model, payload, attempt === 0 ? timeoutMs : Math.min(remainingMs, 25_000)
+    );
+    if (last.upstream.ok || !RETRYABLE_GEMINI_STATUSES.has(last.upstream.status) || attempt === 2) return last;
+    // 一時的な503で短時間に連打しない。主モデルの時間枠内で段階的に待つ。
+    const waitMs = (attempt === 0 ? 1_000 : 2_000) + Math.floor(Math.random() * 250);
+    if (timeoutMs - (Date.now() - startedAt) < waitMs + 8_000) return last;
+    await delay(waitMs);
+  }
+  return last;
 }
 
 /** 主モデル失敗時に、同じ要求を互換モデルで一度だけ再試行する。 */

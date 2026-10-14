@@ -11,6 +11,7 @@ import {
   addLearningEntry,
   updateLearningEntry,
   deleteLearningEntry,
+  archiveLocalSyncBackups,
 } from '../storage.js';
 import { generateKnowledgeAnswer } from '../ai.js';
 import { acknowledgeAIJobAfterSync } from '../ai-jobs.js';
@@ -472,6 +473,7 @@ async function createLearningEntry(container) {
     const entry = normalizeKnowledgeAnswer(raw, question);
     const validation = validateKnowledgeEntry(entry);
     if (!validation.valid) throw new Error(`回答の検証に失敗しました (${validation.errors.join(', ')})`);
+    await archiveLocalSyncBackups();
     const saved = addLearningEntry(entry);
     if (!saved) throw new Error('保存できませんでした。端末の空き容量を確認してください。');
     if (raw?.__aiJobId) acknowledgeAIJobAfterSync(raw.__aiJobId).catch(() => {});

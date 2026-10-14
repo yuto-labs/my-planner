@@ -4,6 +4,7 @@
 import {
   addExpressionEntriesWithReport,
   addLearningEntry,
+  archiveLocalSyncBackups,
   addTranslationSet,
   getEnglishQuestions,
   getLearningEntries,
@@ -16,7 +17,6 @@ import {
   generateTranslationVariants,
 } from './ai.js';
 import {
-  acknowledgeAIJob,
   acknowledgeAIJobAfterSync,
   listAIJobs,
   submitAIJob,
@@ -28,6 +28,8 @@ import {
 } from './knowledge-model.js';
 
 let resumePromise = null;
+const failedApplyThisSession = new Set();
+const savedAwaitingSyncThisSession = new Set();
 
 /** 完成済みKnowledge回答を通常保存時と同じ検証へ通し、固定IDで一度だけ保存する。 */
 async function applyKnowledgeJob(job) {
@@ -40,6 +42,7 @@ async function applyKnowledgeJob(job) {
   if (!validation.valid) throw new Error(`Knowledge回答の検証に失敗しました (${validation.errors.join(', ')})`);
   // 通常画面で保存できた後にジョブ削除だけ失敗した場合、同じ質問を二重保存しない。
   if (findDuplicateKnowledgeEntries(getLearningEntries(), context.question).length) return 0;
+  await archiveLocalSyncBackups();
   const saved = addLearningEntry({ ...entry, id: `ai-result-${job.id}` });
   if (!saved) throw new Error('Knowledge回答を端末へ保存できませんでした。');
   return 1;
@@ -115,15 +118,30 @@ export async function resumeCompletedAIJobs({ quiet = false } = {}) {
     let restarted = 0;
     for (const job of jobs) {
       if (job.status === 'completed' && String(job.resultText || '').trim()) {
+        if (failedApplyThisSession.has(job.id)) continue;
         try {
-          applied += await applyCompletedJob(job);
-          await acknowledgeAIJobAfterSync(job.id);
-          document.dispatchEvent(new CustomEvent('ai:job-applied', { detail: { job } }));
+          const alreadySaved = savedAwaitingSyncThisSession.has(job.id);
+          const savedCount = alreadySaved ? 0 : await applyCompletedJob(job);
+          applied += savedCount;
+          failedApplyThisSession.delete(job.id);
+          let syncPending = false;
+          try {
+            await acknowledgeAIJobAfterSync(job.id);
+            savedAwaitingSyncThisSession.delete(job.id);
+          } catch (error) {
+            // 端末保存は成功済み。同期確認だけの失敗を保存失敗として表示しない。
+            savedAwaitingSyncThisSession.add(job.id);
+            syncPending = true;
+            console.warn('[ai-job] saved result is waiting for sync:', job.id, error);
+          }
+          if (!alreadySaved) {
+            document.dispatchEvent(new CustomEvent('ai:job-applied', { detail: { job, syncPending } }));
+          }
         } catch (error) {
           console.warn('[ai-job] completed result could not be applied:', job.id, error);
-          // 完成済み本文が端末検証を通らない場合、同じ結果を画面復帰のたびに
-          // 再適用して通知し続けない。通常データには触れず内部ジョブだけ閉じる。
-          try { await acknowledgeAIJob(job.id); } catch {}
+          // 保存失敗時に完成済み回答を消さない。この起動中の再試行だけ止め、
+          // 次回起動や修正版で同じ回答を再利用できるようサーバーへ残す。
+          failedApplyThisSession.add(job.id);
           document.dispatchEvent(new CustomEvent('ai:job-apply-failed', { detail: { job, error } }));
         }
       } else {

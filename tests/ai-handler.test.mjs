@@ -294,6 +294,41 @@ test('quality generation falls back after a model rate limit and reports the act
   }
 });
 
+test('a temporary Gemini 503 retries before abandoning an unusual Knowledge question', async () => {
+  const previousFetch = globalThis.fetch;
+  const previousKey = process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY = 'test-key';
+  let attempts = 0;
+  globalThis.fetch = async url => {
+    if (String(url).includes('/auth/v1/user')) {
+      return new Response(JSON.stringify({ id: 'user-1' }), { status: 200 });
+    }
+    attempts++;
+    if (attempts < 3) {
+      return new Response(JSON.stringify({ error: { message: 'This model is currently experiencing high demand.' } }), { status: 503 });
+    }
+    return geminiResponse(JSON.stringify(completeKnowledgeResponse('なぜ利上げしても必ず円高にならないのか')));
+  };
+  try {
+    const res = createResponseRecorder();
+    await generateHandler({
+      method: 'POST',
+      headers: { authorization: 'Bearer test-token' },
+      body: {
+        modelPreference: 'quality', actionType: 'knowledge_answer', responseFormat: 'json',
+        maxTokens: 9000, systemText: '原因を条件ごとに説明する。',
+        userText: JSON.stringify({ question: 'なぜ利上げしても必ず円高にならないのか', taxonomy: [] }),
+      },
+    }, res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(attempts, 3);
+    assert.equal(JSON.parse(res.body.text).title, 'なぜ利上げしても必ず円高にならないのか');
+  } finally {
+    globalThis.fetch = previousFetch;
+    restoreEnv('GEMINI_API_KEY', previousKey);
+  }
+});
+
 test('all English learning actions return complete structured responses through the API handler', async () => {
   const previousFetch = globalThis.fetch;
   const previousKey = process.env.GEMINI_API_KEY;
