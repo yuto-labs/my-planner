@@ -10,4 +10,5 @@ test('auth send errors distinguish provider limits from an app limit', () => {
 test('auth send errors explain unauthorized addresses and network failures', () => {
   assert.match(getAuthSendErrorMessage({ message: 'Email address not authorized' }), /チーム登録/);
   assert.match(getAuthSendErrorMessage({ message: 'Failed to fetch' }), /通信状態/);
+  assert.match(getAuthSendErrorMessage({ status: 500, message: 'Error sending magic link email' }), /SupabaseのLogs/);
 });

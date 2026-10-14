@@ -237,6 +237,9 @@ export function getAuthSendErrorMessage(error) {
   if (/email.address.not.authorized|email_not_authorized/i.test(`${code} ${message}`)) {
     return 'このメールアドレスへの送信が認証サービス側で許可されていません。Supabaseのチーム登録またはメール送信設定を確認してください。';
   }
+  if (/error sending magic link email|error sending (confirmation|recovery) email/i.test(message)) {
+    return '認証サービスがメールを送れませんでした。SupabaseのLogsでAuthの送信エラーを確認してください。メール送信設定やテンプレートが原因の可能性があります。';
+  }
   if (status === 0 || /failed to fetch|networkerror|network request failed/i.test(message)) {
     return '認証サービスに接続できません。通信状態を確認してから再試行してください。';
   }
