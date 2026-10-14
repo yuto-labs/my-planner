@@ -72,6 +72,11 @@ test('normalizes structured answers without leaking Markdown', () => {
 
 test('the exact deity-name question accepts a completed answer through the client save validator', async () => {
   const question = '神の名前が由来になっているものについて';
+  const examples = [
+    '英語の Thursday は北欧神話の雷神トールの名に由来する一方、フランス語 jeudi はローマ神話のユピテルに由来します。曜日の対応関係は似ていますが、使われる神名は言語ごとに異なります。',
+    '惑星の Mercury はローマ神話のメルクリウスの名を受け継いでいます。ただし惑星名が別の言語に入るまでには、古典語の伝承、翻訳、近代の学術命名など、複数の経路があります。',
+    '元素の thorium は北欧神話のトールにちなむ名称です。一方、神の名と同じ形の語でも、命名時に何を意図したかは語源資料を確かめる必要があります。音が似ているだけで由来を決めてはいけません。',
+  ];
   const raw = rawAnswer({
     title: '神の名前に由来する名称',
     classification: {
@@ -79,6 +84,16 @@ test('the exact deity-name question accepts a completed answer through the clien
     },
     primaryConcept: { key: 'mythological-eponyms', label: '神名に由来する名称', aliases: [], role: 'primary' },
     concepts: [{ key: 'mythological-eponyms', label: '神名に由来する名称', aliases: [], role: 'primary' }],
+    answer: {
+      directAnswer: [{ text: '曜日・惑星・元素などには、神話上の神名を受け継いだ名称があります。', marks: ['strong'], conceptKey: '' }],
+      keyPoints: ['言語ごとに異なる神名が残る', '直接の命名と間接的な語源を分ける', '名称が伝わった時代と経路を確認する'],
+      sections: examples.map((text, index) => ({
+        heading: ['曜日名', '惑星名', '元素名'][index],
+        paragraphs: [[{ text: text.repeat(3), marks: [], conceptKey: '' }]],
+        richBlocks: [],
+      })),
+      cautions: [],
+    },
   });
   const parsed = await generateKnowledgeAnswer(question, serializeLearningTaxonomyForAI(), {
     completedText: JSON.stringify(raw),
