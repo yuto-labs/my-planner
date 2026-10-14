@@ -274,8 +274,11 @@ function setupEditActivityGuard() {
     e.returnValue = '';
   });
 
-  document.addEventListener('storage:write-error', () => {
-    showToast('保存できませんでした。端末の空き容量を確認してください。元のデータは削除していません。', 'error');
+  document.addEventListener('storage:write-error', event => {
+    const message = event.detail?.reason === 'quota'
+      ? 'ブラウザー内の保存領域が不足しています。元のデータは残しています。'
+      : '端末への保存に失敗しました。入力内容は消さず、ブラウザーの保存設定を確認してください。';
+    showToast(message, 'error');
   });
 }
 

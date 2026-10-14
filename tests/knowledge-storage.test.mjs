@@ -12,6 +12,7 @@ globalThis.localStorage = {
 
 const {
   addEnglishQuestion,
+  addKnowledgeMemo,
   addExpressionEntries,
   addExpressionEntriesWithReport,
   addLearningEntry,
@@ -27,6 +28,7 @@ const {
   importBackup,
   restoreTrashItem,
   saveExpressionEntries,
+  setAiCache,
   updateKnowledgeMemo,
 } = await import('../js/storage.js');
 const { normalizeKnowledgeAnswer, validateKnowledgeEntry } = await import('../js/knowledge-model.js');
@@ -54,6 +56,74 @@ function entry(id, title, updatedAt = '2026-07-27T10:00:00.000Z') {
 }
 
 test.beforeEach(() => values.clear());
+
+test('memo save retries after removing only regenerable AI cache on browser quota', () => {
+  const existing = {
+    id: 'memo-existing', title: '既存メモ', blocks: [{ id: 'body', type: 'paragraph', text: '消してはいけない' }],
+    tags: ['General'], createdAt: '2026-10-13T00:00:00.000Z', updatedAt: '2026-10-13T00:00:00.000Z',
+  };
+  values.set('mp_knowledge', JSON.stringify([existing]));
+  values.set('mp_ai_cache', JSON.stringify({ temporary: 'x'.repeat(1300) }));
+  const originalSetItem = localStorage.setItem;
+  localStorage.setItem = (key, value) => {
+    const size = [...values].reduce((total, [storedKey, storedValue]) =>
+      total + (storedKey === key ? 0 : storedValue.length), String(value).length);
+    if (size > 1600) throw new DOMException('Storage full', 'QuotaExceededError');
+    originalSetItem(key, value);
+  };
+  try {
+    assert.ok(addKnowledgeMemo({ title: '新規メモ', blocks: [{ id: 'new', type: 'paragraph', text: '保存する' }] }));
+    assert.equal(values.has('mp_ai_cache'), false);
+    assert.deepEqual(getKnowledgeMemos().map(memo => memo.title), ['新規メモ', '既存メモ']);
+    assert.equal(getKnowledgeMemos()[1].blocks[0].text, '消してはいけない');
+  } finally {
+    localStorage.setItem = originalSetItem;
+  }
+});
+
+test('AI cache stays bounded and expired entries do not occupy memo storage', () => {
+  setAiCache('expired', 'old', -1);
+  setAiCache('oversized', 'x'.repeat(120_000));
+  setAiCache('useful', 'ok');
+  const cache = JSON.parse(values.get('mp_ai_cache'));
+  assert.deepEqual(Object.keys(cache), ['useful']);
+  assert.ok(values.get('mp_ai_cache').length <= 100_000);
+});
+
+test('a cache-only write failure does not claim the memo was not saved', () => {
+  const originalSetItem = localStorage.setItem;
+  const originalDocument = globalThis.document;
+  const events = [];
+  globalThis.document = { dispatchEvent(event) { events.push(event); } };
+  localStorage.setItem = (key, value) => {
+    if (key === 'mp_ai_cache') throw new DOMException('Storage full', 'QuotaExceededError');
+    originalSetItem(key, value);
+  };
+  try {
+    setAiCache('temporary', 'not essential');
+    assert.equal(events.length, 0);
+    assert.ok(addKnowledgeMemo({ title: '保存できるメモ', blocks: [] }));
+  } finally {
+    localStorage.setItem = originalSetItem;
+    globalThis.document = originalDocument;
+  }
+});
+
+test('an unrecoverable quota failure preserves every previously saved memo', () => {
+  const original = [{ id: 'safe', title: '保存済み', blocks: [{ id: 'body', type: 'paragraph', text: '本文' }] }];
+  values.set('mp_knowledge', JSON.stringify(original));
+  const originalSetItem = localStorage.setItem;
+  localStorage.setItem = (key, value) => {
+    if (key === 'mp_knowledge') throw new DOMException('Storage full', 'QuotaExceededError');
+    originalSetItem(key, value);
+  };
+  try {
+    assert.equal(addKnowledgeMemo({ title: '未保存', blocks: [] }), null);
+    assert.deepEqual(JSON.parse(values.get('mp_knowledge')), original);
+  } finally {
+    localStorage.setItem = originalSetItem;
+  }
+});
 
 test('learning writes preserve ordinary memo records', () => {
   localStorage.setItem('mp_knowledge', JSON.stringify([{

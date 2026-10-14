@@ -150,13 +150,32 @@ function load(key, fallback) {
  * 容量超過などの失敗を呼び出し元へ返し、UIにも通知できるようイベントを出す。
  */
 function save(key, value) {
+  let serialized;
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    serialized = JSON.stringify(value);
+    localStorage.setItem(key, serialized);
     return true;
   } catch (e) {
+    const isQuotaError = e?.name === 'QuotaExceededError' || e?.code === 22 || e?.code === 1014;
+    if (isQuotaError && key !== KEY.CACHE && serialized !== undefined) {
+      // AIの期限付き結果だけは再生成可能。本文・同期控え・ごみ箱は絶対に削除しない。
+      try {
+        if (localStorage.getItem(KEY.CACHE) !== null) {
+          localStorage.removeItem(KEY.CACHE);
+          localStorage.setItem(key, serialized);
+          return true;
+        }
+      } catch (retryError) {
+        console.warn('Storage retry after clearing AI cache failed:', retryError);
+      }
+    }
     console.error('Storage write failed:', e);
+    // 一時キャッシュだけが失敗しても、利用者のメモ保存失敗とは表示しない。
+    if (key === KEY.CACHE) return false;
     try {
-      document.dispatchEvent(new CustomEvent('storage:write-error', { detail: { key } }));
+      document.dispatchEvent(new CustomEvent('storage:write-error', {
+        detail: { key, reason: isQuotaError ? 'quota' : 'unavailable' },
+      }));
     } catch {}
     return false;
   }
@@ -538,6 +557,20 @@ export function getMyScheduleColor() { return getSettings().myScheduleColor || D
 
 // ---- AI Result Cache ----
 // 同じ短いAI要求の再通信を減らす期限付きキャッシュ。正式なメモ本文とは別物。
+const AI_CACHE_MAX_CHARS = 100_000;
+
+/** 期限切れと古い一時結果を捨て、メモ本文の保存枠をAIキャッシュが圧迫しないようにする。 */
+function compactAiCache(cache, now = Date.now()) {
+  const entries = Object.entries(cache || {})
+    .filter(([, entry]) => entry && Number(entry.exp) > now)
+    .sort((a, b) => Number(b[1].exp) - Number(a[1].exp));
+  const result = {};
+  for (const [key, entry] of entries) {
+    result[key] = entry;
+    if (JSON.stringify(result).length > AI_CACHE_MAX_CHARS) delete result[key];
+  }
+  return result;
+}
 
 /** 有効期限内のAIキャッシュだけを返し、期限切れはその場で除去する。 */
 export function getAiCache(key) {
@@ -545,8 +578,7 @@ export function getAiCache(key) {
   const entry = cache[key];
   if (!entry) return null;
   if (Date.now() > entry.exp) {
-    delete cache[key];
-    save(KEY.CACHE, cache);
+    save(KEY.CACHE, compactAiCache(cache));
     return null;
   }
   return entry.val;
@@ -556,7 +588,7 @@ export function getAiCache(key) {
 export function setAiCache(key, val, ttlMs = 86_400_000) {
   const cache = load(KEY.CACHE, {});
   cache[key] = { val, exp: Date.now() + ttlMs };
-  save(KEY.CACHE, cache);
+  save(KEY.CACHE, compactAiCache(cache));
 }
 
 /** 正式保存データには触れず、再通信を減らすための一時AIキャッシュだけを空にする。 */
