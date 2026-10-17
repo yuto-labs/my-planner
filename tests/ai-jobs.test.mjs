@@ -396,6 +396,25 @@ test('Knowledge asks for short semantic highlight segments without Markdown symb
   assert.match(prompt, /Do not output Markdown, HTML/);
 });
 
+test('Knowledge emphasis segments render as visible strong text and highlights', async () => {
+  const source = await readFile(new URL('../js/modules/learning-library.js', import.meta.url), 'utf8');
+  const style = await readFile(new URL('../css/style.css', import.meta.url), 'utf8');
+  const start = source.indexOf('function renderSegments(');
+  const end = source.indexOf('/** AI回答の表・数式', start);
+  assert.ok(start >= 0 && end > start);
+  const { esc } = await import('../js/utils.js');
+  const render = new Function('esc', 'findKnowledgeConceptMatches', `${source.slice(start, end)}; return renderSegments;`)(
+    esc, () => [],
+  );
+  const html = render([
+    { text: '理由は', marks: [] },
+    { text: '光の散乱', marks: ['strong', 'highlight-yellow'] },
+    { text: 'です。', marks: [] },
+  ], new Map(), 'current');
+  assert.match(html, /理由は<mark class="learning-mark learning-mark--yellow"><strong>光の散乱<\/strong><\/mark>です。/);
+  assert.match(style, /\.learning-mark--yellow\s*\{\s*background:/);
+});
+
 test('background generation uses the public request host instead of a protected deployment URL', () => {
   const previous = process.env.VERCEL_URL;
   process.env.VERCEL_URL = 'protected-preview.example.vercel.app';
