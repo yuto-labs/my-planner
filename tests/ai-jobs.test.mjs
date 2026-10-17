@@ -316,6 +316,71 @@ test('status polling recovers an unowned completed Atlas job once', async () => 
   }
 });
 
+test('completed background jobs restore all four learning destinations without taking an owned job', async () => {
+  const source = await readFile(new URL('../js/ai-job-resume.js', import.meta.url), 'utf8');
+  const body = source.slice(source.indexOf('let resumePromise = null;'));
+  const names = [
+    'addExpressionEntriesWithReport', 'addLearningEntry', 'archiveLocalSyncBackups',
+    'addTranslationSet', 'getEnglishQuestions', 'getLearningEntries', 'updateEnglishQuestion',
+    'answerEnglishLearningQuestion', 'generateKnowledgeAnswer', 'generateNuanceEntries',
+    'generateTranslationVariants', 'acknowledgeAIJobAfterSync', 'isAIJobOwnedByForeground',
+    'listAIJobs', 'submitAIJob', 'findDuplicateKnowledgeEntries', 'normalizeKnowledgeAnswer',
+    'validateKnowledgeEntry',
+  ];
+  const isolated = `const { ${names.join(', ')} } = globalThis.__aiResumeHarness;\n${body}`;
+  const originalDocument = globalThis.document;
+  const originalCustomEvent = globalThis.CustomEvent;
+  const originalWindow = globalThis.window;
+  const saved = [];
+  const acknowledged = [];
+  const events = [];
+  const jobs = [
+    { id: 'knowledge-job', status: 'completed', resultText: '{"title":"Cloud"}', clientContext: { kind: 'knowledge', question: 'クラウドとは' } },
+    { id: 'atlas-job', status: 'completed', resultText: '{"term":"range"}', clientContext: { kind: 'nuance', input: { expression: 'range' } } },
+    { id: 'translation-job', status: 'completed', resultText: '{"sourceTextJa":"帰る"}', clientContext: { kind: 'translation', input: { sourceTextJa: '帰る' } } },
+    { id: 'english-job', status: 'completed', resultText: '{"answer":"ready"}', clientContext: { kind: 'english-question', questionId: 'question-1', question: 'makeとは' } },
+    { id: 'owned-job', status: 'completed', resultText: '{"title":"Owned"}', clientContext: { kind: 'knowledge', question: '保存中' } },
+  ];
+  globalThis.__aiResumeHarness = {
+    addExpressionEntriesWithReport(entries) { saved.push(['atlas', entries]); return { entries }; },
+    addLearningEntry(entry) { saved.push(['knowledge', entry]); return entry; },
+    archiveLocalSyncBackups: async () => {},
+    addTranslationSet(set) { saved.push(['translation', set]); return set; },
+    getEnglishQuestions: () => [{ id: 'question-1', status: 'pending', questionJa: 'makeとは' }],
+    getLearningEntries: () => [],
+    updateEnglishQuestion(id, changes) { saved.push(['english-question', id, changes]); return changes; },
+    answerEnglishLearningQuestion: async (_question, options) => JSON.parse(options.completedText),
+    generateKnowledgeAnswer: async (_question, _taxonomy, options) => JSON.parse(options.completedText),
+    generateNuanceEntries: async (_input, options) => [JSON.parse(options.completedText)],
+    generateTranslationVariants: async (_input, options) => JSON.parse(options.completedText),
+    acknowledgeAIJobAfterSync: async id => { acknowledged.push(id); },
+    isAIJobOwnedByForeground: id => id === 'owned-job',
+    listAIJobs: async () => jobs,
+    submitAIJob: async () => { throw new Error('completed jobs must not restart'); },
+    findDuplicateKnowledgeEntries: () => [],
+    normalizeKnowledgeAnswer: (raw, question) => ({ ...raw, originalQuestion: question }),
+    validateKnowledgeEntry: () => ({ valid: true }),
+  };
+  globalThis.document = { dispatchEvent(event) { events.push(event.type); } };
+  globalThis.CustomEvent = class CustomEvent {
+    constructor(type, options) { this.type = type; this.detail = options?.detail; }
+  };
+  globalThis.window = { AppNav: { showToast() {}, refreshCurrentView() {} } };
+  try {
+    const module = await import(`data:text/javascript;base64,${Buffer.from(isolated).toString('base64')}`);
+    const result = await module.resumeCompletedAIJobs();
+    assert.equal(result.applied, 4);
+    assert.deepEqual(saved.map(item => item[0]), ['knowledge', 'atlas', 'translation', 'english-question']);
+    assert.deepEqual(acknowledged, jobs.slice(0, 4).map(job => job.id));
+    assert.equal(events.filter(type => type === 'ai:job-applied').length, 4);
+  } finally {
+    globalThis.document = originalDocument;
+    globalThis.CustomEvent = originalCustomEvent;
+    globalThis.window = originalWindow;
+    delete globalThis.__aiResumeHarness;
+  }
+});
+
 test('foreground return checks completed jobs even while editing defers a cloud pull', async () => {
   const source = await readFile(new URL('../js/app.js', import.meta.url), 'utf8');
   const foreground = source.slice(source.indexOf("document.addEventListener('visibilitychange'"), source.indexOf("window.addEventListener('pagehide'"));
