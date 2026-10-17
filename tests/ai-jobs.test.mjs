@@ -175,10 +175,12 @@ test('a surfaced generation failure is not automatically submitted again', async
 
 test('an actively awaited result has only one save owner', async () => {
   const source = await readFile(new URL('../js/ai-jobs.js', import.meta.url), 'utf8');
+  const resumeSource = await readFile(new URL('../js/ai-job-resume.js', import.meta.url), 'utf8');
   const readyEvents = source.match(/new CustomEvent\('ai:job-ready'/g) || [];
   assert.equal(readyEvents.length, 1);
   assert.match(source, /if \(error\?\.name === 'AbortError'\)/);
   assert.match(source, /if \(signal\?\.aborted\)\s*\{\s*foregroundJobs\.delete\(id\);\s*notifyAIJobReady\(id\);\s*throw new DOMException/);
+  assert.match(resumeSource, /if \(isAIJobOwnedByForeground\(job\.id\)\) continue/);
 });
 
 test('a completed response arriving after leaving the screen is handed to background saving', async () => {

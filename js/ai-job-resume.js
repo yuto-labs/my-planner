@@ -18,6 +18,7 @@ import {
 } from './ai.js';
 import {
   acknowledgeAIJobAfterSync,
+  isAIJobOwnedByForeground,
   listAIJobs,
   submitAIJob,
 } from './ai-jobs.js';
@@ -118,6 +119,8 @@ export async function resumeCompletedAIJobs({ quiet = false } = {}) {
     let restarted = 0;
     for (const job of jobs) {
       if (job.status === 'completed' && String(job.resultText || '').trim()) {
+        // 元画面が保存中なら復帰処理から同じ回答を書き込まない。
+        if (isAIJobOwnedByForeground(job.id)) continue;
         if (failedApplyThisSession.has(job.id)) continue;
         try {
           const alreadySaved = savedAwaitingSyncThisSession.has(job.id);
