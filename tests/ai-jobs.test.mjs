@@ -257,11 +257,12 @@ test('leaving during a pending submission releases the result for background sav
     await assert.rejects(pending, error => error?.name === 'AbortError');
     assert.equal(module.isAIJobOwnedByForeground(submittedId), false);
     assert.equal(events.includes('ai:job-ready'), false);
+    const statusEventsBeforeLateResponse = events.filter(type => type === 'ai:job-status').length;
     finishRequest(new Response(JSON.stringify({ job: {
       id: submittedId, status: 'completed', resultText: '{"answer":"ready"}',
     } }), { status: 202 }));
     await new Promise(resolve => setImmediate(resolve));
-    assert.equal(events.includes('ai:job-status'), true);
+    assert.equal(events.filter(type => type === 'ai:job-status').length, statusEventsBeforeLateResponse);
   } finally {
     globalThis.fetch = originalFetch;
     globalThis.document = originalDocument;

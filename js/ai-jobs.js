@@ -59,12 +59,12 @@ async function jobRequest(path = '', options = {}) {
 }
 
 /** 新しいジョブを登録する。同じIDなら失敗・停止ジョブの安全な再開になる。 */
-export async function submitAIJob({ id, request, clientContext }) {
+export async function submitAIJob({ id, request, clientContext }, { signal } = {}) {
   const payload = await jobRequest('', {
     method: 'POST',
     body: JSON.stringify({ id, request, clientContext }),
   });
-  emitAIJobStatus(payload.job, 'submitted');
+  if (!signal?.aborted) emitAIJobStatus(payload.job, 'submitted');
   return payload.job;
 }
 
@@ -176,7 +176,7 @@ export async function runAIJob(request, clientContext, { signal, jobState } = {}
   }
   let submitted;
   try {
-    submitted = await waitForSubmission(() => submitAIJob({ id, request, clientContext }), signal);
+    submitted = await waitForSubmission(() => submitAIJob({ id, request, clientContext }, { signal }), signal);
   } catch (error) {
     if (error?.name === 'AbortError') {
       foregroundJobs.delete(id);
