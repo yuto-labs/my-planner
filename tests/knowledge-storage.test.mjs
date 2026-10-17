@@ -75,6 +75,33 @@ test('unusual Knowledge questions persist independently without replacing ordina
   assert.equal(getKnowledgeMemos().find(item => item.id === memo.id)?.blocks[0].content, '元の本文');
 });
 
+test('a titleless deity-name answer saves and reloads without changing an existing memo', () => {
+  const memo = addKnowledgeMemo({ title: '既存メモ', blocks: [{ type: 'text', content: '残す本文' }] });
+  const question = '神の名前が由来になっているものについて';
+  const raw = {
+    classification: { majorId: 'language_communication', middleId: 'linguistics', relatedCategoryIds: [] },
+    primaryConcept: { key: 'mythological-eponyms', label: '神名由来の名称', aliases: [], role: 'primary' },
+    concepts: [{ key: 'mythological-eponyms', label: '神名由来の名称', aliases: [], role: 'primary' }],
+    answer: {
+      directAnswer: [{ text: '曜日名や元素名には、神話上の神に由来する名称があります。' }],
+      keyPoints: ['名前が伝わった言語を確認する', '直接命名と間接的な由来を区別する', '音の類似だけで決めない'],
+      sections: [{
+        heading: '曜日名に残る神名',
+        paragraphs: [[{ text: 'Thursday は北欧神話のトールの名に由来し、英語の曜日名の歴史を示す例です。'.repeat(25) }]],
+        richBlocks: [],
+      }],
+      cautions: [],
+    },
+  };
+  const normalized = normalizeKnowledgeAnswer(raw, question);
+  assert.deepEqual(validateKnowledgeEntry(normalized), { valid: true, errors: [] });
+  assert.ok(addLearningEntry(normalized));
+  const restored = getLearningEntries().find(item => item.originalQuestion === question);
+  assert.equal(restored.title, question);
+  assert.match(restored.answer.sections[0].paragraphs[0][0].text, /Thursday/);
+  assert.equal(getKnowledgeMemos().find(item => item.id === memo.id)?.blocks[0].content, '残す本文');
+});
+
 function fakeBackupDb({ failWrite = false } = {}) {
   const records = new Map();
   return {
