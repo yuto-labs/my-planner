@@ -178,6 +178,60 @@ test('an actively awaited result has only one save owner', async () => {
   const readyEvents = source.match(/new CustomEvent\('ai:job-ready'/g) || [];
   assert.equal(readyEvents.length, 1);
   assert.match(source, /if \(error\?\.name === 'AbortError'\)/);
+  assert.match(source, /if \(signal\?\.aborted\)\s*\{\s*notifyAIJobReady\(id\);\s*throw new DOMException/);
+});
+
+test('a completed response arriving after leaving the screen is handed to background saving', async () => {
+  const source = await readFile(new URL('../js/ai-jobs.js', import.meta.url), 'utf8');
+  const isolated = source
+    .replace("import { getSession } from './supabase.js';", "const getSession = async () => ({ access_token: 'test-token' });")
+    .replace("import { extractAIErrorMessage, getFriendlyAIJobError } from './ai-response.js';", "const extractAIErrorMessage = value => String(value); const getFriendlyAIJobError = value => String(value);");
+  const module = await import(`data:text/javascript;base64,${Buffer.from(isolated).toString('base64')}`);
+  const originalFetch = globalThis.fetch;
+  const originalDocument = globalThis.document;
+  const originalCustomEvent = globalThis.CustomEvent;
+  const events = [];
+  let finishRequest;
+  globalThis.document = { dispatchEvent(event) { events.push(event.type); } };
+  globalThis.CustomEvent = class CustomEvent {
+    constructor(type, options) { this.type = type; this.detail = options?.detail; }
+  };
+  globalThis.fetch = () => new Promise(resolve => { finishRequest = resolve; });
+  try {
+    const controller = new AbortController();
+    const pending = module.runAIJob({ actionType: 'knowledge_answer' }, { kind: 'knowledge' }, {
+      signal: controller.signal,
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    controller.abort();
+    finishRequest(new Response(JSON.stringify({ job: {
+      id: 'ai-job-completed-after-navigation',
+      actionType: 'knowledge_answer',
+      status: 'completed',
+      resultText: '{"title":"saved by resume"}',
+    } }), { status: 202 }));
+    await assert.rejects(pending, error => error?.name === 'AbortError');
+    assert.equal(events.filter(type => type === 'ai:job-ready').length, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.document = originalDocument;
+    globalThis.CustomEvent = originalCustomEvent;
+  }
+});
+
+test('foreground return checks completed jobs even while editing defers a cloud pull', async () => {
+  const source = await readFile(new URL('../js/app.js', import.meta.url), 'utf8');
+  const foreground = source.slice(source.indexOf("document.addEventListener('visibilitychange'"), source.indexOf("window.addEventListener('pagehide'"));
+  assert.ok(foreground.indexOf('resumeCompletedAIJobs()') < foreground.indexOf('if (isUserEditing() || hasPendingSyncWork())'));
+});
+
+test('Knowledge asks for short semantic highlight segments without Markdown symbols', async () => {
+  const source = await readFile(new URL('../js/ai.js', import.meta.url), 'utf8');
+  const prompt = source.slice(source.indexOf('export async function generateKnowledgeAnswer'), source.indexOf('export async function generateNuanceEntries'));
+  assert.match(prompt, /marks:\["strong"\]/);
+  assert.match(prompt, /marks:\["highlight-yellow"\]/);
+  assert.match(prompt, /Surrounding words must remain separate unmarked segments/);
+  assert.match(prompt, /Do not output Markdown, HTML/);
 });
 
 test('background generation uses the public request host instead of a protected deployment URL', () => {

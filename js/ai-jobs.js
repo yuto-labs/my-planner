@@ -121,6 +121,12 @@ export async function waitForAIJob(id, { signal } = {}) {
   );
 }
 
+/** 画面を離れた後の完成回答を、現在画面を変えず共通の保存処理へ渡す。 */
+function notifyAIJobReady(id) {
+  if (typeof document === 'undefined' || typeof CustomEvent === 'undefined') return;
+  document.dispatchEvent(new CustomEvent('ai:job-ready', { detail: { id } }));
+}
+
 /** 長時間生成を登録し、現在画面が開いている間は完成まで待って本文を返す。 */
 export async function runAIJob(request, clientContext, { signal, jobState } = {}) {
   const id = createAIJobId();
@@ -158,13 +164,19 @@ export async function runAIJob(request, clientContext, { signal, jobState } = {}
     // 完成通知だけを発火し、保存は共通の復帰処理へ任せる。
     if (error?.name === 'AbortError') {
       waitForAIJob(id)
-        .then(() => document.dispatchEvent(new CustomEvent('ai:job-ready', { detail: { id } })))
+        .then(() => notifyAIJobReady(id))
         .catch(() => {});
     }
     throw error;
   }
   if (!String(completed?.resultText || '').trim()) {
     throw new Error('AIの完成結果を取得できませんでした。');
+  }
+  // POST応答と画面移動が重なると、完了済み本文が古い画面の処理へ戻る。
+  // その場合は通常保存経路へ渡し、Calendar等から勝手に遷移させない。
+  if (signal?.aborted) {
+    notifyAIJobReady(id);
+    throw new DOMException('画面での待機を閉じました。生成はバックグラウンドで続きます。', 'AbortError');
   }
   emitAIJobStatus(completed, 'generated');
   // 画面上で待っていた呼び出し元が、この返り値を通常の保存経路へ渡す。

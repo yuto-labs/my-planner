@@ -1018,13 +1018,15 @@ async function init() {
     }
     try { autoArchiveTasks(); } catch {}
     try { navigator.serviceWorker?.getRegistration?.().then(reg => reg?.update?.()).catch(() => {}); } catch {}
-    if (isUserEditing() || hasPendingSyncWork()) {
-      deferSyncWhileEditing({ needsPull: true });
-      return;
-    }
     getSession().then(session => {
       if (!session) return;
+      // Editing and pending writes may defer a cloud pull, but must never
+      // prevent finished AI jobs from being imported after app suspension.
       resumeCompletedAIJobs().catch(error => console.warn('[AI jobs] foreground resume failed:', error));
+      if (isUserEditing() || hasPendingSyncWork()) {
+        deferSyncWhileEditing({ needsPull: true });
+        return;
+      }
       pullIfStale(30_000, true).then(pulled => {
         if (pulled) refreshCurrentView({ preserveScroll: true });
       }).catch(() => {});

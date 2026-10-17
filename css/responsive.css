@@ -166,12 +166,13 @@
   }
 }
 
-/* PC workspace. Touch devices keep the existing bottom navigation and single-column pages. */
+/* Wide screens use the PC workspace even when a touch-capable computer reports
+   a coarse primary pointer. Phone widths still keep the established layout. */
 #desktop-context,
 .cal-desktop-agenda,
 #desktop-page-resizer { display: none; }
 
-@media (min-width: 1000px) and (pointer: fine) {
+@media (min-width: 1000px) {
   #app {
     width: 100%;
     max-width: none;
@@ -450,7 +451,7 @@
 }
 
 /* PC幅なら一覧は常に本文と別カラムに置き、狭いウィンドウでも重ねない。 */
-@media (min-width: 1000px) and (pointer: fine) {
+@media (min-width: 1000px) {
   #app[data-desktop-context-open="true"] {
     grid-template-columns: 80px var(--desktop-context-width, 250px) minmax(0, 1fr);
   }

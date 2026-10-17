@@ -6,8 +6,9 @@ import { confirmDiscardKnowledgeChanges, openKnowledgeMemo } from './modules/mem
 import { getSelectedLearningEntryId, openLearningEntry } from './modules/learning-library.js';
 import { getAtlasDesktopSelectedId, openAtlasDesktopEntry } from './modules/expression-atlas.js';
 
-const wideDesktop = '(min-width: 1280px) and (pointer: fine)';
-const desktop = '(min-width: 1000px) and (pointer: fine)';
+// Layout depends on available width, not the currently reported mouse/touch input.
+const wideDesktop = '(min-width: 1280px)';
+const desktop = '(min-width: 1000px)';
 const MAX_VISIBLE = 80;
 const CONTEXT_WIDTH_KEY = 'planner.desktopContextWidth';
 const PAGE_WIDTH_KEY = 'planner.desktopPageWidth';

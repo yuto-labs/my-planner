@@ -463,12 +463,13 @@ async function createLearningEntry(container) {
   const button = container.querySelector('#learning-ask-btn');
   generation?.classList.remove('hidden');
   if (button) button.disabled = true;
-  generationController = new AbortController();
+  const controller = new AbortController();
+  generationController = controller;
   try {
     const raw = await generateKnowledgeAnswer(
       question,
       serializeLearningTaxonomyForAI(),
-      { signal: generationController.signal }
+      { signal: controller.signal }
     );
     const entry = normalizeKnowledgeAnswer(raw, question);
     const validation = validateKnowledgeEntry(entry);
@@ -485,7 +486,7 @@ async function createLearningEntry(container) {
   } catch (error) {
     if (error?.name !== 'AbortError') toast(error?.message || '解説を作成できませんでした。', 'error');
   } finally {
-    generationController = null;
+    if (generationController === controller) generationController = null;
     if (generation?.isConnected) generation.classList.add('hidden');
     if (button?.isConnected) button.disabled = false;
   }

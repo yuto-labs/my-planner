@@ -1751,6 +1751,14 @@ async function requestGeminiResilient(key, model, fallbackModel, payload, timeou
 function logKnowledgeGeminiResult(actionType, jobId, stage, model, upstream, data, elapsedMs) {
   if (actionType !== 'knowledge_answer') return;
   const usage = data?.usageMetadata || {};
+  const parts = data?.candidates?.[0]?.content?.parts || [];
+  const parsed = parseStructuredResponse(extractText(data));
+  const sections = Array.isArray(parsed?.answer?.sections) ? parsed.answer.sections : [];
+  const segments = [
+    ...(Array.isArray(parsed?.answer?.directAnswer) ? parsed.answer.directAnswer : []),
+    ...sections.flatMap(section => (Array.isArray(section?.paragraphs) ? section.paragraphs : []))
+      .flatMap(paragraph => (Array.isArray(paragraph) ? paragraph : [])),
+  ];
   console.info('[ai] knowledge Gemini response', {
     jobId,
     stage,
@@ -1762,6 +1770,9 @@ function logKnowledgeGeminiResult(actionType, jobId, stage, model, upstream, dat
     outputTokens: Number(usage.candidatesTokenCount || 0),
     thoughtTokens: Number(usage.thoughtsTokenCount || 0),
     responseChars: extractText(data).length,
+    jsonParseable: Boolean(parsed),
+    markedSegments: segments.filter(segment => Array.isArray(segment?.marks) && segment.marks.length).length,
+    thoughtParts: parts.filter(part => part?.thought === true).length,
   });
 }
 

@@ -19,16 +19,23 @@ test('only detail screens with a selected item receive a desktop context list', 
   }
 });
 
-test('PC workspace stays behind a fine-pointer breakpoint and mobile calendar agenda stays hidden', () => {
+test('PC workspace uses viewport width regardless of pointer type and mobile agenda stays hidden', () => {
   assert.match(responsiveCss, /#desktop-context,\s*\.cal-desktop-agenda,\s*#desktop-page-resizer\s*\{\s*display:\s*none/);
-  assert.match(responsiveCss, /@media \(min-width: 1000px\) and \(pointer: fine\)\s*\{/);
+  assert.match(responsiveCss, /@media \(min-width: 1000px\)\s*\{/);
+  assert.doesNotMatch(responsiveCss, /@media \(min-width: 1000px\) and \(pointer: fine\)/);
   assert.match(responsiveCss, /#app\[data-desktop-context-open="true"\] > #desktop-context/);
   assert.match(indexHtml, /<aside id="desktop-context"[^>]*hidden><\/aside>/);
   assert.match(indexHtml, /id="desktop-page-resizer"[^>]*role="separator"/);
   assert.match(responsiveCss, /--desktop-context-width/);
   assert.match(responsiveCss, /--desktop-page-width/);
-  assert.match(responsiveCss, /@media \(min-width: 1000px\) and \(pointer: fine\)\s*\{\s*#app\[data-desktop-context-open="true"\]\s*\{\s*grid-template-columns:/);
-  assert.doesNotMatch(responsiveCss, /@media \(min-width: 1000px\) and \(max-width: 1279px\) and \(pointer: fine\)/);
+  assert.match(responsiveCss, /@media \(min-width: 1000px\)\s*\{\s*#app\[data-desktop-context-open="true"\]\s*\{\s*grid-template-columns:/);
+  assert.doesNotMatch(responsiveCss, /@media \(min-width: 1000px\) and \(max-width: 1279px\)/);
+});
+
+test('desktop list logic uses the same width-only media queries as the stylesheet', async () => {
+  const source = await readFile(new URL('../js/desktop-workspace.js', import.meta.url), 'utf8');
+  assert.match(source, /wideDesktop = '\(min-width: 1280px\)'/);
+  assert.match(source, /desktop = '\(min-width: 1000px\)'/);
 });
 
 test('calendar agenda does not replace the existing two-step day interaction', () => {
