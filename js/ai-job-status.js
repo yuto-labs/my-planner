@@ -1,7 +1,7 @@
 // AIジョブの実行状況を、どの画面からでも確認できる小さな共通表示へまとめる。
 // 生成完了と保存完了を分け、サーバー回答は得たが端末へ未保存の状態も隠さない。
 
-import { acknowledgeAIJob, listAIJobs } from './ai-jobs.js';
+import { acknowledgeAIJob, isAIJobOwnedByForeground, listAIJobs } from './ai-jobs.js';
 import { getFriendlyAIJobError } from './ai-response.js';
 
 const ACTIVE_POLL_MS = 3000;
@@ -18,6 +18,7 @@ let terminal = null;
 let pollTimer = null;
 let elapsedTimer = null;
 let refreshPromise = null;
+const notifiedReadyJobs = new Set();
 
 const LABELS = {
   knowledge_answer: 'Knowledgeの回答',
@@ -200,6 +201,15 @@ export async function refreshAIJobStatus() {
   refreshPromise = listAIJobs()
     .then(items => {
       jobs = new Map(items.map(job => [job.id, job]));
+      for (const id of notifiedReadyJobs) {
+        if (!jobs.has(id)) notifiedReadyJobs.delete(id);
+      }
+      for (const job of items) {
+        if (job.status !== 'completed' || !String(job.resultText || '').trim()
+          || isAIJobOwnedByForeground(job.id) || notifiedReadyJobs.has(job.id)) continue;
+        notifiedReadyJobs.add(job.id);
+        queueMicrotask(() => document.dispatchEvent(new CustomEvent('ai:job-ready', { detail: { id: job.id } })));
+      }
       const failedJobs = [...jobs.values()].filter(job => job.status === 'failed');
       // 古い失敗が複数残っていても、最新の一件だけを表示して全件を終了扱いにする。
       const latestFailed = failedJobs.at(-1);
