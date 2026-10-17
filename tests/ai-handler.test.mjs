@@ -129,6 +129,46 @@ test('knowledge generation stays compatible with the free tier when search groun
   }
 });
 
+test('keeps a complete Knowledge answer when Gemini omits only its title', async () => {
+  const previousFetch = globalThis.fetch;
+  const previousKey = process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY = 'test-key';
+  const question = '神の名前が語源の言葉';
+  let geminiCalls = 0;
+  globalThis.fetch = async url => {
+    if (String(url).includes('/auth/v1/user')) {
+      return new Response(JSON.stringify({ id: 'user-1' }), { status: 200 });
+    }
+    geminiCalls++;
+    const answer = completeKnowledgeResponse();
+    delete answer.title;
+    return geminiResponse(JSON.stringify(answer));
+  };
+
+  try {
+    const res = createResponseRecorder();
+    await generateHandler({
+      method: 'POST',
+      headers: { authorization: 'Bearer test-token' },
+      body: {
+        modelPreference: 'quality',
+        actionType: 'knowledge_answer',
+        responseFormat: 'json',
+        maxTokens: 9000,
+        systemText: '事実を確認して答える。',
+        userText: JSON.stringify({ question, taxonomy: [] }),
+      },
+    }, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(JSON.parse(res.body.text).title, question);
+    assert.equal(geminiCalls, 1);
+  } finally {
+    globalThis.fetch = previousFetch;
+    restoreEnv('GEMINI_API_KEY', previousKey);
+  }
+});
+
 /** Knowledge検証を通る十分な長さの構造化回答を、通信テスト向けに作る。 */
 function completeKnowledgeResponse(title = 'クラウドの基本') {
   const explanation = 'クラウドは、手元の端末だけで処理や保存を完結させず、ネットワーク越しの計算資源を必要に応じて利用する仕組みです。利用者は設備の物理的な場所を意識せず、サービスとして機能を使えます。'.repeat(30);

@@ -1069,7 +1069,7 @@ function hasSafeNuanceEnrichmentResponse(text, userText) {
 }
 
 /** AIのJSONを操作種別ごとの保存形式へ補正し、表記揺れ・重複・危険な装飾を除く。 */
-function normalizeStructuredResponse(actionType, text) {
+function normalizeStructuredResponse(actionType, text, requestText = '') {
   const parsed = parseStructuredResponse(text);
   if (!parsed) return text;
   if (actionType === 'nuance_generate' && Array.isArray(parsed.entries)) {
@@ -1225,6 +1225,12 @@ function normalizeStructuredResponse(actionType, text) {
     parsed.entries = completeEntries.length >= 1 ? completeEntries : deduplicatedEntries;
   }
   if (actionType === 'knowledge_answer') {
+    // The client already uses the original question as an editable title.
+    // Do the same before server validation so a complete answer is not retried.
+    const requestedQuestion = String(parseStructuredResponse(requestText)?.question || '').trim();
+    if (!String(parsed.title || '').trim() && requestedQuestion) {
+      parsed.title = requestedQuestion.slice(0, 80);
+    }
     // JSON modeでは内容が正しくても、answerを文字列にする、sectionsを単体
     // オブジェクトにする等の軽微な型揺れが起きる。保存形式へ寄せられるものは
     // ここで救済し、事実を新しく作らなければ直せない欠損だけ再生成へ回す。
@@ -1699,6 +1705,11 @@ async function requestGeminiResilient(key, model, fallbackModel, payload, timeou
     if (error?.name !== 'AbortError' || !canFallback) throw error;
     const remainingMs = timeoutMs - (Date.now() - startedAt);
     if (remainingMs < 8_000) throw error;
+    console.warn('[ai] primary Gemini model timed out; trying fallback', {
+      primaryModel: model,
+      fallbackModel,
+      elapsedMs: Date.now() - startedAt,
+    });
     const fallback = await requestGemini(key, fallbackModel, payload, Math.min(remainingMs, 90_000));
     return { ...fallback, model: fallbackModel };
   }
@@ -1921,7 +1932,7 @@ export default async function handler(req, res) {
       });
     }
     let finalBlockReason = initialBlockReason;
-    let text = normalizeStructuredResponse(body.actionType, extractText(data));
+    let text = normalizeStructuredResponse(body.actionType, extractText(data), body.userText);
     if (body.actionType === 'knowledge_answer') {
       text = attachKnowledgeGrounding(text, data);
     }
@@ -2064,7 +2075,7 @@ The previous response was incomplete. Return a grounded title and at least one n
         return;
       }
       finalBlockReason = getGeminiBlockReason(data);
-      let retryText = normalizeStructuredResponse(body.actionType, extractText(data));
+      let retryText = normalizeStructuredResponse(body.actionType, extractText(data), body.userText);
       if (body.actionType === 'knowledge_answer') {
         retryText = attachKnowledgeGrounding(retryText, data);
       }
