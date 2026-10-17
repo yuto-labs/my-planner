@@ -1636,7 +1636,9 @@ export const maxDuration = 300;
 
 const RETRYABLE_GEMINI_STATUSES = new Set([500, 502, 503, 504]);
 const FALLBACK_GEMINI_STATUSES = new Set([404, 429, ...RETRYABLE_GEMINI_STATUSES]);
-const GEMINI_REQUEST_TIMEOUT_MS = 120_000;
+const GEMINI_REQUEST_TIMEOUT_MS = 150_000;
+const STANDARD_REQUEST_TIMEOUT_MS = 120_000;
+const KNOWLEDGE_RETRY_TIMEOUT_MS = 85_000;
 
 /** `delay`: 指定ミリ秒だけ待機するPromiseを返す。 */
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -1690,7 +1692,7 @@ async function requestGemini(key, model, payload, timeoutMs = 50_000) {
 }
 
 /** 主モデル失敗時に、同じ要求を互換モデルで一度だけ再試行する。 */
-async function requestGeminiResilient(key, model, fallbackModel, payload, timeoutMs = 50_000) {
+async function requestGeminiResilient(key, model, fallbackModel, payload, timeoutMs = 50_000, trace = {}) {
   const startedAt = Date.now();
   const canFallback = Boolean(fallbackModel && fallbackModel !== model);
   // 主モデルだけで全時間を消費すると、互換モデルへ切り替える余地がなくなる。
@@ -1706,11 +1708,24 @@ async function requestGeminiResilient(key, model, fallbackModel, payload, timeou
     const remainingMs = timeoutMs - (Date.now() - startedAt);
     if (remainingMs < 8_000) throw error;
     console.warn('[ai] primary Gemini model timed out; trying fallback', {
+      actionType: trace.actionType,
+      jobId: trace.jobId,
       primaryModel: model,
       fallbackModel,
       elapsedMs: Date.now() - startedAt,
     });
-    const fallback = await requestGemini(key, fallbackModel, payload, Math.min(remainingMs, 90_000));
+    // The original quality request keeps its normal reasoning depth. Only a
+    // timed-out Knowledge fallback uses lower effort to finish within its slot.
+    const fallbackPayload = trace.actionType === 'knowledge_answer' && /^gemini-3/.test(fallbackModel)
+      ? {
+        ...payload,
+        generationConfig: {
+          ...payload.generationConfig,
+          thinkingConfig: { thinkingLevel: 'low' },
+        },
+      }
+      : payload;
+    const fallback = await requestGemini(key, fallbackModel, fallbackPayload, Math.min(remainingMs, 90_000));
     return { ...fallback, model: fallbackModel };
   }
   if (first.upstream.ok || !FALLBACK_GEMINI_STATUSES.has(first.upstream.status)
@@ -1730,6 +1745,24 @@ async function requestGeminiResilient(key, model, fallbackModel, payload, timeou
   if (remainingMs < 8_000) return { ...first, model };
   const fallback = await requestGemini(key, fallbackModel, payload, Math.min(remainingMs, 90_000));
   return { ...fallback, model: fallbackModel };
+}
+
+/** Knowledge生成の時間・終了理由だけを記録し、質問文や回答本文はログへ出さない。 */
+function logKnowledgeGeminiResult(actionType, jobId, stage, model, upstream, data, elapsedMs) {
+  if (actionType !== 'knowledge_answer') return;
+  const usage = data?.usageMetadata || {};
+  console.info('[ai] knowledge Gemini response', {
+    jobId,
+    stage,
+    model,
+    status: upstream?.status || 0,
+    elapsedMs,
+    finishReason: String(data?.candidates?.[0]?.finishReason || ''),
+    promptTokens: Number(usage.promptTokenCount || 0),
+    outputTokens: Number(usage.candidatesTokenCount || 0),
+    thoughtTokens: Number(usage.thoughtsTokenCount || 0),
+    responseChars: extractText(data).length,
+  });
 }
 
 /** `logGeminiFailure`: Gemini APIの失敗状態を診断用ログへ記録する。 */
@@ -1835,6 +1868,12 @@ export default async function handler(req, res) {
   // 5. 用途に合う主モデルと、障害時に使う別モデルを選ぶ。
   const model = pickModel(body.modelPreference);
   const fallbackModel = pickFallbackModel(body.modelPreference);
+  const requestTimeoutMs = body.actionType === 'knowledge_answer'
+    ? GEMINI_REQUEST_TIMEOUT_MS
+    : STANDARD_REQUEST_TIMEOUT_MS;
+  const jobHeader = String(req.headers?.['x-ai-background-job'] || '');
+  const jobId = /^ai-job-[a-zA-Z0-9-]{12,80}$/.test(jobHeader) ? jobHeader : '';
+  const trace = { actionType: body.actionType, jobId };
   const responseFormat = body.responseFormat;
   const generationConfig = {
     maxOutputTokens: body.maxTokens,
@@ -1890,11 +1929,14 @@ export default async function handler(req, res) {
   }
 
   // 7. 生成、形式検証、必要な一度の補完再試行を同じ時間予算内で行う。
+  let generationStage = 'initial';
   try {
+    let requestStartedAt = Date.now();
     let { upstream, data, model: activeModel } = await requestGeminiResilient(
       key, model, fallbackModel, payload,
-      Math.min(GEMINI_REQUEST_TIMEOUT_MS, remainingTimeMs(NETWORK_SAFETY_MS))
+      Math.min(requestTimeoutMs, remainingTimeMs(NETWORK_SAFETY_MS)), trace
     );
+    logKnowledgeGeminiResult(body.actionType, jobId, generationStage, activeModel, upstream, data, Date.now() - requestStartedAt);
     if (!upstream.ok && upstream.status === 400 && payload.generationConfig.responseSchema) {
       // Some Gemini model revisions reject deeply nested response schemas even
       // though they still support JSON mode. Preserve the prompt contract and
@@ -1905,16 +1947,19 @@ export default async function handler(req, res) {
       };
       delete payload.generationConfig.responseSchema;
       const schemaFallbackTimeMs = Math.min(
-        GEMINI_REQUEST_TIMEOUT_MS,
+        requestTimeoutMs,
         remainingTimeMs(NETWORK_SAFETY_MS)
       );
       if (schemaFallbackTimeMs < 8_000) {
         res.status(504).json({ error: 'AI request timed out before a safe retry could start.' });
         return;
       }
+      generationStage = 'schema-fallback';
+      requestStartedAt = Date.now();
       ({ upstream, data, model: activeModel } = await requestGeminiResilient(
-        key, activeModel, fallbackModel, payload, schemaFallbackTimeMs
+        key, activeModel, fallbackModel, payload, schemaFallbackTimeMs, trace
       ));
+      logKnowledgeGeminiResult(body.actionType, jobId, generationStage, activeModel, upstream, data, Date.now() - requestStartedAt);
     }
     if (!upstream.ok) {
       const msg = data?.error?.message || `Gemini upstream error ${upstream.status}`;
@@ -1954,7 +1999,7 @@ export default async function handler(req, res) {
       // Preserve room for Vercel to send a useful response and for the client
       // to receive it. A retry is only valuable when it has real time to run.
       const retryTimeoutMs = Math.min(
-        GEMINI_REQUEST_TIMEOUT_MS,
+        body.actionType === 'knowledge_answer' ? KNOWLEDGE_RETRY_TIMEOUT_MS : requestTimeoutMs,
         remainingTimeMs(NETWORK_SAFETY_MS)
       );
       if (retryTimeoutMs < 10_000) {
@@ -2065,9 +2110,12 @@ The previous response was incomplete. Return a grounded title and at least one n
         ? fallbackModel
         : activeModel;
       const retryFallbackModel = initialBlockReason ? activeModel : fallbackModel;
+      generationStage = 'content-retry';
+      requestStartedAt = Date.now();
       ({ upstream, data, model: activeModel } = await requestGeminiResilient(
-        key, retryPrimaryModel, retryFallbackModel, retryPayload, retryTimeoutMs
+        key, retryPrimaryModel, retryFallbackModel, retryPayload, retryTimeoutMs, trace
       ));
+      logKnowledgeGeminiResult(body.actionType, jobId, generationStage, activeModel, upstream, data, Date.now() - requestStartedAt);
       if (!upstream.ok) {
         const msg = data?.error?.message || `Gemini upstream error ${upstream.status}`;
         logGeminiFailure({ upstream, data, model: activeModel, actionType: body.actionType });
@@ -2128,6 +2176,13 @@ The previous response was incomplete. Return a grounded title and at least one n
     res.status(200).json({ text, model: activeModel });
   } catch (error) {
     const timedOut = error?.name === 'AbortError';
+    if (timedOut && body.actionType === 'knowledge_answer') {
+      console.warn('[ai] knowledge generation timed out', {
+        jobId,
+        stage: generationStage,
+        elapsedMs: Date.now() - startedAt,
+      });
+    }
     res.status(timedOut ? 504 : 500).json({
       error: timedOut
         ? 'Geminiの応答がタイムアウトしました。もう一度お試しください。'

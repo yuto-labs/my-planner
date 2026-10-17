@@ -104,6 +104,16 @@ test('the exact deity-name question accepts a completed answer through the clien
   assert.deepEqual(validateKnowledgeEntry(entry), { valid: true, errors: [] });
 });
 
+test('a missing generated title keeps the original deity-name question saveable', () => {
+  const question = '神の名前が由来になっているものについて';
+  const raw = rawAnswer();
+  delete raw.title;
+  const entry = normalizeKnowledgeAnswer(raw, question);
+  assert.equal(entry.title, question);
+  assert.equal(entry.originalQuestion, question);
+  assert.deepEqual(validateKnowledgeEntry(entry), { valid: true, errors: [] });
+});
+
 test('keeps only safe, unique grounding sources without breaking unsourced legacy entries', () => {
   const entry = normalizeKnowledgeAnswer(rawAnswer({
     evidence: {

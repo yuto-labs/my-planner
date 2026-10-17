@@ -95,6 +95,35 @@ test('falls back to the lighter Gemini model when the quality model times out', 
   }
 });
 
+test('a timed-out Knowledge fallback lowers effort without changing the quality request', async () => {
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options) => {
+    const model = decodeURIComponent(String(url).match(/models\/([^:]+):generateContent/)?.[1] || '');
+    requests.push({ model, payload: JSON.parse(options.body) });
+    if (requests.length === 1) throw new DOMException('Timed out', 'AbortError');
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'ok' }] } }] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+
+  try {
+    const result = await requestGeminiResilient(
+      'test-key', 'gemini-3.8-flash', 'gemini-3.5-flash',
+      { contents: [], generationConfig: { maxOutputTokens: 11000, responseMimeType: 'application/json' } },
+      20_000, { actionType: 'knowledge_answer', jobId: 'ai-job-test-timeout' }
+    );
+    assert.equal(result.model, 'gemini-3.5-flash');
+    assert.equal(requests[0].payload.generationConfig.thinkingConfig, undefined);
+    assert.equal(requests[1].payload.generationConfig.thinkingConfig.thinkingLevel, 'low');
+    assert.equal(requests[1].payload.generationConfig.maxOutputTokens, 11000);
+    assert.equal(requests[1].payload.generationConfig.responseMimeType, 'application/json');
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test('rejects malformed structured output', () => {
   assert.equal(hasCompleteStructuredResponse('event_parse', '{"title":'), false);
   assert.equal(hasCompleteStructuredResponse('event_parse', '{"title":"Meeting"}'), false);
