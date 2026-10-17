@@ -303,20 +303,20 @@ function renderAccountSection() {
           <input class="input" id="sb-email-input" type="email"
             placeholder="you@example.com" autocomplete="email">
         </div>
-        <button class="btn btn-primary btn-sm" id="sb-signin-btn">ログインコードを送信</button>
+        <button class="btn btn-primary btn-sm" id="sb-signin-btn">ログインメールを送信</button>
         <p id="sb-signin-error" class="text-sm hidden" role="alert" style="color:var(--danger);margin-top:8px"></p>
         <p class="text-sm text-muted" style="margin-top:6px">
-          メールに届くコードでログインします。パスワードは不要です。
+          届いたメールの「Sign in」を開くとログインできます。パスワードは不要です。
         </p>
 
-        <div id="sb-otp-wrap" class="hidden" style="margin-top:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:14px">
-          <p class="text-sm" style="margin-bottom:10px">メールを確認してログインコードを入力してください。</p>
+        <details id="sb-otp-wrap" class="hidden" style="margin-top:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:14px">
+          <summary class="text-sm">コードでログイン（メールに記載がある場合）</summary>
           <input class="input" id="sb-otp-input" type="text" inputmode="numeric"
             pattern="[0-9]*" maxlength="8" placeholder="12345678"
-            style="font-size:24px;letter-spacing:4px;text-align:center;font-weight:700">
+            style="margin-top:10px;font-size:24px;letter-spacing:4px;text-align:center;font-weight:700">
           <button class="btn btn-primary btn-sm btn-full" id="sb-otp-verify-btn" style="margin-top:10px">ログイン</button>
-          <button class="btn btn-ghost btn-sm btn-full" id="sb-resend-btn" style="margin-top:6px">コードを再送</button>
-        </div>
+          <button class="btn btn-ghost btn-sm btn-full" id="sb-resend-btn" style="margin-top:6px">メールを再送</button>
+        </details>
       </div>
 
       <div id="sb-loggedin-wrap" class="hidden">
@@ -714,8 +714,7 @@ function wireAccount(container, options = {}) {
       await signInWithEmail(email);
       sent = true;
       container.querySelector('#sb-otp-wrap')?.classList.remove('hidden');
-      container.querySelector('#sb-otp-input')?.focus();
-      toast('ログインコードを送信しました。メールを確認してください', 'success');
+      toast('ログインメールを送信しました。メール内のリンクを開いてください', 'success');
     } catch (e) {
       if (errorMessage) {
         errorMessage.textContent = getAuthSendErrorMessage(e);
@@ -723,7 +722,7 @@ function wireAccount(container, options = {}) {
       }
     } finally {
       btn.disabled = false;
-      btn.textContent = sent ? 'ログインコードを再送' : 'ログインコードを送信';
+      btn.textContent = sent ? 'ログインメールを再送' : 'ログインメールを送信';
     }
   });
 
