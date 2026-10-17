@@ -183,7 +183,7 @@ test('an actively awaited result has only one save owner', async () => {
   assert.match(resumeSource, /if \(isAIJobOwnedByForeground\(job\.id\)\) continue/);
 });
 
-test('a completed response arriving after leaving the screen is handed to background saving', async () => {
+test('a completed response arriving after leaving the screen leaves saving to status polling', async () => {
   const source = await readFile(new URL('../js/ai-jobs.js', import.meta.url), 'utf8');
   const isolated = source
     .replace("import { getSession } from './supabase.js';", "const getSession = async () => ({ access_token: 'test-token' });")
@@ -217,8 +217,51 @@ test('a completed response arriving after leaving the screen is handed to backgr
       resultText: '{"title":"saved by resume"}',
     } }), { status: 202 }));
     await assert.rejects(pending, error => error?.name === 'AbortError');
-    assert.equal(events.filter(type => type === 'ai:job-ready').length, 1);
+    assert.equal(events.filter(type => type === 'ai:job-ready').length, 0);
     assert.equal(module.isAIJobOwnedByForeground(submittedId), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.document = originalDocument;
+    globalThis.CustomEvent = originalCustomEvent;
+  }
+});
+
+test('leaving during a pending submission releases the result for background saving', async () => {
+  const source = await readFile(new URL('../js/ai-jobs.js', import.meta.url), 'utf8');
+  const isolated = source
+    .replace("import { getSession } from './supabase.js';", "const getSession = async () => ({ access_token: 'test-token' });")
+    .replace("import { extractAIErrorMessage, getFriendlyAIJobError } from './ai-response.js';", "const extractAIErrorMessage = value => String(value); const getFriendlyAIJobError = value => String(value);");
+  const module = await import(`data:text/javascript;base64,${Buffer.from(isolated).toString('base64')}`);
+  const originalFetch = globalThis.fetch;
+  const originalDocument = globalThis.document;
+  const originalCustomEvent = globalThis.CustomEvent;
+  const events = [];
+  let finishRequest;
+  let submittedId = '';
+  globalThis.document = { dispatchEvent(event) { events.push(event.type); } };
+  globalThis.CustomEvent = class CustomEvent {
+    constructor(type, options) { this.type = type; this.detail = options?.detail; }
+  };
+  globalThis.fetch = (_url, options) => new Promise(resolve => {
+    submittedId = JSON.parse(options.body).id;
+    finishRequest = resolve;
+  });
+  try {
+    const controller = new AbortController();
+    const pending = module.runAIJob({ actionType: 'knowledge_answer' }, { kind: 'knowledge' }, {
+      signal: controller.signal,
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(module.isAIJobOwnedByForeground(submittedId), true);
+    controller.abort();
+    await assert.rejects(pending, error => error?.name === 'AbortError');
+    assert.equal(module.isAIJobOwnedByForeground(submittedId), false);
+    assert.equal(events.includes('ai:job-ready'), false);
+    finishRequest(new Response(JSON.stringify({ job: {
+      id: submittedId, status: 'completed', resultText: '{"answer":"ready"}',
+    } }), { status: 202 }));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(events.includes('ai:job-status'), true);
   } finally {
     globalThis.fetch = originalFetch;
     globalThis.document = originalDocument;

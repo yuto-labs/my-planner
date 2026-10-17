@@ -135,6 +135,28 @@ function notifyAIJobReady(id) {
   document.dispatchEvent(new CustomEvent('ai:job-ready', { detail: { id } }));
 }
 
+/** 画面を離れたらPOSTの応答待ちだけを止める。サーバー側の生成は継続する。 */
+function waitForSubmission(start, signal) {
+  if (signal?.aborted) {
+    return Promise.reject(new DOMException('画面での待機を閉じました。生成はバックグラウンドで続きます。', 'AbortError'));
+  }
+  const promise = start();
+  if (!signal) return promise;
+  return new Promise((resolve, reject) => {
+    /** 画面の待機だけを解除し、実行中の送信Promiseはそのまま完了させる。 */
+    const onAbort = () => {
+      signal.removeEventListener('abort', onAbort);
+      reject(new DOMException('画面での待機を閉じました。生成はバックグラウンドで続きます。', 'AbortError'));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    if (signal.aborted) onAbort();
+    promise.then(
+      value => { signal.removeEventListener('abort', onAbort); resolve(value); },
+      error => { signal.removeEventListener('abort', onAbort); reject(error); },
+    );
+  });
+}
+
 /** 長時間生成を登録し、現在画面が開いている間は完成まで待って本文を返す。 */
 export async function runAIJob(request, clientContext, { signal, jobState } = {}) {
   const id = createAIJobId();
@@ -148,10 +170,18 @@ export async function runAIJob(request, clientContext, { signal, jobState } = {}
     createdAt: new Date().toISOString(),
   };
   emitAIJobStatus(submitting, 'submitting');
+  if (signal?.aborted) {
+    foregroundJobs.delete(id);
+    throw new DOMException('画面での待機を閉じました。', 'AbortError');
+  }
   let submitted;
   try {
-    submitted = await submitAIJob({ id, request, clientContext });
+    submitted = await waitForSubmission(() => submitAIJob({ id, request, clientContext }), signal);
   } catch (error) {
+    if (error?.name === 'AbortError') {
+      foregroundJobs.delete(id);
+      throw error;
+    }
     // POSTはサーバーへ届いた後、応答だけが回線切断で失われることがある。
     // 同じIDを確認せず失敗表示にすると、裏では生成中なのに利用者へ誤報する。
     try {
