@@ -277,12 +277,14 @@ test('status polling recovers an unowned completed Atlas job once', async () => 
       const isAIJobOwnedByForeground = () => globalThis.__aiTestOwned;
       const listAIJobs = async () => globalThis.__aiTestJobs;
     `)
+    .replace("import { resumeCompletedAIJobs } from './ai-job-resume.js';", "const resumeCompletedAIJobs = async () => { globalThis.__aiTestResumeCount++; };")
     .replace("import { getFriendlyAIJobError } from './ai-response.js';", "const getFriendlyAIJobError = value => String(value);");
   const module = await import(`data:text/javascript;base64,${Buffer.from(isolated).toString('base64')}`);
   const originalDocument = globalThis.document;
   const originalCustomEvent = globalThis.CustomEvent;
   const events = [];
   globalThis.__aiTestOwned = true;
+  globalThis.__aiTestResumeCount = 0;
   globalThis.__aiTestJobs = [{
     id: 'ai-job-atlas-complete', actionType: 'nuance_generate', status: 'completed', resultText: '{"entries":[]}',
   }];
@@ -297,11 +299,19 @@ test('status polling recovers an unowned completed Atlas job once', async () => 
     await module.refreshAIJobStatus();
     await module.refreshAIJobStatus();
     assert.deepEqual(events, ['ai:job-ready']);
+    globalThis.__aiTestJobs = [{
+      id: 'ai-job-atlas-stalled', actionType: 'nuance_generate', status: 'running',
+      updatedAt: new Date(Date.now() - 400_000).toISOString(),
+    }];
+    await module.refreshAIJobStatus();
+    await module.refreshAIJobStatus();
+    assert.equal(globalThis.__aiTestResumeCount, 1);
   } finally {
     globalThis.document = originalDocument;
     globalThis.CustomEvent = originalCustomEvent;
     delete globalThis.__aiTestOwned;
     delete globalThis.__aiTestJobs;
+    delete globalThis.__aiTestResumeCount;
   }
 });
 

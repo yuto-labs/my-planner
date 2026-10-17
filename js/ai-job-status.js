@@ -2,6 +2,7 @@
 // 生成完了と保存完了を分け、サーバー回答は得たが端末へ未保存の状態も隠さない。
 
 import { acknowledgeAIJob, isAIJobOwnedByForeground, listAIJobs } from './ai-jobs.js';
+import { resumeCompletedAIJobs } from './ai-job-resume.js';
 import { getFriendlyAIJobError } from './ai-response.js';
 
 const ACTIVE_POLL_MS = 3000;
@@ -19,6 +20,7 @@ let pollTimer = null;
 let elapsedTimer = null;
 let refreshPromise = null;
 const notifiedReadyJobs = new Set();
+let nextStalledRecoveryAt = 0;
 
 const LABELS = {
   knowledge_answer: 'Knowledgeの回答',
@@ -209,6 +211,14 @@ export async function refreshAIJobStatus() {
           || isAIJobOwnedByForeground(job.id) || notifiedReadyJobs.has(job.id)) continue;
         notifiedReadyJobs.add(job.id);
         queueMicrotask(() => document.dispatchEvent(new CustomEvent('ai:job-ready', { detail: { id: job.id } })));
+      }
+      const now = Date.now();
+      const stalled = items.some(job => ['queued', 'running'].includes(job.status)
+        && now - new Date(job.updatedAt || job.createdAt || 0).getTime() > 310_000);
+      if (stalled && now >= nextStalledRecoveryAt) {
+        nextStalledRecoveryAt = now + 60_000;
+        queueMicrotask(() => resumeCompletedAIJobs().catch(error =>
+          console.warn('[ai-job] stalled recovery failed:', error)));
       }
       const failedJobs = [...jobs.values()].filter(job => job.status === 'failed');
       // 古い失敗が複数残っていても、最新の一件だけを表示して全件を終了扱いにする。
