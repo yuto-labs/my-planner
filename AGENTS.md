@@ -30,6 +30,23 @@ The browser keeps a local-first copy. Synchronization must merge remote changes 
 - Treat generated AI text as untrusted. Normalize and validate structured output before saving it.
 - `mp_knowledge`, `mp_trash`, `mp_task_archive`, and `mp_events` live in IndexedDB through `js/local-store.js`. Read and write them only through `storage.js` or `localStore`; never through `localStorage` directly.
 - Permanently deleting trash must keep the deletion record (`purgeTrashItem`). Sync relies on trash rows to confirm deletions on other devices.
+- Sync backups are full copies of a collection. Write them through `archiveSyncBackup` (IndexedDB, newest three per collection), never into `localStorage`.
+
+## Sync
+
+- Periodic sync reads a light change signature (`readRemoteSignature`) and pulls only the tables whose signature line changed (`planRemotePull`); every five minutes it pulls everything.
+- A new synced table must be added to both `PULLERS` and `readRemoteSignature` in `js/sync.js`, or other devices will only see its changes on the five-minute full pull.
+
+## Code Style
+
+- The owner is learning to code by reading this repository. Explain new or changed code with Japanese comments that say what the code is for and what it prevents, not a line-by-line translation.
+- Keep code short: reuse existing helpers instead of adding parallel implementations.
+- Every named function or arrow function needs a `/** */` comment; `npm run build` fails otherwise.
+
+## Tests
+
+- CI runs on both Ubuntu and Windows. Windows checks files out with CRLF line endings, so a test that matches source text must accept `\r\n` (use `\s` or `\r?\n`, never a bare `\n`).
+- Avoid assertions that depend on timing or on two `Date.now()` calls being different.
 
 ## UI Compatibility
 

@@ -475,21 +475,15 @@ function _missingColumnFromError(error) {
  * 全同期対象をクラウドから取得し、種類ごとの安全なマージ処理を行う。
  * forceReplace は保守用途。通常は端末側だけにあるデータを残すマージを使う。
  */
-export async function pullAll(forceReplace = false) {
+export async function pullAll(forceReplace = false, tables = null) {
   const client = await getClient();
   const userId = await getUserId();
   if (!client || !userId) return false;
 
-  const pulls = [
-    ['tasks', _pullTasks(client, userId, forceReplace)],
-    ['events', _pullEvents(client, userId, forceReplace)],
-    ['goals', _pullGoals(client, userId, forceReplace)],
-    ['knowledge_memos', _pullMemos(client, userId, forceReplace)],
-    ['trash_items', _pullTrash(client, userId, forceReplace)],
-    ['schedule_items', _pullSchedule(client, userId, forceReplace)],
-    ['tags', _pullTags(client, userId, forceReplace)],
-    ['review_schedule', _pullReviewSchedule(client, userId, forceReplace)],
-  ];
+  // tablesを渡すと、その種類だけ取得する。定期確認で「変化した種類だけ読む」ために使う。
+  const pulls = PULLERS
+    .filter(([table]) => !tables || tables.includes(table))
+    .map(([table, pull]) => [table, pull(client, userId, forceReplace)]);
   const results = await Promise.allSettled(pulls.map(([, promise]) => promise));
 
   const firstErrorIndex = results.findIndex(r => r.status === 'rejected');
@@ -499,6 +493,19 @@ export async function pullAll(forceReplace = false) {
   else _recordSyncSuccess('pull');
   return results.some(r => r.status === 'fulfilled' && r.value === true);
 }
+
+// テーブル名と、それを取得・統合する関数の対応表。変化検出の署名も同じ名前を使う。
+const PULLERS = [
+  ['tasks', _pullTasks],
+  ['events', _pullEvents],
+  ['goals', _pullGoals],
+  ['knowledge_memos', _pullMemos],
+  ['trash_items', _pullTrash],
+  ['schedule_items', _pullSchedule],
+  ['tags', _pullTags],
+  ['review_schedule', _pullReviewSchedule],
+];
+const PULLER_TABLES = new Set(PULLERS.map(([table]) => table));
 
 // ---- データ型別のPullと競合統合 ----
 
@@ -1201,7 +1208,7 @@ export async function pullIfStale(minAgeMs = 30_000, forceReplace = false) {
 
 // ---- 変化検出つきの定期確認 ----
 // 全件取得は表現帳やKnowledgeが増えるほど重い。定期確認では各テーブルの件数と
-// 最終更新時刻だけを読み、変化があった時と一定時間ごとにだけ全件取得する。
+// 最終更新時刻だけを読み、変化した種類だけを取得する。5分ごとには念のため全種類を読む。
 // Realtimeが無効な環境でも、他端末の変更はこの確認で届く。
 const SIGNATURE_TIMESTAMP_TABLES = ['tasks', 'events', 'goals', 'knowledge_memos', 'trash_items', 'schedule_items'];
 export const FULL_PULL_FALLBACK_MS = 5 * 60 * 1000;
@@ -1244,11 +1251,21 @@ export async function readRemoteSignature(client, userId) {
   return (await Promise.all([...timestamped, tags, reviews])).join('\n');
 }
 
-/** 既知の状態がない、一定時間が過ぎた、またはクラウドが変化した時だけ全件取得する。 */
-export function shouldRunFullPull({ known, current, lastFullPullAt, now = Date.now(), fallbackMs = FULL_PULL_FALLBACK_MS }) {
-  if (!known || !current) return true;
-  if (now - lastFullPullAt >= fallbackMs) return true;
-  return known !== current;
+/**
+ * 次に何を取得するか決める。null=取得不要、'all'=全種類、配列=変化した種類だけ。
+ * 署名は「テーブル名:件数:最終更新」の行の集まりなので、前回と違う行のテーブルだけが
+ * 変化したと分かる。タスク1件の変更で全メモまで読み直さずに済む。
+ */
+export function planRemotePull({ known, current, lastFullPullAt, now = Date.now(), fallbackMs = FULL_PULL_FALLBACK_MS }) {
+  // 前回の状態が分からない・確認に失敗した・5分たった時は、取りこぼし防止に全種類を読む。
+  if (!known || !current || now - lastFullPullAt >= fallbackMs) return 'all';
+  const before = new Set(known.split('\n'));
+  const changed = current.split('\n')
+    .filter(line => !before.has(line))
+    .map(line => line.slice(0, line.indexOf(':')));
+  if (!changed.length) return null;
+  // 想定外の行(タグ名に改行が入った場合など)は判定できないので、安全側の全件取得にする。
+  return changed.every(table => PULLER_TABLES.has(table)) ? [...new Set(changed)] : 'all';
 }
 
 /**
@@ -1266,12 +1283,13 @@ export async function pullIfRemoteChanged() {
   } catch (error) {
     console.warn('[Sync] change check failed; using a full pull:', error?.message || error);
   }
-  if (!shouldRunFullPull({ known, current, lastFullPullAt: _lastFullPullAt })) return false;
+  const plan = planRemotePull({ known, current, lastFullPullAt: _lastFullPullAt });
+  if (!plan) return false;
+  const pulled = await pullAll(true, plan === 'all' ? null : plan);
   // 取得前の状態を記録する。取得中に別端末が変更した場合は次回の確認で再取得される。
-  const pulled = await pullAll(true);
   _remoteSignature = current ? { userId, value: current } : null;
-  _lastFullPullAt = Date.now();
-  _lastPullAt = _lastFullPullAt;
+  _lastPullAt = Date.now();
+  if (plan === 'all') _lastFullPullAt = _lastPullAt;
   return pulled;
 }
 

@@ -9,7 +9,7 @@ globalThis.localStorage = {
   removeItem() {},
 };
 
-const { readRemoteSignature, shouldRunFullPull, FULL_PULL_FALLBACK_MS } = await import('../js/sync.js');
+const { readRemoteSignature, planRemotePull, FULL_PULL_FALLBACK_MS } = await import('../js/sync.js');
 
 /** Supabaseクエリビルダーの必要な部分だけを再現し、テーブルごとの結果と条件を記録する。 */
 function fakeClient(tables) {
@@ -84,13 +84,32 @@ test('a failed change check surfaces as an error so the caller can fall back to 
   await assert.rejects(() => readRemoteSignature(fakeClient(tables), 'user-1'));
 });
 
-test('full pulls run only when unknown, changed, or overdue', () => {
+test('only the changed tables are pulled, with a full pull when unknown or overdue', async () => {
   const now = 1_000_000_000;
-  assert.equal(shouldRunFullPull({ known: null, current: 'a', lastFullPullAt: now, now }), true);
-  assert.equal(shouldRunFullPull({ known: 'a', current: null, lastFullPullAt: now, now }), true);
-  assert.equal(shouldRunFullPull({ known: 'a', current: 'a', lastFullPullAt: now, now: now + 10_000 }), false);
-  assert.equal(shouldRunFullPull({ known: 'a', current: 'b', lastFullPullAt: now, now: now + 10_000 }), true);
-  assert.equal(shouldRunFullPull({ known: 'a', current: 'a', lastFullPullAt: now, now: now + FULL_PULL_FALLBACK_MS }), true);
+  const later = now + 10_000;
+  const known = await readRemoteSignature(fakeClient(baseTables()), 'user-1');
+  const plan = current => planRemotePull({ known, current, lastFullPullAt: now, now: later });
+
+  // 前回の状態が不明・確認失敗・5分経過は全種類。
+  assert.equal(planRemotePull({ known: null, current: known, lastFullPullAt: now, now }), 'all');
+  assert.equal(planRemotePull({ known, current: null, lastFullPullAt: now, now }), 'all');
+  assert.equal(planRemotePull({ known, current: known, lastFullPullAt: now, now: now + FULL_PULL_FALLBACK_MS }), 'all');
+  // 変化なしは取得しない。
+  assert.equal(plan(known), null);
+
+  // 予定だけ変わった時は、メモなど他の種類を読み直さない。
+  const edited = baseTables();
+  edited.events = { data: [{ updated_at: '2026-10-19T03:00:00Z' }], count: 10, error: null };
+  assert.deepEqual(plan(await readRemoteSignature(fakeClient(edited), 'user-1')), ['events']);
+
+  // メモ削除はメモとごみ箱の両方が変わるので、両方を読む。
+  const deleted = baseTables();
+  deleted.knowledge_memos = { data: [{ updated_at: '2026-10-19T02:00:00Z' }], count: 39, error: null };
+  deleted.trash_items = { data: [{ updated_at: '2026-10-19T04:00:00Z' }], count: 1, error: null };
+  assert.deepEqual(plan(await readRemoteSignature(fakeClient(deleted), 'user-1')).sort(), ['knowledge_memos', 'trash_items']);
+
+  // 判定できない行が混ざったら、安全側で全種類を読む。
+  assert.equal(plan(`${known}\nbroken line`), 'all');
 });
 
 test('foreground sync uses the light change check instead of a three-second full pull', async () => {
