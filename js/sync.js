@@ -25,7 +25,12 @@ import {
   trashToRow, rowToTrash,
   schedItemToRow, rowToSchedItem,
 } from './migrate.js';
-import { mergeAtlasSenseArrays as mergeSharedAtlasSenseArrays } from './atlas-senses.js';
+import {
+  atlasSenseAddsLearningContent,
+  atlasSenseFromEntry,
+  mergeAtlasSenseArrays as mergeSharedAtlasSenseArrays,
+  sameAtlasSense,
+} from './atlas-senses.js';
 import { dedupeNewestById, recordVersion, stableJsonStringify, timestampOrZero } from './data-compare.js';
 
 // 内部名、localStorageキー、DBテーブル、変換関数を同じ内部名で対応させる。
@@ -233,6 +238,8 @@ export async function resetSyncForUserSwitch({ flush = false } = {}) {
   _recentUpsertsMemory = null;
   try { sessionStorage.removeItem(RECENT_UPSERT_SESSION_KEY); } catch {}
   localStorage.removeItem(SYNC_STATUS_KEY);
+  _remoteSignature = null;
+  _lastFullPullAt = 0;
   return true;
 }
 
@@ -940,14 +947,15 @@ export function mergeLearningRecordsForSync(local, remote) {
   return { items, pushCandidates };
 }
 
+// 表現帳の見出し語は storage.js で 'nuance-data' として保存される。
+// 'expression-atlas-data' は旧テストとの互換のために残す。
+const ATLAS_SENSE_BLOCK_TYPES = new Set(['nuance-data', 'expression-atlas-data']);
+const ATLAS_BLOCK_TYPES = new Set([...ATLAS_SENSE_BLOCK_TYPES, 'translation-set-data', 'english-question-data']);
+
 /** `atlasRecordData`: 表現帳の同期レコードから、比較・統合するデータ本体を取り出す。 */
 function atlasRecordData(record) {
   if (!Array.isArray(record?.tags) || !record.tags.includes('__expression_atlas__')) return null;
-  const block = record.blocks?.find(item => [
-    'expression-atlas-data',
-    'translation-set-data',
-    'english-question-data',
-  ].includes(item?.type));
+  const block = record.blocks?.find(item => ATLAS_BLOCK_TYPES.has(item?.type));
   return block?.data && typeof block.data === 'object'
     ? { block, data: block.data }
     : null;
@@ -965,14 +973,35 @@ function mergeAtlasList(left, right) {
     });
 }
 
+/** 保存・送信時と同じく、値のない項目を落とした比較用の形へそろえる。 */
+function jsonNormalized(value) {
+  return JSON.parse(JSON.stringify(value ?? null));
+}
+
+/** 相手側の意味(sense)に、こちらにない意味や追記が一つでもあるか判定する。 */
+function atlasSensesAddContent(baseSenses, incomingSenses) {
+  const base = (Array.isArray(baseSenses) ? baseSenses : []).map(sense => atlasSenseFromEntry(sense));
+  return (Array.isArray(incomingSenses) ? incomingSenses : []).some(rawSense => {
+    const sense = atlasSenseFromEntry(rawSense);
+    const match = base.find(candidate => sameAtlasSense(candidate, sense));
+    return !match || atlasSenseAddsLearningContent(match, sense);
+  });
+}
+
 /** 同じ見出し語の語義・例文・コロケーションを統合し、片端末の追記を失わないレコードを作る。 */
 function mergeAtlasRecord(local, remote) {
   const localAtlas = atlasRecordData(local);
   const remoteAtlas = atlasRecordData(remote);
   if (!localAtlas || !remoteAtlas || localAtlas.block.type !== remoteAtlas.block.type) return remote;
+  // 同期済みで内容が同じなら統合しない。統合結果の形の違いだけで更新時刻を
+  // 進めると、全端末が同じ表現を送り合い、一覧の並び順も変わってしまう。
+  if (stableJsonStringify(jsonNormalized(localAtlas.data)) === stableJsonStringify(jsonNormalized(remoteAtlas.data))) {
+    return remote;
+  }
   const newerRecord = _syncVersion(local) > _syncVersion(remote) ? local : remote;
   const newerData = newerRecord === local ? localAtlas.data : remoteAtlas.data;
-  const contentField = localAtlas.block.type === 'expression-atlas-data' ? 'answer' : 'content';
+  const hasSenses = ATLAS_SENSE_BLOCK_TYPES.has(localAtlas.block.type);
+  const contentField = hasSenses ? 'answer' : 'content';
   /** レコード全体の更新時刻を比較し、同時編集マージの基準となる新しい側を返す。 */
   const pickData = field => {
     const localVersion = fieldVersion(localAtlas.data, field);
@@ -997,19 +1026,22 @@ function mergeAtlasRecord(local, remote) {
       personalNote: noteData.fieldUpdatedAt?.personalNote || '',
     },
   };
-  if (localAtlas.block.type === 'expression-atlas-data') {
+  if (hasSenses) {
     const otherData = contentData === localAtlas.data ? remoteAtlas.data : localAtlas.data;
-    if (Array.isArray(contentData.senses) || Array.isArray(otherData.senses)) {
+    // 相手側が新しい意味や追記を持つ時だけ統合する。単に古い版との差なら
+    // 新しい側の意味一覧をそのまま使い、正規化による不要な書き換えを避ける。
+    if (atlasSensesAddContent(contentData.senses, otherData.senses)) {
       mergedData.senses = mergeSharedAtlasSenseArrays(contentData.senses, otherData.senses);
     }
     mergedData.sourceQueries = mergeAtlasList(contentData.sourceQueries, otherData.sourceQueries);
     mergedData.aliases = mergeAtlasList(contentData.aliases, otherData.aliases);
   }
-  if (stableJsonStringify(mergedData) === stableJsonStringify(remoteAtlas.data)) return remote;
+  const normalizedData = jsonNormalized(mergedData);
+  if (stableJsonStringify(normalizedData) === stableJsonStringify(jsonNormalized(remoteAtlas.data))) return remote;
   const mergedBlock = newerRecord.blocks?.find(item => item?.type === localAtlas.block.type);
   return {
     ...newerRecord,
-    blocks: (newerRecord.blocks || []).map(item => item === mergedBlock ? { ...item, data: mergedData } : item),
+    blocks: (newerRecord.blocks || []).map(item => item === mergedBlock ? { ...item, data: normalizedData } : item),
     updatedAt: new Date().toISOString(),
   };
 }
@@ -1162,6 +1194,82 @@ export async function pullIfStale(minAgeMs = 30_000, forceReplace = false) {
   if (Date.now() - _lastPullAt < minAgeMs) return false;
   const pulled = await pullAll(forceReplace);
   _lastPullAt = Date.now();
+  return pulled;
+}
+
+// ---- 変化検出つきの定期確認 ----
+// 全件取得は表現帳やKnowledgeが増えるほど重い。定期確認では各テーブルの件数と
+// 最終更新時刻だけを読み、変化があった時と一定時間ごとにだけ全件取得する。
+// Realtimeが無効な環境でも、他端末の変更はこの確認で届く。
+const SIGNATURE_TIMESTAMP_TABLES = ['tasks', 'events', 'goals', 'knowledge_memos', 'trash_items', 'schedule_items'];
+export const FULL_PULL_FALLBACK_MS = 5 * 60 * 1000;
+let _remoteSignature = null;
+let _lastFullPullAt = 0;
+
+/**
+ * クラウド側の変化を検出するための短い文字列を作る。
+ * 件数は削除、最終更新時刻は追加・編集を表す。updated_atのないタグと復習予定は、
+ * 一行が小さいため必要な列だけを読んで比べる。
+ */
+export async function readRemoteSignature(client, userId) {
+  const timestamped = SIGNATURE_TIMESTAMP_TABLES.map(async table => {
+    let query = client.from(table)
+      .select('updated_at', { count: 'exact' })
+      .eq('user_id', userId);
+    // AIジョブ行は生成中に何度も更新されるため、変化検出に含めない。
+    if (table === 'knowledge_memos') query = query.not('tags', 'cs', '{__ai_generation_job__}');
+    const { data, count, error } = await query.order('updated_at', { ascending: false }).limit(1);
+    if (error) throw error;
+    return `${table}:${count ?? ''}:${data?.[0]?.updated_at || ''}`;
+  });
+  /** `tags`: updated_atのないタグ表は、名前一覧そのものを比較用の文字列にする。 */
+  const tags = (async () => {
+    const { data, error } = await client.from('tags').select('name').eq('user_id', userId);
+    if (error) throw error;
+    return `tags:${(data || []).map(row => row.name).sort().join('\u0001')}`;
+  })();
+  /** `reviews`: 復習予定は段階と日付の変化を見るため、小さな列だけを読んで文字列にする。 */
+  const reviews = (async () => {
+    const { data, error } = await client.from('review_schedule')
+      .select('memo_id,stage,next_review,last_review')
+      .eq('user_id', userId);
+    if (error) throw error;
+    return `review_schedule:${(data || [])
+      .map(row => [row.memo_id, row.stage, row.next_review, row.last_review].join('|'))
+      .sort()
+      .join('\u0001')}`;
+  })();
+  return (await Promise.all([...timestamped, tags, reviews])).join('\n');
+}
+
+/** 既知の状態がない、一定時間が過ぎた、またはクラウドが変化した時だけ全件取得する。 */
+export function shouldRunFullPull({ known, current, lastFullPullAt, now = Date.now(), fallbackMs = FULL_PULL_FALLBACK_MS }) {
+  if (!known || !current) return true;
+  if (now - lastFullPullAt >= fallbackMs) return true;
+  return known !== current;
+}
+
+/**
+ * 定期確認用のpull。軽い変化検出を先に行い、必要な時だけpullAllを呼ぶ。
+ * 変化検出に失敗した場合は、取りこぼしを避けるため従来どおり全件取得する。
+ */
+export async function pullIfRemoteChanged() {
+  const client = await getClient();
+  const userId = await getUserId();
+  if (!client || !userId) return false;
+  const known = _remoteSignature?.userId === userId ? _remoteSignature.value : null;
+  let current = null;
+  try {
+    current = await readRemoteSignature(client, userId);
+  } catch (error) {
+    console.warn('[Sync] change check failed; using a full pull:', error?.message || error);
+  }
+  if (!shouldRunFullPull({ known, current, lastFullPullAt: _lastFullPullAt })) return false;
+  // 取得前の状態を記録する。取得中に別端末が変更した場合は次回の確認で再取得される。
+  const pulled = await pullAll(true);
+  _remoteSignature = current ? { userId, value: current } : null;
+  _lastFullPullAt = Date.now();
+  _lastPullAt = _lastFullPullAt;
   return pulled;
 }
 

@@ -13,7 +13,7 @@ import {
   DEFAULT_ACCENT_RGB, DEFAULT_THEME_TUNING,
 } from './storage.js';
 import { processBatchQueue, refreshAiRuntimeStatus } from './ai.js';
-import { backfillLocalEvents, initSync, pullAll, pullIfStale, startRealtimeSync, hasPendingSyncWork, flushPendingSync, resetSyncForUserSwitch } from './sync.js';
+import { backfillLocalEvents, initSync, pullAll, pullIfStale, pullIfRemoteChanged, startRealtimeSync, hasPendingSyncWork, flushPendingSync, resetSyncForUserSwitch } from './sync.js';
 import { getSession, handleAuthRedirect, getActiveUserId, setActiveUserId, isMigratedForCurrentUser } from './supabase.js';
 import { resumeCompletedAIJobs } from './ai-job-resume.js';
 import { initAIJobStatus, refreshAIJobStatus } from './ai-job-status.js';
@@ -90,6 +90,7 @@ let lastEditAt = 0;
 let isComposingText = false;
 let pendingSyncRefresh = false;
 let pendingForcedPull = false;
+let pendingChangeCheck = false;
 let archiveReturnRoute = null;
 // 現在表示している完全なルートを別に保持する。
 // 旧版がブラウザー履歴へ積んだ #tasks などが端末の横スワイプで再生されても、
@@ -198,15 +199,19 @@ function flushDeferredSyncWork() {
     return;
   }
   const shouldPull = pendingForcedPull;
+  const shouldCheckChanges = pendingChangeCheck && !shouldPull;
   const shouldRefresh = pendingSyncRefresh || shouldPull;
   pendingForcedPull = false;
+  pendingChangeCheck = false;
   pendingSyncRefresh = false;
-  if (shouldPull) {
+  if (shouldPull || shouldCheckChanges) {
     getSession().then(session => {
       if (!session) return;
-      pullAll(true).then(async pulled => {
+      // 定期確認が延期されただけなら軽い変化検出で済ませ、編集のたびの全件取得を避ける。
+      const pull = shouldPull ? pullAll(true) : pullIfRemoteChanged();
+      pull.then(async pulled => {
         await startRealtimeSync();
-        if (pulled && shouldRefresh) refreshCurrentView({ preserveScroll: true });
+        if (pulled) refreshCurrentView({ preserveScroll: true });
       }).catch(() => {});
     }).catch(() => {});
     return;
@@ -225,9 +230,10 @@ function scheduleDeferredSyncWork() {
  * @param {object} options
  * @param {boolean} options.needsPull クラウドの再取得も必要ならtrue
  */
-function deferSyncWhileEditing({ needsPull = false } = {}) {
-  pendingSyncRefresh = true;
+function deferSyncWhileEditing({ needsPull = false, needsChangeCheck = false } = {}) {
+  if (!needsChangeCheck || needsPull) pendingSyncRefresh = true;
   pendingForcedPull = pendingForcedPull || needsPull;
+  pendingChangeCheck = pendingChangeCheck || needsChangeCheck;
   scheduleDeferredSyncWork();
 }
 
@@ -1240,25 +1246,30 @@ function setupConnectivityMonitor() {
   updateStatus();
 }
 
+// 他端末の変更を確認する間隔。毎回の全件取得ではなく件数と更新時刻だけを読む。
+const FOREGROUND_CHANGE_CHECK_MS = 10_000;
+let foregroundCheckInFlight = false;
+
 /**
  * アプリを開いている間、一定間隔でクラウド変更を確認する。
- * 入力中や送信待ちがある場合は取得と再描画を延期します。
+ * 変化があった時だけ全件取得し、入力中や送信待ちがある場合は取得と再描画を延期します。
  */
 function setupForegroundSync() {
   if (foregroundSyncIntervalId) clearInterval(foregroundSyncIntervalId);
   foregroundSyncIntervalId = setInterval(() => {
-    if (document.hidden) return;
+    if (document.hidden || foregroundCheckInFlight) return;
     if (isUserEditing() || hasPendingSyncWork()) {
-      deferSyncWhileEditing({ needsPull: true });
+      deferSyncWhileEditing({ needsChangeCheck: true });
       return;
     }
+    foregroundCheckInFlight = true;
     getSession().then(session => {
       if (!session) return;
-      pullIfStale(3000, true).then(pulled => {
+      return pullIfRemoteChanged().then(pulled => {
         if (pulled) refreshCurrentView({ preserveScroll: true });
-      }).catch(() => {});
-    }).catch(() => {});
-  }, 3000);
+      });
+    }).catch(() => {}).finally(() => { foregroundCheckInFlight = false; });
+  }, FOREGROUND_CHANGE_CHECK_MS);
 }
 
 // ---- FAB (Floating Action Button) ----
