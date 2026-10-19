@@ -263,9 +263,12 @@ export default async function handler(req, res) {
         res.status(400).json({ error: 'job id is required' });
         return;
       }
-      const response = await supabaseRequest(`knowledge_memos?id=eq.${encodeURIComponent(id)}`, token, {
-        method: 'DELETE',
-      });
+      // ジョブ以外のメモをゴミ箱を通さず消さないよう、内部ジョブの印がある行だけを対象にする。
+      const response = await supabaseRequest(
+        `knowledge_memos?id=eq.${encodeURIComponent(id)}&tags=cs.${encodeURIComponent(`{${JOB_TAG}}`)}`,
+        token,
+        { method: 'DELETE' },
+      );
       if (!response.ok) throw new Error(`ジョブを削除できませんでした (${response.status})`);
       res.status(200).json({ ok: true });
       return;

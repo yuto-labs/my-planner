@@ -1304,21 +1304,30 @@ async function handleDecompose(taskId, btn) {
       targetDate: task.dueDate || null,
       description: '',
     });
-    const subtasks = result?.tasks || [];
-    if (!subtasks.length) { toast('サブタスクが空なので分解できません', 'error'); return; }
+    const suggested = result?.tasks || [];
+    if (!suggested.length) { toast('サブタスクが空なので分解できません', 'error'); return; }
 
-    const addedTasks = subtasks.filter(st => addTask({
-      title: st.title,
-      weight: st.weight || 'medium',
-      dueDate: st.dueDate || task.dueDate,
-      tags: task.tags || [],
-    }));
-    if (!addedTasks.length) throw new Error('分解したタスクを端末に保存できませんでした');
+    // 分解結果は元タスクの中に入れる。同じ分解を再実行しても同名の項目は重複させない。
+    const current = getTasks().find(t => t.id === taskId);
+    if (!current) return;
+    const existingTitles = new Set((current.subtasks || []).map(st => String(st.title || '').trim()));
+    const now = new Date().toISOString();
+    const newSubtasks = suggested
+      .map(st => String(st?.title || '').trim())
+      .filter(title => title && !existingTitles.has(title) && existingTitles.add(title))
+      .map(title => ({ id: generateId(), title, completed: false, createdAt: now }));
+    if (!newSubtasks.length) {
+      toast('追加できる新しいサブタスクはありませんでした', 'info');
+      return;
+    }
+    if (!updateTask(taskId, { subtasks: [...(current.subtasks || []), ...newSubtasks] })) {
+      throw new Error('サブタスクを端末に保存できませんでした');
+    }
 
     rerenderList();
     renderProgressBar();
     const advice = result?.advice ? ` ${result.advice}` : '';
-    toast(`${addedTasks.length}件のサブタスクを追加しました ${advice}`, 'success');
+    toast(`${newSubtasks.length}件のサブタスクを追加しました ${advice}`, 'success');
   } catch (e) {
     toast('AI分解エラー: ' + e.message, 'error');
   } finally {

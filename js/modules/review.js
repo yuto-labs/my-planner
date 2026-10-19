@@ -9,7 +9,7 @@ import {
   rateReview, addReviewLog, previewReviewIntervals,
 } from '../storage.js';
 import { renderBlocksView } from './memo.js';
-import { esc, fmtDays } from '../utils.js';
+import { esc, fmtDays, today } from '../utils.js';
 
 /** `nav`: 指定したハッシュ画面へ移動し、必要なら遷移元の状態を引き継ぐ。 */
 const nav = (view) => window.AppNav?.navigate(view);
@@ -17,7 +17,8 @@ let reviewSession = null;
 
 /** 今日が期限のメモを一件ずつ復習し、評価から次回日を計算する。 */
 export function initReview(container) {
-  const todayStr = new Date().toISOString().slice(0, 10);
+  // 復習日はローカル日付で保存されるため、UTC日付で比べると日本の朝に前日扱いになる。
+  const todayStr = today();
   if (!reviewSession || reviewSession.date !== todayStr) {
     reviewSession = {
       date: todayStr,

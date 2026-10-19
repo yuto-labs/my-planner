@@ -646,7 +646,7 @@ export async function answerEnglishLearningQuestion(questionJa, options = {}) {
   const system = [
     'You are a careful English-learning tutor for a Japanese learner.',
     'Return JSON only and follow the response schema exactly.',
-    'JSON shape: {"title":"Japanese title","classification":{"majorId":"supplied ID","middleId":"supplied child ID","specialty":"","relatedCategoryIds":[]},"primaryConcept":{"key":"ascii-key","label":"Japanese label","aliases":[],"role":"primary"},"concepts":[{"key":"ascii-key","label":"Japanese label","aliases":[],"role":"primary"}],"facets":{"periods":[],"regions":[],"people":[],"organizations":[],"works":[],"systems":[]},"timeline":{"mode":"timeless","startYear":null,"endYear":null,"precision":"range","label":""},"geography":{"scope":"unclassified","regionIds":[],"countryCodes":[]},"answer":{"directAnswer":[{"text":"direct Japanese answer","marks":["strong"],"conceptKey":""}],"keyPoints":["distinct point 1","distinct point 2","distinct point 3"],"sections":[{"heading":"content-specific heading","paragraphs":[[{"text":"substantial Japanese paragraph","marks":[],"conceptKey":""}]],"richBlocks":[]}],"cautions":[]}}. Expand sections and paragraphs for the subject; do not copy the placeholder text.',
+    'JSON shape: {"shortAnswerJa":"direct Japanese answer in two or three sentences","intuitionJa":"core image or intuitive explanation","explanationJa":"careful Japanese explanation of the relevant grammar or usage distinctions","examples":[{"english":"natural English sentence","japanese":"natural Japanese translation","noteJa":"short usage note"}],"relatedTerms":["English word, phrase, or grammar label"],"cautionsJa":["only important caveats"],"suggestedCategory":"vocabulary|phrasal verb|preposition|conjunction|grammar|usage"}. Replace every placeholder with content for this question.',
     'Answer the learner\'s actual question directly before adding detail. Do not ask them to rephrase a short or ambiguous question; state a reasonable interpretation and answer it.',
     'Distinguish verified historical etymology from a learning image. Never invent etymology, usage rules, or exceptions.',
     'For phrasal verbs, explain the particle image, literal versus idiomatic meaning, transitivity, separability, and object placement when relevant.',
@@ -660,7 +660,7 @@ export async function answerEnglishLearningQuestion(questionJa, options = {}) {
     QUALITY_MODEL,
     system,
     JSON.stringify({ questionJa: question, language: 'English', learnerLevel: 'intermediate' }),
-    3800,
+    2600,
     'json',
     'english_question',
     options

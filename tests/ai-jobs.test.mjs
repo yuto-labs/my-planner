@@ -514,6 +514,53 @@ test('background generation uses the public request host instead of a protected 
   }
 });
 
+test('job cleanup deletes only rows marked as internal AI jobs', async () => {
+  const originalFetch = globalThis.fetch;
+  const deleted = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const path = String(url);
+    if (path.includes('/auth/v1/user')) return new Response(JSON.stringify({ id: 'user-1' }), { status: 200 });
+    if (options.method === 'DELETE') {
+      deleted.push(path);
+      return new Response(null, { status: 204 });
+    }
+    throw new Error(`Unexpected request: ${path}`);
+  };
+  const res = {
+    statusCode: 200,
+    setHeader() {},
+    status(code) { this.statusCode = code; return this; },
+    json(body) { this.body = body; return this; },
+  };
+  try {
+    await jobsHandler({
+      method: 'DELETE',
+      headers: { authorization: 'Bearer test-token' },
+      query: { id: 'ai-job-cleanup-test-1' },
+    }, res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(deleted.length, 1);
+    assert.match(deleted[0], /id=eq\.ai-job-cleanup-test-1/);
+    assert.match(deleted[0], new RegExp(`tags=cs\\.${encodeURIComponent(`{${JOB_TAG}}`)}`));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('English question prompt describes the same shape the server schema requires', async () => {
+  const source = await readFile(new URL('../js/ai.js', import.meta.url), 'utf8');
+  const prompt = source.slice(
+    source.indexOf('export async function answerEnglishLearningQuestion'),
+    source.indexOf('export async function generateKnowledgeAnswer'),
+  );
+  ['shortAnswerJa', 'intuitionJa', 'explanationJa', 'examples', 'relatedTerms', 'cautionsJa', 'suggestedCategory']
+    .forEach(key => assert.match(prompt, new RegExp(`"${key}"`)));
+  // Knowledge用の分類・概念形式が混ざると、スキーマを外した再試行で不完全な回答になる。
+  assert.doesNotMatch(prompt, /"classification"|"primaryConcept"|"directAnswer"/);
+  // サーバー側の上限(2600)を超える要求は丸められるだけなので、同じ値を明示する。
+  assert.match(prompt, /\n\s+2600,\n\s+'json',\n\s+'english_question'/);
+});
+
 test('Atlas background jobs keep only the compact merge context', async () => {
   const source = await readFile(new URL('../js/ai.js', import.meta.url), 'utf8');
   const nuanceStart = source.indexOf('export async function generateNuanceEntries');
