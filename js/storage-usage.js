@@ -39,37 +39,47 @@ function entryChars(key, value) {
 }
 
 /**
- * localStorage全体を種類ごとに集計し、大きい順で返す。
- * @param {Storage} storage 読み取り対象。テストでは偽物を渡せる。
+ * [キー, 値]の一覧を種類ごとに集計し、大きい順で返す。
+ * @param {Array<[string, string]>} entries 集計対象
  */
-export function measureLocalStorage(storage = globalThis.localStorage) {
+export function measureEntries(entries) {
   const groups = new Map(KEY_GROUPS.map(group => [group.id, { id: group.id, label: group.label, chars: 0, keys: 0 }]));
   groups.set('other', { id: 'other', label: '設定・その他', chars: 0, keys: 0 });
   let total = 0;
-  let length = 0;
-  try { length = storage?.length || 0; } catch { length = 0; }
-  for (let index = 0; index < length; index += 1) {
-    let key = null;
-    let value = '';
-    try {
-      key = storage.key(index);
-      value = key === null ? '' : storage.getItem(key);
-    } catch {
-      continue;
-    }
-    if (key === null) continue;
+  (Array.isArray(entries) ? entries : []).forEach(([key, value]) => {
+    if (key === null || key === undefined) return;
     const chars = entryChars(key, value);
     total += chars;
     const group = KEY_GROUPS.find(item => item.match(key));
     const bucket = groups.get(group?.id || 'other');
     bucket.chars += chars;
     bucket.keys += 1;
-  }
+  });
   return {
     totalChars: total,
-    limitChars: LOCAL_STORAGE_LIMIT_CHARS,
-    ratio: total / LOCAL_STORAGE_LIMIT_CHARS,
     groups: [...groups.values()].filter(group => group.chars > 0).sort((a, b) => b.chars - a.chars),
+  };
+}
+
+/**
+ * localStorage全体を種類ごとに集計し、上限に対する割合も返す。
+ * @param {Storage} storage 読み取り対象。テストでは偽物を渡せる。
+ */
+export function measureLocalStorage(storage = globalThis.localStorage) {
+  const entries = [];
+  let length = 0;
+  try { length = storage?.length || 0; } catch { length = 0; }
+  for (let index = 0; index < length; index += 1) {
+    try {
+      const key = storage.key(index);
+      if (key !== null) entries.push([key, storage.getItem(key)]);
+    } catch {}
+  }
+  const usage = measureEntries(entries);
+  return {
+    ...usage,
+    limitChars: LOCAL_STORAGE_LIMIT_CHARS,
+    ratio: usage.totalChars / LOCAL_STORAGE_LIMIT_CHARS,
   };
 }
 

@@ -13,6 +13,7 @@
 - `app.js`: SPAルーター、共通ナビ、起動、画面切り替え
 - `storage.js`: ローカルデータの読み書きとデータ保護
 - `storage-usage.js`: 設定画面に出す端末保存容量の読み取り専用集計
+- `local-store.js`: 大きい端末データをIndexedDBへ置き、localStorageと振り分ける保存窓口
 - `sync.js`: Supabaseとの双方向同期と競合統合
 - `supabase.js`: Supabaseクライアントと認証状態
 - `migrate.js`: 既存ローカルデータの初回移行

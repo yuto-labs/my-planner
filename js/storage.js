@@ -22,6 +22,8 @@ import {
   sameAtlasSense,
 } from './atlas-senses.js';
 import { stableJsonStringify } from './data-compare.js';
+// 大きいデータ(メモ類・ごみ箱・予定・完了タスク)はIndexedDBへ置く。それ以外は従来どおりlocalStorage。
+import { localStore } from './local-store.js';
 
 const KEY = {
   EVENTS:    'mp_events',
@@ -138,7 +140,7 @@ export const DEFAULT_THEME_TUNING = {
  */
 function load(key, fallback) {
   try {
-    const raw = localStorage.getItem(key);
+    const raw = localStore.getItem(key);
     return raw !== null ? JSON.parse(raw) : fallback;
   } catch {
     return fallback;
@@ -153,7 +155,7 @@ function save(key, value) {
   let serialized;
   try {
     serialized = JSON.stringify(value);
-    localStorage.setItem(key, serialized);
+    localStore.setItem(key, serialized);
     return true;
   } catch (e) {
     const isQuotaError = e?.name === 'QuotaExceededError' || e?.code === 22 || e?.code === 1014;
@@ -162,7 +164,7 @@ function save(key, value) {
       try {
         if (localStorage.getItem(KEY.CACHE) !== null) {
           localStorage.removeItem(KEY.CACHE);
-          localStorage.setItem(key, serialized);
+          localStore.setItem(key, serialized);
           return true;
         }
       } catch (retryError) {
@@ -2463,7 +2465,7 @@ export function importBackup(jsonStr) {
 /** アカウント切替後に、一覧化されたユーザーデータだけを端末から外す。 */
 export function clearUserContentLocal() {
   USER_CONTENT_KEYS.forEach(key => {
-    try { localStorage.removeItem(key); } catch {}
+    try { localStore.removeItem(key); } catch {}
   });
 }
 
@@ -2474,7 +2476,7 @@ export function clearUserContentLocal() {
 export function hasUserContentLocal() {
   return USER_CONTENT_KEYS.some(key => {
     try {
-      const value = localStorage.getItem(key);
+      const value = localStore.getItem(key);
       if (value === null) return false;
       const parsed = JSON.parse(value);
       if (Array.isArray(parsed)) return parsed.length > 0;
@@ -2549,7 +2551,7 @@ export async function preserveUserContentSnapshot(userId) {
   if (!userId) return false;
   const data = {};
   USER_CONTENT_KEYS.forEach(key => {
-    const value = localStorage.getItem(key);
+    const value = localStore.getItem(key);
     if (value !== null) data[key] = value;
   });
   const snapshot = {
@@ -2594,7 +2596,7 @@ export async function restoreUserContentSnapshot(userId) {
   try {
     USER_CONTENT_KEYS.forEach(key => {
       const value = snapshot.data[key];
-      if (typeof value === 'string') localStorage.setItem(key, value);
+      if (typeof value === 'string') localStore.setItem(key, value);
     });
     localStorage.removeItem(`${USER_SNAPSHOT_PREFIX}${userId}`);
     try { await deleteUserSnapshot(userId); } catch {}

@@ -8,6 +8,7 @@
 // ============================================================
 
 import { getClient, getUserId, setMigratedForCurrentUser } from './supabase.js';
+import { localStore } from './local-store.js';
 
 // ---- Public: run migration ----
 
@@ -47,7 +48,7 @@ export async function migrateToSupabase(onProgress) {
 // ---- Upload helpers ----
 
 function _ls(key, fb = []) {
-  try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fb; } catch { return fb; }
+  try { return JSON.parse(localStore.getItem(key) || 'null') ?? fb; } catch { return fb; }
 }
 
 /** `_upsert`: Supabaseへ行を追加または更新し、失敗時は呼び出し元へ例外を返す。 */

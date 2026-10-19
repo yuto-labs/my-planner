@@ -53,6 +53,7 @@ import { openSearch, closeSearch } from './modules/search.js';
 import { initArchive } from './modules/archive.js';
 import { initTagsPage, setTagFilter } from './modules/tags.js';
 import { captureHorizontalTableScroll, restoreHorizontalTableScroll } from './horizontal-scroll-state.js';
+import { flushLocalStore, initLocalStore, requestPersistentStorage } from './local-store.js';
 import { initDesktopWorkspace, refreshDesktopWorkspace } from './desktop-workspace.js';
 
 // ---- Module registry ----
@@ -882,6 +883,10 @@ function applyAccentTheme(rgb, tuningInput) {
  * AI状態、認証、データ保護付きアカウント切替、同期、テーマ、PWA、共通操作を順に開始します。
  */
 async function init() {
+  // 大きい端末データをIndexedDBから読み込む。同期や画面がデータを読む前に必ず済ませる。
+  // 失敗した場合は何も消さず、従来どおりlocalStorageで動く。
+  try { await initLocalStore(); } catch (error) { console.warn('[LocalStore] init failed:', error); }
+  requestPersistentStorage();
   try { await refreshAiRuntimeStatus({ force: true }); } catch {}
 
   // Supabase sync: register hooks and pull on startup.
@@ -1021,6 +1026,8 @@ async function init() {
   // Pull latest data when returning to foreground so schedule differences appear quickly.
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
+      // アプリが裏に回った後にOSが終了させても、端末保存の書き込み待ちを残さない。
+      flushLocalStore().catch(() => {});
       flushPendingSync().catch(() => {});
       return;
     }
@@ -1043,6 +1050,7 @@ async function init() {
   });
 
   window.addEventListener('pagehide', () => {
+    flushLocalStore().catch(() => {});
     flushPendingSync().catch(() => {});
   });
 
@@ -1165,7 +1173,8 @@ async function setupServiceWorkerAutoUpdate() {
         setTimeout(reloadWhenSafe, 1000);
         return;
       }
-      window.location.reload();
+      // 端末保存の書き込みが終わってから再読み込みする。
+      flushLocalStore().catch(() => {}).finally(() => window.location.reload());
     };
     setTimeout(reloadWhenSafe, 300);
   });

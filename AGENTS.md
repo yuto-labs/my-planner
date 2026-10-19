@@ -28,6 +28,8 @@ The browser keeps a local-first copy. Synchronization must merge remote changes 
 - Keep `storage.js` independent from `sync.js`; synchronization registers through the existing hook.
 - Keep API and Supabase responses out of Service Worker caches.
 - Treat generated AI text as untrusted. Normalize and validate structured output before saving it.
+- `mp_knowledge`, `mp_trash`, `mp_task_archive`, and `mp_events` live in IndexedDB through `js/local-store.js`. Read and write them only through `storage.js` or `localStore`; never through `localStorage` directly.
+- Permanently deleting trash must keep the deletion record (`purgeTrashItem`). Sync relies on trash rows to confirm deletions on other devices.
 
 ## UI Compatibility
 

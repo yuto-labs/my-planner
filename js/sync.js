@@ -32,6 +32,8 @@ import {
   sameAtlasSense,
 } from './atlas-senses.js';
 import { dedupeNewestById, recordVersion, stableJsonStringify, timestampOrZero } from './data-compare.js';
+// 大きいデータはIndexedDB、それ以外はlocalStorageへ振り分ける共通窓口。
+import { localStore } from './local-store.js';
 
 // 内部名、localStorageキー、DBテーブル、変換関数を同じ内部名で対応させる。
 // 同期対象を増やす場合は、これらのマップをまとめて更新する。
@@ -233,11 +235,11 @@ export async function resetSyncForUserSwitch({ flush = false } = {}) {
   _realtimePullTimer = null;
   await stopRealtimeSync();
   await Promise.allSettled([..._pushPromises.values()]);
-  localStorage.removeItem(DELETE_TOMBSTONE_KEY);
-  localStorage.removeItem(RECENT_UPSERT_KEY);
+  localStore.removeItem(DELETE_TOMBSTONE_KEY);
+  localStore.removeItem(RECENT_UPSERT_KEY);
   _recentUpsertsMemory = null;
   try { sessionStorage.removeItem(RECENT_UPSERT_SESSION_KEY); } catch {}
-  localStorage.removeItem(SYNC_STATUS_KEY);
+  localStore.removeItem(SYNC_STATUS_KEY);
   _remoteSignature = null;
   _lastFullPullAt = 0;
   return true;
@@ -265,11 +267,11 @@ export async function backfillLocalEvents() {
   if (!client || !userId) return false;
 
   const markerKey = `mp_event_sync_backfill_v${EVENT_BACKFILL_VERSION}:${userId}`;
-  if (localStorage.getItem(markerKey) === '1') return true;
+  if (localStore.getItem(markerKey) === '1') return true;
 
   const localEvents = _ls('mp_events', []).filter(event => event?.id);
   if (!localEvents.length) {
-    localStorage.setItem(markerKey, '1');
+    localStore.setItem(markerKey, '1');
     return true;
   }
 
@@ -307,7 +309,7 @@ export async function backfillLocalEvents() {
     }
   }
 
-  localStorage.setItem(markerKey, '1');
+  localStore.setItem(markerKey, '1');
   _recordSyncSuccess('push', 'events');
   return true;
 }
@@ -783,7 +785,7 @@ async function _reconcileRemoteCollection({
     if (knownRemote[id]) nextRemoteSnapshot[id] = knownRemote[id];
   });
   if (getActiveUserId() !== userId) return local;
-  localStorage.setItem(snapshotKey, JSON.stringify(nextRemoteSnapshot));
+  localStore.setItem(snapshotKey, JSON.stringify(nextRemoteSnapshot));
   return reconciled.next;
 }
 
@@ -1145,7 +1147,7 @@ async function _pullTags(client, userId, forceReplace = false) {
     if (knownRemote[name]) nextSnapshot[name] = knownRemote[name];
   });
   if (getActiveUserId() !== userId) return false;
-  localStorage.setItem(snapshotKey, JSON.stringify(nextSnapshot));
+  localStore.setItem(snapshotKey, JSON.stringify(nextSnapshot));
   return _writeCollectionAfterSync('mp_tags', localTags, reconciled.next, userId, 'tags');
 }
 
@@ -1408,14 +1410,14 @@ function _getPendingDeletes() {
     return true;
   });
   if (JSON.stringify(filtered) !== JSON.stringify(all)) {
-    localStorage.setItem(DELETE_TOMBSTONE_KEY, JSON.stringify(filtered));
+    localStore.setItem(DELETE_TOMBSTONE_KEY, JSON.stringify(filtered));
   }
   return filtered;
 }
 
 /** クラウド送信待ちの削除記録一覧を端末へ保存する。 */
 function _savePendingDeletes(entries) {
-  localStorage.setItem(DELETE_TOMBSTONE_KEY, JSON.stringify(entries));
+  localStore.setItem(DELETE_TOMBSTONE_KEY, JSON.stringify(entries));
 }
 
 /** 削除対象をユーザー付きtombstoneとして追加または更新し、再送可能にする。 */
@@ -1493,7 +1495,7 @@ function _getRecentUpserts() {
 function _saveRecentUpserts(entries) {
   const serialized = JSON.stringify(entries);
   try {
-    localStorage.setItem(RECENT_UPSERT_KEY, serialized);
+    localStore.setItem(RECENT_UPSERT_KEY, serialized);
     _recentUpsertsMemory = null;
     try { sessionStorage.removeItem(RECENT_UPSERT_SESSION_KEY); } catch {}
   } catch (error) {
@@ -1715,7 +1717,7 @@ function _trackRemoteMissingItems({
     previousState,
   });
   try {
-    localStorage.setItem(key, JSON.stringify(result.nextState));
+    localStore.setItem(key, JSON.stringify(result.nextState));
   } catch (error) {
     console.warn(`[Sync] could not persist ${collectionKey} missing-item protection:`, error);
     return new Set(
@@ -1743,7 +1745,7 @@ function _writeSyncBackup(collectionKey, userId, value) {
       : { at: new Date().toISOString(), data: value };
     backups.unshift(payload);
     const limit = collectionKey === 'events' ? EVENT_SYNC_BACKUP_LIMIT : SYNC_BACKUP_LIMIT;
-    localStorage.setItem(key, JSON.stringify(backups.slice(0, limit)));
+    localStore.setItem(key, JSON.stringify(backups.slice(0, limit)));
   } catch (error) {
     console.warn(`[Sync] could not create local ${collectionKey} backup:`, error);
   }
@@ -1765,7 +1767,7 @@ function _writeCollectionAfterSync(key, previous, next, userId, collectionKey) {
     _writeSyncBackup(collectionKey, userId, fresh);
   }
 
-  localStorage.setItem(key, nextJson);
+  localStore.setItem(key, nextJson);
   return true;
 }
 
@@ -1793,7 +1795,7 @@ function _writeObjectAfterSync(key, previous, next, userId, collectionKey) {
   if (Object.keys(fresh || {}).length > Object.keys(resolved || {}).length) {
     _writeSyncBackup(collectionKey, userId, fresh);
   }
-  localStorage.setItem(key, nextJson);
+  localStore.setItem(key, nextJson);
   return true;
 }
 
@@ -1895,7 +1897,7 @@ function _recordSyncSuccess(type, table = null) {
     lastErrorMessage: remaining?.message || null,
     tableErrors,
   };
-  localStorage.setItem(SYNC_STATUS_KEY, JSON.stringify(next));
+  localStore.setItem(SYNC_STATUS_KEY, JSON.stringify(next));
 }
 
 /** 同期エラーを画面表示用の短い状態へ保存し、元データは削除しない。 */
@@ -1914,11 +1916,11 @@ function _recordSyncError(table, error, type = 'push') {
     lastErrorMessage: message,
     tableErrors,
   };
-  localStorage.setItem(SYNC_STATUS_KEY, JSON.stringify(next));
+  localStore.setItem(SYNC_STATUS_KEY, JSON.stringify(next));
 }
 
 /** `_ls`: 同期処理が使う端末保存領域を安全に読み書きする窓口を返す。 */
 function _ls(key, fb) {
-  try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fb; }
+  try { return JSON.parse(localStore.getItem(key) || 'null') ?? fb; }
   catch { return fb; }
 }

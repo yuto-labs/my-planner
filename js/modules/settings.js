@@ -16,9 +16,11 @@ import {
 } from '../storage.js';
 import {
   formatCharCount,
+  measureEntries,
   measureKnowledgeRecords,
   measureLocalStorage,
 } from '../storage-usage.js';
+import { getLocalStoreMode, getManagedEntries, localStore } from '../local-store.js';
 import { processBatchQueue, refreshAiRuntimeStatus } from '../ai.js';
 import { esc, generateId } from '../utils.js';
 import {
@@ -286,9 +288,11 @@ function renderAISettings(container) {
 /** 端末内の保存容量と内訳を、読み取りだけで集計して表示する。 */
 function renderStorageUsage() {
   const usage = measureLocalStorage();
+  const indexedDbActive = getLocalStoreMode() === 'indexeddb';
+  const moved = indexedDbActive ? measureEntries(getManagedEntries()) : null;
   let knowledge = [];
   try {
-    knowledge = measureKnowledgeRecords(JSON.parse(localStorage.getItem('mp_knowledge') || '[]'), classifyKnowledgeRecord);
+    knowledge = measureKnowledgeRecords(JSON.parse(localStore.getItem('mp_knowledge') || '[]'), classifyKnowledgeRecord);
   } catch {
     knowledge = [];
   }
@@ -305,14 +309,20 @@ function renderStorageUsage() {
     <div class="storage-usage-card storage-usage-card--${level}">
       <div class="storage-usage-summary">
         <strong>${percent}%</strong>
-        <span>${esc(formatCharCount(usage.totalChars))} / 約${esc(formatCharCount(usage.limitChars))}</span>
+        <span>小容量領域 ${esc(formatCharCount(usage.totalChars))} / 約${esc(formatCharCount(usage.limitChars))}</span>
       </div>
-      <div class="storage-usage-bar" role="progressbar" aria-label="端末の保存容量" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}">
+      <div class="storage-usage-bar" role="progressbar" aria-label="小容量領域の使用率" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}">
         <span style="width:${percent}%"></span>
       </div>
       <div class="storage-usage-list">
         ${usage.groups.map(group => row(group.label, group.chars)).join('')}
       </div>
+      ${moved ? `
+        <p class="text-sm"><strong>大容量領域（IndexedDB）</strong> ${esc(formatCharCount(moved.totalChars))}・端末の空き容量まで使えます</p>
+        <div class="storage-usage-list">
+          ${moved.groups.map(group => row(group.label, group.chars)).join('')}
+        </div>
+      ` : '<p class="text-sm text-muted">この端末では大容量領域を使えないため、すべて小容量領域に保存しています。</p>'}
       ${knowledge.length ? `
         <details class="storage-usage-details">
           <summary>メモ・表現帳・Knowledgeの内訳</summary>
