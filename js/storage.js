@@ -183,8 +183,86 @@ function save(key, value) {
   }
 }
 
+const SYNC_BACKUP_ARCHIVE_DB = 'my-planner-sync-backup-archive';
+// 元キー(データの種類×ユーザー)ごとに残す世代数。同期側の上限と同じ3世代。
+const SYNC_BACKUP_ARCHIVE_KEEP = 3;
+
+/** 同期バックアップの退避先IndexedDBを開く。使えない環境ではnullを返す。 */
+function openSyncBackupArchive() {
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(SYNC_BACKUP_ARCHIVE_DB, 1);
+    request.onupgradeneeded = () => request.result.createObjectStore('backups');
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+/** 1件を「元キー:時刻:乱数」という退避キーで書き込み、完了したら退避キーを返す。 */
+function putSyncBackupArchive(db, key, value) {
+  const archiveKey = `${key}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('backups', 'readwrite');
+    tx.objectStore('backups').put({ key, value, archivedAt: new Date().toISOString() }, archiveKey);
+    tx.oncomplete = () => resolve(archiveKey);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
 /**
- * 同期の世代バックアップを容量の大きいIndexedDBへ退避する。
+ * 元キーごとに新しい順で3件だけ残し、古い退避を消す。以前は整理されず、メモを保存する
+ * たびに全メモの写しが増え続けていた。大きい中身は読まず、キー名の時刻だけで判定する。
+ */
+function pruneSyncBackupArchive(db) {
+  return new Promise(resolve => {
+    const tx = db.transaction('backups', 'readwrite');
+    const store = tx.objectStore('backups');
+    if (typeof store.getAllKeys !== 'function') { resolve(); return; }
+    const request = store.getAllKeys();
+    request.onsuccess = () => {
+      const groups = new Map();
+      for (const archiveKey of request.result) {
+        const parts = String(archiveKey).split(':');
+        const original = parts.slice(0, -2).join(':');
+        if (!groups.has(original)) groups.set(original, []);
+        groups.get(original).push({ archiveKey, time: Number(parts.at(-2)) || 0 });
+      }
+      groups.forEach(list => list
+        .sort((a, b) => b.time - a.time)
+        .slice(SYNC_BACKUP_ARCHIVE_KEEP)
+        .forEach(({ archiveKey }) => store.delete(archiveKey)));
+    };
+    // 整理に失敗しても、保存済みの退避は壊さずそのまま続行する。
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => resolve();
+    tx.onabort = () => resolve();
+  });
+}
+
+/**
+ * 同期の世代バックアップ1件を、localStorageを経由せずIndexedDBへ直接保存する。
+ * バックアップは本体と同じ大きさがあるため、小さいlocalStorageへ置くと満杯の原因になる。
+ * 保存できなかった場合はfalseを返し、呼び出し側が従来の保存先へ切り替える。
+ */
+export async function archiveSyncBackup(key, value) {
+  let db;
+  try {
+    db = await openSyncBackupArchive();
+    if (!db) return false;
+    await putSyncBackupArchive(db, key, value);
+    await pruneSyncBackupArchive(db);
+    return true;
+  } catch (error) {
+    console.warn('Could not archive sync backup:', error);
+    return false;
+  } finally {
+    db?.close();
+  }
+}
+
+/**
+ * localStorageに残っている同期の世代バックアップをIndexedDBへ退避する。
  * 書き込み完了後に同一内容を読み返せた場合だけ、元のlocalStorageを空ける。
  * メモ・予定・ごみ箱などの現行データは一切対象にしない。
  */
@@ -201,24 +279,12 @@ export async function archiveLocalSyncBackups() {
 
   let db;
   try {
-    db = await new Promise((resolve, reject) => {
-      const request = indexedDB.open('my-planner-sync-backup-archive', 1);
-      request.onupgradeneeded = () => request.result.createObjectStore('backups');
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
+    db = await openSyncBackupArchive();
     let archived = 0;
     for (const key of keys) {
       const original = localStorage.getItem(key);
       if (original === null) continue;
-      const archiveKey = `${key}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
-      await new Promise((resolve, reject) => {
-        const tx = db.transaction('backups', 'readwrite');
-        tx.objectStore('backups').put({ key, value: original, archivedAt: new Date().toISOString() }, archiveKey);
-        tx.oncomplete = resolve;
-        tx.onerror = () => reject(tx.error);
-        tx.onabort = () => reject(tx.error);
-      });
+      const archiveKey = await putSyncBackupArchive(db, key, original);
       const verified = await new Promise((resolve, reject) => {
         const tx = db.transaction('backups', 'readonly');
         const request = tx.objectStore('backups').get(archiveKey);
@@ -230,6 +296,8 @@ export async function archiveLocalSyncBackups() {
         archived += original.length;
       }
     }
+    // 移した分を含め、元キーごとに3世代を超える古い退避を消す。
+    await pruneSyncBackupArchive(db);
     return archived;
   } catch (error) {
     console.warn('Could not archive local sync backups:', error);

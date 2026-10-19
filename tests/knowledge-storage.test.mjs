@@ -33,6 +33,7 @@ const {
   setAiCache,
   updateKnowledgeMemo,
   archiveLocalSyncBackups,
+  archiveSyncBackup,
 } = await import('../js/storage.js');
 const { normalizeKnowledgeAnswer, validateKnowledgeEntry } = await import('../js/knowledge-model.js');
 
@@ -128,6 +129,17 @@ function fakeBackupDb({ failWrite = false } = {}) {
                   });
                   return read;
                 },
+                // 古い世代の整理で使う。キー一覧を返した後、削除を反映してから処理完了を知らせる。
+                getAllKeys() {
+                  const read = { result: null };
+                  queueMicrotask(() => {
+                    read.result = [...records.keys()];
+                    read.onsuccess?.();
+                    tx.oncomplete?.();
+                  });
+                  return read;
+                },
+                delete(key) { records.delete(key); },
               };
             },
           };
@@ -155,6 +167,26 @@ test('sync backups move to verified IndexedDB without touching the active memo',
     assert.equal(values.get('mp_trash'), '[{"id":"keep-trash"}]');
     assert.equal(values.has('mp_sync_backups:knowledge_memos:user'), false);
     assert.deepEqual([...fakeDb.records.values()].map(record => record.value), [backup]);
+  } finally {
+    globalThis.indexedDB = previousDb;
+  }
+});
+
+test('sync backups go straight to IndexedDB and keep only the newest three per collection', async () => {
+  const previousDb = globalThis.indexedDB;
+  const fakeDb = fakeBackupDb();
+  globalThis.indexedDB = fakeDb;
+  const key = 'mp_sync_backups:knowledge_memos:user';
+  // 以前の版で溜まった古い退避4件と、別の種類の退避1件。
+  [1001, 1002, 1003, 1004].forEach(time => fakeDb.records.set(`${key}:${time}:x`, { key, value: `old-${time}` }));
+  fakeDb.records.set('mp_sync_backups:tasks:user:1000:x', { value: 'tasks' });
+  try {
+    assert.equal(await archiveSyncBackup(key, 'newest'), true);
+    const kept = [...fakeDb.records.entries()].filter(([archiveKey]) => archiveKey.startsWith(`${key}:`));
+    assert.deepEqual(kept.map(([, record]) => record.value).sort(), ['newest', 'old-1003', 'old-1004']);
+    assert.ok(fakeDb.records.has('mp_sync_backups:tasks:user:1000:x'));
+    // localStorageには写しを置かない。
+    assert.equal(values.has(key), false);
   } finally {
     globalThis.indexedDB = previousDb;
   }

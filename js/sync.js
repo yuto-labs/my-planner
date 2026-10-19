@@ -16,7 +16,7 @@
 // ============================================================
 
 import { getActiveUserId, getClient, getUserId } from './supabase.js';
-import { registerSyncHook, registerSyncDeleteHook } from './storage.js';
+import { archiveSyncBackup, registerSyncHook, registerSyncDeleteHook } from './storage.js';
 import {
   taskToRow,  rowToTask,
   eventToRow, rowToEvent,
@@ -1737,18 +1737,30 @@ function _syncBackupKey(collectionKey, userId) {
 
 /** 同期で書き換える直前の値を、ユーザー・種類別の世代バックアップへ残す。 */
 function _writeSyncBackup(collectionKey, userId, value) {
-  try {
-    const key = _syncBackupKey(collectionKey, userId);
-    const backups = _ls(key, []);
-    const payload = collectionKey === 'events'
-      ? { at: new Date().toISOString(), events: value }
-      : { at: new Date().toISOString(), data: value };
-    backups.unshift(payload);
-    const limit = collectionKey === 'events' ? EVENT_SYNC_BACKUP_LIMIT : SYNC_BACKUP_LIMIT;
-    localStore.setItem(key, JSON.stringify(backups.slice(0, limit)));
-  } catch (error) {
-    console.warn(`[Sync] could not create local ${collectionKey} backup:`, error);
-  }
+  /** IndexedDBへ保存できなかった時だけ、従来どおりlocalStorageへ上限付きで残す。 */
+  const writeLegacy = payload => {
+    try {
+      const backups = _ls(key, []);
+      backups.unshift(payload);
+      const limit = collectionKey === 'events' ? EVENT_SYNC_BACKUP_LIMIT : SYNC_BACKUP_LIMIT;
+      localStore.setItem(key, JSON.stringify(backups.slice(0, limit)));
+    } catch (error) {
+      console.warn(`[Sync] could not create local ${collectionKey} backup:`, error);
+    }
+  };
+  const key = _syncBackupKey(collectionKey, userId);
+  const payload = collectionKey === 'events'
+    ? { at: new Date().toISOString(), events: value }
+    : { at: new Date().toISOString(), data: value };
+  // バックアップは全メモの写しなので、localStorage(約500万文字)に3世代も置くとすぐ満杯になる。
+  // IndexedDBへ直接保存する。保存は後で終わるが、内容はここで文字列にして固定するので、
+  // 直後に本体が書き換わってもバックアップには「書き換え前」が残る。
+  let serialized;
+  try { serialized = JSON.stringify([payload]); } catch { return; }
+  // 失敗時も文字列から作り直した写しを使い、その後の本体の変更を混ぜない。
+  archiveSyncBackup(key, serialized)
+    .then(saved => { if (!saved) writeLegacy(JSON.parse(serialized)[0]); })
+    .catch(() => writeLegacy(JSON.parse(serialized)[0]));
 }
 
 /**
