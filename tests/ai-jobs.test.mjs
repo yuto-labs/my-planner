@@ -316,6 +316,87 @@ test('status polling recovers an unowned completed Atlas job once', async () => 
   }
 });
 
+test('dismissing progress does not hide the eventual saved notice', async () => {
+  const source = await readFile(new URL('../js/ai-job-status.js', import.meta.url), 'utf8');
+  const isolated = source
+    .replace("import { acknowledgeAIJob, isAIJobOwnedByForeground, listAIJobs } from './ai-jobs.js';", `
+      const acknowledgeAIJob = async () => {};
+      const isAIJobOwnedByForeground = () => false;
+      const listAIJobs = async () => globalThis.__aiTestStatusJobs;
+    `)
+    .replace("import { resumeCompletedAIJobs } from './ai-job-resume.js';", 'const resumeCompletedAIJobs = async () => {};')
+    .replace("import { getFriendlyAIJobError } from './ai-response.js';", 'const getFriendlyAIJobError = value => String(value);');
+  const originalDocument = globalThis.document;
+  const originalCustomEvent = globalThis.CustomEvent;
+  const originalLocalStorage = globalThis.localStorage;
+  const listeners = new Map();
+  const host = {
+    dataset: {},
+    hidden: true,
+    close: null,
+    set innerHTML(value) {
+      this.html = value;
+      this.close = value.includes('ai-job-status__close')
+        ? { click: null, addEventListener(_type, handler) { this.click = handler; } }
+        : null;
+    },
+    get innerHTML() { return this.html || ''; },
+    querySelector() { return this.close; },
+  };
+  globalThis.document = {
+    hidden: false,
+    getElementById: () => host,
+    addEventListener(type, handler) { listeners.set(type, handler); },
+    dispatchEvent(event) { listeners.get(event.type)?.(event); },
+  };
+  globalThis.CustomEvent = class CustomEvent {
+    constructor(type, options) { this.type = type; this.detail = options?.detail; }
+  };
+  globalThis.localStorage = { getItem: () => null, setItem() {} };
+  globalThis.__aiTestStatusJobs = [];
+  const module = await import(`data:text/javascript;base64,${Buffer.from(isolated).toString('base64')}#dismiss`);
+  try {
+    module.initAIJobStatus();
+    await new Promise(resolve => setImmediate(resolve));
+    const job = { id: 'ai-job-dismiss-test', actionType: 'nuance_generate', status: 'running' };
+    document.dispatchEvent(new CustomEvent('ai:job-status', { detail: { job } }));
+    assert.equal(host.hidden, false);
+    assert.match(host.innerHTML, /表示を閉じる（処理は続きます）/);
+    host.close.click();
+    assert.equal(host.hidden, true);
+    globalThis.__aiTestStatusJobs = [job];
+    await module.refreshAIJobStatus();
+    assert.equal(host.hidden, true);
+
+    document.dispatchEvent(new CustomEvent('ai:job-status', { detail: { job: {
+      id: 'ai-job-new-test', actionType: 'knowledge_answer', status: 'running',
+    } } }));
+    assert.match(host.innerHTML, /Knowledgeの回答を作成中/);
+
+    document.dispatchEvent(new CustomEvent('ai:job-saved', { detail: { id: job.id } }));
+    assert.equal(host.hidden, false);
+    assert.match(host.innerHTML, /表現帳の解説が完了しました/);
+    host.close.click();
+    assert.match(host.innerHTML, /Knowledgeの回答を作成中/);
+    host.close.click();
+    assert.equal(host.hidden, true);
+  } finally {
+    module.destroyAIJobStatus();
+    globalThis.document = originalDocument;
+    globalThis.CustomEvent = originalCustomEvent;
+    globalThis.localStorage = originalLocalStorage;
+    delete globalThis.__aiTestStatusJobs;
+  }
+});
+
+test('foreground save announces completion only after sync and job acknowledgement', async () => {
+  const source = await readFile(new URL('../js/ai-jobs.js', import.meta.url), 'utf8');
+  const body = source.slice(source.indexOf('export async function acknowledgeAIJobAfterSync('), source.indexOf('/** 指定時間だけ待機する。'));
+  assert.ok(body.indexOf('await flushPendingSync()') < body.indexOf('await acknowledgeAIJob(id)'));
+  assert.ok(body.indexOf('await acknowledgeAIJob(id)') < body.indexOf("new CustomEvent('ai:job-saved'"));
+  assert.match(body, /const savedByForeground = foregroundJobs\.has\(id\)/);
+});
+
 test('completed background jobs restore all four learning destinations without taking an owned job', async () => {
   const source = await readFile(new URL('../js/ai-job-resume.js', import.meta.url), 'utf8');
   const body = source.slice(source.indexOf('let resumePromise = null;'));

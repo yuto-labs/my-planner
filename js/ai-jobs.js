@@ -93,7 +93,11 @@ export async function acknowledgeAIJobAfterSync(id) {
   if (result.attempted > result.succeeded) {
     throw new Error('生成結果の同期が完了していないため、AIジョブを保持しました。');
   }
+  const savedByForeground = foregroundJobs.has(id);
   await acknowledgeAIJob(id);
+  if (savedByForeground && typeof document !== 'undefined' && typeof CustomEvent !== 'undefined') {
+    document.dispatchEvent(new CustomEvent('ai:job-saved', { detail: { id } }));
+  }
 }
 
 /** 指定時間だけ待機する。AbortSignalは監視だけを止め、サーバー生成は止めない。 */

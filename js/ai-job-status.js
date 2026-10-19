@@ -7,7 +7,7 @@ import { getFriendlyAIJobError } from './ai-response.js';
 
 const ACTIVE_POLL_MS = 3000;
 const IDLE_POLL_MS = 30000;
-const SUCCESS_VISIBLE_MS = 12000;
+const SUCCESS_VISIBLE_MS = 6000;
 const FAILURE_VISIBLE_MS = 9000;
 const NOTICE_STORAGE_KEY = 'mp_ai_job_notices_v1';
 const NOTICE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -20,6 +20,7 @@ let pollTimer = null;
 let elapsedTimer = null;
 let refreshPromise = null;
 const notifiedReadyJobs = new Set();
+const dismissedJobIds = new Set();
 let nextStalledRecoveryAt = 0;
 
 const LABELS = {
@@ -93,6 +94,7 @@ function retireFailedJob(job) {
     message: getFriendlyAIJobError(job.error, '通信状態を確認して、もう一度お試しください。'),
   });
   jobs.delete(job.id);
+  dismissedJobIds.delete(job.id);
   acknowledgeAIJob(job.id).catch(() => {
     // 削除通信だけ失敗しても通知済み履歴が同じ端末での再表示を防ぐ。
     // 次回の一覧取得時にもう一度削除を試せるよう、ここでは通常データを変更しない。
@@ -128,9 +130,14 @@ function activeJobs() {
   return [...jobs.values()].filter(job => ['submitting', 'queued', 'running'].includes(job?.status));
 }
 
+/** 閉じたバナーだけを表示候補から除き、ジョブ監視自体は続ける。 */
+function visibleActiveJobs() {
+  return activeJobs().filter(job => !dismissedJobIds.has(job.id));
+}
+
 /** 複数生成が同時に動く場合、代表表示に使う最も新しい一件を選ぶ。 */
 function latestActiveJob() {
-  return activeJobs().sort((a, b) => (
+  return visibleActiveJobs().sort((a, b) => (
     new Date(b.startedAt || b.createdAt || 0) - new Date(a.startedAt || a.createdAt || 0)
   ))[0] || null;
 }
@@ -138,7 +145,8 @@ function latestActiveJob() {
 /** 回答生成後、端末保存を確認している最中の最新ジョブを選ぶ。 */
 function latestCompletedJob() {
   return [...jobs.values()]
-    .filter(job => job?.status === 'completed' && !hasShownAIJobNotice(readNoticeHistory(), job.id, 'save-failed'))
+    .filter(job => job?.status === 'completed' && !dismissedJobIds.has(job.id)
+      && !hasShownAIJobNotice(readNoticeHistory(), job.id, 'save-failed'))
     .sort((a, b) => new Date(b.completedAt || b.updatedAt || 0) - new Date(a.completedAt || a.updatedAt || 0))[0] || null;
 }
 
@@ -149,11 +157,34 @@ function iconFor(kind) {
   return '<span class="ai-job-status__spinner" aria-hidden="true"></span>';
 }
 
+/** バナーだけを閉じる。実行中の生成や保存は止めず、完了・失敗は改めて知らせる。 */
+function closeButton(jobIds = [], terminalNotice = false) {
+  const button = host.querySelector('.ai-job-status__close');
+  button?.addEventListener('click', () => {
+    if (terminalNotice) terminal = null;
+    else jobIds.forEach(id => dismissedJobIds.add(id));
+    render();
+  }, { once: true });
+}
+
+/** 完了・失敗を短時間だけ優先表示し、利用者がすぐ閉じることもできる。 */
+function renderTerminal() {
+  host.className = `ai-job-status ai-job-status--${terminal.kind}`;
+  host.innerHTML = `${iconFor(terminal.kind)}<span class="ai-job-status__copy"><strong>${escapeStatusText(terminal.title)}</strong><small>${escapeStatusText(terminal.message)}</small></span><button class="ai-job-status__close" type="button" aria-label="閉じる">&times;</button>`;
+  host.hidden = false;
+  closeButton([], true);
+}
+
 /** 現在の実行件数または直近の保存結果を表示する。 */
 function render() {
   if (!host) return;
+  if (terminal && terminal.expiresAt > Date.now()) {
+    renderTerminal();
+    return;
+  }
+  terminal = null;
   const active = latestActiveJob();
-  const count = activeJobs().length;
+  const count = visibleActiveJobs().length;
   if (active) {
     const startedAt = active.startedAt || active.createdAt;
     const detail = active.status === 'submitting'
@@ -162,25 +193,17 @@ function render() {
         ? 'サーバーへ登録済み・開始待ち'
         : 'バックグラウンドで実行中';
     host.className = 'ai-job-status ai-job-status--running';
-    host.innerHTML = `${iconFor('running')}<span class="ai-job-status__copy"><strong>${aiJobLabel(active)}を作成中${count > 1 ? `（ほか${count - 1}件）` : ''}</strong><small>${detail} · <time data-ai-elapsed>${formatAIElapsed(startedAt)}</time></small></span>`;
+    host.innerHTML = `${iconFor('running')}<span class="ai-job-status__copy"><strong>${aiJobLabel(active)}を作成中${count > 1 ? `（ほか${count - 1}件）` : ''}</strong><small>${detail} · <time data-ai-elapsed>${formatAIElapsed(startedAt)}</time></small></span><button class="ai-job-status__close" type="button" aria-label="表示を閉じる（処理は続きます）">&times;</button>`;
     host.hidden = false;
+    closeButton(visibleActiveJobs().map(job => job.id));
     return;
   }
   const completed = latestCompletedJob();
-  if (completed && !terminal) {
+  if (completed) {
     host.className = 'ai-job-status ai-job-status--running';
-    host.innerHTML = `${iconFor('running')}<span class="ai-job-status__copy"><strong>${aiJobLabel(completed)}を生成しました</strong><small>保存と同期を確認しています</small></span>`;
+    host.innerHTML = `${iconFor('running')}<span class="ai-job-status__copy"><strong>${aiJobLabel(completed)}を生成しました</strong><small>保存と同期を確認しています</small></span><button class="ai-job-status__close" type="button" aria-label="表示を閉じる（保存は続きます）">&times;</button>`;
     host.hidden = false;
-    return;
-  }
-  if (terminal && terminal.expiresAt > Date.now()) {
-    host.className = `ai-job-status ai-job-status--${terminal.kind}`;
-    host.innerHTML = `${iconFor(terminal.kind)}<span class="ai-job-status__copy"><strong>${escapeStatusText(terminal.title)}</strong><small>${escapeStatusText(terminal.message)}</small></span><button class="ai-job-status__close" type="button" aria-label="閉じる">&times;</button>`;
-    host.hidden = false;
-    host.querySelector('.ai-job-status__close')?.addEventListener('click', () => {
-      terminal = null;
-      render();
-    }, { once: true });
+    closeButton([completed.id]);
     return;
   }
   host.hidden = true;
@@ -257,13 +280,30 @@ export function initAIJobStatus() {
   document.addEventListener('ai:job-applied', event => {
     const job = event.detail?.job || {};
     jobs.delete(job.id);
+    dismissedJobIds.delete(job.id);
     terminal = {
       jobId: job.id,
       kind: 'success',
-      title: event.detail?.syncPending ? `${aiJobLabel(job)}を端末に保存しました` : `${aiJobLabel(job)}を保存しました`,
+      title: `${aiJobLabel(job)}が完了しました`,
       message: event.detail?.syncPending
         ? 'クラウド同期を待っています。回答は端末とAIジョブに保持されています。'
-        : `完了まで ${formatAIElapsed(job.startedAt || job.createdAt, new Date(job.completedAt || Date.now()).getTime())}`,
+        : `保存しました · 所要時間 ${formatAIElapsed(job.startedAt || job.createdAt, new Date(job.completedAt || Date.now()).getTime())}`,
+      expiresAt: Date.now() + SUCCESS_VISIBLE_MS,
+    };
+    render();
+    schedulePoll();
+  });
+  document.addEventListener('ai:job-saved', event => {
+    const id = event.detail?.id;
+    if (!id) return;
+    const job = jobs.get(id) || { id };
+    jobs.delete(id);
+    dismissedJobIds.delete(id);
+    terminal = {
+      jobId: id,
+      kind: 'success',
+      title: `${aiJobLabel(job)}が完了しました`,
+      message: '保存しました',
       expiresAt: Date.now() + SUCCESS_VISIBLE_MS,
     };
     render();
