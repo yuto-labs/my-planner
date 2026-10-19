@@ -2039,7 +2039,67 @@ export function addTrashItem({ entityType, payload, title }) {
   return item;
 }
 
-/** ごみ箱の一件を完全削除し、クラウドにも削除を通知する。 */
+// ---- ごみ箱の中身の保持期限 ----
+// 期限を過ぎた項目や「完全削除」した項目は、中身(payload)だけを捨てて記録を残す。
+// 同期は、ごみ箱の記録(entity_type/entity_id)がある時だけ他端末の削除を確定する。
+// 記録ごと消すと、削除前から同期していない端末がその項目をクラウドへ戻してしまう。
+export const TRASH_PAYLOAD_RETENTION_DAYS = 30;
+const PURGED_TRASH_MARK = '__purged';
+
+/** 中身を捨てて削除記録だけになったごみ箱項目か判定する。 */
+export function isPurgedTrashItem(item) {
+  return normalizeTrashPayload(item?.payload)?.[PURGED_TRASH_MARK] === true;
+}
+
+/** ごみ箱画面に出す、まだ復元できる項目だけを返す。 */
+export function getRestorableTrashItems() {
+  return getTrashItems().filter(item => !isPurgedTrashItem(item));
+}
+
+/** 中身を捨て、種類・元ID・削除日時だけを持つ削除記録へ変える。 */
+function toPurgedTrashItem(item, nowIso) {
+  return {
+    id: item.id,
+    entityType: item.entityType,
+    entityId: item.entityId || normalizeTrashPayload(item.payload)?.id || null,
+    title: item.title || '',
+    deletedAt: item.deletedAt || nowIso,
+    updatedAt: nowIso,
+    payload: { [PURGED_TRASH_MARK]: true, purgedAt: nowIso },
+  };
+}
+
+/** 条件に合う項目の中身を捨てて削除記録だけ残し、変更した件数を返す。 */
+function purgeTrashWhere(predicate, nowIso = new Date().toISOString()) {
+  const items = getTrashItems();
+  let count = 0;
+  const next = items.map(item => {
+    if (isPurgedTrashItem(item) || !predicate(item)) return item;
+    count += 1;
+    return toPurgedTrashItem(item, nowIso);
+  });
+  if (!count) return 0;
+  return saveTrashItems(next) ? count : 0;
+}
+
+/** 指定したごみ箱項目を完全削除する。復元はできなくなるが、同期用の削除記録は残す。 */
+export function purgeTrashItem(id) {
+  return purgeTrashWhere(item => item.id === id) > 0;
+}
+
+/** 削除から保持期限を過ぎた項目の中身を捨てる。起動時と画面復帰時に呼ぶ。 */
+export function purgeExpiredTrashPayloads({ now = Date.now(), retentionDays = TRASH_PAYLOAD_RETENTION_DAYS } = {}) {
+  const cutoff = now - retentionDays * 86_400_000;
+  return purgeTrashWhere(item => {
+    const deletedAt = new Date(item.deletedAt || 0).getTime();
+    return Number.isFinite(deletedAt) && deletedAt > 0 && deletedAt < cutoff;
+  }, new Date(now).toISOString());
+}
+
+/**
+ * ごみ箱の記録そのものを消し、クラウドにも削除を通知する。
+ * 復元や取り消しで元データが戻った時だけ使う。利用者の「完全削除」には purgeTrashItem を使う。
+ */
 export function removeTrashItem(id) {
   const items = getTrashItems();
   const target = items.find(item => item.id === id);
@@ -2068,6 +2128,8 @@ export function restoreTrashItem(id) {
   const items = getTrashItems();
   const item = items.find(entry => entry.id === id);
   if (!item) return null;
+  // 中身を捨てた削除記録から復元すると、空の予定やタスクができてしまう。
+  if (isPurgedTrashItem(item)) return null;
   const payload = normalizeTrashPayload(item.payload);
   const entityId = item.entityId || payload?.id || null;
   if (!payload || !entityId) return null;
@@ -2160,12 +2222,9 @@ function normalizeTrashPayload(payload) {
   }
 }
 
-/** 指定月に削除されたごみ箱項目を完全削除し、各IDを同期先からも削除する。 */
+/** 指定月に削除されたごみ箱項目をまとめて完全削除する。同期用の削除記録は残す。 */
 export function deleteTrashItemsByMonth(yyyymm) {
-  const items = getTrashItems();
-  const removed = items.filter(item => item.deletedAt && item.deletedAt.slice(0, 7) === yyyymm);
-  saveTrashItems(items.filter(item => !item.deletedAt || item.deletedAt.slice(0, 7) !== yyyymm));
-  removed.forEach(item => _notifyDelete({ table: 'trash_items', id: item.id }));
+  return purgeTrashWhere(item => item.deletedAt && item.deletedAt.slice(0, 7) === yyyymm);
 }
 
 // ---- Knowledge Review Log ----

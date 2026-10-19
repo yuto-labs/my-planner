@@ -6,10 +6,11 @@
 // ============================================================
 
 import {
-  getTrashItems,
+  getRestorableTrashItems,
   restoreTrashItem,
-  removeTrashItem,
+  purgeTrashItem,
   deleteTrashItemsByMonth,
+  TRASH_PAYLOAD_RETENTION_DAYS,
 } from '../storage.js';
 import { esc, formatDate } from '../utils.js';
 
@@ -20,6 +21,7 @@ const TYPE_META = {
   task:  { label: 'Task',  icon: '✓' },
   event: { label: 'Event', icon: '📅' },
   memo:  { label: 'Note',  icon: '📝' },
+  atlas: { label: '表現帳', icon: 'Aa' },
   learning: { label: 'Knowledge', icon: '◈' },
   goal:  { label: 'Goal',  icon: '◎' },
   schedule: { label: 'Schedule', icon: '◫' },
@@ -32,13 +34,15 @@ export function initArchive(container) {
 
 /** ごみ箱の中身を月ごとにまとめ、復元・完全削除操作を描画する。 */
 function render(container) {
-  const items = getTrashItems();
+  const items = getRestorableTrashItems();
+  const retentionNote = `削除から${TRASH_PAYLOAD_RETENTION_DAYS}日を過ぎた項目は自動で完全削除されます。`;
 
   if (!items.length) {
     container.innerHTML = `
       <div class="archive-page">
         <div class="archive-intro">
           <p>削除したタスク・予定・メモ・目標・マイスケジュールはここに入ります。</p>
+          <p class="text-sm text-muted">${retentionNote}</p>
         </div>
         <div class="empty-state" style="padding-top:48px">
           <div class="empty-state-icon">🗑</div>
@@ -63,6 +67,7 @@ function render(container) {
     <div class="archive-page">
       <div class="archive-intro">
         <p>削除済みの項目一覧です。合計 <strong>${items.length}</strong> 件</p>
+        <p class="text-sm text-muted">${retentionNote}</p>
       </div>
       ${sortedMonths.map(ym => renderMonthBlock(ym, byMonth[ym])).join('')}
     </div>
@@ -79,10 +84,13 @@ function render(container) {
 
   container.querySelectorAll('[data-trash-delete]').forEach(btn => {
     btn.addEventListener('click', () => {
-      const item = getTrashItems().find(entry => entry.id === btn.dataset.trashDelete);
+      const item = getRestorableTrashItems().find(entry => entry.id === btn.dataset.trashDelete);
       const title = item?.title?.slice(0, 30) || 'この項目';
       if (!window.confirm(`「${title}」を Trash から完全削除しますか？この操作は元に戻せません。`)) return;
-      removeTrashItem(btn.dataset.trashDelete);
+      if (!purgeTrashItem(btn.dataset.trashDelete)) {
+        toast('削除できませんでした。項目は保持されています', 'error');
+        return;
+      }
       toast('Trash から削除しました', 'success');
       render(container);
     });

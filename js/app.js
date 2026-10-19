@@ -7,7 +7,7 @@
 // 個別画面の中身は js/modules/ に委ね、このファイルは全体の交通整理をします。
 
 import {
-  getSettings, getPendingAIQueue, autoArchiveTasks, isAiAvailable,
+  getSettings, getPendingAIQueue, autoArchiveTasks, purgeExpiredTrashPayloads, isAiAvailable,
   clearUserContentLocal, hasUserContentLocal,
   preserveUserContentSnapshot, restoreUserContentSnapshot,
   DEFAULT_ACCENT_RGB, DEFAULT_THEME_TUNING,
@@ -942,6 +942,8 @@ async function init() {
 
   // Auto-archive: move completed tasks from previous days to archive store
   try { autoArchiveTasks(); } catch {}
+  // 保持期限を過ぎたごみ箱の中身を捨てる。同期用の削除記録は残る。
+  try { purgeExpiredTrashPayloads(); } catch {}
 
   // Apply saved theme
   const settings = getSettings();
@@ -1023,6 +1025,7 @@ async function init() {
       return;
     }
     try { autoArchiveTasks(); } catch {}
+    try { purgeExpiredTrashPayloads(); } catch {}
     try { navigator.serviceWorker?.getRegistration?.().then(reg => reg?.update?.()).catch(() => {}); } catch {}
     getSession().then(session => {
       if (!session) return;
