@@ -3236,6 +3236,8 @@ function toggleEditorBlock(blockId, container) {
 
 /** contenteditable本文をカーソル位置で前後へ分け、改行時のブロック分割に使う。 */
 function splitEditableAtCaret(editable) {
+  // マーカー末尾で分けると、新しいブロックが空のマーカーから始まってしまうため先に外へ出す。
+  moveCaretOutOfMarkEnd(editable);
   const selection = window.getSelection();
   if (!editable || !selection?.rangeCount) return null;
   const caret = selection.getRangeAt(0).cloneRange();
@@ -3349,6 +3351,7 @@ function splitTextBlockAfterCaret(blockId, container, editable) {
 
 /** 現在ブロック内のカーソル位置へ改行を挿入し、新しいブロックには分割しない。 */
 function insertBlockLineBreak(editable) {
+  moveCaretOutOfMarkEnd(editable);
   const selection = window.getSelection();
   if (!selection?.rangeCount) return;
   const range = selection.getRangeAt(0);
@@ -3435,6 +3438,61 @@ function wrapEditableSelectionVisually(editable, tagName, styleProperty, styleVa
   selection.addRange(range);
   editable.normalize();
   return true;
+}
+
+/**
+ * カーソルがマーカー(mark)の末尾にある時だけ、カーソルをマーカーの外(直後)へ出す。
+ * 改行はカーソル位置の要素の中に入るため、これをしないとマーカー末尾で改行した時に
+ * 次の行までマーカーが続いてしまう。マーカーの途中で改行した場合は、後ろの文字も
+ * 元々マーカー付きなので何もしない。
+ */
+function moveCaretOutOfMarkEnd(editable) {
+  const selection = window.getSelection();
+  if (!editable || !selection?.rangeCount || !selection.isCollapsed) return;
+  const caret = selection.getRangeAt(0);
+  const start = caret.startContainer;
+  let mark = (start.nodeType === Node.ELEMENT_NODE ? start : start.parentElement)?.closest('mark');
+  let moved = false;
+  // マーカーが入れ子の場合もあるので、末尾にいる限り一つずつ外側へ出る。
+  while (mark && editable.contains(mark)) {
+    const rest = document.createRange();
+    rest.setStart(caret.startContainer, caret.startOffset);
+    rest.setEnd(mark, mark.childNodes.length);
+    // カーソルの後ろに見える文字が残っていれば末尾ではない(ゼロ幅の目印文字は無視)。
+    if (rest.toString().replace(/​/g, '') !== '') break;
+    caret.setStartAfter(mark);
+    caret.collapse(true);
+    moved = true;
+    mark = mark.parentElement?.closest('mark');
+  }
+  if (!moved) return;
+  selection.removeAllRanges();
+  selection.addRange(caret);
+}
+
+/**
+ * 選択範囲に少しでも掛かっているマーカーをすべて外す。以前は「選択全体を包む1個」しか
+ * 外さなかったため、複数のマーカーをまたいだ選択や一部だけの選択では消え残りが出ていた。
+ * 文字を選ばずカーソルを置いただけの時は、そのマーカーを丸ごと外す。
+ * ブラウザーが入力中に作る背景色付きspanも同じく背景色を消す。
+ */
+function clearHighlightsInSelection(editable, savedRange = null) {
+  const selection = window.getSelection();
+  if (!editable || !selection) return false;
+  if (savedRange) {
+    selection.removeAllRanges();
+    selection.addRange(savedRange);
+  }
+  if (!selection.rangeCount) return false;
+  const range = selection.getRangeAt(0);
+  const targets = [...editable.querySelectorAll('mark, [style*="background"]')]
+    .filter(el => range.intersectsNode(el));
+  targets.forEach(el => {
+    if (el.tagName === 'MARK') el.replaceWith(...el.childNodes);
+    else el.style.removeProperty('background-color');
+  });
+  editable.normalize();
+  return targets.length > 0;
 }
 
 /** 選択位置を囲む指定書式を外す。色選択の「なし」が実際に解除として働くための処理。 */
@@ -3613,13 +3671,16 @@ function wireToolbar(container) {
       }
       const hasSelectedText = active && selection?.rangeCount && !selection.isCollapsed
         && active.contains(selection.anchorNode) && active.contains(selection.focusNode);
+      // 解除だけは、文字を選ばずマーカー上にカーソルを置いただけでも使えるようにする。
+      const isClear = color?.id === 'clear';
+      const caretInBlock = active && selection?.rangeCount && active.contains(selection.anchorNode);
 
-      if (!color || !hasSelectedText) {
+      if (!color || !(hasSelectedText || (isClear && caretInBlock))) {
         toast('マーカーを付ける文字を選択してください', 'info');
       } else {
         recordEditorHistory(container);
-        if (color.id === 'clear') {
-          unwrapEditableFormatting(active, 'MARK', savedHighlightSelection?.range || null);
+        if (isClear) {
+          clearHighlightsInSelection(active, savedHighlightSelection?.range || null);
         } else {
           wrapEditableSelectionVisually(
             active,
