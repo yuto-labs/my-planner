@@ -3471,10 +3471,10 @@ function moveCaretOutOfMarkEnd(editable) {
 }
 
 /**
- * 選択範囲に少しでも掛かっているマーカーをすべて外す。以前は「選択全体を包む1個」しか
- * 外さなかったため、複数のマーカーをまたいだ選択や一部だけの選択では消え残りが出ていた。
+ * 選択した部分だけマーカーを外す。マーカーの一部を選んだ場合は
+ * 「選択より前(マーカーのまま)・選択部分(マーカーなし)・選択より後(マーカーのまま)」に分ける。
+ * 複数のマーカーにまたがる選択でも、選んだ範囲に掛かる分はすべて外れる。
  * 文字を選ばずカーソルを置いただけの時は、そのマーカーを丸ごと外す。
- * ブラウザーが入力中に作る背景色付きspanも同じく背景色を消す。
  */
 function clearHighlightsInSelection(editable, savedRange = null) {
   const selection = window.getSelection();
@@ -3485,14 +3485,57 @@ function clearHighlightsInSelection(editable, savedRange = null) {
   }
   if (!selection.rangeCount) return false;
   const range = selection.getRangeAt(0);
-  const targets = [...editable.querySelectorAll('mark, [style*="background"]')]
-    .filter(el => range.intersectsNode(el));
-  targets.forEach(el => {
-    if (el.tagName === 'MARK') el.replaceWith(...el.childNodes);
-    else el.style.removeProperty('background-color');
+  const marks = [...editable.querySelectorAll('mark')].filter(mark => range.intersectsNode(mark));
+  // ブラウザーが入力中に作る背景色付きspanは、範囲に掛かれば背景色だけ消す。
+  editable.querySelectorAll('span[style*="background"]').forEach(span => {
+    if (range.intersectsNode(span)) span.style.removeProperty('background-color');
   });
+  if (!marks.length) return false;
+
+  if (range.collapsed) {
+    marks.forEach(mark => mark.isConnected && mark.replaceWith(...mark.childNodes));
+    editable.normalize();
+    return true;
+  }
+
+  // 先に「各マーカーのうち選択と重なる部分」を求めておく。DOMを変えると範囲がずれるので、
+  // 後ろのマーカーから順に処理し、まだ処理していない前のマーカーの位置を動かさない。
+  const parts = marks.map(mark => {
+    const overlap = document.createRange();
+    overlap.selectNodeContents(mark);
+    // 選択の始まりがマーカーの中なら、重なりはそこから。終わりも同様。
+    if (range.compareBoundaryPoints(Range.START_TO_START, overlap) > 0) overlap.setStart(range.startContainer, range.startOffset);
+    if (range.compareBoundaryPoints(Range.END_TO_END, overlap) < 0) overlap.setEnd(range.endContainer, range.endOffset);
+    return { mark, overlap };
+  });
+  let caretAfter = null;
+  for (const { mark, overlap } of parts.reverse()) {
+    if (!mark.isConnected) continue; // 外側のマーカー処理で既に切り出された入れ子
+    const afterRange = document.createRange();
+    afterRange.setStart(overlap.endContainer, overlap.endOffset);
+    afterRange.setEnd(mark, mark.childNodes.length);
+    const tail = mark.cloneNode(false); // 同じ色の空のマーカー
+    tail.appendChild(afterRange.extractContents()); // 選択より後ろ → マーカーのまま
+    const cleared = overlap.extractContents(); // 選択部分 → マーカーを外す
+    cleared.querySelectorAll('mark').forEach(inner => inner.replaceWith(...inner.childNodes));
+    const lastCleared = cleared.lastChild;
+    mark.after(cleared, tail); // markには選択より前だけが残る
+    [mark, tail].forEach(piece => {
+      if (!piece.textContent.replace(/​/g, '')) piece.remove(); // 空になった片側は消す
+    });
+    caretAfter ??= lastCleared; // 最後尾(最初に処理した分)の直後へカーソルを置く
+  }
+  // 文字ノードの結合(normalize)で目印のノードが消えることがあるため、カーソルを先に置く。
+  // 結合後もブラウザーがカーソル位置を正しく引き継ぐ。
+  if (caretAfter?.isConnected) {
+    const caret = document.createRange();
+    caret.setStartAfter(caretAfter);
+    caret.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(caret);
+  }
   editable.normalize();
-  return targets.length > 0;
+  return true;
 }
 
 /** 選択位置を囲む指定書式を外す。色選択の「なし」が実際に解除として働くための処理。 */
