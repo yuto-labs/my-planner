@@ -1258,8 +1258,9 @@ function setupConnectivityMonitor() {
   updateStatus();
 }
 
-// 他端末の変更を確認する間隔。毎回の全件取得ではなく件数と更新時刻だけを読む。
-const FOREGROUND_CHANGE_CHECK_MS = 10_000;
+// 他端末の変更を確認する間隔。毎回の全件取得ではなく件数と更新時刻だけを読み、
+// 変化した種類だけを取得するので、以前の3秒間隔に戻しても通信量は以前よりずっと少ない。
+const FOREGROUND_CHANGE_CHECK_MS = 3_000;
 let foregroundCheckInFlight = false;
 
 /**

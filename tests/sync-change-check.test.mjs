@@ -117,6 +117,7 @@ test('foreground sync uses the light change check instead of a three-second full
   const foreground = source.slice(source.indexOf('function setupForegroundSync()'), source.indexOf('// ---- FAB'));
   assert.match(foreground, /pullIfRemoteChanged\(\)/);
   assert.doesNotMatch(foreground, /pullIfStale\(3000/);
-  assert.match(source, /const FOREGROUND_CHANGE_CHECK_MS = 10_000;/);
+  // 変化検出は軽いので、他端末の変更が届く速さは以前と同じ3秒を保つ。
+  assert.match(source, /const FOREGROUND_CHANGE_CHECK_MS = 3_000;/);
   assert.match(foreground, /deferSyncWhileEditing\(\{ needsChangeCheck: true \}\)/);
 });
