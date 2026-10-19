@@ -5445,6 +5445,12 @@ mark.search-highlight {
   transform: translateY(-2px);
   transition: transform 0.1s ease;
 }
+/* 長押し並べ替えと競合しないよう、タスク行では文字選択メニューを出さない。 */
+.task-list .task-item {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
 
 /* ============================================================
    41. FOCUS MODE

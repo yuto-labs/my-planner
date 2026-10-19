@@ -1158,6 +1158,7 @@ function wireTaskActions() {
   listEl._wired = true;
 
   listEl.addEventListener('click', e => {
+    if (Date.now() < taskClickSuppressedUntil) return;
     const li = e.target.closest('[data-task-id]');
     if (!li) return;
     const taskId = li.dataset.taskId;
@@ -1823,12 +1824,114 @@ function rerenderList() {
 
 // ---- Drag & Drop ----
 
+const TOUCH_REORDER_DELAY_MS = 420;
+const TOUCH_REORDER_MOVE_TOLERANCE = 8;
+let taskClickSuppressedUntil = 0;
+
+/**
+ * 並べ替え可能な組み合わせなら移動して再描画する。
+ * 一覧は締切順なので、手動順が効くのは同じ締切・同じ完了状態のタスク同士だけ。
+ */
+function reorderWithinSameDeadline(draggedId, targetId) {
+  if (!draggedId || !targetId || draggedId === targetId) return false;
+  const tasks = getTasks();
+  const dragged = tasks.find(task => task.id === draggedId);
+  const target = tasks.find(task => task.id === targetId);
+  if (!dragged || !target) return false;
+  if (dragged.dueDate !== target.dueDate || (dragged.dueTime || '') !== (target.dueTime || '') || dragged.completed !== target.completed) {
+    toast('同じ締め切り・状態のタスク内で並び替えできます', 'info');
+    return false;
+  }
+  reorderTask(draggedId, targetId);
+  rerenderList();
+  return true;
+}
+
+/**
+ * スマホでは長押しで並べ替えを始める。短いタップは編集、長押し前に指が動いた場合は
+ * スクロールとして扱い、並べ替え直後のclickでは編集画面を開かない。
+ */
+function wireTouchReorder(listEl) {
+  let pending = null;
+  let active = null;
+
+  /** 長押し待ちと並べ替え中の表示を片付ける。 */
+  const reset = () => {
+    clearTimeout(pending?.timer);
+    pending = null;
+    active?.li.classList.remove('task-dragging');
+    listEl.querySelectorAll('.task-drag-over').forEach(el => el.classList.remove('task-drag-over'));
+    active = null;
+  };
+
+  listEl.addEventListener('touchstart', e => {
+    listEl._lastTouchStartAt = Date.now();
+    if (e.touches.length !== 1) { reset(); return; }
+    const li = e.target.closest('[data-task-id]');
+    if (!li || e.target.closest('button, input, textarea, select')) return;
+    const touch = e.touches[0];
+    reset();
+    pending = {
+      li,
+      x: touch.clientX,
+      y: touch.clientY,
+      timer: setTimeout(() => {
+        active = { li, id: li.dataset.taskId, overId: null };
+        pending = null;
+        li.classList.add('task-dragging');
+        navigator.vibrate?.(15);
+      }, TOUCH_REORDER_DELAY_MS),
+    };
+  }, { passive: true });
+
+  listEl.addEventListener('touchmove', e => {
+    const touch = e.touches[0];
+    if (pending && touch) {
+      const moved = Math.hypot(touch.clientX - pending.x, touch.clientY - pending.y);
+      if (moved > TOUCH_REORDER_MOVE_TOLERANCE) reset();
+      return;
+    }
+    if (!active || !touch) return;
+    // 並べ替え中だけページのスクロールを止める。
+    e.preventDefault();
+    const over = document.elementFromPoint(touch.clientX, touch.clientY)?.closest?.('[data-task-id]');
+    listEl.querySelectorAll('.task-drag-over').forEach(el => el.classList.remove('task-drag-over'));
+    if (over && listEl.contains(over) && over.dataset.taskId !== active.id) {
+      over.classList.add('task-drag-over');
+      active.overId = over.dataset.taskId;
+    } else {
+      active.overId = null;
+    }
+  }, { passive: false });
+
+  listEl.addEventListener('touchend', () => {
+    if (!active) { reset(); return; }
+    const { id, overId } = active;
+    // 指を離した直後にブラウザーが送るclickで編集画面が開かないようにする。
+    // 並べ替え後は一覧要素が作り直されるため、要素ではなく画面単位で記録する。
+    taskClickSuppressedUntil = Date.now() + 700;
+    reset();
+    if (overId) reorderWithinSameDeadline(id, overId);
+  });
+
+  listEl.addEventListener('touchcancel', reset);
+  listEl.addEventListener('contextmenu', e => {
+    if (active || pending) e.preventDefault();
+  });
+}
+
 /** ポインタ操作で手動順を変更する。期限順表示時の同順位判定にも使われる。 */
 function wireDragDrop(listEl) {
   if (!listEl) return;
   let draggingId = null;
+  wireTouchReorder(listEl);
 
   listEl.addEventListener('dragstart', e => {
+    // タッチ端末ではブラウザー標準のドラッグを使わず、長押し並べ替えだけにする。
+    if (Date.now() - (listEl._lastTouchStartAt || 0) < 1500) {
+      e.preventDefault();
+      return;
+    }
     const li = e.target.closest('[data-task-id]');
     if (!li) return;
     draggingId = li.dataset.taskId;
@@ -1856,16 +1959,7 @@ function wireDragDrop(listEl) {
     const li = e.target.closest('[data-task-id]');
     if (!li || !draggingId || li.dataset.taskId === draggingId) return;
     li.classList.remove('task-drag-over');
-    const tasks = getTasks();
-    const dragged = tasks.find(task => task.id === draggingId);
-    const target = tasks.find(task => task.id === li.dataset.taskId);
-    if (!dragged || !target) return;
-    if (dragged.dueDate !== target.dueDate || (dragged.dueTime || '') !== (target.dueTime || '') || dragged.completed !== target.completed) {
-      toast('同じ締め切り・状態のタスク内で並び替えできます', 'info');
-      return;
-    }
-    reorderTask(draggingId, li.dataset.taskId);
-    rerenderList();
+    reorderWithinSameDeadline(draggingId, li.dataset.taskId);
   });
 }
 

@@ -441,7 +441,10 @@ export function reorderTask(draggedId, targetId) {
   const [moved] = tasks.splice(from, 1);
   tasks.splice(to, 0, moved);
   const now = new Date().toISOString();
+  // 順番が変わったタスクだけ更新日時を進める。全件を進めると全タスクが再送信され、
+  // 別端末で同時に編集した内容をこの端末の古い内容で上書きしてしまう。
   tasks.forEach((task, index) => {
+    if (Number(task.sortOrder) === index) return;
     task.sortOrder = index;
     task.updatedAt = now;
   });
