@@ -115,20 +115,31 @@ test('writes are visible immediately and reach IndexedDB after flushing', async 
   assert.equal(backend.data.has('mp_events'), false);
 });
 
-test('a failed write keeps the data in memory and is retried', async () => {
+test('a failed write keeps the data in memory, reports once, and retries on a reopened connection', async () => {
   reset();
-  const backend = fakeBackend();
-  await initLocalStore({ backendFactory: async () => backend, channelFactory: () => null });
-  backend.failPut = true;
-  localStore.setItem('mp_task_archive', '[{"id":"done"}]');
-  await flushLocalStore();
-  assert.equal(localStore.getItem('mp_task_archive'), '[{"id":"done"}]');
-  assert.equal(backend.data.has('mp_task_archive'), false);
+  // 一つ目の接続は壊れたまま(iOSで裏に回った後の状態を再現)、開き直すと正常な接続が返る。
+  const broken = fakeBackend();
+  const fresh = fakeBackend();
+  const opened = [broken, fresh];
+  await initLocalStore({ backendFactory: async () => opened.shift() || fresh, channelFactory: () => null });
+  const reports = [];
+  globalThis.document = { dispatchEvent: event => reports.push(event.detail.key) };
+  globalThis.CustomEvent ??= class { constructor(type, init) { this.type = type; this.detail = init?.detail; } };
+  try {
+    broken.failPut = true;
+    localStore.setItem('mp_task_archive', '[{"id":"done"}]');
+    await flushLocalStore();
+    assert.equal(localStore.getItem('mp_task_archive'), '[{"id":"done"}]');
+    assert.equal(broken.data.has('mp_task_archive'), false);
 
-  backend.failPut = false;
-  await new Promise(resolve => setTimeout(resolve, 1700));
-  await flushLocalStore();
-  assert.equal(backend.data.get('mp_task_archive').value, '[{"id":"done"}]');
+    // 再試行(1.5秒後)で新しい接続へ保存される。失敗通知は最初の一回だけ。
+    await new Promise(resolve => setTimeout(resolve, 1700));
+    await flushLocalStore();
+    assert.equal(fresh.data.get('mp_task_archive').value, '[{"id":"done"}]');
+    assert.deepEqual(reports, ['mp_task_archive']);
+  } finally {
+    delete globalThis.document;
+  }
 });
 
 test('another tab can only replace the cache with a newer write', async () => {

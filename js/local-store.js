@@ -22,9 +22,11 @@ const RETRY_MS = 1500;
 
 let mode = 'localStorage';
 let backend = null;
+let openBackend = null; // 接続を開き直す関数。保存失敗時の再接続に使う。
 let channel = null;
 let flushPromise = null;
 let retryTimer = null;
+let failing = false; // 保存失敗が続いている間はtrue。エラー表示を一回にまとめるため。
 let lastStamp = 0;
 const cache = new Map();
 const pending = new Map();
@@ -65,15 +67,25 @@ async function runFlush() {
     pending.clear();
     try {
       await backend.putMany(batch);
+      failing = false;
       batch.forEach(([key, record]) => {
         try { channel?.postMessage({ key, value: record.value, stamp: record.stamp, tabId }); } catch {}
       });
     } catch (error) {
       console.warn('[LocalStore] IndexedDB write failed; retrying:', error);
+      // 失敗した分は書き込み待ちへ戻す。その間に入った新しい内容があればそちらを優先する。
       batch.forEach(([key, record]) => { if (!pending.has(key)) pending.set(key, record); });
-      batch.forEach(([key]) => reportWriteError(key));
+      // 再試行のたびに通知すると1.5秒ごとにエラーが出続けるので、失敗し始めた時だけ知らせる。
+      if (!failing) batch.forEach(([key]) => reportWriteError(key));
+      failing = true;
       clearTimeout(retryTimer);
-      retryTimer = setTimeout(() => {
+      retryTimer = setTimeout(async () => {
+        // iOSのSafariは、アプリが裏に回った後に開いていたIndexedDB接続が使えなくなることがある。
+        // 同じ接続で再試行しても永久に失敗するため、接続を開き直してから保存し直す。
+        try {
+          const fresh = await openBackend?.();
+          if (fresh) { backend?.close?.(); backend = fresh; }
+        } catch {}
         retryTimer = null;
         scheduleFlush();
       }, RETRY_MS);
@@ -161,6 +173,10 @@ export function createIndexedDbBackend(indexedDBImpl = globalThis.indexedDB) {
     request.onsuccess = () => {
       const db = request.result;
       resolve({
+        /** 開き直した時に古い接続を閉じる。 */
+        close() {
+          try { db.close(); } catch {}
+        },
         /** 指定キーの記録をまとめて読む。 */
         getMany(keys) {
           return new Promise((done, fail) => {
@@ -216,7 +232,8 @@ export async function initLocalStore({
   let nextBackend = null;
   let records = {};
   try {
-    nextBackend = await backendFactory();
+    // 開くのに一度失敗しても、一時的な不調のことが多いので一回だけ開き直す。
+    nextBackend = await backendFactory().catch(() => backendFactory());
     if (!nextBackend) return false;
     records = await nextBackend.getMany(MANAGED_KEYS);
     const storage = legacyStorage();
@@ -240,6 +257,7 @@ export async function initLocalStore({
     lastStamp = Math.max(lastStamp, Number(record?.stamp) || 0);
   });
   backend = nextBackend;
+  openBackend = backendFactory;
   mode = 'indexeddb';
 
   // 読み込みと確認が終わった後で、移し終えた旧データだけを消す。
@@ -271,6 +289,8 @@ export async function requestPersistentStorage() {
 export function resetLocalStoreForTests() {
   mode = 'localStorage';
   backend = null;
+  openBackend = null;
+  failing = false;
   try { channel?.close?.(); } catch {}
   channel = null;
   clearTimeout(retryTimer);

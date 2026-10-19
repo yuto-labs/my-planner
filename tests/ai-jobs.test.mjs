@@ -558,7 +558,9 @@ test('English question prompt describes the same shape the server schema require
   // Knowledge用の分類・概念形式が混ざると、スキーマを外した再試行で不完全な回答になる。
   assert.doesNotMatch(prompt, /"classification"|"primaryConcept"|"directAnswer"/);
   // サーバー側の上限(2600)を超える要求は丸められるだけなので、同じ値を明示する。
-  assert.match(prompt, /\n\s+2600,\n\s+'json',\n\s+'english_question'/);
+  // 改行は\sで受ける。WindowsのCIはソースを改行コードCRLF(\r\n)で取り出すため、
+  // \n決め打ちだとLinuxでは通りWindowsだけ失敗する。
+  assert.match(prompt, /\s2600,\s+'json',\s+'english_question'/);
 });
 
 test('Atlas background jobs keep only the compact merge context', async () => {
