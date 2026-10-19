@@ -12,7 +12,13 @@ import {
   clearUserContentLocal, hasUserContentLocal,
   preserveUserContentSnapshot,
   restoreUserContentSnapshot,
+  classifyKnowledgeRecord,
 } from '../storage.js';
+import {
+  formatCharCount,
+  measureKnowledgeRecords,
+  measureLocalStorage,
+} from '../storage-usage.js';
 import { processBatchQueue, refreshAiRuntimeStatus } from '../ai.js';
 import { esc, generateId } from '../utils.js';
 import {
@@ -145,6 +151,10 @@ function renderMainSettings(container) {
         </button>
       </div>
 
+      <div class="settings-section" id="storage-usage-section">
+        ${renderStorageUsage()}
+      </div>
+
       <div class="settings-section" id="main-account-section">
         ${renderAccountSection()}
       </div>
@@ -163,6 +173,7 @@ function renderMainSettings(container) {
 
   wireAppearance(container);
   wireCategories(container);
+  wireStorageUsage(container);
   wireAccount(container, { hideWhenSignedIn: false, sectionId: 'main-account-section' });
   container.querySelector('#open-ai-settings-btn')?.addEventListener('click', () => nav('ai-settings'));
   container.querySelector('#open-shared-calendar-settings-btn')?.addEventListener('click', () => {
@@ -270,6 +281,73 @@ function renderAISettings(container) {
   wireAISettings(container);
   wireBackup(container);
   wireAccount(container, { hideWhenSignedIn: false, sectionId: 'ai-account-section' });
+}
+
+/** 端末内の保存容量と内訳を、読み取りだけで集計して表示する。 */
+function renderStorageUsage() {
+  const usage = measureLocalStorage();
+  let knowledge = [];
+  try {
+    knowledge = measureKnowledgeRecords(JSON.parse(localStorage.getItem('mp_knowledge') || '[]'), classifyKnowledgeRecord);
+  } catch {
+    knowledge = [];
+  }
+  const percent = Math.min(100, Math.round(usage.ratio * 100));
+  const level = percent >= 85 ? 'danger' : percent >= 65 ? 'warning' : 'ok';
+  /** `row`: 種類名・補足・文字数を一行の内訳表示にする。 */
+  const row = (label, chars, detail = '') => `
+    <div class="storage-usage-row">
+      <span>${esc(label)}${detail ? `<small>${esc(detail)}</small>` : ''}</span>
+      <strong>${esc(formatCharCount(chars))}</strong>
+    </div>`;
+  return `
+    <div class="settings-heading">端末の保存容量</div>
+    <div class="storage-usage-card storage-usage-card--${level}">
+      <div class="storage-usage-summary">
+        <strong>${percent}%</strong>
+        <span>${esc(formatCharCount(usage.totalChars))} / 約${esc(formatCharCount(usage.limitChars))}</span>
+      </div>
+      <div class="storage-usage-bar" role="progressbar" aria-label="端末の保存容量" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}">
+        <span style="width:${percent}%"></span>
+      </div>
+      <div class="storage-usage-list">
+        ${usage.groups.map(group => row(group.label, group.chars)).join('')}
+      </div>
+      ${knowledge.length ? `
+        <details class="storage-usage-details">
+          <summary>メモ・表現帳・Knowledgeの内訳</summary>
+          <div class="storage-usage-list">
+            ${knowledge.map(item => row(item.label, item.chars, `${item.count}件`)).join('')}
+          </div>
+        </details>
+      ` : ''}
+      <p class="text-sm text-muted" id="storage-usage-browser"></p>
+      <p class="text-sm text-muted">上限はブラウザーにより異なる目安です。満杯になると新しい保存や同期の取り込みができなくなります。</p>
+      <button class="btn btn-ghost btn-sm" id="storage-usage-refresh" type="button">再計算</button>
+    </div>
+  `;
+}
+
+/** 再計算ボタンと、ブラウザー全体（画像キャッシュ等を含む）の使用量表示を接続する。 */
+function wireStorageUsage(container) {
+  const section = container.querySelector('#storage-usage-section');
+  if (!section) return;
+  section.querySelector('#storage-usage-refresh')?.addEventListener('click', () => {
+    section.innerHTML = renderStorageUsage();
+    wireStorageUsage(container);
+  });
+  const note = section.querySelector('#storage-usage-browser');
+  if (!note || !navigator.storage?.estimate) return;
+  Promise.all([
+    navigator.storage.estimate(),
+    navigator.storage.persisted?.() ?? Promise.resolve(null),
+  ]).then(([estimate, persisted]) => {
+    if (!note.isConnected) return;
+    const usedMb = (Number(estimate?.usage) || 0) / 1024 / 1024;
+    const quotaMb = (Number(estimate?.quota) || 0) / 1024 / 1024;
+    const persistence = persisted === true ? '保護あり' : persisted === false ? '自動削除の対象になりうる' : '不明';
+    note.textContent = `ブラウザー全体（画像キャッシュ等を含む）: ${usedMb.toFixed(1)}MB / ${quotaMb >= 1024 ? `${(quotaMb / 1024).toFixed(1)}GB` : `${quotaMb.toFixed(0)}MB`}・保存の保護: ${persistence}`;
+  }).catch(() => {});
 }
 
 /** 予定カテゴリ一件を、色・名前の編集と削除ができる設定行へ変換する。 */

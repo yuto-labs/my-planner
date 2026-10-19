@@ -118,7 +118,10 @@ export function initTasks(container) {
       `).join('')}
     </div>
   `;
-  requestAnimationFrame(() => { if (container.isConnected) render(); });
+  // 描画前に別画面へ移った場合、遅れて届いた描画で新しい画面を上書きしない。
+  requestAnimationFrame(() => {
+    if (container.isConnected && container.dataset.view === 'tasks' && state.container === container) render();
+  });
   return () => {
     if (openPlannerHandler) {
       window.removeEventListener('tasks:open-planner', openPlannerHandler);

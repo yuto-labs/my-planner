@@ -1055,6 +1055,20 @@ function isInternalKnowledgeRecord(record) {
     || isAIGenerationJobRecord(record);
 }
 
+/**
+ * 共通保存配列の一件が何の記録かを返す。保存容量の内訳表示に使い、保存内容は変えない。
+ * @returns {'memo'|'atlas'|'translation'|'question'|'learning'|'media'|'job'}
+ */
+export function classifyKnowledgeRecord(record) {
+  if (isAIGenerationJobRecord(record)) return 'job';
+  if (isAppMediaPreferencesRecord(record)) return 'media';
+  if (isLearningLibraryRecord(record)) return 'learning';
+  if (isTranslationSetRecord(record)) return 'translation';
+  if (isEnglishQuestionRecord(record)) return 'question';
+  if (isExpressionAtlasRecord(record)) return 'atlas';
+  return 'memo';
+}
+
 /** 表現帳系レコードのうち、英語見出し語とsenseを持つ解説レコードか判定する。 */
 function isNuanceRecord(record) {
   return isExpressionAtlasRecord(record)

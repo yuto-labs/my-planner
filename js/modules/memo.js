@@ -509,7 +509,8 @@ export function initKnowledge(container) {
     </div>
   `;
   requestAnimationFrame(() => {
-    if (!container.isConnected) return;
+    // 描画前に別画面へ移った場合、遅れて届いた描画で新しい画面を上書きしない。
+    if (!container.isConnected || container.dataset.view !== 'memo') return;
     renderList();
     restoreKnowledgeListPosition();
   });
