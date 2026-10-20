@@ -8,7 +8,7 @@
 
 import {
   getSettings, getPendingAIQueue, autoArchiveTasks, purgeExpiredTrashPayloads, isAiAvailable,
-  getEvents, getTasks, applySharedSettingsFromSync, ensureSharedSettings,
+  getEvents, getTasks, applySharedSettingsFromSync, ensureSharedSettings, extendRecurringSeries,
   clearUserContentLocal, hasUserContentLocal,
   preserveUserContentSnapshot, restoreUserContentSnapshot,
   DEFAULT_ACCENT_RGB, DEFAULT_THEME_TUNING,
@@ -957,6 +957,8 @@ async function init() {
           // 取得前に作ると、空の新しい端末の既定値で他の端末の設定を上書きしてしまう。
           if (applySharedSettingsFromSync()) applyTheme(getSettings().theme);
           else ensureSharedSettings();
+          // 繰り返し予定の先の分を作り足すのは、他の端末での削除を取り込んだ後にする。
+          if (extendRecurringSeries() > 0) pulled = true;
           if (!pulled || !currentView) return;
           refreshCurrentView();
         }).catch(e => console.warn('[Sync] login sync failed:', e));
@@ -964,6 +966,10 @@ async function init() {
     }
   } catch (e) {
     console.warn('[Sync] init failed:', e);
+  }
+  // ログインしていない(同期しない)端末では、取り込みを待たずに繰り返し予定を作り足す。
+  if (!getActiveUserId()) {
+    try { extendRecurringSeries(); } catch (error) { console.warn('[Recurrence] extend failed:', error); }
   }
 
   // Auto-archive: move completed tasks from previous days to archive store
@@ -1062,7 +1068,11 @@ async function init() {
     try { purgeExpiredTrashPayloads(); } catch {}
     try { navigator.serviceWorker?.getRegistration?.().then(reg => reg?.update?.()).catch(() => {}); } catch {}
     getSession().then(session => {
-      if (!session) return;
+      if (!session) {
+        // 同期しない端末でも、日をまたいで開いた時に繰り返し予定の先の分を作り足す。
+        if (extendRecurringSeries() > 0) refreshCurrentView({ preserveScroll: true });
+        return;
+      }
       // Editing and pending writes may defer a cloud pull, but must never
       // prevent finished AI jobs from being imported after app suspension.
       resumeCompletedAIJobs().catch(error => console.warn('[AI jobs] foreground resume failed:', error));
@@ -1071,6 +1081,8 @@ async function init() {
         return;
       }
       pullIfStale(30_000, true).then(pulled => {
+        // 取り込みの後で、繰り返し予定の先の分が足りなければ作り足す。
+        if (extendRecurringSeries() > 0) pulled = true;
         if (pulled) refreshCurrentView({ preserveScroll: true });
       }).catch(() => {});
     }).catch(() => {});

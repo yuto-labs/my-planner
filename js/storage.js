@@ -24,6 +24,7 @@ import {
 import { stableJsonStringify } from './data-compare.js';
 // 大きいデータ(メモ類・ごみ箱・予定・完了タスク)はIndexedDBへ置く。それ以外は従来どおりlocalStorage。
 import { localStore } from './local-store.js';
+import { addDaysKey, localDateKey, occurrenceId, occurrencesBetween } from './recurrence-model.js';
 
 const KEY = {
   EVENTS:    'mp_events',
@@ -385,6 +386,124 @@ export function deleteFutureRecurring(recurringId, fromDateISO) {
   ))) return [];
   removed.forEach(e => _notifyDelete({ table: 'events', id: e.id }));
   return removed;
+}
+
+// ---- 繰り返し予定のルール ----
+// ルール(頻度・終了日・除外曜日・予定の中身)はシリーズごとに1件だけ持ち、同期済みの
+// 内部レコード(画像設定と同じ)の recurrenceRules に置く。実際の予定は今日から半年先まで
+// だけ作り、残りが3か月を切ったら自動で作り足す。終了日を決めなくても予定が増え続けない。
+const RECURRENCE_HORIZON_DAYS = 180;
+const RECURRENCE_REFILL_DAYS = 90;
+
+/** 保存済みの繰り返しルールを { シリーズID: ルール } で返す。 */
+export function getRecurrenceRules() {
+  return { ...(getAppMediaPreferences().recurrenceRules || {}) };
+}
+
+/** 1シリーズのルールを保存する(rule=nullなら消す)。 */
+export function saveRecurrenceRule(recurringId, rule) {
+  const rules = getRecurrenceRules();
+  if (rule) rules[recurringId] = rule;
+  else delete rules[recurringId];
+  return !!saveAppMediaPreferences({ recurrenceRules: rules });
+}
+
+/**
+ * ルールに従って (after, until] の回を作り、予定へ追加する。既にある回と、ごみ箱にある回
+ * (利用者が消した回)は作らない。作った件数を返し、保存に失敗したら-1。
+ */
+function generateRecurrence(recurringId, rule, { after, until, skipFirst = false }) {
+  const events = getEvents();
+  const existing = new Set(events.map(event => event.id));
+  const trashed = new Set(getTrashItems().filter(item => item.entityType === 'event').map(item => item.entityId));
+  const now = new Date().toISOString();
+  const created = occurrencesBetween(rule, { after, until })
+    .filter((date, index) => !(skipFirst && index === 0 && !after))
+    .map(date => ({ date, id: occurrenceId(recurringId, date) }))
+    .filter(({ id }) => !existing.has(id) && !trashed.has(id))
+    .map(({ date, id }) => ({
+      ...rule.template,
+      id,
+      start: date.toISOString(),
+      end: new Date(date.getTime() + (Number(rule.durationMs) || 3_600_000)).toISOString(),
+      recurringId,
+      createdAt: now,
+      updatedAt: now,
+    }));
+  if (!created.length) return 0;
+  return saveEvents([...events, ...created]) ? created.length : -1;
+}
+
+/**
+ * 新しい繰り返しシリーズを作る。eventData は1回目の予定(開始・終了を含む)。
+ * until を決めない場合は半年先まで作り、あとは extendRecurringSeries が足していく。
+ * skipFirst は「既存の予定を繰り返しにする」時用で、1回目はその予定自身が担う。
+ */
+export function createRecurringSeries(eventData, { freq, until = null, excludeWeekdays = [], recurringId = generateId(), skipFirst = false }) {
+  const { id: _id, start, end, createdAt: _c, updatedAt: _u, ...template } = eventData;
+  const rule = {
+    freq,
+    until: until || null,
+    excludeWeekdays: [...new Set(excludeWeekdays.map(Number))],
+    firstStart: start,
+    durationMs: end ? Math.max(0, new Date(end) - new Date(start)) : 3_600_000,
+    template,
+    generatedUntil: null,
+  };
+  const horizon = addDaysKey(localDateKey(new Date()), RECURRENCE_HORIZON_DAYS);
+  // 開始日が半年より先の場合も、最低限その日から半年分は作る。
+  const firstKey = localDateKey(new Date(start));
+  const generateUntil = horizon > firstKey ? horizon : addDaysKey(firstKey, RECURRENCE_HORIZON_DAYS);
+  const count = generateRecurrence(recurringId, rule, { after: null, until: generateUntil, skipFirst });
+  if (count < 0) return { count: -1, recurringId };
+  rule.generatedUntil = rule.until && rule.until < generateUntil ? rule.until : generateUntil;
+  if (!saveRecurrenceRule(recurringId, rule)) return { count: -1, recurringId };
+  return { count, recurringId };
+}
+
+/**
+ * 終わりのないシリーズの予定を、先の分が3か月を切ったら半年先まで作り足す。
+ * 起動時と画面が前面に戻った時に呼ぶ。作り足した件数の合計を返す。
+ */
+export function extendRecurringSeries({ now = new Date() } = {}) {
+  const today = localDateKey(now);
+  const refillBefore = addDaysKey(today, RECURRENCE_REFILL_DAYS);
+  const horizon = addDaysKey(today, RECURRENCE_HORIZON_DAYS);
+  let total = 0;
+  Object.entries(getRecurrenceRules()).forEach(([recurringId, rule]) => {
+    const done = rule.generatedUntil || '';
+    if (rule.until && done >= rule.until) return;
+    if (done >= refillBefore) return;
+    const count = generateRecurrence(recurringId, rule, { after: done || null, until: horizon });
+    if (count < 0) return;
+    total += count;
+    saveRecurrenceRule(recurringId, { ...rule, generatedUntil: rule.until && rule.until < horizon ? rule.until : horizon });
+  });
+  return total;
+}
+
+/**
+ * シリーズの中身(題名・時刻など)を変えた時に、これから作る回にも反映されるようルールを直す。
+ * startShiftMs は開始時刻のずれ、durationMs は新しい長さ。ルールのない古いシリーズは何もしない。
+ */
+export function updateRecurrenceTemplate(recurringId, eventData, { startShiftMs = 0 } = {}) {
+  const rule = getRecurrenceRules()[recurringId];
+  if (!rule) return false;
+  const { id: _id, start, end, createdAt: _c, updatedAt: _u, recurringId: _r, ...template } = eventData;
+  return saveRecurrenceRule(recurringId, {
+    ...rule,
+    template,
+    firstStart: new Date(new Date(rule.firstStart).getTime() + startShiftMs).toISOString(),
+    durationMs: end ? Math.max(0, new Date(end) - new Date(start)) : rule.durationMs,
+  });
+}
+
+/** 「今後すべて削除」でシリーズを指定日の前日で終わらせる(以降は作り足さない)。 */
+export function endRecurrenceBefore(recurringId, dateISO) {
+  const rule = getRecurrenceRules()[recurringId];
+  if (!rule) return false;
+  const lastDay = addDaysKey(localDateKey(new Date(dateISO)), -1);
+  return saveRecurrenceRule(recurringId, { ...rule, until: lastDay, generatedUntil: lastDay });
 }
 
 // ---- Tasks（タスク）----

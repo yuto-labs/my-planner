@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // calendar.js - 月・週・日カレンダーと予定の作成・編集
 //
 // stateは「どの期間・表示形式・共有元を見ているか」を保持する。
@@ -11,6 +11,7 @@ import {
   getCategories, getCategoryById, getCategoryColor, getApiKey,
   pushUndo, applyUndo, getScheduleItemsForDate,
   getMyScheduleColor,
+  createRecurringSeries, updateRecurrenceTemplate, endRecurrenceBefore, saveRecurrenceRule,
 } from '../storage.js';
 import { parseNaturalLanguageEvent } from '../ai.js';
 import {
@@ -1452,6 +1453,9 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
             <input type="radio" name="recurring-scope" value="future"> 今後すべて
           </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="radio" name="recurring-scope" value="all"> すべての回
+          </label>
         </div>
       </div>
     ` : ''}
@@ -1517,7 +1521,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
 
           </div>
         </div>
-        <p class="form-help">選んだ期間まで作成します。除外した曜日には繰り返し予定を作りません。</p>
+        <p class="form-help">終了日は選ばなくても構いません。その場合は半年先まで作り、あとは自動で作り足します。除外した曜日には作りません。</p>
       </div>
     ` : ''}
   `;
@@ -1919,23 +1923,23 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
         .filter(day => Number.isInteger(day) && day >= 0 && day <= 6);
 
       if (!event.recurringId && recurType) {
-        if (!recurEndStr) {
-          toast('繰り返しの終了日を選んでください', 'error');
-          return;
-        }
+        // 既存の予定を繰り返しにする。1回目はこの予定自身なので、ルールからは2回目以降を作る。
         const recurringId = generateId();
         if (!updateEvent(event.id, { ...newData, recurringId })) {
           toast('予定を保存できませんでした。入力内容は残しています', 'error');
           return;
         }
-        const createdCount = createRecurringEvents(newData, recurType, recurEndStr, excludeWeekdays, { recurringId, skipFirst: true });
-        if (createdCount < 0) {
+        const { count } = createRecurringSeries(newData, {
+          freq: recurType, until: recurEndStr || null, excludeWeekdays, recurringId, skipFirst: true,
+        });
+        if (count < 0) {
           toast('繰り返し予定を保存できませんでした', 'error');
           return;
         }
-        toast((createdCount + 1) + '件の繰り返し予定にしました', 'success');
+        toast(recurEndStr ? `${count + 1}件の繰り返し予定にしました` : '繰り返し予定にしました（先の分は自動で作り足します）', 'success');
       } else {
-        if (scope === 'future' && event.recurringId) {
+        if ((scope === 'future' || scope === 'all') && event.recurringId) {
+          // 「今後すべて」はこの回以降、「すべての回」は過去の回も含めて同じ変更を当てる。
           const allEvents = getEvents();
           const startShiftMs = new Date(newData.start).getTime() - new Date(event.start).getTime();
           const nextDurationMs = newData.end
@@ -1947,7 +1951,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
               allEvents[index] = { ...e, ...newData, updatedAt: now };
               return;
             }
-            if (e.recurringId === event.recurringId && e.start >= event.start) {
+            if (e.recurringId === event.recurringId && (scope === 'all' || e.start >= event.start)) {
               const shiftedStart = new Date(new Date(e.start).getTime() + startShiftMs);
               allEvents[index] = {
                 ...e,
@@ -1964,6 +1968,8 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
             toast('予定を保存できませんでした。入力内容は残しています', 'error');
             return;
           }
+          // これから自動で作り足す回にも、同じ題名・時刻が使われるようルールを直す。
+          updateRecurrenceTemplate(event.recurringId, newData, { startShiftMs });
         } else if (!updateEvent(event.id, newData)) {
           toast('予定を保存できませんでした。入力内容は残しています', 'error');
           return;
@@ -1977,11 +1983,10 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
         .map(input => Number(input.value))
         .filter(day => Number.isInteger(day) && day >= 0 && day <= 6);
       if (recurType) {
-        if (!recurEndStr) {
-          toast('繰り返しの終了日を選んでください', 'error');
-          return;
-        }
-        const createdCount = createRecurringEvents(newData, recurType, recurEndStr, excludeWeekdays);
+        // ルールを1件保存し、半年先(終了日があればそこ)までの回を作る。
+        const { count: createdCount } = createRecurringSeries(newData, {
+          freq: recurType, until: recurEndStr || null, excludeWeekdays,
+        });
         if (createdCount < 0) {
           toast('繰り返し予定を保存できませんでした。入力内容は残しています', 'error');
           return;
@@ -1990,7 +1995,7 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
           toast('条件に合う繰り返し予定がありません。期間か除外曜日を見直してください', 'error');
           return;
         }
-        toast(createdCount + '件の繰り返し予定を追加しました', 'success');
+        toast(recurEndStr ? `${createdCount}件の繰り返し予定を追加しました` : '繰り返し予定を追加しました（先の分は自動で作り足します）', 'success');
       } else {
         const created = addEvent(newData);
         if (!created) {
@@ -2020,82 +2025,6 @@ function openEventModal(event, defaultDate, defaultStart, defaultEnd, options = 
   };
 
   saveBtn.onclick = () => saveEvent(false);
-}
-
-/** 開始日から終了日まで、除外曜日を避けて繰り返し予定を実体化する。 */
-function createRecurringEvents(eventData, recurType, endDateStr, excludeWeekdays = [], options = {}) {
-  const recurringId = options.recurringId || generateId();
-  const startDate = new Date(eventData.start);
-  const endDate = endDateStr ? new Date(`${endDateStr}T23:59:59.999`) : addDays(new Date(eventData.start), 90);
-  const duration = eventData.end
-    ? new Date(eventData.end) - startDate
-    : 3600000;
-  const excluded = new Set((Array.isArray(excludeWeekdays) ? excludeWeekdays : [])
-    .map(Number)
-    .filter(day => Number.isInteger(day) && day >= 0 && day <= 6));
-
-  /** 指定した年月の日数を返し、月末日を越えない繰り返し計算に使う。 */
-  const lastDayOfMonth = (year, month) => new Date(year, month + 1, 0).getDate();
-  /** 元の日を保って月数を進め、存在しない日なら移動先の月末へ収める。 */
-  const addMonthsClamped = (monthOffset) => {
-    const targetMonthIndex = startDate.getMonth() + monthOffset;
-    const targetYear = startDate.getFullYear() + Math.floor(targetMonthIndex / 12);
-    const targetMonth = ((targetMonthIndex % 12) + 12) % 12;
-    return new Date(
-      targetYear,
-      targetMonth,
-      Math.min(startDate.getDate(), lastDayOfMonth(targetYear, targetMonth)),
-      startDate.getHours(),
-      startDate.getMinutes(),
-      startDate.getSeconds(),
-      startDate.getMilliseconds()
-    );
-  };
-  /** 開始・終了日と頻度から生成上限確認に使う繰り返し回数の概算を返す。 */
-  const estimateIterations = () => {
-    const ms = Math.max(0, endDate - startDate);
-    if (recurType === 'daily') return Math.ceil(ms / 86400000) + 2;
-    if (recurType === 'weekly') return Math.ceil(ms / (86400000 * 7)) + 2;
-    if (recurType === 'monthly') {
-      const months = (endDate.getFullYear() - startDate.getFullYear()) * 12 + (endDate.getMonth() - startDate.getMonth());
-      return Math.max(1, months + 2);
-    }
-    return 1;
-  };
-
-  let cursor = new Date(startDate);
-  let iterations = 0;
-  const pendingEvents = [];
-  const maxIterations = Math.min(Math.max(estimateIterations(), 1), 5000);
-
-  while (cursor <= endDate && iterations < maxIterations) {
-    const isFirst = iterations === 0;
-    if (!(options.skipFirst && isFirst) && !excluded.has(cursor.getDay())) {
-      const recurringEvent = {
-        ...eventData,
-        id: generateId(),
-        start: cursor.toISOString(),
-        end: new Date(cursor.getTime() + duration).toISOString(),
-        recurringId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      pendingEvents.push(recurringEvent);
-    }
-
-    if (recurType === 'daily') cursor = addDays(cursor, 1);
-    else if (recurType === 'weekly') cursor = addDays(cursor, 7);
-    else if (recurType === 'monthly') {
-      cursor = addMonthsClamped(iterations + 1);
-    } else break;
-
-    iterations++;
-  }
-
-  if (!pendingEvents.length) return 0;
-  if (!saveEvents([...getEvents(), ...pendingEvents])) return -1;
-  pendingEvents.forEach(rememberEventTitle);
-  return pendingEvents.length;
 }
 
 /** 入力途中の題名に近い履歴を、時刻やカテゴリの再利用候補として返す。 */
@@ -2170,6 +2099,7 @@ async function handleDelete(event) {
       <div style="display:flex;flex-direction:column;gap:10px">
         <button class="btn btn-ghost" id="del-this">この予定のみ削除</button>
         <button class="btn btn-danger" id="del-future">この予定と今後すべて削除</button>
+        <button class="btn btn-danger" id="del-all">すべての回を削除</button>
       </div>
     `;
 
@@ -2186,17 +2116,23 @@ async function handleDelete(event) {
       closeModalGlobal();
       redrawAfterEventChange(event.id);
     };
-    body.querySelector('#del-future').onclick = () => {
-      const removed = deleteFutureRecurring(event.recurringId, event.start);
+    /** 指定日時以降の回を消し、ルールも合わせて止める(全回削除はルールごと消す)。 */
+    const removeFrom = (fromIso, wholeSeries) => {
+      const removed = deleteFutureRecurring(event.recurringId, fromIso);
       if (!removed.length) {
         toast('削除できませんでした。予定は保持されています', 'error');
         return;
       }
+      // ルールを止めないと、自動の作り足しで消した回の先がまた作られてしまう。
+      if (wholeSeries) saveRecurrenceRule(event.recurringId, null);
+      else endRecurrenceBefore(event.recurringId, event.start);
       toast(`${removed.length}件を削除してTrashへ移動しました`, 'success');
       closeChoice();
       closeModalGlobal();
       redrawAfterEventChange(event.id);
     };
+    body.querySelector('#del-future').onclick = () => removeFrom(event.start, false);
+    body.querySelector('#del-all').onclick = () => removeFrom('1970-01-01T00:00:00.000Z', true);
   } else {
     if (await confirmGlobal(`「${event.title}」を削除しますか？`, { danger: true, okLabel: '削除' })) {
       const deleted = deleteEvent(event.id);
