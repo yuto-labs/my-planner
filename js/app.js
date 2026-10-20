@@ -15,7 +15,7 @@ import {
 } from './storage.js';
 import { processBatchQueue, refreshAiRuntimeStatus } from './ai.js';
 import { backfillLocalEvents, initSync, pullAll, pullIfStale, pullIfRemoteChanged, startRealtimeSync, hasPendingSyncWork, flushPendingSync, resetSyncForUserSwitch } from './sync.js';
-import { getSession, handleAuthRedirect, getActiveUserId, setActiveUserId, isMigratedForCurrentUser } from './supabase.js';
+import { getSession, handleAuthRedirect, getActiveUserId, setActiveUserId, isMigratedForCurrentUser, getStoredSessionUserId } from './supabase.js';
 import { resumeCompletedAIJobs } from './ai-job-resume.js';
 import { initAIJobStatus, refreshAIJobStatus } from './ai-job-status.js';
 import { migrateToSupabase } from './migrate.js';
@@ -904,10 +904,26 @@ async function init() {
   // 失敗した場合は何も消さず、従来どおりlocalStorageで動く。
   try { await initLocalStore(); } catch (error) { console.warn('[LocalStore] init failed:', error); }
   requestPersistentStorage();
-  try { await refreshAiRuntimeStatus({ force: true }); } catch {}
+  // AIの状態確認は通信が必要なので待たない。前回の結果で画面を出し、使える/使えないが
+  // 変わった時だけ表示を合わせる(毎回描き直すと起動直後に画面がちらつく)。
+  const aiWasAvailable = isAiAvailable();
+  refreshAiRuntimeStatus({ force: true })
+    .then(() => {
+      if (isAiAvailable() !== aiWasAvailable && currentView && !isUserEditing()) refreshCurrentView({ preserveScroll: true });
+    })
+    .catch(() => {});
+
+  // 前回と同じ人のログイン情報が端末にあり、ログイン用リンクから戻ったのでもなければ、
+  // アカウントの入れ替えは起きない。その場合はログイン確認(期限切れなら通信で更新)を待たずに
+  // 画面を出し、確認と同期は裏で進める。入れ替えが起こりうる時だけ、データ保護のため待つ。
+  const url = new URL(window.location.href);
+  const returningFromAuthLink = url.searchParams.has('code') || url.searchParams.get('auth') === 'callback'
+    || /access_token=|refresh_token=/.test(window.location.hash);
+  const storedUserId = getStoredSessionUserId();
+  const sameUserAsBefore = !!storedUserId && storedUserId === getActiveUserId() && !returningFromAuthLink;
 
   // Supabase sync: register hooks and pull on startup.
-  try {
+  const sessionWork = (async () => { try {
     initSync();
     const authResult = await handleAuthRedirect();
     const session = authResult.session || await getSession();
@@ -966,7 +982,8 @@ async function init() {
     }
   } catch (e) {
     console.warn('[Sync] init failed:', e);
-  }
+  } })();
+  if (!sameUserAsBefore) await sessionWork;
   // ログインしていない(同期しない)端末では、取り込みを待たずに繰り返し予定を作り足す。
   if (!getActiveUserId()) {
     try { extendRecurringSeries(); } catch (error) { console.warn('[Recurrence] extend failed:', error); }

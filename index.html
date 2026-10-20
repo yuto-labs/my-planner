@@ -25,8 +25,11 @@
   <link rel="stylesheet" href="css/style.css?v=314">
   <link rel="stylesheet" href="css/responsive.css?v=8">
 
-  <!-- メモ内の数式を表示する外部ライブラリKaTeX。deferによりHTML解析後に実行します。 -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
+  <!-- メモ内の数式を表示する外部ライブラリKaTeX。deferによりHTML解析後に実行します。
+       CSSはmedia="print"で読み始め、届いたら全画面に適用する。普通に読むと、届くまで
+       最初の画面が描かれず、起動が回線の速さに左右されるため(数式は表示が少し後になるだけ)。 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous"
+    media="print" onload="this.media='all'">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous"
     onload="window._katexReady=true"></script>

@@ -81,8 +81,10 @@ export async function getClient() {
 
   let createClient;
   try {
+    // 版を固定する。「@2」のままだとCDN側の最新版に変わるたびに別のファイル扱いになり、
+    // 端末のキャッシュが効かずに起動時の取得が回線待ちになる(動作が急に変わる危険もある)。
     ({ createClient } = await import(
-      'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm'
+      'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/+esm'
     ));
   } catch (e) {
     console.error('[Supabase] SDK の読み込みに失敗:', e);
@@ -110,6 +112,19 @@ export async function getSession() {
   if (!client) return null;
   const { data: { session } } = await client.auth.getSession();
   return session;
+}
+
+/**
+ * 端末に保存されたログイン情報から、ユーザーIDだけを通信なしで読む。
+ * 起動時に「前回と同じ人か」を確かめ、同じなら通信を待たずに画面を出すために使う。
+ */
+export function getStoredSessionUserId() {
+  try {
+    const stored = JSON.parse(localStorage.getItem('mp_supabase_session') || 'null');
+    return stored?.user?.id || stored?.currentSession?.user?.id || null;
+  } catch {
+    return null;
+  }
 }
 
 /** メールリンクから戻ったURLを解析し、Supabaseセッションを確立する。 */
