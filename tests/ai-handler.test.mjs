@@ -5,6 +5,9 @@ import assert from 'node:assert/strict';
 import generateHandler from '../api/ai/generate.js';
 import statusHandler from '../api/ai/status.js';
 
+// テスト用の偽ユーザー(user-1)をAIの許可リストへ入れる。本番ではVercelの環境変数で設定する。
+process.env.AI_ALLOWED_USERS = 'user-1';
+
 function createResponseRecorder() {
   return {
     headers: {},

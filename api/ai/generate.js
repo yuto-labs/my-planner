@@ -2,6 +2,8 @@
 // 秘密のAPIキー、利用モデル、再試行、構造化JSON検証はすべてここに閉じ込める。
 // クライアントへ不完全な回答を返さない一方、軽微な形式差は正規化して救済する。
 
+import { assertAiAllowed } from './_access.js';
+
 /** Vercelが文字列またはオブジェクトで渡すbodyを一つの形へそろえる。 */
 function readBody(req) {
   if (typeof req.body === 'string') {
@@ -1867,10 +1869,12 @@ export default async function handler(req, res) {
     res.status(error?.status || 400).json({ error: error?.message || 'Invalid AI request.' });
     return;
   }
-  // 4. Supabaseのアクセストークンを検証し、ログインユーザーだけに利用を許可する。
+  // 4. Supabaseのアクセストークンを検証し、さらに許可リストのアカウントだけに利用を許可する。
+  //    ログインできるだけの他人がGeminiキーを使えないよう、Geminiを呼ぶ前に止める。
   const token = getBearerToken(req);
   try {
-    await requireAuthenticatedUser(token, Math.min(7_000, remainingTimeMs(NETWORK_SAFETY_MS)));
+    const user = await requireAuthenticatedUser(token, Math.min(7_000, remainingTimeMs(NETWORK_SAFETY_MS)));
+    assertAiAllowed(user);
   } catch (error) {
     res.status(error?.status || 500).json({ error: error?.message || 'AI authentication check failed.' });
     return;

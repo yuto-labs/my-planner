@@ -12,6 +12,9 @@ import {
   default as jobsHandler,
 } from '../api/ai/jobs.js';
 import { createAIJobId } from '../js/ai-jobs.js';
+
+// テスト用の偽ユーザー(user-1)をAIの許可リストへ入れる。本番ではVercelの環境変数で設定する。
+process.env.AI_ALLOWED_USERS = 'user-1';
 import {
   aiJobLabel,
   formatAIElapsed,

@@ -2,6 +2,8 @@
 // ジョブは既存のknowledge_memosへ内部レコードとして保存するため、
 // 新しいDB表を要求せず、Supabaseの認証とRLSをそのまま利用できる。
 
+import { assertAiAllowed } from './_access.js';
+
 export const maxDuration = 300;
 
 const DEFAULT_SUPABASE_URL = 'https://nhgbvlovptelaqcurobv.supabase.co';
@@ -236,6 +238,8 @@ export default async function handler(req, res) {
   let user;
   try {
     user = await authenticate(token);
+    // ジョブは裏でGeminiを呼ぶので、受付の時点で許可リストのアカウントに限る。
+    assertAiAllowed(user);
   } catch (error) {
     res.status(error?.status || 500).json({ error: error?.message || 'Authentication failed.' });
     return;

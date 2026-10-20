@@ -24,6 +24,7 @@ The browser keeps a local-first copy. Synchronization must merge remote changes 
 ## Safety Rules
 
 - Never expose `GEMINI_API_KEY` or a Supabase Service Role Key to browser code.
+- AI endpoints that can reach Gemini must call `assertAiAllowed` (`api/ai/_access.js`) after authentication. Allowed accounts come only from the `AI_ALLOWED_USERS` Vercel environment variable (emails or user ids, comma-separated); never hard-code them. Sign-up stays open because shared-calendar invitations need it.
 - Do not remove or overwrite user records as part of a migration. Preserve trash and tombstone behavior.
 - Keep `storage.js` independent from `sync.js`; synchronization registers through the existing hook.
 - Keep API and Supabase responses out of Service Worker caches.
