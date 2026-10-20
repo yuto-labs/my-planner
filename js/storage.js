@@ -609,8 +609,11 @@ export function deleteGoal(id) {
 
 /** 利用者が編集した予定カテゴリを返し、未保存時は組み込みカテゴリを返す。 */
 export function getCategories() { return load(KEY.CATS, DEFAULT_CATEGORIES); }
-/** 予定カテゴリの表示名と色を端末へ保存する。カテゴリは現在クラウド同期対象外。 */
-export function saveCategories(cats) { save(KEY.CATS, cats); }
+/** 予定カテゴリの表示名と色を端末へ保存し、端末間で揃えるための写しも更新する。 */
+export function saveCategories(cats) {
+  save(KEY.CATS, cats);
+  queueSharedSettingsSave();
+}
 
 /**
  * IDに一致する予定カテゴリを利用者設定、組み込み設定の順で探す。
@@ -660,8 +663,71 @@ export function getSettings() {
     : true;
   return { ...DEFAULT_SETTINGS, ...stored, aiEnabled };
 }
-/** 指定された設定だけを更新し、他の設定項目を保持する。 */
-export function saveSettings(s) { save(KEY.SETS, { ...getSettings(), ...s }); }
+/**
+ * 指定された設定だけを更新し、他の設定項目を保持する。
+ * 外観など端末間で揃える項目が変わった時は、同期用の写しも少し遅れて更新する。
+ */
+export function saveSettings(s) {
+  save(KEY.SETS, { ...getSettings(), ...s });
+  if (Object.keys(s || {}).some(key => SHARED_SETTING_KEYS.includes(key))) queueSharedSettingsSave();
+}
+
+// ---- 端末間で揃える設定 ----
+// 外観(テーマ・アクセント色・背景調整・My Scheduleの色)とカテゴリだけを同期する。
+// リマインダーやAI表示は端末ごとに決めるものなので含めない。
+// 新しい表を作らずに済むよう、同期済みの「画像設定」内部レコードの sharedSettings 欄へ写しを置く。
+const SHARED_SETTING_KEYS = ['theme', 'accentRgb', 'themeTuning', 'myScheduleColor'];
+const SHARED_SETTINGS_DELAY_MS = 1500;
+let sharedSettingsTimer = null;
+
+/**
+ * 同期用の写しを書く予約をする。スライダーを動かしている間に何度も全メモ配列を
+ * 書き直さないよう、操作が止まってから1.5秒後に一度だけ書く。
+ */
+function queueSharedSettingsSave() {
+  // ブラウザー以外(自動テスト)では予約しない。遅れて書く処理が別のテストの保存内容に混ざるのを防ぐ。
+  if (typeof document === 'undefined') return;
+  clearTimeout(sharedSettingsTimer);
+  sharedSettingsTimer = setTimeout(writeSharedSettingsNow, SHARED_SETTINGS_DELAY_MS);
+}
+
+/** 今の外観設定とカテゴリを同期用の写しへ書き、自分で書いた版を「適用済み」と記録する。 */
+export function writeSharedSettingsNow() {
+  clearTimeout(sharedSettingsTimer);
+  sharedSettingsTimer = null;
+  const settings = getSettings();
+  const shared = {
+    ...Object.fromEntries(SHARED_SETTING_KEYS.map(key => [key, settings[key]])),
+    categories: getCategories(),
+    updatedAt: new Date().toISOString(),
+  };
+  if (!saveAppMediaPreferences({ sharedSettings: shared })) return false;
+  save(KEY.SETS, { ...settings, sharedSettingsAppliedAt: shared.updatedAt });
+  return true;
+}
+
+/**
+ * 同期で届いた写しが、この端末で最後に適用した版より新しければ設定へ反映する。
+ * 反映した時はtrueを返す(呼び出し側でテーマを塗り直す)。ここでは写しを書き直さないので往復しない。
+ */
+export function applySharedSettingsFromSync() {
+  const shared = getAppMediaPreferences().sharedSettings;
+  if (!shared?.updatedAt) return false;
+  const settings = getSettings();
+  if (String(shared.updatedAt) <= String(settings.sharedSettingsAppliedAt || '')) return false;
+  const patch = Object.fromEntries(SHARED_SETTING_KEYS
+    .filter(key => shared[key] !== undefined)
+    .map(key => [key, shared[key]]));
+  save(KEY.SETS, { ...settings, ...patch, sharedSettingsAppliedAt: shared.updatedAt });
+  if (Array.isArray(shared.categories) && shared.categories.length) save(KEY.CATS, shared.categories);
+  return true;
+}
+
+/** まだどの端末も写しを作っていなければ、この端末の設定から最初の写しを作る(同期の取得後に呼ぶ)。 */
+export function ensureSharedSettings() {
+  if (getAppMediaPreferences().sharedSettings?.updatedAt) return false;
+  return writeSharedSettingsNow();
+}
 
 /** 旧版との互換用に端末設定内のAPIキーを返す。現在の本番AIはサーバー側キーを使う。 */
 export function getApiKey() { return getSettings().apiKey || ''; }

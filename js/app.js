@@ -8,7 +8,7 @@
 
 import {
   getSettings, getPendingAIQueue, autoArchiveTasks, purgeExpiredTrashPayloads, isAiAvailable,
-  getEvents, getTasks,
+  getEvents, getTasks, applySharedSettingsFromSync, ensureSharedSettings,
   clearUserContentLocal, hasUserContentLocal,
   preserveUserContentSnapshot, restoreUserContentSnapshot,
   DEFAULT_ACCENT_RGB, DEFAULT_THEME_TUNING,
@@ -393,6 +393,8 @@ export function navigate(view, options = {}) {
  * 入力中は再描画せず、編集終了後へ延期します。
  */
 export function refreshCurrentView(options = {}) {
+  // 同期の取得後に呼ばれるので、別の端末で変えた外観・カテゴリが届いていればここで反映する。
+  if (applySharedSettingsFromSync()) applyTheme(getSettings().theme);
   if (!currentView) return;
   if (currentView === 'expression-atlas' && shouldPreserveExpressionAtlasView()) {
     refreshDesktopWorkspace(currentView, { force: true });
@@ -598,7 +600,9 @@ function applyTheme(theme) {
   const html = document.documentElement;
   const settings = getSettings();
   const tuning = settings.themeTuning || DEFAULT_THEME_TUNING;
-  const mode = theme === 'light' ? 'light' : 'dark';
+  // 'auto' は端末のダークモード設定に合わせる。
+  const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)')?.matches;
+  const mode = theme === 'auto' ? (prefersDark ? 'dark' : 'light') : theme === 'light' ? 'light' : 'dark';
   html.setAttribute('data-theme', mode);
   applySurfaceTheme(mode, tuning);
   applyAccentTheme(settings.accentRgb || DEFAULT_ACCENT_RGB, tuning);
@@ -938,6 +942,10 @@ async function init() {
           await startRealtimeSync();
           return pulledFirst || pulledAfterMigration;
         })().then(pulled => {
+          // ログイン後の取得が終わってから、まだ誰も作っていなければ外観設定の写しを作る。
+          // 取得前に作ると、空の新しい端末の既定値で他の端末の設定を上書きしてしまう。
+          if (applySharedSettingsFromSync()) applyTheme(getSettings().theme);
+          else ensureSharedSettings();
           if (!pulled || !currentView) return;
           refreshCurrentView();
         }).catch(e => console.warn('[Sync] login sync failed:', e));
@@ -955,6 +963,10 @@ async function init() {
   // Apply saved theme
   const settings = getSettings();
   applyTheme(settings.theme || 'auto');
+  // 「自動」の時は、端末のライト/ダーク切替に合わせてその場で塗り直す。
+  window.matchMedia?.('(prefers-color-scheme: dark)')?.addEventListener?.('change', () => {
+    if (getSettings().theme === 'auto') applyTheme('auto');
+  });
 
   // Register service worker (relative path works whether served from root or subdirectory)
   if ('serviceWorker' in navigator) {

@@ -4853,6 +4853,8 @@ h1, h2, h3, h4, h5, h6,
   gap: 10px;
   margin-bottom: 14px;
 }
+/* 背景モード(White/Dark/Auto)は3択なので3列にする。 */
+.batch-mode-select--three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .batch-mode-btn {
   background: var(--bg-hover, rgba(255,255,255,.04));
   border: 1.5px solid var(--border);

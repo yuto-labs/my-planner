@@ -128,16 +128,21 @@ function renderMainSettings(container) {
             <button class="btn btn-ghost btn-sm" id="theme-tuning-reset-btn" type="button">Reset</button>
           </div>
 
-          <div class="batch-mode-select" style="margin-bottom:14px">
+          <div class="batch-mode-select batch-mode-select--three" style="margin-bottom:14px">
             <button class="batch-mode-btn${settings.theme === 'light' ? ' active' : ''}" data-theme-mode="light" type="button">
               <div class="batch-mode-icon">White</div>
               <div class="batch-mode-label">White</div>
               <div class="batch-mode-sub">明るい背景で表示します。</div>
             </button>
-            <button class="batch-mode-btn${settings.theme !== 'light' ? ' active' : ''}" data-theme-mode="dark" type="button">
+            <button class="batch-mode-btn${settings.theme === 'dark' ? ' active' : ''}" data-theme-mode="dark" type="button">
               <div class="batch-mode-icon">Dark</div>
               <div class="batch-mode-label">Dark</div>
               <div class="batch-mode-sub">暗い背景で表示します。</div>
+            </button>
+            <button class="batch-mode-btn${settings.theme === 'auto' ? ' active' : ''}" data-theme-mode="auto" type="button">
+              <div class="batch-mode-icon">Auto</div>
+              <div class="batch-mode-label">Auto</div>
+              <div class="batch-mode-sub">端末のライト/ダーク設定に合わせます。</div>
             </button>
           </div>
 
@@ -625,7 +630,7 @@ function wireAppearance(container) {
 
   container.querySelectorAll('[data-theme-mode]').forEach(btn => {
     btn.addEventListener('click', () => {
-      const mode = btn.dataset.themeMode === 'light' ? 'light' : 'dark';
+      const mode = ['light', 'dark', 'auto'].includes(btn.dataset.themeMode) ? btn.dataset.themeMode : 'dark';
       saveSettings({ theme: mode });
       window.AppTheme?.apply(mode);
       container.querySelectorAll('[data-theme-mode]').forEach(other => {
