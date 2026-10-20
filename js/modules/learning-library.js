@@ -58,6 +58,8 @@ let listState = {
 };
 let questionDraft = '';
 let generationController = null;
+// 「追加で質問」で一覧へ移った直後に、自動で解説作成を始めるかどうか。
+let pendingAutoAsk = false;
 
 /** PCの補助一覧へ、現在開いているKnowledgeのIDだけを渡す。 */
 export function getSelectedLearningEntryId() { return selectedEntryId || ''; }
@@ -100,6 +102,11 @@ export function hasActiveKnowledgeWork() {
 /** Knowledge一覧画面を初期描画し、検索・分類・新規質問の操作を接続する。 */
 export function initLearningLibrary(container) {
   renderLibrary(container);
+  // 詳細画面の「追加で質問」から来た時は、入力済みの質問で解説作成をそのまま始める。
+  if (pendingAutoAsk) {
+    pendingAutoAsk = false;
+    createLearningEntry(container);
+  }
   return () => {
     generationController?.abort();
     generationController = null;
@@ -603,6 +610,7 @@ export function initLearningDetail(container) {
       ` : ''}
 
       <div class="learning-detail-actions">
+        <button class="btn btn-ghost btn-sm" id="learning-follow-up-btn" type="button">追加で質問</button>
         ${reviewToggleButtonHtml(entry.id)}
         <button class="btn btn-ghost btn-sm learning-delete-btn" id="learning-delete-btn" type="button">Trashへ移動</button>
       </div>
@@ -612,6 +620,7 @@ export function initLearningDetail(container) {
   hydrateLearningEquations(container);
 
   wireReviewToggles(container, toast);
+  container.querySelector('#learning-follow-up-btn')?.addEventListener('click', () => openFollowUpSheet(entry));
   container.querySelector('#learning-title-edit')?.addEventListener('click', () => editTitle(container, entry));
   container.querySelector('#learning-delete-btn')?.addEventListener('click', () => {
     if (!window.confirm(`「${entry.title}」をTrashへ移動しますか？`)) return;
@@ -765,33 +774,57 @@ function hydrateLearningEquations(container, retry = true) {
 /** 関連する保存済み解説がある概念だけリンクボタンにし、未登録なら通常ラベルで返す。 */
 function renderConceptChip(concept, conceptIndex, currentId) {
   const matches = findKnowledgeConceptMatches(conceptIndex, concept).filter(match => match.id !== currentId);
-  if (!matches.length) return `<span class="learning-concept-chip">${esc(concept.label)}</span>`;
-  return `<button class="learning-concept-chip learning-concept-chip--linked" type="button"
+  // 保存済みの解説が無い概念も押せるようにし、押すとその概念について質問できる。
+  return `<button class="learning-concept-chip${matches.length ? ' learning-concept-chip--linked' : ''}" type="button"
     data-concept-key="${esc(concept.key)}" data-concept-label="${esc(concept.label)}">${esc(concept.label)}</button>`;
 }
 
 /** 関連概念の解説が一件なら直接開き、複数なら候補を選ぶダイアログを出す。 */
 function openConceptMatches(index, concept, currentId) {
   const matches = findKnowledgeConceptMatches(index, concept).filter(entry => entry.id !== currentId);
-  if (matches.length === 1) {
-    openLearningEntry(matches[0].id);
-    return;
-  }
-  if (!matches.length) return;
+  openFollowUpSheet(getLearningEntryById(currentId), concept, matches);
+}
+
+/**
+ * 「追加で質問」の画面。概念から開いた場合は、その概念の保存済み解説も並べる。
+ * 質問文は今の解説との関係が分かる形で下書きしておき、利用者が直してから送れる。
+ */
+function openFollowUpSheet(entry, concept = null, matches = []) {
+  const baseTitle = entry?.title || entry?.originalQuestion || '';
+  const draft = concept
+    ? `「${concept.label}」とは何か。「${baseTitle}」との関係も含めて知りたい。`
+    : `「${baseTitle}」について、もっと詳しく知りたい。`;
   const body = document.createElement('div');
-  body.className = 'learning-match-picker';
-  body.innerHTML = matches.map(match => `
-    <button type="button" data-match-id="${esc(match.id)}">
-      <strong>${esc(match.title)}</strong>
-      <span>${esc(match.originalQuestion)}</span>
-    </button>
-  `).join('');
-  const close = window.AppNav?.openModal({ title: concept.label || '関連する解説', body });
+  body.className = 'learning-follow-up';
+  body.innerHTML = `
+    ${matches.length ? `
+      <div class="learning-match-picker">
+        <p class="learning-follow-up-label">保存済みの解説</p>
+        ${matches.map(match => `
+          <button type="button" data-match-id="${esc(match.id)}">
+            <strong>${esc(match.title)}</strong>
+            <span>${esc(match.originalQuestion)}</span>
+          </button>
+        `).join('')}
+      </div>` : ''}
+    <p class="learning-follow-up-label">新しく質問する</p>
+    <textarea class="input learning-follow-up-input" rows="3" maxlength="1200">${esc(draft)}</textarea>
+    <button type="button" class="btn btn-primary learning-follow-up-ask">この内容で質問</button>`;
+  const close = window.AppNav?.openModal({ title: concept?.label || '追加で質問', body });
   body.querySelectorAll('[data-match-id]').forEach(button => {
     button.addEventListener('click', () => {
       close?.();
       openLearningEntry(button.dataset.matchId);
     });
+  });
+  body.querySelector('.learning-follow-up-ask')?.addEventListener('click', () => {
+    const question = body.querySelector('.learning-follow-up-input')?.value.trim();
+    if (!question) return;
+    close?.();
+    // 一覧画面の質問欄へ入れてから移動し、表示後に解説作成を自動で始める(initLearningLibrary)。
+    questionDraft = question;
+    pendingAutoAsk = true;
+    nav('knowledge');
   });
 }
 

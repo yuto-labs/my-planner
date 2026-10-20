@@ -13045,9 +13045,15 @@ button.atlas-nuance-map-row:focus-visible {
 .learning-facet-list { margin-top: 10px; }
 .learning-detail-actions {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: flex-end;
   padding-top: 14px;
 }
+/* 「追加で質問」の画面: 保存済み解説の一覧、質問文の下書き、送信ボタンを縦に並べる。 */
+.learning-follow-up { display: grid; gap: 10px; }
+.learning-follow-up-label { margin: 0; color: var(--text-dim); font-size: 11px; }
+.learning-follow-up-input { width: 100%; resize: vertical; }
 .learning-delete-btn { color: var(--danger); font-size: 10px; }
 .learning-match-picker { display: grid; gap: 7px; }
 .learning-match-picker button {
