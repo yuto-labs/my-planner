@@ -6714,6 +6714,17 @@ kbd {
 .rv-front-hint { font-size: 0.78rem; color: var(--text-dim); margin: 0; }
 .rv-divider { height: 1px; background: var(--border); }
 .rv-content { font-size: 0.9rem; }
+/* 表現帳・Knowledgeの復習カードの答え面 */
+.rv-answer-block + .rv-answer-block { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.rv-answer-kicker { font-size: 0.75rem; color: var(--text-dim); margin: 0 0 4px; }
+.rv-answer-main { font-weight: 600; color: var(--text); }
+.rv-answer-example { margin: 6px 0 0; }
+.rv-answer-example span { display: block; color: var(--text-dim); font-size: 0.82rem; }
+.rv-answer-points { margin: 8px 0 0; padding-left: 1.2em; }
+.rv-kind-chip { border-color: var(--primary); }
+/* 表現帳・Knowledgeの「復習に追加」ボタン。追加済みは色付きにして状態を分かるようにする。 */
+.review-toggle-btn { white-space: nowrap; }
+.review-toggle-btn.is-active { color: var(--primary); border-color: var(--primary); }
 .rv-reveal-btn {
   margin: 12px 16px 0; padding: 14px;
   display: flex; align-items: center; justify-content: center; gap: 6px;

@@ -30,6 +30,7 @@ import {
   refreshAiRuntimeStatus,
 } from '../ai.js';
 import { acknowledgeAIJobAfterSync } from '../ai-jobs.js';
+import { reviewToggleButtonHtml, wireReviewToggles } from '../review-toggle.js';
 
 /** キャッシュ上で未設定でもサーバー状態を再確認し、AI利用可否を確定する。 */
 // ---- 起動と音声再生 ----
@@ -2431,6 +2432,7 @@ function renderDetail() {
           </div>
         </div>
         <div class="atlas-detail-header-actions">
+          ${reviewToggleButtonHtml(entry.id)}
           <button class="atlas-icon-btn atlas-pin-btn ${entry.starred ? 'is-active' : ''}" id="atlas-pin" type="button" aria-pressed="${entry.starred ? 'true' : 'false'}" aria-label="${entry.starred ? 'ピン留めを外す' : 'ピン留めする'}" title="${entry.starred ? 'ピン留めを外す' : 'ピン留め'}">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 4 6 6-3 1-4 4v4l-2 2-2-6-6-2 2-2h4l4-4 1-3Z"/></svg>
           </button>
@@ -2466,6 +2468,7 @@ function renderDetail() {
     </article>
   `;
 
+  wireReviewToggles(state.container, toast);
   state.container.querySelector('#atlas-detail-history-back')?.addEventListener('click', restorePreviousDetail);
   state.container.querySelector('#atlas-detail-root')?.addEventListener('click', () => returnToLibrary('', ''));
   state.container.querySelector('#atlas-detail-category')?.addEventListener('click', () => returnToLibrary(entry.category, ''));

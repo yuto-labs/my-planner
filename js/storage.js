@@ -996,6 +996,42 @@ export function setMemoReviewEnabled(memoId, enabled) {
   return schedule[memoId];
 }
 
+/**
+ * 復習予定が入っていて「復習なし」でもないか。表現帳・Knowledgeは利用者が
+ * 「復習に追加」した時だけ予定ができるので、ボタンの表示切替にこれを使う。
+ */
+export function isReviewScheduled(id) {
+  const entry = getReviewSchedule()[id];
+  return !!entry && entry.stage !== REVIEW_DISABLED_STAGE;
+}
+
+/**
+ * 復習カードにする一件を、通常メモ・表現帳・Knowledgeのどれでも同じ形
+ * { kind, id, title, tags, data } で返す関数を作る。
+ * 一覧の読み込み(特に表現帳の統合)は重いので、最初に必要になった時に一度だけ行う。
+ */
+export function createReviewItemResolver() {
+  let memos = null;
+  let atlas = null;
+  let learning = null;
+  return id => {
+    memos ??= new Map(getKnowledgeMemos().map(memo => [memo.id, memo]));
+    const memo = memos.get(id);
+    if (memo) return { kind: 'memo', id, title: memo.title || '無題', tags: memo.tags || [], data: memo };
+    // 表現帳は同じ単語を一件へ統合するので、統合前のIDでも代表の項目へたどれるようにする。
+    atlas ??= new Map(getExpressionEntries().flatMap(entry => [
+      [entry.id, entry],
+      ...(entry.mergedEntryIds || []).map(mergedId => [mergedId, entry]),
+    ]));
+    const word = atlas.get(id);
+    if (word) return { kind: 'atlas', id, title: word.term || word.lemma || '表現', tags: [], data: word };
+    learning ??= new Map(getLearningEntries().map(entry => [entry.id, entry]));
+    const answer = learning.get(id);
+    if (answer) return { kind: 'learning', id, title: answer.title || answer.originalQuestion || '無題', tags: [], data: answer };
+    return null;
+  };
+}
+
 /** Again/Hard/Good/Easyの評価から段階と次回日を更新する。 */
 export function rateReview(memoId, rating) {
   const schedule = getReviewSchedule();

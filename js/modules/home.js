@@ -10,7 +10,7 @@ import {
   getCategoryById, updateTask, getCategories, addEvent, addTask,
   addScheduleItem, addKnowledgeMemo, getKnowledgeMemos,
   deleteEvent, deleteTask, deleteKnowledgeMemo,
-  getScheduleItemsForDate, getMyScheduleColor, getReviewsForDate,
+  getScheduleItemsForDate, getMyScheduleColor, getReviewsForDate, createReviewItemResolver,
   getAppMediaPreferences, saveAppMediaPreferences,
 } from '../storage.js';
 import { interpretPlannerInput } from '../ai.js';
@@ -178,7 +178,11 @@ export function initHome(container) {
 
       <!-- 今日の復習 -->
       ${(() => {
-        const dueCount = getReviewsForDate(todayStr).length;
+        // 削除済みの項目を数えないよう、復習画面と同じ方法で実在する項目だけ数える。
+        // 何も期限が来ていなければ一覧の読み込み自体をしない。
+        const due = getReviewsForDate(todayStr);
+        const resolve = due.length ? createReviewItemResolver() : null;
+        const dueCount = due.filter(entry => resolve(entry.memoId)).length;
         if (!dueCount) return '';
         return `<div class="card home-review-card" id="home-review-card">
           <div class="home-review-inner">

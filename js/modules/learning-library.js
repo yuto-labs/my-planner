@@ -15,6 +15,7 @@ import {
 } from '../storage.js';
 import { generateKnowledgeAnswer } from '../ai.js';
 import { acknowledgeAIJobAfterSync } from '../ai-jobs.js';
+import { reviewToggleButtonHtml, wireReviewToggles } from '../review-toggle.js';
 import {
   normalizeKnowledgeAnswer,
   validateKnowledgeEntry,
@@ -602,6 +603,7 @@ export function initLearningDetail(container) {
       ` : ''}
 
       <div class="learning-detail-actions">
+        ${reviewToggleButtonHtml(entry.id)}
         <button class="btn btn-ghost btn-sm learning-delete-btn" id="learning-delete-btn" type="button">Trashへ移動</button>
       </div>
     </article>
@@ -609,6 +611,7 @@ export function initLearningDetail(container) {
 
   hydrateLearningEquations(container);
 
+  wireReviewToggles(container, toast);
   container.querySelector('#learning-title-edit')?.addEventListener('click', () => editTitle(container, entry));
   container.querySelector('#learning-delete-btn')?.addEventListener('click', () => {
     if (!window.confirm(`「${entry.title}」をTrashへ移動しますか？`)) return;

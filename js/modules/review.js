@@ -1,15 +1,67 @@
 // ============================================================
-// review.js - メモの間隔反復セッション
+// review.js - 間隔反復の復習セッション
 //
-// 復習対象に設定された通常メモだけを扱い、評価結果はstorage.jsの
-// 復習スケジュールへ保存する。表現帳やKnowledgeの表示状態とは独立している。
+// 通常メモに加え、「復習に追加」した表現帳の単語とKnowledgeの回答も同じカードで扱う。
+// 評価結果はstorage.jsの復習スケジュールへ保存する(ID単位なので種類を問わない)。
 // ============================================================
 import {
-  getReviewsForDate, getKnowledgeMemoById,
+  getReviewsForDate, createReviewItemResolver,
   rateReview, addReviewLog, previewReviewIntervals,
 } from '../storage.js';
 import { renderBlocksView } from './memo.js';
 import { esc, fmtDays, today } from '../utils.js';
+
+// カード表面に出す、種類ごとの見出しと思い出す内容のヒント。
+const KIND_LABELS = {
+  memo: { badge: '', hint: '内容を思い出してからタップ' },
+  atlas: { badge: '表現帳', hint: '意味とニュアンスを思い出してからタップ' },
+  learning: { badge: 'Knowledge', hint: '答えの要点を思い出してからタップ' },
+};
+
+/** 表現帳の単語の答え面。意味ごとに核心の意味・ニュアンス・例文を短く並べる。 */
+function atlasAnswerHtml(word) {
+  const senses = Array.isArray(word.senses) && word.senses.length ? word.senses : [word];
+  return senses.slice(0, 4).map(sense => {
+    const examples = (Array.isArray(sense.examples) ? sense.examples : []).slice(0, 2);
+    return `
+      <section class="rv-answer-block">
+        ${sense.partOfSpeech ? `<div class="rv-answer-kicker">${esc(sense.partOfSpeech)}</div>` : ''}
+        ${sense.coreMeaningJa ? `<p class="rv-answer-main">${esc(sense.coreMeaningJa)}</p>` : ''}
+        ${sense.nuanceJa ? `<p>${esc(sense.nuanceJa)}</p>` : ''}
+        ${examples.map(example => `
+          <p class="rv-answer-example" lang="en">${esc(example.english || example.sentence || '')}
+            <span lang="ja">${esc(example.japanese || example.translation || '')}</span></p>`).join('')}
+      </section>`;
+  }).join('');
+}
+
+/** Knowledgeの回答の答え面。結論と要点だけを出す(全文は詳細画面で読む)。 */
+function learningAnswerHtml(entry) {
+  const direct = (entry.answer?.directAnswer || []).map(segment => segment.text || '').join('');
+  const points = entry.answer?.keyPoints || [];
+  return `
+    ${entry.originalQuestion && entry.originalQuestion !== entry.title
+      ? `<p class="rv-answer-kicker">元の質問: ${esc(entry.originalQuestion)}</p>` : ''}
+    ${direct ? `<p class="rv-answer-main">${esc(direct)}</p>` : ''}
+    ${points.length ? `<ul class="rv-answer-points">${points.map(point => `<li>${esc(point)}</li>`).join('')}</ul>` : ''}`;
+}
+
+/** 種類に合わせて答え面の本文を作る。 */
+function answerHtml(item) {
+  if (item.kind === 'atlas') return atlasAnswerHtml(item.data);
+  if (item.kind === 'learning') return learningAnswerHtml(item.data);
+  return `<div class="kn-view-content">${renderBlocksView(item.data.blocks || [])}</div>`;
+}
+
+/** カード上部の種類バッジとタグを返す。 */
+function cardMeta(item) {
+  const badge = KIND_LABELS[item.kind]?.badge;
+  const chips = [
+    badge ? `<span class="kn-tag-chip rv-kind-chip">${esc(badge)}</span>` : '',
+    ...item.tags.map(tag => `<span class="kn-tag-chip">${esc(tag)}</span>`),
+  ].filter(Boolean);
+  return chips.length ? `<div class="rv-tags">${chips.join('')}</div>` : '';
+}
 
 /** `nav`: 指定したハッシュ画面へ移動し、必要なら遷移元の状態を引き継ぐ。 */
 const nav = (view) => window.AppNav?.navigate(view);
@@ -27,7 +79,8 @@ export function initReview(container) {
       revealed: false,
     };
   }
-  const queue = reviewSession.queueIds.map(getKnowledgeMemoById).filter(Boolean);
+  // 削除済みなどで見つからない項目は飛ばす。種類を問わず同じ形のカードにそろえる。
+  const queue = reviewSession.queueIds.map(createReviewItemResolver()).filter(Boolean);
   reviewSession.idx = Math.min(reviewSession.idx, queue.length);
 
   /** 復習セッションを終了し、呼び出し元のメモ一覧へ戻る。 */
@@ -87,16 +140,14 @@ export function initReview(container) {
   }
 
   /** 復習カードの題名だけを表面に出し、答えを開く操作を接続する。 */
-  function renderFront(memo) {
+  function renderFront(item) {
     container.innerHTML = `
       <div class="rv-page">
         ${header()}
         <div class="rv-card rv-card--front">
-          ${memo.tags?.length
-            ? `<div class="rv-tags">${memo.tags.map(t => `<span class="kn-tag-chip">${esc(t)}</span>`).join('')}</div>`
-            : ''}
-          <h2 class="rv-title">${esc(memo.title || '無題')}</h2>
-          <p class="rv-front-hint">内容を思い出してからタップ</p>
+          ${cardMeta(item)}
+          <h2 class="rv-title"${item.kind === 'atlas' ? ' lang="en"' : ''}>${esc(item.title)}</h2>
+          <p class="rv-front-hint">${esc(KIND_LABELS[item.kind]?.hint || '')}</p>
         </div>
         <button class="btn btn-primary rv-reveal-btn" id="rv-reveal">
           答えを見る
@@ -110,19 +161,17 @@ export function initReview(container) {
     });
   }
 
-  /** メモ本文を答えとして表示し、理解度評価から次回復習日を更新できるようにする。 */
-  function renderBack(memo) {
-    const ivs = previewReviewIntervals(memo.id);
+  /** 答え(メモ本文・単語の意味・Knowledgeの結論)を表示し、評価から次回復習日を更新できるようにする。 */
+  function renderBack(item) {
+    const ivs = previewReviewIntervals(item.id);
     container.innerHTML = `
       <div class="rv-page rv-page--back">
         ${header()}
         <div class="rv-card rv-card--back">
-          ${memo.tags?.length
-            ? `<div class="rv-tags">${memo.tags.map(t => `<span class="kn-tag-chip">${esc(t)}</span>`).join('')}</div>`
-            : ''}
-          <h2 class="rv-title">${esc(memo.title || '無題')}</h2>
+          ${cardMeta(item)}
+          <h2 class="rv-title"${item.kind === 'atlas' ? ' lang="en"' : ''}>${esc(item.title)}</h2>
           <div class="rv-divider"></div>
-          <div class="rv-content kn-view-content">${renderBlocksView(memo.blocks || [])}</div>
+          <div class="rv-content">${answerHtml(item)}</div>
         </div>
         <div class="rv-rating">
           <div class="rv-rating-label">どのくらい思い出せましたか？</div>
@@ -146,8 +195,8 @@ export function initReview(container) {
     container.querySelector('#rv-exit')?.addEventListener('click', exitReview);
     container.querySelectorAll('.rv-btn[data-r]').forEach(btn => {
       btn.addEventListener('click', () => {
-        addReviewLog(memo.id, memo.tags);
-        rateReview(memo.id, btn.dataset.r);
+        addReviewLog(item.id, item.tags);
+        rateReview(item.id, btn.dataset.r);
         reviewSession.idx++;
         reviewSession.revealed = false;
         render();
