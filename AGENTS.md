@@ -43,6 +43,8 @@ The browser keeps a local-first copy. Synchronization must merge remote changes 
 - The owner is learning to code by reading this repository. Explain new or changed code with Japanese comments that say what the code is for and what it prevents, not a line-by-line translation.
 - Keep code short: reuse existing helpers instead of adding parallel implementations.
 - Every named function or arrow function needs a `/** */` comment; `npm run build` fails otherwise.
+- CSS: change the existing rule instead of appending a later rule with the same selector that overrides it. `npm run build` fails on such dead declarations (`npm run css:check`); `npm run css:fix` removes them safely.
+- Modals: build the modal element and show it with `window.AppNav.mountModal` (or `openModal`); do not manipulate `#modal-overlay` directly.
 
 ## Tests
 
