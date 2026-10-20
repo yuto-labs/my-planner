@@ -4,7 +4,8 @@ import { getExpressionEntries, getKnowledgeMemos, getLearningEntries } from './s
 import { esc } from './utils.js';
 import { confirmDiscardKnowledgeChanges, openKnowledgeMemo } from './modules/memo.js';
 import { getSelectedLearningEntryId, openLearningEntry } from './modules/learning-library.js';
-import { getAtlasDesktopSelectedId, openAtlasDesktopEntry } from './modules/expression-atlas.js';
+// 表現帳は初めて開いた時に読み込むため、直接importせずatlas-loader経由で使う。
+import { loadAtlasModule, loadedAtlasModule } from './atlas-loader.js';
 
 // Layout depends on available width, not the currently reported mouse/touch input.
 const wideDesktop = '(min-width: 1280px)';
@@ -194,7 +195,8 @@ export function refreshDesktopWorkspace(view = currentView, { force = false } = 
   const panel = document.getElementById('desktop-context');
   const app = document.getElementById('app');
   if (!panel || !app) return;
-  const atlasId = view === 'expression-atlas' ? getAtlasDesktopSelectedId() : '';
+  // 表現帳の画面にいる時は読み込み済み。読み込み途中ならまだ選択中の項目はない。
+  const atlasId = view === 'expression-atlas' ? loadedAtlasModule()?.getAtlasDesktopSelectedId() || '' : '';
   const mode = getDesktopContextMode(view, atlasId);
   const selectedId = mode === 'memo'
     ? new URLSearchParams(window.location.hash.split('?')[1] || '').get('id') || ''
@@ -289,7 +291,7 @@ export function initDesktopWorkspace() {
     } else if (currentMode === 'knowledge') {
       openLearningEntry(id);
     } else if (currentMode === 'atlas') {
-      openAtlasDesktopEntry(id);
+      loadAtlasModule().then(atlas => atlas.openAtlasDesktopEntry(id));
     }
     if (!window.matchMedia(wideDesktop).matches) {
       openOverride = false;

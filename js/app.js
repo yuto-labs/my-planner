@@ -38,11 +38,7 @@ import {
 } from './modules/memo.js';
 import { initReview } from './modules/review.js';
 import { initKnowledgeGraph } from './modules/memo-graph.js';
-import {
-  initExpressionAtlas,
-  backFromExpressionAtlas,
-  shouldPreserveExpressionAtlasView,
-} from './modules/expression-atlas.js';
+import { initExpressionAtlasLazily, loadedAtlasModule } from './atlas-loader.js';
 import { initAnalytics } from './modules/analytics.js';
 import {
   initLearningLibrary,
@@ -75,7 +71,10 @@ const MODULES = {
   'learning-detail': { title: 'Knowledge',  init: initLearningDetail, back: 'knowledge', backAction: backFromLearningDetail, navRoot: 'knowledge' },
   'knowledge-detail':{ title: 'Note',       init: initKnowledgeDetail, back: 'memo', backAction: backFromKnowledgeDetail, navRoot: 'memo' },
   'knowledge-graph': { title: 'Memo Map', init: initKnowledgeGraph, back: 'memo', navRoot: 'memo' },
-  'expression-atlas':{ title: 'NUANCE ATLAS', init: initExpressionAtlas, back: 'memo', backAction: backFromExpressionAtlas, navRoot: 'memo' },
+  // 表現帳は大きいので、初めて開いた時に読み込む(atlas-loader.js)。
+  'expression-atlas':{ title: 'NUANCE ATLAS', init: initExpressionAtlasLazily, back: 'memo',
+    backAction: () => { const atlas = loadedAtlasModule(); if (atlas) atlas.backFromExpressionAtlas(); else navigate('memo'); },
+    navRoot: 'memo' },
   analytics:         { title: 'Task Analytics', init: initAnalytics, back: 'tasks', navRoot: 'tasks' },
   review:            { title: '復習セッション', init: initReview, back: 'home' },
   archive:           { title: 'Trash',      init: initArchive,         back: 'tasks', backAction: backFromArchive },
@@ -396,7 +395,7 @@ export function refreshCurrentView(options = {}) {
   // 同期の取得後に呼ばれるので、別の端末で変えた外観・カテゴリが届いていればここで反映する。
   if (applySharedSettingsFromSync()) applyTheme(getSettings().theme);
   if (!currentView) return;
-  if (currentView === 'expression-atlas' && shouldPreserveExpressionAtlasView()) {
+  if (currentView === 'expression-atlas' && loadedAtlasModule()?.shouldPreserveExpressionAtlasView()) {
     refreshDesktopWorkspace(currentView, { force: true });
     return;
   }

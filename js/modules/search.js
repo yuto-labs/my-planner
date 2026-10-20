@@ -12,7 +12,7 @@ import { esc, formatDate, formatTime } from '../utils.js';
 import { normalizeSearchText, searchAll } from '../search-model.js';
 import { openKnowledgeMemo } from './memo.js';
 import { openLearningEntry } from './learning-library.js';
-import { showAtlasEntry } from './expression-atlas.js';
+import { loadAtlasModule } from '../atlas-loader.js';
 
 /** `nav`: 指定したハッシュ画面へ移動し、必要なら遷移元の状態を引き継ぐ。 */
 const nav = (view) => window.AppNav?.navigate(view);
@@ -21,7 +21,8 @@ const nav = (view) => window.AppNav?.navigate(view);
 const OPENERS = {
   memo: id => openKnowledgeMemo(id),
   learning: id => openLearningEntry(id),
-  atlas: id => showAtlasEntry(id) || nav('expression-atlas'),
+  // 表現帳は初めて使う時に読み込むので、読み込んでから該当の単語を開く。
+  atlas: id => loadAtlasModule().then(atlas => atlas.showAtlasEntry(id) || nav('expression-atlas')),
   task: () => nav('tasks'),
   event: () => nav('calendar'),
   goal: () => nav('goals'),
