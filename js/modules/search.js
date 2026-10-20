@@ -1,17 +1,33 @@
 // ============================================================
 // search.js - アプリ内データの横断検索
 //
-// タスク、予定、メモ、表現帳などを読み取り専用で照合し、
-// 結果タップ後は各機能が持つ正規の詳細画面へ移動する。
+// タスク、予定、メモ、表現帳、Knowledgeを読み取り専用で照合する(照合はsearch-model.js)。
+// メモ・表現帳・Knowledgeの結果はその項目の詳細を直接開き、他は各画面へ移動する。
 // ============================================================
 
 import {
-  getTasks, getEvents, getGoals, getKnowledgeMemos,
+  getTasks, getEvents, getGoals, getKnowledgeMemos, getExpressionEntries, getLearningEntries,
 } from '../storage.js';
 import { esc, formatDate, formatTime } from '../utils.js';
+import { normalizeSearchText, searchAll } from '../search-model.js';
+import { openKnowledgeMemo } from './memo.js';
+import { openLearningEntry } from './learning-library.js';
+import { showAtlasEntry } from './expression-atlas.js';
 
 /** `nav`: 指定したハッシュ画面へ移動し、必要なら遷移元の状態を引き継ぐ。 */
 const nav = (view) => window.AppNav?.navigate(view);
+
+// 結果を押した時の開き方。詳細を直接開けない種類は、その一覧画面へ移動する。
+const OPENERS = {
+  memo: id => openKnowledgeMemo(id),
+  learning: id => openLearningEntry(id),
+  atlas: id => showAtlasEntry(id) || nav('expression-atlas'),
+  task: () => nav('tasks'),
+  event: () => nav('calendar'),
+  goal: () => nav('goals'),
+};
+// 種類ごとに最初に見せる件数。多すぎると目的の種類まで届きにくい。
+const VISIBLE_PER_KIND = 6;
 
 /** 全機能を横断する検索オーバーレイを開き、入力へフォーカスする。 */
 export function openSearch() {
@@ -27,7 +43,7 @@ export function openSearch() {
         class="input search-input"
         id="search-q"
         type="search"
-        placeholder="タスク・予定・メモ・目標を検索..."
+        placeholder="メモ本文・表現帳・Knowledge・タスク・予定を検索..."
         autocomplete="off"
         autocorrect="off"
         autocapitalize="off"
@@ -79,14 +95,14 @@ export function openSearch() {
   document.addEventListener('keydown', keyH);
 
   body.addEventListener('click', (e) => {
-    const item = e.target.closest('[data-result-nav]');
+    const item = e.target.closest('[data-result-kind]');
     if (!item) return;
     closeSearch();
-    nav(item.dataset.resultNav);
+    OPENERS[item.dataset.resultKind]?.(item.dataset.resultId);
   });
   body.addEventListener('keydown', e => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
-    const item = e.target.closest('[data-result-nav]');
+    const item = e.target.closest('[data-result-kind]');
     if (!item) return;
     e.preventDefault();
     item.click();
@@ -117,102 +133,44 @@ function renderSkeleton() {
   `;
 }
 
-/** クエリを各データ型へ照合し、元画面へ移動できる結果を描画する。 */
+/** 結果の右側に出す補足(日付・時刻・タグ・意味など)を種類に合わせて整える。 */
+function metaText(kind, item) {
+  if (kind === 'task' && item.meta) return formatDate(item.meta, 'short');
+  if (kind === 'event' && item.meta) return `${formatDate(item.meta, 'short')} ${formatTime(item.meta)}`;
+  return item.meta;
+}
+
+/** クエリを全種類へ照合し(search-model.js)、詳細を直接開ける結果一覧を描画する。 */
 function renderResults(q, container) {
-  const lower = q.toLowerCase();
-
-  const tasks = getTasks().filter(t => matchText(t.title, lower));
-
-  const events = getEvents()
-    .filter(e => matchText(e.title, lower))
-    .sort((a, b) => (b.start || '').localeCompare(a.start || ''));
-
-  const memos = getKnowledgeMemos()
-    .filter(m =>
-      matchText(m.title, lower) ||
-      (m.tags || []).some(t => t.toLowerCase().includes(lower))
-    );
-
-  const goals = getGoals().filter(g => matchText(g.title, lower));
-
-  const total = tasks.length + events.length + memos.length + goals.length;
-
-  if (total === 0) {
+  const groups = searchAll(q, {
+    memos: getKnowledgeMemos(),
+    learning: getLearningEntries(),
+    atlas: getExpressionEntries(),
+    tasks: getTasks(),
+    events: getEvents().sort((a, b) => (b.start || '').localeCompare(a.start || '')),
+    goals: getGoals(),
+  });
+  if (!groups.length) {
     container.innerHTML = `<div class="search-empty">「${esc(q)}」に一致する結果はありません</div>`;
     return;
   }
-
-  let html = '';
-
-  if (tasks.length) {
-    html += `
-      <div class="search-group">
-        <div class="search-group-label">Tasks (${tasks.length})</div>
-        ${tasks.slice(0, 6).map(t => `
-          <div class="search-result-item${t.completed ? ' completed' : ''}" data-result-nav="tasks" role="button" tabindex="0">
-            <span class="weight-dot weight-${esc(t.weight || 'medium')}"></span>
-            <span class="search-result-title">${highlight(t.title, q)}</span>
-            ${t.dueDate ? `<span class="search-result-meta">${esc(formatDate(t.dueDate, 'short'))}</span>` : ''}
-            ${t.completed ? '<span class="search-result-badge done">Done</span>' : ''}
-          </div>
-        `).join('')}
-        ${tasks.length > 6 ? `<div class="search-group-label" style="color:var(--text-dim)">他 ${tasks.length - 6} 件</div>` : ''}
-      </div>
-    `;
-  }
-
-  if (events.length) {
-    html += `
-      <div class="search-group">
-        <div class="search-group-label">Events (${events.length})</div>
-        ${events.slice(0, 5).map(e => `
-          <div class="search-result-item" data-result-nav="calendar" role="button" tabindex="0">
-            <span class="search-result-title">${highlight(e.title, q)}</span>
-            <span class="search-result-meta">${e.start ? `${esc(formatDate(e.start, 'short'))} ${esc(formatTime(e.start))}` : ''}</span>
-          </div>
-        `).join('')}
-        ${events.length > 5 ? `<div class="search-group-label" style="color:var(--text-dim)">他 ${events.length - 5} 件</div>` : ''}
-      </div>
-    `;
-  }
-
-  if (memos.length) {
-    html += `
-      <div class="search-group">
-        <div class="search-group-label">Notes (${memos.length})</div>
-        ${memos.slice(0, 5).map(m => `
-          <div class="search-result-item" data-result-nav="memo" role="button" tabindex="0">
-            <span class="search-result-title">${highlight(m.title || 'Untitled', q)}</span>
-            ${(m.tags || []).length
-              ? `<span class="search-result-meta">${m.tags.slice(0, 3).map(t => `#${esc(t)}`).join(' ')}</span>`
-              : ''}
-          </div>
-        `).join('')}
-        ${memos.length > 5 ? `<div class="search-group-label" style="color:var(--text-dim)">他 ${memos.length - 5} 件</div>` : ''}
-      </div>
-    `;
-  }
-
-  if (goals.length) {
-    html += `
-      <div class="search-group">
-        <div class="search-group-label">Goals (${goals.length})</div>
-        ${goals.slice(0, 5).map(g => `
-          <div class="search-result-item" data-result-nav="goals" role="button" tabindex="0">
-            <span class="search-result-title">${highlight(g.title, q)}</span>
-            <span class="search-result-meta">${g.progress ?? 0}%</span>
-          </div>
-        `).join('')}
-      </div>
-    `;
-  }
-
-  container.innerHTML = html;
-}
-
-/** 大文字小文字を無視し、対象文字列に検索語が含まれるか判定する。 */
-function matchText(text, lowerQ) {
-  return text?.toLowerCase().includes(lowerQ) ?? false;
+  // 抜粋は全角/半角をそろえた文字なので、強調にも同じくそろえた検索語を使う。
+  const normalizedQ = normalizeSearchText(q);
+  container.innerHTML = groups.map(({ kind, label, items }) => `
+    <div class="search-group">
+      <div class="search-group-label">${esc(label)} (${items.length})</div>
+      ${items.slice(0, VISIBLE_PER_KIND).map(item => `
+        <div class="search-result-item${item.raw.completed ? ' completed' : ''}" data-result-kind="${kind}" data-result-id="${esc(item.id || '')}" role="button" tabindex="0">
+          <span class="search-result-main">
+            <span class="search-result-title">${highlight(item.title, q)}</span>
+            ${item.snippet ? `<span class="search-result-snippet">${highlight(item.snippet, normalizedQ)}</span>` : ''}
+          </span>
+          ${metaText(kind, item) ? `<span class="search-result-meta">${esc(metaText(kind, item))}</span>` : ''}
+        </div>
+      `).join('')}
+      ${items.length > VISIBLE_PER_KIND ? `<div class="search-group-label search-group-more">他 ${items.length - VISIBLE_PER_KIND} 件</div>` : ''}
+    </div>
+  `).join('');
 }
 
 /** 検索語に一致する部分だけを安全なmark要素で囲み、結果内で見つけやすくする。 */

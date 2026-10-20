@@ -405,6 +405,21 @@ export function getAtlasDesktopSelectedId() {
   return state.screen === 'library' ? state.entryId || '' : '';
 }
 
+/**
+ * 表現帳の外(横断検索など)から、指定した単語の詳細を開く。
+ * 画面の状態(state)は画面を離れても残るので、開く項目を先に決めてから表現帳へ移動する。
+ */
+export function showAtlasEntry(id) {
+  if (!id || !getExpressionEntries().some(item => item.id === id)) return false;
+  Object.assign(state, {
+    screen: 'library', libraryMode: 'expressions', entryId: id,
+    translationId: '', questionId: '', morphemeId: '', usageId: '',
+  });
+  if (state.container?.isConnected) render();
+  else window.AppNav?.navigate('expression-atlas');
+  return true;
+}
+
 /** 既存の関連語リンクと同じ履歴・メモ保存処理で項目を開く。 */
 export function openAtlasDesktopEntry(id) {
   if (!id || !getExpressionEntries().some(item => item.id === id)) return false;

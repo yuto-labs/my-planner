@@ -16,6 +16,7 @@
 - `local-store.js`: 大きい端末データをIndexedDBへ置き、localStorageと振り分ける保存窓口
 - `memo-draft.js`: 保存前のメモ編集内容を端末へ一時保存し、次に開いた時に復元する（同期しない）
 - `review-toggle.js`: 表現帳とKnowledgeの「復習に追加」ボタン
+- `search-model.js`: 横断検索の照合（本文・意味・回答も対象、表記の揺れを無視）
 - `sync.js`: Supabaseとの双方向同期と競合統合
 - `supabase.js`: Supabaseクライアントと認証状態
 - `migrate.js`: 既存ローカルデータの初回移行
