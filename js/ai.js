@@ -298,69 +298,6 @@ async function callAPI(
   return callServerAI(modelPreference, systemText, userText, maxTokens, responseFormat, actionType, options);
 }
 
-/** 短い文章生成を呼び、互換用に一度だけonChunkへ完成文を渡す。 */
-export async function streamText({ model = FAST_MODEL, system, userContent, maxTokens = 200, onChunk }) {
-  const full = await callAPI(model, system || '', userContent, maxTokens, 'text', 'daily_message');
-  let acc = '';
-  for (const ch of full) {
-    acc += ch;
-    onChunk?.(ch, acc);
-  }
-  return full;
-}
-
-/** `streamDailyMessage`: 今日の予定・タスク・目標から短いメッセージを生成し、断片ごとに通知する。 */
-export async function streamDailyMessage(tasks = [], events = [], goals = [], onChunk) {
-  const todayStr = today();
-  const pending = tasks.filter(t => !t.completed).slice(0, 6);
-  const todayEvents = events.filter(e => e.start?.slice(0, 10) === todayStr).slice(0, 4);
-  const topGoal = goals[0]?.title || '';
-
-  const ctx = `tasks:${pending.map(t => t.title.slice(0, 10)).join(',') || 'none'} | `
-    + `events:${todayEvents.map(e => e.title.slice(0, 10)).join(',') || 'none'} | `
-    + `goal:${topGoal.slice(0, 20) || 'none'}`;
-
-  return streamText({
-    model: FAST_MODEL,
-    system: '日本語のみ。50文字以内。前置きなし。絵文字は1個まで。',
-    userContent: `要約: ${ctx}`,
-    maxTokens: 120,
-    onChunk,
-  });
-}
-
-/** 今日の未完了タスク・予定・最上位目標から短い注目点を生成し、同日中はキャッシュを再利用する。 */
-export async function getDailyMessage(tasks = [], events = [], goals = []) {
-  const cacheKey = `daily_${today()}`;
-  const cached = getAiCache(cacheKey);
-  if (cached) return cached;
-
-  const todayStr = today();
-  const pending = tasks.filter(t => !t.completed).slice(0, 6);
-  const todayEvents = events.filter(e => e.start?.slice(0, 10) === todayStr).slice(0, 4);
-  const topGoal = goals[0]?.title || '';
-
-  const ctx = `tasks:${pending.map(t => `${t.title}[${t.weight?.[0] || 'm'}]`).join(',') || 'none'} | `
-    + `events:${todayEvents.map(e => `${e.title}@${e.start?.slice(11, 16)}`).join(',') || 'none'} | `
-    + `goal:${topGoal || 'none'}`;
-
-  const result = await callAPI(
-    FAST_MODEL,
-    'Return JSON only: {"message":"50文字以内","focus":"60文字以内"}',
-    ctx,
-    160,
-    'json',
-    'daily_message'
-  );
-
-  const parsed = tryParseJSON(result) || {
-    message: '今日は優先度の高いことから順に進めましょう。',
-    focus: '最優先のタスクに集中',
-  };
-  setAiCache(cacheKey, parsed, 86_400_000);
-  return parsed;
-}
-
 /** 自然文から予定の日付・時刻・題名・カテゴリ候補を構造化する。 */
 // ---- ホーム・カレンダー・分析のAI機能 ----
 // 日常操作で素早く返す用途で、長文教材より小さい出力上限を使う。
@@ -402,35 +339,6 @@ export async function parseNaturalLanguageEvent(text, categories = []) {
   return parsed;
 }
 
-/** `analyzeEnergyPatterns`: エネルギー・パターンを分析して結果を返す。 */
-export async function analyzeEnergyPatterns(focusLogs) {
-  const cacheKey = `energy_${today()}`;
-  const cached = getAiCache(cacheKey);
-  if (cached) return cached;
-
-  const summary = focusLogs
-    .slice(-60)
-    .map(l => `${l.hour}h${['日', '月', '火', '水', '木', '金', '土'][l.dayOfWeek]}${l.focusLevel?.[0] || ''}`)
-    .join(',');
-
-  const result = await callAPI(
-    FAST_MODEL,
-    'Analyze focus logs. Return JSON only: {"insight":"80文字以内","peakTime":"例 10-12時","recommendation":"60文字以内"}',
-    summary,
-    200,
-    'json',
-    'energy_patterns'
-  );
-
-  const parsed = tryParseJSON(result) || {
-    insight: '集中度データを集めると傾向を分析できます。',
-    peakTime: '記録が増えると表示されます',
-    recommendation: 'タスク完了時に集中度を記録してみましょう。',
-  };
-  setAiCache(cacheKey, parsed, 86_400_000);
-  return parsed;
-}
-
 /** `predictGoalCompletionLocal`: 目標・完了予測・端末内を現在データから予測する。 */
 export function predictGoalCompletionLocal(goal, allTasks) {
   const goalTasks = allTasks.filter(t => t.goalId === goal.id);
@@ -456,89 +364,6 @@ export function predictGoalCompletionLocal(goal, allTasks) {
   if (daysLate > 3) return { status: 'late', label, predictedDateStr: label, daysLate };
   if (daysLate < -3) return { status: 'early', label, predictedDateStr: label, daysLate };
   return { status: 'on_track', label, predictedDateStr: label, daysLate: 0 };
-}
-
-/** `analyzeHabitCorrelations`: 習慣・相関を分析して結果を返す。 */
-export async function analyzeHabitCorrelations(habitLogs, focusLogs) {
-  const cacheKey = `habit_corr_${today()}`;
-  const cached = getAiCache(cacheKey);
-  if (cached) return cached;
-
-  const dates = Object.keys(habitLogs).sort();
-  if (dates.length < 7) return null;
-
-  const focusScores = dates.map(d => {
-    const dayLogs = focusLogs.filter(l => l.timestamp?.startsWith(d));
-    if (!dayLogs.length) return null;
-    return dayLogs.reduce((s, l) => s + (l.focusLevel === 'high' ? 3 : l.focusLevel === 'medium' ? 2 : 1), 0) / dayLogs.length;
-  });
-
-  const valid = dates.map((_, i) => i).filter(i => focusScores[i] !== null);
-  if (valid.length < 5) return null;
-
-  const exArr = valid.map(i => habitLogs[dates[i]]?.exercise ? 1 : 0);
-  const slArr = valid.map(i => habitLogs[dates[i]]?.sleep || 0);
-  const fsArr = valid.map(i => focusScores[i]);
-
-  const exCorr = pearsonR(exArr, fsArr).toFixed(2);
-  const slCorr = pearsonR(slArr, fsArr).toFixed(2);
-  const exFocus = avg(valid.filter(i => exArr[valid.indexOf(i)] === 1).map(i => fsArr[valid.indexOf(i)])).toFixed(2);
-  const noExFocus = avg(valid.filter(i => exArr[valid.indexOf(i)] === 0).map(i => fsArr[valid.indexOf(i)])).toFixed(2);
-
-  const result = await callAPI(
-    FAST_MODEL,
-    'Write 3 concise Japanese insights with numbers. Return JSON only: {"insights":["...","...","..."],"advice":"80文字以内"}',
-    `n=${valid.length} exercise_r=${exCorr} sleep_r=${slCorr} exercise_focus=${exFocus} no_exercise_focus=${noExFocus}`,
-    300,
-    'json',
-    'analytics_summary'
-  );
-
-  const parsed = tryParseJSON(result) || { insights: ['データが増えると傾向が見えてきます。'], advice: '' };
-  setAiCache(cacheKey, parsed, 86_400_000);
-  return parsed;
-}
-
-/** `pearsonR`: 二つの数値列からピアソンの相関係数を計算する。 */
-function pearsonR(xs, ys) {
-  const n = xs.length;
-  if (n < 2) return 0;
-  const mx = xs.reduce((s, x) => s + x, 0) / n;
-  const my = ys.reduce((s, y) => s + y, 0) / n;
-  let num = 0;
-  let dx = 0;
-  let dy = 0;
-  for (let i = 0; i < n; i++) {
-    num += (xs[i] - mx) * (ys[i] - my);
-    dx += (xs[i] - mx) ** 2;
-    dy += (ys[i] - my) ** 2;
-  }
-  return Math.sqrt(dx * dy) < 1e-10 ? 0 : num / Math.sqrt(dx * dy);
-}
-
-/** 数値配列の算術平均を返し、空配列ではNaNを避けて0を返す。 */
-function avg(arr) {
-  return arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : 0;
-}
-
-/** 月間の完了数・目標・メモ・集中度・習慣日数を、構造化された振り返りへまとめる。 */
-export async function generateMonthlyReport(prevMonth, data) {
-  const result = await callAPI(
-    QUALITY_MODEL,
-    'Generate a Japanese monthly review. Return JSON only: {"title":"...","highlights":["...","...","..."],"achievements":"80文字以内","learning":"80文字以内","advice":"100文字以内","score":0}',
-    `month:${prevMonth} tasks:${data.tasksCompleted}/${data.tasksTotal} goals:${data.goalsCount} memos:${data.knowledgeMemos} focus:${data.avgFocus || 'n/a'} habitDays:${data.habitDays}`,
-    600,
-    'json',
-    'monthly_report'
-  );
-  return tryParseJSON(result) || {
-    title: `${prevMonth}の振り返り`,
-    highlights: ['データを蓄積中です。'],
-    achievements: '',
-    learning: '',
-    advice: '次月も継続して記録していきましょう。',
-    score: 70,
-  };
 }
 
 /** 指定月の集計値を、数値を含む短い日本語サマリーへ変換する。 */
@@ -1334,25 +1159,6 @@ export async function summarizeAndTagText(text) {
 
 // ---- 目標・タスク・プランナーのAI機能 ----
 // 学習候補、目標分解、自然文操作、時間割り当てをまとめる。
-export async function detectKnowledgeGaps(goalTitle, existingTags) {
-  const cacheKey = `kngap_${goalTitle}_${[...existingTags].sort().join(',')}`;
-  const cached = getAiCache(cacheKey);
-  if (cached) return cached;
-
-  const result = await callAPI(
-    FAST_MODEL,
-    'List missing study topics. Return JSON only: {"gaps":["topic1","topic2","topic3"]}',
-    `goal:${goalTitle}\nhave:${existingTags.join(',') || 'none'}`,
-    150,
-    'json'
-  );
-
-  const parsed = tryParseJSON(result);
-  const gaps = Array.isArray(parsed?.gaps) ? parsed.gaps.slice(0, 5) : [];
-  if (gaps.length) setAiCache(cacheKey, gaps, 43_200_000);
-  return gaps;
-}
-
 /** `suggestUnstudiedTopics`: 未学習・テーマの候補を作って返す。 */
 export async function suggestUnstudiedTopics(goalTitle, knowledgeTags) {
   const cacheKey = `unstudied_${goalTitle}_${[...knowledgeTags].sort().join(',')}`;

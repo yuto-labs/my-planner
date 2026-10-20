@@ -225,9 +225,17 @@ function render() {
     analyticsButton.setAttribute('aria-label', 'タスク分析を開く');
     analyticsButton.title = 'タスク分析';
     analyticsButton.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 3h14a2 2 0 0 1 2 2v14H3V5a2 2 0 0 1 2-2zm2 12h2V9H7v6zm4 0h2V6h-2v9zm4 0h2v-3h-2v3z"/></svg>';
-    controls.append(toggle, analyticsButton);
+    // 目標画面は以前は検索結果からしか開けなかったので、分析の隣に入口を置く。
+    const goalsButton = document.createElement('button');
+    goalsButton.type = 'button';
+    goalsButton.className = 'btn-icon tasks-analysis-btn';
+    goalsButton.setAttribute('aria-label', '目標を開く');
+    goalsButton.title = '目標';
+    goalsButton.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8zm0-14a6 6 0 1 0 6 6 6 6 0 0 0-6-6zm0 10a4 4 0 1 1 4-4 4 4 0 0 1-4 4zm0-6a2 2 0 1 0 2 2 2 2 0 0 0-2-2z"/></svg>';
+    controls.append(toggle, goalsButton, analyticsButton);
     addForm.parentNode.insertBefore(controls, addForm);
     analyticsButton.addEventListener('click', () => nav('analytics'));
+    goalsButton.addEventListener('click', () => nav('goals'));
 
     /** state.addFormOpenに合わせて新規タスクフォームと開閉ボタンをまとめて更新する。 */
     const applyAddFormVisibility = () => {

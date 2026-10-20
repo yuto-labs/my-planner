@@ -934,22 +934,6 @@ const FOCUS_LOG_KEY = 'mp_focus_logs';
 export function getFocusLogs()           { return load(FOCUS_LOG_KEY, []); }
 /** 集中度分析用ログを端末へ保存する。これは端末内分析用で同期対象外。 */
 export function saveFocusLogs(logs)      { save(FOCUS_LOG_KEY, logs); }
-/** 集中度記録へIDと現在時刻を付け、直近60日分だけを残して保存する。 */
-export function addFocusLog(entry) {
-  const logs = getFocusLogs();
-  const newEntry = { ...entry, id: entry.id || generateId(), timestamp: new Date().toISOString() };
-  logs.push(newEntry);
-  // keep last 60 days
-  const cutoff = Date.now() - 60 * 86400000;
-  saveFocusLogs(logs.filter(l => new Date(l.timestamp).getTime() > cutoff));
-  return newEntry; // return so caller can store ID for undo
-}
-
-/** Undo時などに、指定IDの集中度記録だけを取り除く。 */
-export function removeFocusLogById(id) {
-  saveFocusLogs(getFocusLogs().filter(l => l.id !== id));
-}
-
 /** Remove all focus logs for a task added after a given ISO timestamp (for undo) */
 export function removeFocusLogsAfter(taskId, afterIso) {
   const t = afterIso ? new Date(afterIso).getTime() : 0;
@@ -957,33 +941,12 @@ export function removeFocusLogsAfter(taskId, afterIso) {
     !(l.taskId === taskId && new Date(l.timestamp).getTime() >= t)
   ));
 }
-/** 現在時刻から指定日数以内に記録された集中度ログだけを返す。 */
-export function getFocusLogsForDays(days) {
-  const cutoff = Date.now() - days * 86400000;
-  return getFocusLogs().filter(l => new Date(l.timestamp).getTime() > cutoff);
-}
 
 // ---- Habit Logs (sleep, exercise per day) ----
 // Shape: { 'YYYY-MM-DD': { sleep: number, exercise: boolean, note: '' } }
 const HABIT_LOG_KEY = 'mp_habit_logs';
 /** 日付をキーにした睡眠・運動等の生活ログを返す。 */
 export function getHabitLogs()                    { return load(HABIT_LOG_KEY, {}); }
-/** 指定日の生活ログを返し、記録がなければnullを返す。 */
-export function getHabitLogForDate(dateStr)        { return getHabitLogs()[dateStr] || null; }
-/** 指定日の生活ログへ変更項目を重ね、同じ日の未変更項目を保持して保存する。 */
-export function setHabitLog(dateStr, data) {
-  const logs = getHabitLogs();
-  logs[dateStr] = { ...logs[dateStr], ...data };
-  save(HABIT_LOG_KEY, logs);
-}
-
-// ---- Energy Insight Cache (AI-generated) ----
-const ENERGY_INSIGHT_KEY = 'mp_energy_insight';
-/** AIが生成した集中しやすい時間帯等の分析キャッシュを返す。 */
-export function getEnergyInsight()    { return load(ENERGY_INSIGHT_KEY, null); }
-/** 最新のエネルギー分析を端末キャッシュへ置き換える。 */
-export function setEnergyInsight(d)   { save(ENERGY_INSIGHT_KEY, d); }
-
 // ---- Monthly Reports ----
 const MONTHLY_REPORT_KEY = 'mp_monthly_reports';
 /** `YYYY-MM`に一致する月次レポートを返し、未生成ならnullを返す。 */
@@ -2790,84 +2753,6 @@ const HABIT_DONE_KEY = 'mp_habit2_done';
 export function getHabits()          { return load(HABITS_KEY, []); }
 /** 習慣の定義一覧を端末へ保存する。 */
 export function saveHabits(h)        { save(HABITS_KEY, h); }
-
-/** 習慣へ既定のアイコン・頻度・色と新しいIDを補い、一覧へ追加する。 */
-export function addHabit(h) {
-  const habits = getHabits();
-  const newHabit = {
-    title: '', icon: '⭐', freq: 'daily', color: '#32D49A', streak: 0,
-    ...h,
-    id: generateId(),
-    createdAt: new Date().toISOString(),
-  };
-  habits.push(newHabit);
-  saveHabits(habits);
-  return newHabit;
-}
-
-/** 指定習慣へ題名・頻度・連続日数等の変更を重ねて保存する。 */
-export function updateHabit(id, updates) {
-  saveHabits(getHabits().map(h => h.id === id ? { ...h, ...updates } : h));
-}
-
-/** 習慣本体と、その習慣IDに結び付いた日別完了履歴を両方削除する。 */
-export function deleteHabit(id) {
-  saveHabits(getHabits().filter(h => h.id !== id));
-  const done = load(HABIT_DONE_KEY, {});
-  delete done[id];
-  save(HABIT_DONE_KEY, done);
-}
-
-/** 習慣IDごとに完了日文字列を持つ対応表を返す。 */
-export function getHabitDoneMap()    { return load(HABIT_DONE_KEY, {}); }
-
-/** 指定習慣の完了日一覧に、端末の今日が含まれるか判定する。 */
-export function isHabitDoneToday(habitId) {
-  const todayStr = toDateStr_simple(new Date());
-  return (getHabitDoneMap()[habitId] || []).includes(todayStr);
-}
-
-/** 今日の完了をトグル。true=完了→未完了, false=未完了→完了 */
-/** 今日の完了を切り替え、連続日数の計算に使う日付記録を更新する。 */
-export function toggleHabitToday(habitId) {
-  const todayStr = toDateStr_simple(new Date());
-  const done = getHabitDoneMap();
-  const dates = done[habitId] || [];
-  const wasDone = dates.includes(todayStr);
-  done[habitId] = wasDone
-    ? dates.filter(d => d !== todayStr)
-    : [...dates, todayStr].sort();
-  save(HABIT_DONE_KEY, done);
-  // Recompute streak
-  const streak = _calcStreak(done[habitId] || []);
-  updateHabit(habitId, { streak });
-  return !wasDone; // new state: true = now done
-}
-
-/** 今日、未完了なら昨日から過去へさかのぼり、途切れない完了日数を数える。 */
-function _calcStreak(dates) {
-  if (!dates.length) return 0;
-  let streak = 0;
-  const check = new Date();
-  // If not done today, start checking from yesterday
-  if (!dates.includes(toDateStr_simple(check))) check.setDate(check.getDate() - 1);
-  while (dates.includes(toDateStr_simple(check))) {
-    streak++;
-    check.setDate(check.getDate() - 1);
-  }
-  return streak;
-}
-
-/** 直近 N 日の完了履歴 [{date, done}] */
-export function getHabitHistory(habitId, days = 14) {
-  const done = getHabitDoneMap()[habitId] || [];
-  return Array.from({ length: days }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (days - 1 - i));
-    const ds = toDateStr_simple(d);
-    return { date: ds, done: done.includes(ds) };
-  });
-}
 
 // ---- Undo Stack（再読み込みで消える、直前操作の一時履歴）----
 // 永続履歴ではなく、完了・削除直後の「元に戻す」トースト専用。

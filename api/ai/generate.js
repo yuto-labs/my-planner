@@ -15,11 +15,8 @@ function readBody(req) {
 // 機能ごとの上限。短い分類処理と長いKnowledge解説を同じ上限にしない。
 const ACTION_LIMITS = Object.freeze({
   ai_request: 600,
-  daily_message: 240,
   event_parse: 400,
-  energy_patterns: 500,
   analytics_summary: 1200,
-  monthly_report: 1400,
   tag_suggest: 300,
   term_explain: 500,
   memo_format: 2400,
@@ -36,7 +33,7 @@ const ACTION_LIMITS = Object.freeze({
 const MAX_SYSTEM_CHARS = 32_000;
 const MAX_USER_CHARS = 120_000;
 const JSON_ACTIONS = new Set([
-  'event_parse', 'energy_patterns', 'monthly_report', 'tag_suggest',
+  'event_parse', 'tag_suggest',
   'memo_format', 'english_question', 'knowledge_answer', 'nuance_generate',
   'translation_variants', 'memo_summary', 'goal_split', 'batch_tags',
   'planner_action', 'task_schedule',

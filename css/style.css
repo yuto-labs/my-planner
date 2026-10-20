@@ -13078,7 +13078,8 @@ button.atlas-nuance-map-row:focus-visible {
 
 .tasks-top-controls {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 42px;
+  /* 追加ボタン + 目標 + 分析 */
+  grid-template-columns: minmax(0, 1fr) 42px 42px;
   align-items: stretch;
   gap: 7px;
   margin: 12px 12px 0;
