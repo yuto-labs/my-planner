@@ -60,6 +60,8 @@ const USER_CONTENT_KEYS = [
   HABITS_KEY_SAFE(),
   HABIT_DONE_KEY_SAFE(),
   'mp_shared_calendar_groups',
+  // メモ編集の下書き(memo-draft.js)。本文を含むので、アカウント切替時は他の内容と一緒に退避・消去する。
+  'mp_memo_drafts',
   'mp_calendar_share_defaults',
   'mp_calendar_event_title_history',
   'mp_task_tag_defaults',

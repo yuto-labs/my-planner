@@ -3066,6 +3066,13 @@ h1, h2, h3, h4, h5, h6,
 .knowledge-editor-open #app-header,
 .knowledge-editor-open #bottom-nav { display: none !important; }
 .kn-edit-page { min-height: 100%; padding-bottom: max(24px, env(safe-area-inset-bottom)); overflow-x: clip; }
+/* 保存していない下書きの「復元/破棄」帯。狭い画面では文と2つのボタンを折り返す。 */
+.kn-draft-banner {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin: 8px 12px 12px; padding: 10px 12px;
+  border: 1px solid var(--primary); border-radius: 10px; background: var(--bg-card);
+}
+.kn-draft-banner-text { flex: 1 1 200px; color: var(--text); font-size: 13px; }
 
 .kn-edit-topbar {
   display: flex; justify-content: space-between; align-items: center;

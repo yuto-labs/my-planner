@@ -27,6 +27,7 @@ import {
   wirePlannerImageViewer,
 } from '../media.js';
 import { flushPendingSync } from '../sync.js';
+import { clearMemoDraft, getMemoDraft, saveMemoDraft } from '../memo-draft.js';
 import { captureHorizontalTableScroll, restoreHorizontalTableScroll } from '../horizontal-scroll-state.js';
 import {
   markdownBlockShortcut,
@@ -135,15 +136,120 @@ export function backFromKnowledgeDetail() {
   }
 }
 
-/** 現在のタイトル・タグ・ブロック・復習設定を、変更比較用の安定した文字列へ変換する。 */
-function editorSnapshot() {
+/** タイトル・タグ・ブロック・復習設定を、変更比較用の安定した文字列へ変換する。 */
+function snapshotOf(content) {
   return JSON.stringify({
+    title: content.title,
+    blocks: content.blocks,
+    tags: content.tags,
+    url: content.url,
+    starred: content.starred,
+    reviewEnabled: content.reviewEnabled,
+  });
+}
+
+/** 現在の編集内容を比較用の文字列にする。 */
+function editorSnapshot() {
+  return snapshotOf(edState);
+}
+
+// ---- 下書きの自動保存 ----
+// 編集が落ち着いてから0.8秒後と、アプリが裏に回った瞬間に、編集内容を端末へ書く。
+// 次に同じメモを開いた時、保存していない下書きがあれば「復元/破棄」の帯を出す。
+const DRAFT_SAVE_DELAY_MS = 800;
+let draftSaveTimer = null;
+let draftOffer = null; // 復元するか未回答の下書き。回答までは下書きを消さない。
+
+/** 編集内容のうち、下書きとして残す部分を参照の切れたコピーで取り出す。 */
+function editorDraftContent() {
+  return {
     title: edState.title,
-    blocks: edState.blocks,
-    tags: edState.tags,
+    blocks: deepClone(edState.blocks),
+    tags: [...edState.tags],
     url: edState.url,
     starred: edState.starred,
     reviewEnabled: edState.reviewEnabled,
+  };
+}
+
+/**
+ * 今の編集内容をすぐ下書きへ書く。保存済みと同じ内容なら(何も変えていない・保存直後)消す。
+ * 復元の帯が出ている間に新しく書き始めた場合は、古い下書きを使わないと判断して置き換える。
+ */
+function writeEditorDraftNow() {
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = null;
+  if (!edState?.isEdit) return;
+  if (editorSnapshot() === editorBaseline) {
+    if (!draftOffer) clearMemoDraft(edState.id);
+    return;
+  }
+  if (draftOffer) {
+    draftOffer = null;
+    document.querySelector('.kn-draft-banner')?.remove();
+  }
+  saveMemoDraft(edState.id, editorDraftContent());
+}
+
+/** 入力のたびに保存しないよう、操作が止まってから下書きを書く予約をする。 */
+function scheduleEditorDraftSave() {
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = setTimeout(writeEditorDraftNow, DRAFT_SAVE_DELAY_MS);
+}
+
+/** 開いたメモの下書きを調べ、保存済みと違う時だけ復元の候補にする。同じなら黙って消す。 */
+function pickDraftOffer() {
+  const draft = getMemoDraft(edState.id);
+  if (!draft) return null;
+  if (snapshotOf(draft) === editorBaseline) {
+    clearMemoDraft(edState.id);
+    return null;
+  }
+  return draft;
+}
+
+/** 復元候補があれば、画面上部に「復元/破棄」の帯を出す。再描画のたびに付け直す。 */
+function renderDraftBanner(container) {
+  if (!draftOffer) return;
+  const page = container.querySelector('.kn-edit-page, .kn-view-page');
+  if (!page) return;
+  const when = new Date(draftOffer.savedAt).toLocaleString('ja-JP', {
+    month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+  const bar = document.createElement('div');
+  bar.className = 'kn-draft-banner';
+  bar.innerHTML = `
+    <span class="kn-draft-banner-text">保存していない編集が残っています（${esc(when)}）</span>
+    <button type="button" class="btn btn-primary btn-sm" data-draft="restore">復元</button>
+    <button type="button" class="btn btn-ghost btn-sm" data-draft="discard">破棄</button>`;
+  page.prepend(bar);
+  bar.addEventListener('click', event => {
+    const action = event.target.closest('[data-draft]')?.dataset.draft;
+    if (!action) return;
+    event.stopPropagation(); // 編集画面の「操作したら下書き保存」に拾わせない
+    const draft = draftOffer;
+    draftOffer = null;
+    if (action === 'discard') {
+      clearMemoDraft(edState.id);
+      bar.remove();
+      return;
+    }
+    // 下書きの内容で編集画面を開く。保存済みの基準は変えないので「未保存の変更あり」になり、
+    // 保存を押すまでメモ本体は変わらない。
+    const blocks = normalizeMemoBlockIds(deepClone(draft.blocks));
+    edState = {
+      ...edState,
+      title: draft.title || '',
+      blocks: blocks.length ? blocks : [defaultBlock()],
+      tags: [...(draft.tags || [])],
+      url: draft.url || '',
+      starred: !!draft.starred,
+      reviewEnabled: !!draft.reviewEnabled,
+      isEdit: true,
+    };
+    activeEditorBlockId = edState.blocks[0]?.id || null;
+    renderDetail(container);
+    toast('下書きを復元しました。保存すると反映されます', 'success');
   });
 }
 
@@ -355,8 +461,12 @@ export function hasUnsavedKnowledgeChanges() {
 
 /** 未保存変更がある時だけ確認ダイアログを出し、破棄してよい場合にtrueを返す。 */
 export function confirmDiscardKnowledgeChanges() {
-  return !hasUnsavedKnowledgeChanges()
-    || window.confirm('未保存の変更があります。破棄して移動しますか？');
+  if (!hasUnsavedKnowledgeChanges()) return true;
+  if (!window.confirm('未保存の変更があります。破棄して移動しますか？')) return false;
+  // 自分で破棄を選んだので、次に開いた時に復元を勧めないよう下書きも消す。
+  clearTimeout(draftSaveTimer);
+  clearMemoDraft(edState.id);
+  return true;
 }
 
 const knBack = backFromKnowledgeDetail;
@@ -1229,6 +1339,7 @@ export function initKnowledgeDetail(container) {
   editorCompositionActive = false;
 
   markEditorBaseline();
+  draftOffer = pickDraftOffer();
 
   renderDetail(container);
 
@@ -1237,9 +1348,21 @@ export function initKnowledgeDetail(container) {
     _pendingDetailScrollTop = 0;
   });
 
+  /** アプリが裏に回ったら、待ち時間を待たずに下書きを書く。OSに終了させられても残すため。 */
+  const flushDraftOnHide = () => {
+    if (!document.hidden || !edState?.isEdit) return;
+    syncEditorDomToState(container);
+    writeEditorDraftNow();
+  };
+  document.addEventListener('visibilitychange', flushDraftOnHide);
+
   const cleanupSwipe = setupKnowledgeSwipeBack(container);
   _detailGestureCleanup = cleanupSwipe;
   return () => {
+    document.removeEventListener('visibilitychange', flushDraftOnHide);
+    // 画面を離れる時は、未保存なら破棄の確認を通っている(下書きも消し済み)ので書き直さない。
+    clearTimeout(draftSaveTimer);
+    draftOffer = null;
     cleanupSwipe?.();
     if (_detailGestureCleanup === cleanupSwipe) _detailGestureCleanup = null;
     document.body.classList.remove('knowledge-editor-open');
@@ -1406,6 +1529,7 @@ function renderDetail(container, options = {}) {
 
   restoreHorizontalTableScroll(container, preservedTables);
   if (options.preserveScroll) restoreDetailScroll(restoreScrollTop);
+  renderDraftBanner(container);
 }
 
 // ============================================================
@@ -2031,6 +2155,8 @@ function renderEditMode(container, { preserveHistory = false } = {}) {
   container.querySelector('#kn-save-btn')?.addEventListener('click', () => saveMemo(container));
 
   const editPage = container.querySelector('.kn-edit-page');
+  // 文字入力だけでなく、ブロック追加やマーカーなどのボタン操作でも下書き保存を予約する。
+  ['input', 'change', 'click', 'keyup'].forEach(type => editPage?.addEventListener(type, scheduleEditorDraftSave));
   // Browsers can expose Undo/Redo through beforeinput (mobile keyboard menus,
   // accessibility actions, or OS edit commands) without emitting keydown.
   // Route those actions through the same app history instead of allowing the
@@ -5100,6 +5226,8 @@ function editableMemoSignature(memo) {
 
 /** 正規化済み下書きを新規追加または既存更新し、画像削除・復習設定・編集基準も確定する。 */
 async function persistMemo(container) {
+  // 新規メモは保存でIDが付くので、消すべき下書きの場所(新規='new')を先に覚えておく。
+  const draftMemoId = edState.id;
   // Blur and wait one frame so mobile IME composition reaches the DOM before
   // the final snapshot is written to local storage and queued for sync.
   await settleEditorInput(container);
@@ -5155,6 +5283,8 @@ async function persistMemo(container) {
     toast('メモを保存しました ✓', 'success');
     window.AppNav?.refreshDesktopContext?.({ force: true });
     markEditorBaseline();
+    clearTimeout(draftSaveTimer);
+    clearMemoDraft(draftMemoId); // 本体へ保存できたので下書きは不要
     edState.isEdit = false;
     renderDetail(container, { preserveScroll: true });
   } else {
@@ -5184,6 +5314,8 @@ async function persistMemo(container) {
       toast('メモを作成しました ✨', 'success');
     }
     markEditorBaseline();
+    clearTimeout(draftSaveTimer);
+    clearMemoDraft(draftMemoId); // 本体へ保存できたので下書きは不要
     edState.isEdit = false;
     renderDetail(container, { preserveScroll: true });
   }
