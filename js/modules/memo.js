@@ -1208,11 +1208,7 @@ function _renderAITags(sheet, tags) {
 
 /** 新規メモへ初期ブロック構成を入れるためのテンプレート選択シートを開く。 */
 function showTemplatePicker() {
-  const overlay = document.getElementById('modal-overlay');
-  if (!overlay) { startNewMemo(null); return; }
-  overlay.innerHTML = '';
-  overlay.classList.remove('hidden');
-
+  if (!window.AppNav?.mountModal) { startNewMemo(null); return; }
   const modal = document.createElement('div');
   modal.className = 'modal';
   modal.innerHTML = `
@@ -1237,12 +1233,8 @@ function showTemplatePicker() {
       </div>
     </div>
   `;
-  overlay.appendChild(modal);
-
-  /** テンプレート選択シートを閉じてDOMから除去する。 */
-  const close = () => { overlay.classList.add('hidden'); overlay.innerHTML = ''; };
-  modal.querySelector('.modal-close').onclick = close;
-  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  // 表示・閉じる操作・後片付けはアプリ共通のモーダルに任せる。
+  const close = window.AppNav.mountModal(modal, { autoFocus: false });
 
   modal.querySelectorAll('[data-tpl]').forEach(btn => {
     btn.onclick = () => {
@@ -5333,11 +5325,7 @@ async function persistMemo(container) {
 
 /** メモ削除を確認し、画像を含む完全データをごみ箱へ移して復元可能にする。 */
 function confirmDelete(memoId, container) {
-  const overlay = document.getElementById('modal-overlay');
-  if (!overlay) return;
-  overlay.innerHTML = '';
-  overlay.classList.remove('hidden');
-
+  if (!window.AppNav?.mountModal) return;
   const modal = document.createElement('div');
   modal.className = 'modal';
   modal.innerHTML = `
@@ -5351,10 +5339,8 @@ function confirmDelete(memoId, container) {
       <button class="btn btn-danger btn-sm" id="del-ok">削除</button>
     </div>
   `;
-  overlay.appendChild(modal);
-  /** メモ削除確認ダイアログを閉じ、キー監視とオーバーレイを片付ける。 */
-  const close = () => { overlay.classList.add('hidden'); overlay.innerHTML = ''; };
-  modal.querySelector('.modal-close').onclick = close;
+  // 表示・閉じる操作・後片付けはアプリ共通のモーダルに任せる。
+  const close = window.AppNav.mountModal(modal, { autoFocus: false });
   modal.querySelector('#del-cancel').onclick = close;
   modal.querySelector('#del-ok').onclick = () => {
     const deleted = deleteKnowledgeMemo(memoId);
@@ -5373,7 +5359,6 @@ function confirmDelete(memoId, container) {
       });
     }, 100);
   };
-  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
 }
 
 // ============================================================

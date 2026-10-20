@@ -466,19 +466,9 @@ let modalClose = null;
  * アプリ共通のモーダルを開き、Esc、背景クリック、Tab移動を管理する。
  * @returns {Function} 呼び出し側からモーダルを閉じるための関数
  */
-export function openModal({ title, body, footer, onClose, wide = false }) {
-  const overlay = document.getElementById('modal-overlay');
-  if (modalClose) modalClose();
-  const previouslyFocused = document.activeElement instanceof HTMLElement
-    ? document.activeElement
-    : null;
-  overlay.innerHTML = '';
-  overlay.classList.remove('hidden');
-
+export function openModal({ title, body, footer, onClose, wide = false, autoFocus = true }) {
   const modal = document.createElement('div');
   modal.className = 'modal' + (wide ? ' modal-wide' : '');
-  modal.setAttribute('role', 'dialog');
-  modal.setAttribute('aria-modal', 'true');
   modal.setAttribute('aria-labelledby', 'app-modal-title');
 
   modal.innerHTML = `
@@ -495,7 +485,27 @@ export function openModal({ title, body, footer, onClose, wide = false }) {
   modal.querySelector('.modal-title').textContent = String(title || '');
   modal.querySelector('.modal-body').appendChild(body);
   if (footer) modal.querySelector('.modal-footer').appendChild(footer);
+  return mountModal(modal, { onClose, autoFocus });
+}
 
+/**
+ * 画面ごとに組み立てたモーダル要素を、共通の背景(#modal-overlay)へ表示する。
+ * 閉じる操作(×ボタン・背景タップ・Esc)、Tabの循環、閉じた後のフォーカス復帰と、
+ * 登録したイベントの後片付けをここ一か所で行う。以前は画面ごとに同じ処理を持ち、
+ * 背景へのクリック監視が開くたびに増え続けていた。
+ * autoFocus=false は、開いた瞬間にスマホのキーボードが出ないようにしたい画面用。
+ * @returns {Function} 呼び出し側からモーダルを閉じるための関数
+ */
+export function mountModal(modal, { onClose, autoFocus = true } = {}) {
+  const overlay = document.getElementById('modal-overlay');
+  if (modalClose) modalClose();
+  const previouslyFocused = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
+  overlay.innerHTML = '';
+  overlay.classList.remove('hidden');
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
   overlay.appendChild(modal);
 
   /** 共通モーダルを閉じ、オーバーレイ・キー監視・フォーカス状態を片付ける。 */
@@ -510,7 +520,7 @@ export function openModal({ title, body, footer, onClose, wide = false }) {
   };
   modalClose = close;
 
-  modal.querySelector('.modal-close').addEventListener('click', close);
+  modal.querySelector('.modal-close')?.addEventListener('click', close);
   /** `overlayHandler`: モーダル外側のクリックを受け、許可されていればモーダルを閉じる。 */
   const overlayHandler = e => { if (e.target === overlay) close(); };
   overlay.addEventListener('click', overlayHandler);
@@ -542,9 +552,11 @@ export function openModal({ title, body, footer, onClose, wide = false }) {
     document.removeEventListener('keydown', keyHandler);
     overlay.removeEventListener('click', overlayHandler);
   };
-  requestAnimationFrame(() => {
-    modal.querySelector('input, textarea, select, button, [tabindex]:not([tabindex="-1"])')?.focus?.();
-  });
+  if (autoFocus) {
+    requestAnimationFrame(() => {
+      modal.querySelector('input, textarea, select, button, [tabindex]:not([tabindex="-1"])')?.focus?.();
+    });
+  }
 
   return close; // caller can call close() to dismiss programmatically
 }
@@ -1205,7 +1217,7 @@ async function setupServiceWorkerAutoUpdate() {
 
 // Expose to global for modules without introducing circular imports.
 window.AppNav = {
-  navigate, refreshCurrentView, showToast, showUndoToast, openSearch, closeSearch, openModal,
+  navigate, refreshCurrentView, showToast, showUndoToast, openSearch, closeSearch, openModal, mountModal, closeModal,
   refreshDesktopContext: options => refreshDesktopWorkspace(currentView, options),
 };
 window.AppTheme = { apply: applyTheme };

@@ -636,10 +636,7 @@ function renderStudyPromptIfNeeded(schedItems, nowMin, container) {
 
 /** マイスケジュール項目を追加・編集する共通モーダルを開く。 */
 export function openScheduleItemModal({ dateStr = today(), item = null, onSaved = null } = {}) {
-  const overlay = document.getElementById('modal-overlay');
-  if (!overlay) return;
-  overlay.innerHTML = '';
-  overlay.classList.remove('hidden');
+  if (!window.AppNav?.mountModal) return;
 
   const isEdit = !!item?.id;
   const initialTitle = item?.title || '';
@@ -684,19 +681,9 @@ export function openScheduleItemModal({ dateStr = today(), item = null, onSaved 
     </div>
   `;
 
-  overlay.appendChild(modal);
-
-  /** My Schedule編集ダイアログを閉じ、キー監視とDOMを片付ける。 */
-  const close = () => {
-    document.removeEventListener('keydown', keyH);
-    overlay.classList.add('hidden');
-    overlay.innerHTML = '';
-  };
-  modal.querySelector('.modal-close').onclick = close;
-  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-  /** `keyH`: 確認ダイアログのキーボード操作を処理する。 */
-  const keyH = e => { if (e.key === 'Escape') close(); };
-  document.addEventListener('keydown', keyH);
+  // 表示・閉じる操作(×・背景・Esc)・後片付けはアプリ共通のモーダルに任せる。
+  // 題名欄へのフォーカスは下で少し遅らせて行うので、ここでは自動フォーカスしない。
+  const close = window.AppNav.mountModal(modal, { autoFocus: false });
 
   modal.querySelector('#sched-cancel').onclick = close;
 

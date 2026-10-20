@@ -502,38 +502,8 @@ function promptConfirm(message, opts = {}) {
 
 /** 目標用の小さな確認ダイアログを作り、確定・キャンセル結果をPromiseで返す。 */
 function openModalInline(opts) {
-  const overlay = document.getElementById('modal-overlay');
-  if (!overlay) return () => {};
-  overlay.innerHTML = '';
-  overlay.classList.remove('hidden');
-
-  const modal = document.createElement('div');
-  modal.className = 'modal';
-  modal.innerHTML = `
-    <div class="modal-header">
-      <span class="modal-title">${opts.title || ''}</span>
-      <button class="modal-close" aria-label="閉じる">
-        <svg viewBox="0 0 24 24" fill="currentColor">
-          <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-        </svg>
-      </button>
-    </div>
-    <div class="modal-body"></div>
-    ${opts.footer !== null ? '<div class="modal-footer"></div>' : ''}
-  `;
-
-  modal.querySelector('.modal-body').appendChild(opts.body);
-  if (opts.footer && modal.querySelector('.modal-footer')) {
-    modal.querySelector('.modal-footer').appendChild(opts.footer);
-  }
-
-  overlay.appendChild(modal);
-  /** 目標確認ダイアログを閉じ、Escape監視とDOMを片付ける。 */
-  const close = () => { overlay.classList.add('hidden'); overlay.innerHTML = ''; };
-  modal.querySelector('.modal-close').onclick = close;
-  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-  /** `keyH`: 確認ダイアログのキーボード操作を処理する。 */
-  const keyH = e => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', keyH); } };
-  document.addEventListener('keydown', keyH);
-  return close;
+  // 表示・閉じる操作・後片付けはアプリ共通のモーダルに任せる(app.jsのopenModal)。
+  return window.AppNav?.openModal({
+    title: opts.title, body: opts.body, footer: opts.footer || null, onClose: opts.onClose, autoFocus: false,
+  }) || (() => {});
 }

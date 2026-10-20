@@ -2255,60 +2255,15 @@ async function handleNLInput(input, btn) {
 // ---- Helpers: use app.js modal system via globals ----
 
 function openModalGlobal(opts) {
-  // Access app.js openModal via the DOM trick
-  const overlay = document.getElementById('modal-overlay');
-  if (!overlay) return () => {};
-
-  overlay.innerHTML = '';
-  overlay.classList.remove('hidden');
-
-  const modal = document.createElement('div');
-  modal.className = 'modal';
-  modal.innerHTML = `
-    <div class="modal-header">
-      <span class="modal-title"></span>
-      <button class="modal-close" aria-label="閉じる">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
-      </button>
-    </div>
-    <div class="modal-body"></div>
-    ${opts.footer !== null ? '<div class="modal-footer"></div>' : ''}
-  `;
-
-  modal.querySelector('.modal-title').textContent = String(opts.title || '');
-  modal.querySelector('.modal-body').appendChild(opts.body);
-  if (opts.footer && modal.querySelector('.modal-footer')) {
-    modal.querySelector('.modal-footer').appendChild(opts.footer);
-  }
-
-  overlay.appendChild(modal);
-
-  let closed = false;
-  /** カレンダー確認ダイアログを閉じ、キーボード監視とDOMを除去する。 */
-  const close = () => {
-    if (closed) return;
-    closed = true;
-    overlay.classList.add('hidden');
-    overlay.innerHTML = '';
-    document.removeEventListener('keydown', keyH);
-    opts.onClose?.();
-  };
-
-  modal.querySelector('.modal-close').onclick = close;
-  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-
-  /** `keyH`: 確認ダイアログのキーボード操作を処理する。 */
-  const keyH = e => { if (e.key === 'Escape') close(); };
-  document.addEventListener('keydown', keyH);
-
-  return close;
+  // 表示・閉じる操作・後片付けはアプリ共通のモーダルに任せる(app.jsのopenModal)。
+  return window.AppNav?.openModal({
+    title: opts.title, body: opts.body, footer: opts.footer || null, onClose: opts.onClose, autoFocus: false,
+  }) || (() => {});
 }
 
-/** アプリ共通モーダルの閉じる関数があれば呼び、現在のダイアログを閉じる。 */
+/** アプリ共通モーダルの閉じる関数を呼び、現在のダイアログを閉じる。 */
 function closeModalGlobal() {
-  const overlay = document.getElementById('modal-overlay');
-  overlay?.classList.add('hidden');
-  if (overlay) overlay.innerHTML = '';
+  window.AppNav?.closeModal?.();
 }
 
 /** ブラウザconfirmを共通窓口から呼び、破壊的操作の可否を真偽値で返す。 */

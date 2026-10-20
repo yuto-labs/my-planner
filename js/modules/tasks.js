@@ -1470,8 +1470,7 @@ function startTitleEdit(li, taskId) {
   const task = getTasks().find(t => t.id === taskId);
   if (!task) return;
 
-  const overlay = document.getElementById('modal-overlay');
-  if (!overlay) return;
+  if (!window.AppNav?.mountModal) return;
 
   let editDueDate = task.dueDate || null;
   let editDueTime = task.dueTime || null;
@@ -1561,11 +1560,10 @@ function startTitleEdit(li, taskId) {
     </div>
   `;
 
-  overlay.innerHTML = '';
-  overlay.appendChild(modal);
-  overlay.classList.remove('hidden');
-
   let _vvCleanup = null;
+  // 表示・閉じる操作(×・背景・Esc)・後片付けはアプリ共通のモーダルに任せる。
+  // キーボードの高さに合わせる監視は、閉じた時(onClose)に外す。
+  const close = window.AppNav.mountModal(modal, { autoFocus: false, onClose: () => _vvCleanup?.() });
   if (window.visualViewport) {
     /** スマホのソフトウェアキーボードによる表示領域変化に合わせ、詳細シートの高さを更新する。 */
     const _onVVResize = () => {
@@ -1714,13 +1712,6 @@ function startTitleEdit(li, taskId) {
     });
   });
 
-  /** タスク詳細シートを閉じ、Visual Viewport監視と一時DOMを片付ける。 */
-  const close = () => {
-    _vvCleanup?.();
-    overlay.classList.add('hidden');
-    overlay.innerHTML = '';
-  };
-
   /** 詳細画面の入力値を既存タスクへ反映し、保存後に一覧へ戻る。 */
   const save = () => {
     const newTitle = titleInput.value.trim();
@@ -1753,14 +1744,6 @@ function startTitleEdit(li, taskId) {
 
   modal.querySelector('#edit-save-btn')?.addEventListener('click', save);
   modal.querySelector('#edit-cancel-btn')?.addEventListener('click', close);
-  modal.querySelector('.modal-close')?.addEventListener('click', close);
-  overlay.addEventListener('click', e => { if (e.target === overlay) close(); }, { once: true });
-  titleInput.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      close();
-    }
-  });
 }
 
 // ---- Knowledge-save banner (appears when completing a task with memo) ----
