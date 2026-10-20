@@ -31,6 +31,10 @@ import {
 import { migrateToSupabase } from '../migrate.js';
 import { getSyncStatus, pullAll, startRealtimeSync, flushPendingSync, resetSyncForUserSwitch } from '../sync.js';
 import { consumePendingSharedInvite } from '../shared-calendar.js';
+import {
+  normalizeReminderSettings, notificationPermission, replanReminders,
+  requestNotificationPermission, sendTestReminder,
+} from '../reminders.js';
 import { openSharedCalendarSettings } from './shared-calendar.js';
 
 /** `toast`: 短い通知メッセージを画面へ表示する。 */
@@ -92,6 +96,10 @@ function renderMainSettings(container) {
         <p class="text-sm text-muted" style="margin-top:8px">
           Color used for My Schedule blocks on Home, Today, and Calendar.
         </p>
+      </div>
+
+      <div class="settings-section" id="reminder-section">
+        ${renderReminderSettings(settings.reminders)}
       </div>
 
       <div class="settings-section">
@@ -174,12 +182,83 @@ function renderMainSettings(container) {
   `;
 
   wireAppearance(container);
+  wireReminderSettings(container);
   wireCategories(container);
   wireStorageUsage(container);
   wireAccount(container, { hideWhenSignedIn: false, sectionId: 'main-account-section' });
   container.querySelector('#open-ai-settings-btn')?.addEventListener('click', () => nav('ai-settings'));
   container.querySelector('#open-shared-calendar-settings-btn')?.addEventListener('click', () => {
     openSharedCalendarSettings().catch(e => toast(e?.message || '共有設定を開けませんでした', 'error'));
+  });
+}
+
+// 通知のタイミングの選択肢(分)。0は「ちょうどの時刻」。
+const REMINDER_LEAD_OPTIONS = [0, 5, 10, 15, 30, 60];
+
+/** リマインダー設定欄。オンにした時だけ詳しい選択肢を出す。 */
+function renderReminderSettings(value) {
+  const reminders = normalizeReminderSettings(value);
+  const permission = notificationPermission();
+  const permissionNote = permission === 'denied'
+    ? '<p class="text-sm reminder-warning">この端末の通知がブロックされています。ブラウザーや端末の設定で通知を許可してください。</p>'
+    : permission === 'unsupported'
+      ? '<p class="text-sm reminder-warning">この端末・ブラウザーは通知に対応していません。iPhoneではホーム画面に追加したアプリで使えます。</p>'
+      : '';
+  return `
+    <div class="settings-heading">リマインダー</div>
+    <label class="reminder-row">
+      <input type="checkbox" id="reminder-enabled"${reminders.enabled ? ' checked' : ''}>
+      <span>予定とタスクの締切を通知する</span>
+    </label>
+    <div class="reminder-options"${reminders.enabled ? '' : ' hidden'}>
+      <label class="reminder-row">
+        <span>通知のタイミング</span>
+        <select class="input reminder-lead" id="reminder-lead">
+          ${REMINDER_LEAD_OPTIONS.map(minutes => `
+            <option value="${minutes}"${minutes === reminders.leadMinutes ? ' selected' : ''}>${minutes ? `${minutes}分前` : 'ちょうどの時刻'}</option>
+          `).join('')}
+        </select>
+      </label>
+      <label class="reminder-row">
+        <input type="checkbox" id="reminder-tasks"${reminders.includeTasks ? ' checked' : ''}>
+        <span>時刻を決めたタスクの締切も通知する</span>
+      </label>
+      <button class="btn btn-ghost btn-sm" id="reminder-test" type="button">テスト通知を送る</button>
+    </div>
+    ${permissionNote}
+    <p class="text-sm text-muted" style="margin-top:8px">
+      この端末だけの設定です。アプリを開いている間（裏に回した直後を含む）に通知し、完全に閉じている間は届きません。
+    </p>`;
+}
+
+/**
+ * リマインダー設定の操作を接続する。オンにする時に通知の許可を求め、
+ * 断られたらオフに戻す。変更のたびに通知予定を作り直す。
+ */
+function wireReminderSettings(container) {
+  const section = container.querySelector('#reminder-section');
+  /** 今の設定へ変更を重ねて保存し、通知予定を作り直す。 */
+  const update = patch => {
+    saveSettings({ reminders: { ...normalizeReminderSettings(getSettings().reminders), ...patch } });
+    replanReminders();
+  };
+  section?.querySelector('#reminder-enabled')?.addEventListener('change', async event => {
+    const enabled = event.target.checked;
+    if (enabled && !(await requestNotificationPermission())) {
+      event.target.checked = false;
+      toast('通知が許可されなかったため、リマインダーはオフのままです', 'error');
+      section.innerHTML = renderReminderSettings(getSettings().reminders);
+      wireReminderSettings(container);
+      return;
+    }
+    update({ enabled });
+    section.querySelector('.reminder-options').hidden = !enabled;
+    toast(enabled ? 'リマインダーをオンにしました' : 'リマインダーをオフにしました', 'success');
+  });
+  section?.querySelector('#reminder-lead')?.addEventListener('change', event => update({ leadMinutes: Number(event.target.value) }));
+  section?.querySelector('#reminder-tasks')?.addEventListener('change', event => update({ includeTasks: event.target.checked }));
+  section?.querySelector('#reminder-test')?.addEventListener('click', async () => {
+    toast(await sendTestReminder() ? 'テスト通知を送りました' : '通知が許可されていません', 'info');
   });
 }
 

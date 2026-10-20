@@ -6,7 +6,7 @@
 // JS/CSSの動作を変更したときはCACHE_VERも進め、古い端末キャッシュを更新する。
 // ============================================================
 
-const CACHE_VER  = 'v428';
+const CACHE_VER  = 'v429';
 const APP_CACHE  = `my-planner-app-${CACHE_VER}`;
 const CDN_CACHE  = `my-planner-cdn-${CACHE_VER}`;
 const PERSISTENT_IMAGE_CACHE = 'my-planner-images-v1';
@@ -18,7 +18,7 @@ const APP_ASSETS = [
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
-  './css/style.css?v=310',
+  './css/style.css?v=311',
   './css/responsive.css?v=8',
   './js/app.js',
   './js/desktop-workspace.js',
@@ -28,6 +28,7 @@ const APP_ASSETS = [
   './js/memo-draft.js',
   './js/review-toggle.js',
   './js/search-model.js',
+  './js/reminders.js',
   './js/datepicker.js',
   './js/holidays.js',
   './js/media.js',
@@ -178,6 +179,25 @@ async function staleWhileRevalidate(req, cacheName) {
 
   return cached ?? (await networkPromise) ?? new Response('', { status: 503 });
 }
+
+// ---- リマインダー通知を押した時 ----
+// 開いているアプリの画面があればそれを前面に出して該当画面へ移動し、なければ新しく開く。
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const view = event.notification.data?.view || 'home';
+  const target = new URL(`./#${view}`, self.registration.scope).href;
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const client = windows[0];
+    if (client) {
+      await client.focus();
+      // アプリは誤スワイプ対策でURLだけの画面移動を戻すため、画面移動はアプリ側に頼む。
+      client.postMessage({ type: 'reminder-open', view });
+      return;
+    }
+    await self.clients.openWindow(target);
+  })());
+});
 
 // ---- Message handler: force update cache ----
 self.addEventListener('message', event => {

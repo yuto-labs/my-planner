@@ -8,6 +8,7 @@
 
 import {
   getSettings, getPendingAIQueue, autoArchiveTasks, purgeExpiredTrashPayloads, isAiAvailable,
+  getEvents, getTasks,
   clearUserContentLocal, hasUserContentLocal,
   preserveUserContentSnapshot, restoreUserContentSnapshot,
   DEFAULT_ACCENT_RGB, DEFAULT_THEME_TUNING,
@@ -54,6 +55,7 @@ import { initArchive } from './modules/archive.js';
 import { initTagsPage, setTagFilter } from './modules/tags.js';
 import { captureHorizontalTableScroll, restoreHorizontalTableScroll } from './horizontal-scroll-state.js';
 import { flushLocalStore, initLocalStore, requestPersistentStorage } from './local-store.js';
+import { startReminders } from './reminders.js';
 import { initDesktopWorkspace, refreshDesktopWorkspace } from './desktop-workspace.js';
 
 // ---- Module registry ----
@@ -965,6 +967,8 @@ async function init() {
   document.getElementById('bottom-nav').classList.remove('hidden');
   initDesktopWorkspace();
   initAIJobStatus();
+  // リマインダー(既定オフ)。設定でオンにして通知を許可した端末だけ実際に通知する。
+  startReminders(() => ({ events: getEvents(), tasks: getTasks(), settings: getSettings().reminders }));
 
   // 一部のスマートフォンは横スワイプを、指を離した位置へのclickとして合成する。
   // ナビ以外から始めたスワイプもあるため画面全体を追跡し、その直後のclickだけ止める。
