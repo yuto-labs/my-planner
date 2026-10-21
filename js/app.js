@@ -1125,7 +1125,8 @@ async function init() {
     }
     getSession().then(session => {
       if (!session) return;
-      pullIfStale(1_000, true).then(pulled => {
+      // 通知が来ても全種類は取り直さず、変化検出で「変わった種類だけ」を取得する。
+      pullIfRemoteChanged().then(pulled => {
         if (pulled) refreshCurrentView({ preserveScroll: true });
       }).catch(() => {});
     }).catch(() => {});
