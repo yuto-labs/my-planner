@@ -13,7 +13,7 @@ import {
   addToPendingAIQueue, removeFromPendingAIQueue,
   pushUndo, applyUndo, addReviewLog, getReviewLog,
   getTags, addTag,
-  normalizeMemoBlockIds, archiveLocalSyncBackups, getDatabaseRowIds,
+  normalizeMemoBlockIds, archiveLocalSyncBackups, getDatabaseRowIds, getDatabases,
 } from '../storage.js';
 import {
   suggestKnowledgeTags, explainTerm, summarizeAndTagText,
@@ -28,7 +28,10 @@ import {
 } from '../media.js';
 import { flushPendingSync } from '../sync.js';
 import { clearMemoDraft, getMemoDraft, saveMemoDraft } from '../memo-draft.js';
-import { renderDatabaseRowPanel, returnToDatabaseFromRow } from './database.js';
+import {
+  createEmptyDatabase, openDatabase, renderDatabaseListCard, renderDatabaseRowPanel,
+  returnToDatabaseFromRow, startCsvImport, toggleDatabaseStar,
+} from './database.js';
 import { captureHorizontalTableScroll, restoreHorizontalTableScroll } from '../horizontal-scroll-state.js';
 import {
   markdownBlockShortcut,
@@ -667,17 +670,24 @@ function renderList() {
   const { container, search, filterTag } = listState;
   // データベースの行のページは、データベースの中で見るものなので一覧には出さない。
   const databaseRowIds = getDatabaseRowIds();
-  const memos = sortMemosForList(getKnowledgeMemos().filter(memo => !databaseRowIds.has(memo.id)));
-  const allTags = [...new Set(memos.flatMap(m => m.tags || []))].sort();
-  if (search) pruneMemoSearchIndex(memos);
+  const plainMemos = getKnowledgeMemos().filter(memo => !databaseRowIds.has(memo.id));
+  // データベースもメモと同じ一覧に「1件」として並べる(星・更新順も同じ規則)。
+  const databases = getDatabases().map(db => ({ ...db, title: db.name, __database: true }));
+  const memos = sortMemosForList([...plainMemos, ...databases]);
+  const allTags = [...new Set(plainMemos.flatMap(m => m.tags || []))].sort();
+  if (search) pruneMemoSearchIndex(plainMemos);
   else memoSearchIndex.clear();
 
   const filtered = memos.filter(m => {
     const q = search.toLowerCase();
+    // データベースは名前と列名で検索に当たる。タグはないので、タグで絞り込んだ時は出さない。
+    if (m.__database) return !filterTag && (!q || [m.name, ...m.properties.map(prop => prop.name)].join(' ').toLowerCase().includes(q));
     const matchSearch = !q || memoSearchText(m).includes(q);
     const matchTag = !filterTag || (m.tags || []).includes(filterTag);
     return matchSearch && matchTag;
   });
+  /** 一覧の1件を、メモならメモのカード、データベースならデータベースのカードで描く。 */
+  const renderListItem = item => (item.__database ? renderDatabaseListCard(item) : renderMemoCard(item));
 
   const orderedMemos = filtered;
   const visibleMemos = orderedMemos.slice(0, listState.visibleCount);
@@ -706,9 +716,7 @@ function renderList() {
           🕸️
         </button>
 
-        <button class="btn btn-ghost btn-sm" id="kn-db-btn" title="データベース" aria-label="データベース" style="flex-shrink:0;padding:6px 10px">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/></svg>
-        </button>
+        <button class="btn btn-ghost btn-sm" id="kn-new-db-btn" type="button" title="データベースを作る" aria-label="データベースを作る" style="flex-shrink:0;padding:6px 10px">▦＋</button>
 
         <button class="btn btn-primary btn-sm" id="kn-new-btn">
           <svg viewBox="0 0 24 24" fill="currentColor" style="width:14px;height:14px"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
@@ -730,10 +738,10 @@ function renderList() {
       <div class="kn-memo-list">
         ${visibleStarred.length ? `
           <div class="kn-list-section-label">⭐ ピン留め</div>
-          ${visibleStarred.map(renderMemoCard).join('')}
+          ${visibleStarred.map(renderListItem).join('')}
           ${visibleRegular.length ? '<div class="kn-list-section-label kn-list-section-label--gap">すべてのメモ</div>' : ''}
         ` : filtered.length ? '<div class="kn-list-section-label">すべてのメモ</div>' : ''}
-        ${visibleRegular.map(renderMemoCard).join('')}
+        ${visibleRegular.map(renderListItem).join('')}
         ${visibleTotal < filtered.length ? `
           <button class="kn-load-more-btn" id="kn-load-more" type="button">
             さらに表示
@@ -785,13 +793,28 @@ function renderList() {
 
   // Wire graph navigation
   container.querySelector('#kn-graph-btn')?.addEventListener('click', () => nav('knowledge-graph'));
-  container.querySelector('#kn-db-btn')?.addEventListener('click', () => nav('databases'));
 
   // Wire expression atlas navigation
   container.querySelector('#kn-atlas-btn')?.addEventListener('click', () => nav('expression-atlas'));
 
   // Wire new
   container.querySelector('#kn-new-btn')?.addEventListener('click', () => startNewMemo(null));
+  // データベースは「空から作る」か「CSVから取り込む」かを選ぶ。作ったものはこの一覧に並ぶ。
+  container.querySelector('#kn-new-db-btn')?.addEventListener('click', () => {
+    const body = document.createElement('div');
+    body.className = 'kn-template-grid';
+    body.innerHTML = `
+      <button class="kn-template-btn" type="button" data-new-db="empty"><span class="kn-template-icon">▦</span><span class="kn-template-label">空のデータベース</span></button>
+      <button class="kn-template-btn" type="button" data-new-db="csv"><span class="kn-template-icon">⇪</span><span class="kn-template-label">CSVから取り込む</span></button>`;
+    const close = window.AppNav?.openModal({ title: 'データベースを作る', body, autoFocus: false });
+    body.addEventListener('click', event => {
+      const choice = event.target.closest('[data-new-db]')?.dataset.newDb;
+      if (!choice) return;
+      close?.();
+      if (choice === 'csv') startCsvImport();
+      else createEmptyDatabase();
+    });
+  });
 
   // Wire tag filters
   container.querySelectorAll('[data-filter-tag]').forEach(btn => {
@@ -818,6 +841,21 @@ function renderList() {
       if (e.key !== 'Enter' && e.key !== ' ') return;
       e.preventDefault();
       openKnowledgeMemo(card.dataset.memoId);
+    });
+  });
+
+  // データベースのカード: 押すと開き、星はピン留めの切り替え。
+  container.querySelectorAll('[data-db-id]').forEach(card => {
+    card.addEventListener('click', e => {
+      if (e.target.closest('[data-star-db]')) return;
+      openDatabase(card.dataset.dbId);
+    });
+  });
+  container.querySelectorAll('[data-star-db]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      toggleDatabaseStar(btn.dataset.starDb);
+      renderList();
     });
   });
 

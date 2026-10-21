@@ -1334,6 +1334,7 @@ function recordToDatabase(record) {
     rows: data.rows && typeof data.rows === 'object' ? data.rows : {},
     order: Array.isArray(data.order) ? data.order : [],
     deleted: !!data.deleted,
+    starred: !!data.starred,
     updatedAt: record.updatedAt,
   };
 }

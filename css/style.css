@@ -11646,14 +11646,7 @@ button.atlas-nuance-map-row:focus-visible {
    スマホは1行1枚のカード、PCは表。行のページには列の値の欄を出す。 */
 .db-page { padding: 12px 16px 96px; max-width: 1100px; margin: 0 auto; }
 .db-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
-.db-import-btn { cursor: pointer; }
-.db-delete { margin-left: auto; color: var(--danger); }
-.db-list-item {
-  display: flex; justify-content: space-between; align-items: center; width: 100%;
-  padding: 14px 16px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 12px;
-  background: var(--bg-card); color: var(--text); text-align: left;
-}
-.db-list-item span { color: var(--text-dim); font-size: 13px; }
+.db-delete { color: var(--danger); }
 .db-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .db-toolbar .input { flex: 1; }
 .db-count { color: var(--text-dim); font-size: 13px; white-space: nowrap; }
@@ -11677,9 +11670,13 @@ button.atlas-nuance-map-row:focus-visible {
 .db-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .db-table th, .db-table td { padding: 9px 12px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
 .db-table th { color: var(--text-dim); font-weight: 500; background: var(--bg-hover); }
-.db-table tbody tr { cursor: pointer; }
 .db-table tbody tr:hover { background: var(--bg-hover); }
-.db-table-title { color: var(--text); font-weight: 500; }
+.db-table-title { display: flex; align-items: center; gap: 4px; min-width: 180px; }
+.db-table td .input { min-width: 120px; padding: 6px 8px; font-size: 13px; }
+.db-open-page { flex-shrink: 0; padding: 4px 8px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--text-muted); }
+.db-schema-col { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto auto; gap: 6px; align-items: center; }
+.db-schema-footer { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; }
+.db-memo-icon { margin-right: 6px; color: var(--primary-dark); }
 .db-import { display: grid; gap: 10px; }
 .db-import-note { margin: 0; color: var(--text-dim); font-size: 13px; }
 .db-import-col { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 14px; }
