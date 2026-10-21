@@ -21,6 +21,7 @@
 - `atlas-loader.js`: 表現帳の画面コード（辞書データ込み約280KB）を初めて開いた時に読み込む
 - `recurrence-model.js`: 繰り返し予定のルールから開催日と各回のIDを計算する
 - `backup-reminder.js`: バックアップの書き出しと、30日ごとのホームでのお知らせ
+- `database-model.js`: Notion風データベースのCSV読み込みと列の種類の推測
 - `sync.js`: Supabaseとの双方向同期と競合統合
 - `supabase.js`: Supabaseクライアントと認証状態
 - `migrate.js`: 既存ローカルデータの初回移行
@@ -65,6 +66,7 @@
 - `search.js`: 横断検索
 - `archive.js`: ゴミ箱
 - `tags.js`: タグ一覧
+- `database.js`: Notion風データベース（一覧・CSV取り込み・カード/表・行のページの値の欄）
 
 ## api
 

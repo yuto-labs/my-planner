@@ -11642,3 +11642,50 @@ button.atlas-nuance-map-row:focus-visible {
 .storage-usage-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
 .storage-usage-row small { margin-left: 6px; color: var(--text-muted); }
 .storage-usage-details summary { cursor: pointer; font-size: 13px; color: var(--text-muted); margin-bottom: 6px; }
+/* ---- Notion風データベース(js/modules/database.js) ----
+   スマホは1行1枚のカード、PCは表。行のページには列の値の欄を出す。 */
+.db-page { padding: 12px 16px 96px; max-width: 1100px; margin: 0 auto; }
+.db-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.db-import-btn { cursor: pointer; }
+.db-delete { margin-left: auto; color: var(--danger); }
+.db-list-item {
+  display: flex; justify-content: space-between; align-items: center; width: 100%;
+  padding: 14px 16px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--bg-card); color: var(--text); text-align: left;
+}
+.db-list-item span { color: var(--text-dim); font-size: 13px; }
+.db-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.db-toolbar .input { flex: 1; }
+.db-count { color: var(--text-dim); font-size: 13px; white-space: nowrap; }
+.db-cards { display: grid; gap: 8px; }
+.db-card {
+  display: grid; gap: 4px; padding: 10px 14px; border: 1px solid var(--border);
+  border-radius: 12px; background: var(--bg-card); cursor: pointer;
+}
+.db-card-title { font-size: 15px; color: var(--text); }
+.db-card-field { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; }
+.db-card-label { color: var(--text-dim); font-size: 12px; flex-shrink: 0; }
+.db-card-value { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, monospace; }
+.db-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.db-card-head .db-card-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.db-card-head .btn { flex-shrink: 0; }
+.db-copy {
+  margin-left: auto; flex-shrink: 0; padding: 3px 10px; font-size: 12px; border-radius: 8px;
+  border: 1px solid var(--border); background: transparent; color: var(--text-muted);
+}
+.db-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
+.db-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.db-table th, .db-table td { padding: 9px 12px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+.db-table th { color: var(--text-dim); font-weight: 500; background: var(--bg-hover); }
+.db-table tbody tr { cursor: pointer; }
+.db-table tbody tr:hover { background: var(--bg-hover); }
+.db-table-title { color: var(--text); font-weight: 500; }
+.db-import { display: grid; gap: 10px; }
+.db-import-note { margin: 0; color: var(--text-dim); font-size: 13px; }
+.db-import-col { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 14px; }
+.db-import-warning { grid-column: 1 / -1; margin: 0; color: var(--danger); font-size: 12px; }
+.db-row-panel { display: grid; gap: 8px; margin: 8px 16px 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); }
+.db-row-panel-db { margin: 0; color: var(--text-dim); font-size: 12px; }
+.db-row-field { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.db-row-field .db-card-label { min-width: 64px; }
+.db-row-field .input { flex: 1 1 180px; min-width: 0; }

@@ -13,7 +13,7 @@ import {
   addToPendingAIQueue, removeFromPendingAIQueue,
   pushUndo, applyUndo, addReviewLog, getReviewLog,
   getTags, addTag,
-  normalizeMemoBlockIds, archiveLocalSyncBackups,
+  normalizeMemoBlockIds, archiveLocalSyncBackups, getDatabaseRowIds,
 } from '../storage.js';
 import {
   suggestKnowledgeTags, explainTerm, summarizeAndTagText,
@@ -28,6 +28,7 @@ import {
 } from '../media.js';
 import { flushPendingSync } from '../sync.js';
 import { clearMemoDraft, getMemoDraft, saveMemoDraft } from '../memo-draft.js';
+import { renderDatabaseRowPanel, returnToDatabaseFromRow } from './database.js';
 import { captureHorizontalTableScroll, restoreHorizontalTableScroll } from '../horizontal-scroll-state.js';
 import {
   markdownBlockShortcut,
@@ -119,6 +120,8 @@ export function openKnowledgeMemo(id) {
 export function backFromKnowledgeDetail() {
   if (!confirmDiscardKnowledgeChanges()) return;
   const prev = _knHistory.pop();
+  // データベースから開いた行のページなら、メモ一覧ではなくデータベースへ戻る。
+  if (returnToDatabaseFromRow(currentMemoId)) return;
   if (!prev || prev.memoId === null) {
     _pendingListScrollTop = prev?.scrollTop || 0;
     _pendingListAnchorId = prev?.anchorId || null;
@@ -662,7 +665,9 @@ function restoreKnowledgeListPosition() {
 /** 星付き優先・更新順でメモカードを再描画する。 */
 function renderList() {
   const { container, search, filterTag } = listState;
-  const memos = sortMemosForList(getKnowledgeMemos());
+  // データベースの行のページは、データベースの中で見るものなので一覧には出さない。
+  const databaseRowIds = getDatabaseRowIds();
+  const memos = sortMemosForList(getKnowledgeMemos().filter(memo => !databaseRowIds.has(memo.id)));
   const allTags = [...new Set(memos.flatMap(m => m.tags || []))].sort();
   if (search) pruneMemoSearchIndex(memos);
   else memoSearchIndex.clear();
@@ -699,6 +704,10 @@ function renderList() {
         </button>
         <button class="btn btn-ghost btn-sm" id="kn-graph-btn" title="知識グラフ" style="flex-shrink:0;padding:6px 10px">
           🕸️
+        </button>
+
+        <button class="btn btn-ghost btn-sm" id="kn-db-btn" title="データベース" aria-label="データベース" style="flex-shrink:0;padding:6px 10px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/></svg>
         </button>
 
         <button class="btn btn-primary btn-sm" id="kn-new-btn">
@@ -776,6 +785,7 @@ function renderList() {
 
   // Wire graph navigation
   container.querySelector('#kn-graph-btn')?.addEventListener('click', () => nav('knowledge-graph'));
+  container.querySelector('#kn-db-btn')?.addEventListener('click', () => nav('databases'));
 
   // Wire expression atlas navigation
   container.querySelector('#kn-atlas-btn')?.addEventListener('click', () => nav('expression-atlas'));
@@ -1522,6 +1532,8 @@ function renderDetail(container, options = {}) {
   restoreHorizontalTableScroll(container, preservedTables);
   if (options.preserveScroll) restoreDetailScroll(restoreScrollTop);
   renderDraftBanner(container);
+  // データベースの行のページなら、閲覧画面の上に列の値(URL・IDなど)の欄を出す。
+  if (!isEdit) renderDatabaseRowPanel(container, id);
 }
 
 // ============================================================

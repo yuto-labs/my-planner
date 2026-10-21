@@ -1308,7 +1308,122 @@ function isInternalKnowledgeRecord(record) {
   return isExpressionAtlasRecord(record)
     || isLearningLibraryRecord(record)
     || isAppMediaPreferencesRecord(record)
-    || isAIGenerationJobRecord(record);
+    || isAIGenerationJobRecord(record)
+    || isDatabaseRecord(record);
+}
+
+// ---- Notion風データベース ----
+// データベース1つ = 内部レコード1件(列の定義と、各行の値)。各行のページは普通のメモで、
+// 開けばいつものメモ画面で本文を書ける。新しい表を作らずに、メモと同じ同期・ごみ箱が使える。
+const DATABASE_TAG = '__database__';
+const DATABASE_BLOCK_TYPE = 'database-data';
+
+/** 内部タグと専用ブロックから、データベースのレコードか判定する。 */
+function isDatabaseRecord(record) {
+  return Array.isArray(record?.tags) && record.tags.includes(DATABASE_TAG)
+    && Array.isArray(record.blocks) && record.blocks.some(block => block?.type === DATABASE_BLOCK_TYPE);
+}
+
+/** レコードからデータベースの中身 { id, name, properties, rows, order } を取り出す。 */
+function recordToDatabase(record) {
+  const data = record.blocks.find(block => block?.type === DATABASE_BLOCK_TYPE)?.data || {};
+  return {
+    id: record.id,
+    name: data.name || record.title || '無題のデータベース',
+    properties: Array.isArray(data.properties) ? data.properties : [],
+    rows: data.rows && typeof data.rows === 'object' ? data.rows : {},
+    order: Array.isArray(data.order) ? data.order : [],
+    deleted: !!data.deleted,
+    updatedAt: record.updatedAt,
+  };
+}
+
+/** 削除していないデータベースの一覧を返す。 */
+export function getDatabases() {
+  return getAllKnowledgeRecords().filter(isDatabaseRecord).map(recordToDatabase).filter(db => !db.deleted);
+}
+
+/** IDでデータベースを1つ返す。 */
+export function getDatabase(id) {
+  return getDatabases().find(db => db.id === id) || null;
+}
+
+/** データベースを内部レコードとして保存し(なければ追加)、同期を予約する。 */
+export function saveDatabase(db, extraRecords = []) {
+  const records = getAllKnowledgeRecords();
+  const now = new Date().toISOString();
+  const existing = records.find(record => record.id === db.id);
+  const { id, updatedAt: _u, ...data } = db;
+  const record = {
+    id, title: db.name, summary: '', url: '', starred: false, tags: [DATABASE_TAG],
+    blocks: [{ id: `${id}-data`, type: DATABASE_BLOCK_TYPE, data }],
+    createdAt: existing?.createdAt || now, updatedAt: now,
+  };
+  const next = existing ? records.map(item => item.id === id ? record : item) : [...records, record];
+  if (!save(KNOWLEDGE_KEY, [...next, ...extraRecords])) return false;
+  _notifySync('knowledge_memos');
+  return true;
+}
+
+/** 空のページ(普通のメモ)を作る。データベースの行として使う。 */
+function newRowMemo(title, now) {
+  return {
+    id: generateId(), title: String(title || '').trim() || '無題', summary: '', url: '', starred: false,
+    tags: [], blocks: [{ id: generateId(), type: 'paragraph', text: '', color: null }], createdAt: now, updatedAt: now,
+  };
+}
+
+/**
+ * 列の定義と行 [{ title, values }] からデータベースを作る。行のページ(メモ)もまとめて一度に保存する
+ * (1件ずつ保存すると、全メモの書き直しが行数ぶん起きて遅いため)。作ったデータベースを返す。
+ */
+export function createDatabase({ name, properties = [], rows = [] }) {
+  const now = new Date().toISOString();
+  const memos = rows.map(row => newRowMemo(row.title, now));
+  const db = {
+    id: generateId(),
+    name: String(name || '').trim() || '無題のデータベース',
+    properties,
+    rows: Object.fromEntries(memos.map((memo, index) => [memo.id, rows[index].values || {}])),
+    order: memos.map(memo => memo.id),
+  };
+  return saveDatabase(db, memos) ? db : null;
+}
+
+/** 行(ページ)を1つ追加し、そのメモのIDを返す。 */
+export function addDatabaseRow(dbId, title) {
+  const db = getDatabase(dbId);
+  if (!db) return null;
+  const memo = newRowMemo(title, new Date().toISOString());
+  const saved = saveDatabase({ ...db, rows: { ...db.rows, [memo.id]: {} }, order: [...db.order, memo.id] }, [memo]);
+  return saved ? memo.id : null;
+}
+
+/** 行の値を一部だけ書き換える。 */
+export function updateDatabaseRow(dbId, memoId, patch) {
+  const db = getDatabase(dbId);
+  if (!db || !(memoId in db.rows)) return false;
+  return saveDatabase({ ...db, rows: { ...db.rows, [memoId]: { ...db.rows[memoId], ...patch } } });
+}
+
+/** そのメモがどれかのデータベースの行なら、{ db, values } を返す。 */
+export function findDatabaseForRow(memoId) {
+  const db = getDatabases().find(item => memoId in item.rows);
+  return db ? { db, values: db.rows[memoId] || {} } : null;
+}
+
+/** すべてのデータベースの行になっているメモのID。メモ一覧から除くのに使う。 */
+export function getDatabaseRowIds() {
+  return new Set(getDatabases().flatMap(db => Object.keys(db.rows)));
+}
+
+/**
+ * データベースを消す。レコード自体は「削除済み」の印を付けて残す(他の端末で復活させないため)。
+ * 行のページ(メモ)は消さないので、普通のメモとしてメモ一覧に戻る。
+ */
+export function deleteDatabase(id) {
+  const db = getDatabase(id);
+  return db ? saveDatabase({ ...db, deleted: true }) : false;
 }
 
 /**
@@ -1317,6 +1432,7 @@ function isInternalKnowledgeRecord(record) {
  */
 export function classifyKnowledgeRecord(record) {
   if (isAIGenerationJobRecord(record)) return 'job';
+  if (isDatabaseRecord(record)) return 'database';
   if (isAppMediaPreferencesRecord(record)) return 'media';
   if (isLearningLibraryRecord(record)) return 'learning';
   if (isTranslationSetRecord(record)) return 'translation';

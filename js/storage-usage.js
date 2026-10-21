@@ -31,6 +31,7 @@ export const KNOWLEDGE_RECORD_LABELS = Object.freeze({
   learning: 'Knowledge',
   media: 'ホーム画像の設定',
   job: 'AIジョブ',
+  database: 'データベース',
 });
 
 /** キーと値の文字数を数える。localStorageはキー名も容量に含まれる。 */
