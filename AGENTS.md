@@ -48,6 +48,8 @@ The browser keeps a local-first copy. Synchronization must merge remote changes 
 
 ## Tests
 
+- `npm run e2e` runs Playwright smoke tests (`tests/e2e`) in a phone-sized Chromium with touch: every main screen opens, long-press reordering, memo markers, and draft restore. Add a case there when a UI interaction breaks.
+
 - CI runs on both Ubuntu and Windows. Windows checks files out with CRLF line endings, so a test that matches source text must accept `\r\n` (use `\s` or `\r?\n`, never a bare `\n`).
 - Avoid assertions that depend on timing or on two `Date.now()` calls being different.
 

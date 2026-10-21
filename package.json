@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
+    "e2e": "playwright test",
     "lint": "node scripts/check-syntax.mjs",
     "comments:check": "node scripts/check-function-comments.mjs",
     "docs:check": "node scripts/check-doc-links.mjs",
@@ -14,5 +15,8 @@
   },
   "dependencies": {
     "@vercel/functions": "^3.9.9"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
   }
 }

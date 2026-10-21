@@ -27,3 +27,19 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+
+  # スマホ画面を本物のブラウザーで操作するテスト(tests/e2e)。ブラウザーの準備に時間がかかるのでLinuxだけで行う。
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e

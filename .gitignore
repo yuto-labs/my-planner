@@ -6,3 +6,6 @@
 Thumbs.db
 .claude/
 node_modules/
+# 画面操作テスト(npm run e2e)の結果ファイル
+test-results/
+playwright-report/
