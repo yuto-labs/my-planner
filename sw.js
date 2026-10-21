@@ -6,7 +6,7 @@
 // JS/CSSの動作を変更したときはCACHE_VERも進め、古い端末キャッシュを更新する。
 // ============================================================
 
-const CACHE_VER  = 'v436';
+const CACHE_VER  = 'v437';
 const APP_CACHE  = `my-planner-app-${CACHE_VER}`;
 // 外部ライブラリ(KaTeX・Supabase)は版を固定したURLなので、アプリを更新しても中身は変わらない。
 // 以前はアプリの版名を付けていたため、更新のたびに捨てられ、次の起動で回線から取り直していた。
@@ -33,6 +33,7 @@ const APP_ASSETS = [
   './js/reminders.js',
   './js/atlas-loader.js',
   './js/recurrence-model.js',
+  './js/backup-reminder.js',
   './js/datepicker.js',
   './js/holidays.js',
   './js/media.js',

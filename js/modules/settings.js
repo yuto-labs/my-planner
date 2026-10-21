@@ -31,6 +31,7 @@ import {
 import { migrateToSupabase } from '../migrate.js';
 import { getSyncStatus, pullAll, startRealtimeSync, flushPendingSync, resetSyncForUserSwitch } from '../sync.js';
 import { consumePendingSharedInvite } from '../shared-calendar.js';
+import { downloadBackup } from '../backup-reminder.js';
 import {
   normalizeReminderSettings, notificationPermission, replanReminders,
   requestNotificationPermission, sendTestReminder,
@@ -807,14 +808,8 @@ function wireAISettings(container) {
 /** 全データのJSON書き出しと、既存データを消さないマージ取込を各ボタンへ接続する。 */
 function wireBackup(container) {
   container.querySelector('#export-btn')?.addEventListener('click', () => {
-    const json = exportBackup();
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `my-planner-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    // ホームのお知らせと同じ処理で書き出し、書き出した日も記録する(backup-reminder.js)。
+    downloadBackup();
     toast('バックアップを書き出しました', 'success');
   });
 

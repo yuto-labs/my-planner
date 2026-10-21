@@ -26,6 +26,7 @@ import {
   wirePlannerImageViewer,
 } from '../media.js';
 import { flushPendingSync } from '../sync.js';
+import { checkBackupDue, downloadBackup, snoozeBackupReminder } from '../backup-reminder.js';
 
 /** `nav`: 指定したハッシュ画面へ移動し、必要なら遷移元の状態を引き継ぐ。 */
 const nav   = (view) => window.AppNav?.navigate(view);
@@ -197,8 +198,35 @@ export function initHome(container) {
           </div>
         </div>`;
       })()}
+
+      <!-- バックアップのお知らせ(最後の書き出しから30日以上たった時だけ) -->
+      ${checkBackupDue() ? `<div class="card home-review-card" id="home-backup-card">
+          <div class="home-review-inner">
+            <div class="home-review-left">
+              <div class="home-review-icon">💾</div>
+              <div>
+                <div class="home-review-title">バックアップの時期です</div>
+                <div class="home-review-sub">最後の書き出しから30日以上たちました</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <button class="btn btn-ghost btn-sm" id="backup-later">あとで</button>
+              <button class="btn btn-primary btn-sm" id="backup-now">書き出す</button>
+            </div>
+          </div>
+        </div>` : ''}
     </div>
   `;
+
+  container.querySelector('#backup-now')?.addEventListener('click', () => {
+    downloadBackup();
+    container.querySelector('#home-backup-card')?.remove();
+    toast('バックアップを書き出しました', 'success');
+  });
+  container.querySelector('#backup-later')?.addEventListener('click', () => {
+    snoozeBackupReminder();
+    container.querySelector('#home-backup-card')?.remove();
+  });
 
   // Wire events
   hydratePlannerImages(container);

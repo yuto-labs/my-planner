@@ -20,6 +20,7 @@
 - `reminders.js`: 予定とタスク締切のリマインダー通知（既定オフ、端末ごとの設定）
 - `atlas-loader.js`: 表現帳の画面コード（辞書データ込み約280KB）を初めて開いた時に読み込む
 - `recurrence-model.js`: 繰り返し予定のルールから開催日と各回のIDを計算する
+- `backup-reminder.js`: バックアップの書き出しと、30日ごとのホームでのお知らせ
 - `sync.js`: Supabaseとの双方向同期と競合統合
 - `supabase.js`: Supabaseクライアントと認証状態
 - `migrate.js`: 既存ローカルデータの初回移行
