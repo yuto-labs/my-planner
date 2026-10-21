@@ -13,7 +13,7 @@ import {
   addToPendingAIQueue, removeFromPendingAIQueue,
   pushUndo, applyUndo, addReviewLog, getReviewLog,
   getTags, addTag,
-  normalizeMemoBlockIds, archiveLocalSyncBackups, getDatabaseRowIds, getDatabases,
+  normalizeMemoBlockIds, archiveLocalSyncBackups, getDatabaseRowIds, getDatabases, findDatabaseForRow,
 } from '../storage.js';
 import {
   suggestKnowledgeTags, explainTerm, summarizeAndTagText,
@@ -140,6 +140,11 @@ export function backFromKnowledgeDetail() {
       initKnowledgeDetail(main);
     } else nav('knowledge-detail', { routeHash });
   }
+}
+
+/** そのメモがデータベースの行(項目管理のページ)か。 */
+function isDatabaseRow(memoId) {
+  return !!memoId && !!findDatabaseForRow(memoId);
 }
 
 /** タイトル・タグ・ブロック・復習設定を、変更比較用の安定した文字列へ変換する。 */
@@ -1354,7 +1359,8 @@ export function initKnowledgeDetail(container) {
       tags:    [...(memo.tags || [])],
       url:     memo.url || '',
       starred: !!memo.starred,
-      reviewEnabled: isMemoReviewEnabled(memo.id),
+      // データベースの行のページは項目を管理するためのものなので、復習の対象にしない。
+      reviewEnabled: isMemoReviewEnabled(memo.id) && !isDatabaseRow(memo.id),
       isEdit:  false,
     };
     activeEditorBlockId = null;
@@ -2087,10 +2093,11 @@ function renderEditMode(container, { preserveHistory = false } = {}) {
           ` : ''}
           <div class="kn-tag-suggestions" id="kn-tag-suggestions"></div>
         </div>
+        ${isDatabaseRow(id) ? '' : `
         <label class="kn-review-toggle" for="kn-review-enabled">
           <input type="checkbox" id="kn-review-enabled"${edState.reviewEnabled ? ' checked' : ''}>
           <span class="kn-review-toggle-copy"><strong>復習対象</strong></span>
-        </label>
+        </label>`}
       </div>
 
       <!-- Block toolbar -->
@@ -2184,7 +2191,7 @@ function renderEditMode(container, { preserveHistory = false } = {}) {
       if (memo) {
         edState = { ...edState, title: memo.title, blocks: normalizeMemoBlockIds(deepClone(memo.blocks || [defaultBlock()])),
           tags: [...(memo.tags || [])], url: memo.url || '', starred: !!memo.starred,
-          reviewEnabled: isMemoReviewEnabled(memo.id), isEdit: false };
+          reviewEnabled: isMemoReviewEnabled(memo.id) && !isDatabaseRow(memo.id), isEdit: false };
       }
       activeEditorBlockId = null;
       markEditorBaseline();
@@ -5321,7 +5328,8 @@ async function persistMemo(container) {
       toast('変更を確認できなかったため、編集画面を保持しました。もう一度保存してください', 'error');
       return;
     }
-    setMemoReviewEnabled(edState.id, edState.reviewEnabled);
+    // データベースの行は、保存しても復習の対象にしない(既定の「対象」で予定が作られるのを防ぐ)。
+    setMemoReviewEnabled(edState.id, edState.reviewEnabled && !isDatabaseRow(edState.id));
     toast('メモを保存しました ✓', 'success');
     window.AppNav?.refreshDesktopContext?.({ force: true });
     markEditorBaseline();
@@ -5400,7 +5408,8 @@ function confirmDelete(memoId, container) {
     }
     pushUndo({ type: 'delete_memo', memo: deleted });
     close();
-    nav('memo');
+    // データベースの行を消した時は、メモ一覧ではなく元のデータベースへ戻る。
+    if (!returnToDatabaseFromRow(memoId)) nav('memo');
     // Show undo toast after navigation
     setTimeout(() => {
       undoToast('メモを削除しました', () => {

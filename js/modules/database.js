@@ -6,7 +6,7 @@
 // 「編集」で名前と列(追加・名前・種類・並び・削除)を変えられる。
 // ============================================================
 import {
-  addDatabaseRow, createDatabase, deleteDatabase, findDatabaseForRow, getDatabase,
+  addDatabaseRow, createDatabase, deleteDatabase, deleteKnowledgeMemo, findDatabaseForRow, getDatabase,
   getKnowledgeMemos, saveDatabase, updateDatabaseRow, updateKnowledgeMemo,
 } from '../storage.js';
 import {
@@ -137,23 +137,18 @@ function collectRows(db) {
 }
 
 /**
- * カード1枚。1行目に名前とリンクのボタン、その下に文字の列(コピーできる)を並べる。
- * 会社が多くても1画面に多く収まるよう、縦に詰めた2段構成にしている。
+ * スマホの一覧。普通のデータベースのように1行1件で「名前」と主な列を1つ並べる。
+ * 主な列は、URL以外で最初の列(就活ならID)。全部の項目は行をタップした詳細ページで見る。
  */
-function renderCard(db, row) {
-  const urls = db.properties.filter(prop => prop.type === 'url' && row.values[prop.id]);
-  const texts = db.properties.filter(prop => prop.type !== 'url' && formatValue(prop.type, row.values[prop.id]));
+function renderList(db, rows) {
+  const main = db.properties.find(prop => prop.type !== 'url');
   return `
-    <div class="db-card" data-row-open="${esc(row.id)}" role="button" tabindex="0">
-      <div class="db-card-head">
-        <strong class="db-card-title">${esc(row.title)}</strong>
-        ${urls.map(prop => `<a class="btn btn-ghost btn-sm" href="${esc(row.values[prop.id])}" target="_blank" rel="noopener noreferrer" data-link>${esc(prop.name === 'URL' ? 'マイページ' : prop.name)} ↗</a>`).join('')}
-      </div>
-      ${texts.map(prop => `
-        <div class="db-card-field">
-          <span class="db-card-label">${esc(prop.name)}</span>
-          <span class="db-card-value">${esc(formatValue(prop.type, row.values[prop.id]))}</span>
-          ${prop.type === 'text' ? `<button class="db-copy" type="button" data-copy="${esc(row.values[prop.id])}" aria-label="${esc(prop.name)}をコピー">コピー</button>` : ''}
+    <div class="db-list">
+      <div class="db-list-head"><span>名前</span><span>${esc(main?.name || '')}</span></div>
+      ${rows.map(row => `
+        <div class="db-list-row" data-row-open="${esc(row.id)}" role="button" tabindex="0">
+          <span class="db-list-title">${esc(row.title)}</span>
+          <span class="db-list-value">${main ? esc(formatValue(main.type, row.values[main.id])) : ''}</span>
         </div>`).join('')}
     </div>`;
 }
@@ -186,6 +181,7 @@ function renderTable(db, rows) {
             <td class="db-table-title">
               <input class="input" data-title-row="${esc(row.id)}" value="${esc(row.title)}" aria-label="名前">
               <button class="db-open-page" type="button" data-row-open="${esc(row.id)}" aria-label="ページを開く">↗</button>
+              <button class="db-open-page db-delete" type="button" data-row-delete="${esc(row.id)}" aria-label="この行を削除">削除</button>
             </td>
             ${db.properties.map(prop => `<td>${propertyInput(prop, row.values[prop.id], row.id)}</td>`).join('')}
           </tr>`).join('')}</tbody>
@@ -205,7 +201,7 @@ export function initDatabase(container) {
     const fresh = getDatabase(db.id) || db;
     const rows = collectRows(fresh).filter(row => rowMatches(row, fresh.properties, searchQuery));
     container.querySelector('#db-body').innerHTML = rows.length
-      ? (wideScreen() ? renderTable(fresh, rows) : `<div class="db-cards">${rows.map(row => renderCard(fresh, row)).join('')}</div>`)
+      ? (wideScreen() ? renderTable(fresh, rows) : renderList(fresh, rows))
       : '<div class="empty-state"><div class="empty-state-text">該当なし</div></div>';
     container.querySelector('#db-count').textContent = `${rows.length}件`;
   };
@@ -219,6 +215,7 @@ export function initDatabase(container) {
       <div class="db-actions">
         <button class="btn btn-primary btn-sm" id="db-add-row" type="button">＋ 追加</button>
         <button class="btn btn-ghost btn-sm" id="db-edit" type="button">編集（名前・列）</button>
+        <button class="btn btn-ghost btn-sm db-delete" id="db-delete-db" type="button" aria-label="データベースを削除">削除</button>
       </div>
       <div id="db-body"></div>
     </div>`;
@@ -230,6 +227,7 @@ export function initDatabase(container) {
     if (id) openRow(db.id, id);
   });
   container.querySelector('#db-edit').addEventListener('click', () => openSchemaEditor(db.id, () => initDatabase(container)));
+  container.querySelector('#db-delete-db').addEventListener('click', () => confirmDeleteDatabase(db));
 
   const body = container.querySelector('#db-body');
   // カード・表の行を押したらページを開く。リンク・コピー・入力欄は、押してもページを開かない。
@@ -241,6 +239,15 @@ export function initDatabase(container) {
       return;
     }
     if (event.target.closest('input')) return;
+    // PCの表の「削除」: その行のページをごみ箱へ移す(ごみ箱から戻すと行も戻る)。
+    const remove = event.target.closest('[data-row-delete]');
+    if (remove) {
+      const memoId = remove.dataset.rowDelete;
+      const title = getKnowledgeMemos().find(memo => memo.id === memoId)?.title || 'この行';
+      if (!window.confirm(`「${title}」を削除しますか？ ごみ箱から戻せます。`)) return;
+      if (deleteKnowledgeMemo(memoId)) { toast('ごみ箱へ移しました', 'success'); renderBody(); }
+      return;
+    }
     const row = event.target.closest('[data-row-open]');
     if (row) openRow(db.id, row.dataset.rowOpen);
   });
@@ -316,11 +323,8 @@ function openSchemaEditor(dbId, onSaved) {
       columns.push({ id: generateId(), name: `列${columns.length + 1}`, type: 'text' });
       render();
     } else if (event.target.closest('#db-delete')) {
-      if (!window.confirm(`「${db.name}」を削除しますか？ 各行のページは消えず、普通のメモとして残ります。`)) return;
-      deleteDatabase(db.id);
       close?.();
-      toast('データベースを削除しました', 'success');
-      nav('memo');
+      confirmDeleteDatabase(db);
     } else if (event.target.closest('#db-edit-save')) {
       collect();
       const before = new Map(db.properties.map(prop => [prop.id, prop]));
@@ -338,6 +342,29 @@ function openSchemaEditor(dbId, onSaved) {
       toast('保存しました', 'success');
       onSaved?.();
     }
+  });
+}
+
+/**
+ * データベースを消す前の確認。行のページも一緒に消すか、普通のメモとして残すかを選べる。
+ * 一緒に消す場合もごみ箱へ移すだけなので、ごみ箱から戻せる。
+ */
+function confirmDeleteDatabase(db) {
+  const body = document.createElement('div');
+  body.className = 'db-import';
+  body.innerHTML = `
+    <p class="db-import-note">「${esc(db.name)}」を削除します。中の${db.order.length}件のページをどうしますか？</p>
+    <button class="btn btn-danger" type="button" data-delete-mode="with-pages">ページも一緒に削除（ごみ箱から戻せます）</button>
+    <button class="btn btn-ghost" type="button" data-delete-mode="keep-pages">ページは普通のメモとして残す</button>`;
+  const close = window.AppNav.openModal({ title: 'データベースを削除', body, autoFocus: false });
+  body.addEventListener('click', event => {
+    const mode = event.target.closest('[data-delete-mode]')?.dataset.deleteMode;
+    if (!mode) return;
+    if (mode === 'with-pages') db.order.forEach(memoId => deleteKnowledgeMemo(memoId));
+    deleteDatabase(db.id);
+    close?.();
+    toast('データベースを削除しました', 'success');
+    nav('memo');
   });
 }
 

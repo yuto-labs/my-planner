@@ -1163,7 +1163,11 @@ export function createReviewItemResolver() {
   let atlas = null;
   let learning = null;
   return id => {
-    memos ??= new Map(getKnowledgeMemos().map(memo => [memo.id, memo]));
+    // データベースの行(項目管理のページ)は復習に出さない。以前の版で予定が作られていても飛ばす。
+    if (!memos) {
+      const rowIds = getDatabaseRowIds();
+      memos = new Map(getKnowledgeMemos().filter(memo => !rowIds.has(memo.id)).map(memo => [memo.id, memo]));
+    }
     const memo = memos.get(id);
     if (memo) return { kind: 'memo', id, title: memo.title || '無題', tags: memo.tags || [], data: memo };
     // 表現帳は同じ単語を一件へ統合するので、統合前のIDでも代表の項目へたどれるようにする。

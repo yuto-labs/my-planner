@@ -29,20 +29,32 @@ async function importCsv(page) {
   await expect(page.locator('#main-content')).toHaveAttribute('data-view', 'database');
 }
 
-test('a database lives in the memo list, opens as cards, and its rows open as pages', async ({ page }) => {
+test('a database lives in the memo list, opens as a list, and its rows open as pages', async ({ page }) => {
   const errors = await openMemoList(page);
   await importCsv(page);
 
-  await expect(page.locator('.db-card')).toHaveCount(2);
-  await expect(page.locator('.db-card').first()).toContainText('AB123');
-  await expect(page.locator('.db-card').first().getByRole('link', { name: /マイページ/ })).toHaveAttribute('href', 'https://example.com/a');
+  // スマホは普通のデータベースのような1行1件の一覧(名前と主な列=ID)。
+  await expect(page.locator('.db-list-row')).toHaveCount(2);
+  await expect(page.locator('.db-list-row').first()).toContainText('AB123');
   await expect(page.locator('#main-content')).not.toContainText('hidden-1');
 
   await page.locator('#db-search').fill('zx9');
-  await expect(page.locator('.db-card')).toHaveCount(1);
-  await page.locator('.db-card-title').click();
+  await expect(page.locator('.db-list-row')).toHaveCount(1);
+  await page.locator('.db-list-row').click();
   await expect(page.locator('#main-content')).toHaveAttribute('data-view', 'knowledge-detail');
+  // 詳細ページに全部の項目(URLは開くボタン付き)が出て、復習の対象にはならない。
   await expect(page.locator('.db-row-panel input[data-prop-type="text"]')).toHaveValue('ZX987');
+  await expect(page.locator('.db-row-panel a', { hasText: '開く' })).toHaveAttribute('href', 'https://example.com/b');
+  await page.locator('#kn-edit-btn').click();
+  await expect(page.locator('#kn-review-enabled')).toHaveCount(0);
+  await page.locator('#kn-save-btn').click();
+  const scheduled = await page.evaluate(async () => {
+    const s = await import('/js/storage.js');
+    const due = s.getReviewsForDate('2999-01-01').map(entry => entry.memoId);
+    const rowIds = s.getDatabaseRowIds();
+    return due.filter(id => rowIds.has(id)).length;
+  });
+  expect(scheduled).toBe(0);
 
   // 行のページから戻るとデータベース、データベースから戻るとメモ一覧。一覧にはデータベースが1件で並び、行は出ない。
   await page.locator('#back-btn').click();
@@ -65,7 +77,19 @@ test('columns can be renamed, added, and retyped from the editor', async ({ page
   await page.locator('#db-edit-name').fill('就活マイページ');
   await page.locator('#db-edit-save').click();
   await expect(page.locator('#page-title')).toHaveText('就活マイページ');
-  await expect(page.locator('.db-card').first()).toContainText('マイページID');
+  await expect(page.locator('.db-list-head')).toContainText('マイページID');
+});
+
+test('a database can be deleted together with its pages', async ({ page }) => {
+  await openMemoList(page);
+  await importCsv(page);
+  await page.locator('#db-delete-db').click();
+  await page.locator('[data-delete-mode="with-pages"]').click();
+  await expect(page.locator('#main-content')).toHaveAttribute('data-view', 'memo');
+  await expect(page.locator('.db-memo-card')).toHaveCount(0);
+  await expect(page.locator('#main-content')).not.toContainText('サンプル電機');
+  const trashed = await page.evaluate(async () => (await import('/js/storage.js')).getTrashItems().length);
+  expect(trashed).toBe(2);
 });
 
 test('on a wide screen the table cells can be edited in place', async ({ page }) => {
