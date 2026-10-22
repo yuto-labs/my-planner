@@ -39,9 +39,10 @@ export function serviceRoleKey() {
  */
 export async function serviceSelect(path) {
   const key = serviceRoleKey();
-  const response = await fetch(`${supabaseConfig().url}/rest/v1/${path}`, {
-    headers: { apikey: key, Authorization: `Bearer ${key}` },
-  });
+  // 旧形式の鍵(eyJ…で始まるJWT)はAuthorizationにも入れる。新形式(sb_secret_…)はJWTではないので
+  // Authorizationに入れると拒否される。apikeyだけで管理者として読める。
+  const headers = { apikey: key, ...(key.startsWith('eyJ') ? { Authorization: `Bearer ${key}` } : {}) };
+  const response = await fetch(`${supabaseConfig().url}/rest/v1/${path}`, { headers });
   if (!response.ok) throw Object.assign(new Error(`データを読めませんでした (${response.status})`), { status: 502 });
   return response.json();
 }
