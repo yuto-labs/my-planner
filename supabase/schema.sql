@@ -881,3 +881,7 @@ begin
     execute format('alter table public.%I replica identity full', t);
   end loop;
 end $$;
+
+-- Claudeのコネクタ用: service_roleに読み取りだけを許可する(migrations/2026-10-22_service_role_read_for_connector.sql)
+grant usage on schema public to service_role;
+grant select on public.tasks, public.events, public.schedule_items, public.knowledge_memos to service_role;
