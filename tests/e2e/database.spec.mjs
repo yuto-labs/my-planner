@@ -40,7 +40,8 @@ test('a database opens from its chip as a list, and its rows open as pages', asy
   await expect(page.locator('#main-content')).not.toContainText('hidden-1');
   await expect(page.locator('.nt tbody tr').first().locator('a[data-link]')).toHaveAttribute('href', 'https://example.com/a');
 
-  await page.locator('#db-search').fill('zx9');
+  await page.locator('[data-tool="search"]').click();
+  await page.locator('#space-search').fill('zx9');
   await expect(page.locator('.nt tbody tr')).toHaveCount(1);
   // スマホ(タッチ)では名前を押すと行のページが開く。
   await page.locator('.nt-td--title').click();
@@ -92,7 +93,8 @@ test('a saved view filters and sorts the rows, and is remembered', async ({ page
   await expect(page.locator('.db-view-tab.active')).toHaveText('Zだけ');
   await expect(page.locator('.nt tbody tr')).toHaveCount(1);
   // ビューを「リスト」にすると、名前と主な列だけの一覧になる。
-  await page.locator('[data-view-edit]').click();
+  await page.locator('[data-tool="more"]').click();
+  await page.locator('[data-menu="view"]').click();
   await page.locator('#view-layout').selectOption('list');
   await page.locator('#view-save').click();
   await expect(page.locator('.db-list-row')).toHaveCount(1);
@@ -123,7 +125,9 @@ test('a plain memo has no columns and can be moved into a database', async ({ pa
 test('a database can be deleted together with its pages', async ({ page }) => {
   await openMemoList(page);
   await importCsv(page);
-  await page.locator('#db-delete-db').click();
+  // データベースの削除は、チップの右クリックからだけ。
+  await page.locator('.db-space-chip', { hasText: '就活' }).click({ button: 'right' });
+  await page.locator('[data-menu="delete"]').click();
   await page.locator('[data-delete-mode="with-pages"]').click();
   await expect(page.locator('.db-space-chip.active')).toHaveText('メモ');
   await expect(page.locator('.db-space-chip', { hasText: '就活' })).toHaveCount(0);
@@ -142,7 +146,8 @@ test('table cells are edited in place, tags get colors, and new rows are typed i
   await expect(page.locator('.nt tbody tr').first()).toContainText('NEW-ID-1');
 
   // 列の種類を「タグ」にして、色付きのタグを付ける。
-  await page.locator('#db-edit').click();
+  await page.locator('[data-tool="more"]').click();
+  await page.locator('[data-menu="columns"]').click();
   await page.locator('.db-schema-col').filter({ has: page.locator('[data-col-name][value="ID"]') }).locator('[data-col-type]').selectOption('multi_select');
   await page.locator('#db-edit-save').click();
   await page.locator('.nt tbody tr').nth(1).locator('.nt-td--multi_select').click();
@@ -157,6 +162,44 @@ test('table cells are edited in place, tags get colors, and new rows are typed i
   await page.locator('.nt-editor').press('Enter');
   await expect(page.locator('.nt tbody tr')).toHaveCount(3);
   await expect(page.locator('.nt tbody tr').last()).toContainText('新しい会社');
+});
+
+test('a new database is named when created and renamed from its chip', async ({ page }) => {
+  await openMemoList(page);
+  await page.locator('[data-space-add]').click();
+  await page.locator('[data-new-db="empty"]').click();
+  await page.locator('.confirm-input').fill('うんちく');
+  await page.locator('.confirm-input').press('Enter');
+  await expect(page.locator('.db-space-chip.active')).toHaveText('うんちく');
+  // 名前の変更と削除は、チップの右クリック(スマホは長押し)のメニューから。
+  await page.locator('.db-space-chip.active').click({ button: 'right' });
+  await page.locator('[data-menu="rename"]').click();
+  await page.locator('.confirm-input').fill('ネタ帳');
+  await page.locator('.confirm-input').press('Enter');
+  await expect(page.locator('.db-space-chip.active')).toHaveText('ネタ帳');
+});
+
+test('sort and filter from the one-line toolbar change the table right away', async ({ page }) => {
+  await openMemoList(page);
+  await importCsv(page);
+  // 「メモ」とデータベースで、ビューのタブと道具(検索・フィルター・並べ替え・新規)は同じ1行にある。
+  await expect(page.locator('.db-view-bar [data-tool="new"]')).toBeVisible();
+  await expect(page.locator('.db-view-bar .db-view-tab.active')).toBeVisible();
+
+  await page.locator('[data-tool="sort"]').click();
+  await page.locator('.db-pop-search').fill('ID');
+  await page.locator('.db-pop [data-pick]', { hasText: 'ID' }).click();
+  await page.locator('[data-sort-dir]').selectOption('desc');
+  await expect(page.locator('.nt tbody tr').first()).toContainText('テスト銀行');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-tool="sort"]')).toHaveClass(/is-on/);
+
+  await page.locator('[data-tool="filter"]').click();
+  await page.locator('[data-filter-add]').click();
+  await page.locator('.db-pop [data-pick]', { hasText: 'ID' }).click();
+  await page.locator('.db-pop-rule input[data-filter-value]').fill('ab');
+  await expect(page.locator('.nt tbody tr')).toHaveCount(1);
+  await expect(page.locator('.nt tbody tr')).toContainText('サンプル電機');
 });
 
 test.describe('on a PC', () => {
@@ -182,7 +225,8 @@ test.describe('on a PC', () => {
     await openMemoList(page);
     await importCsv(page);
     // 列の削除: 確認の窓が出ても、下の「データベースの編集」は閉じない。「やめる」で何も消えない。
-    await page.locator('#db-edit').click();
+    await page.locator('[data-tool="more"]').click();
+  await page.locator('[data-menu="columns"]').click();
     await page.locator('.db-schema-col').first().locator('[data-col-remove]').click();
     const dialog = page.locator('.confirm-dialog');
     await expect(dialog).toBeVisible();

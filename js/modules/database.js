@@ -17,7 +17,7 @@ import {
 import { normalizeMemoUrl } from '../memo-model.js';
 import { esc, generateId } from '../utils.js';
 import { openKnowledgeMemo, refreshMemoSpace, renderBlocksView } from './memo.js';
-import { renderNotionTable, renderPropertyList, wireNotionTable, wirePropertyList } from './notion-table.js';
+import { propIcon, renderNotionTable, renderPropertyList, wireNotionTable, wirePropertyList } from './notion-table.js';
 
 /** `toast`: 短い通知メッセージを画面へ表示する。 */
 const toast = (message, type = 'info') => window.AppNav?.showToast(message, type);
@@ -68,41 +68,325 @@ function setActiveView(space, viewId) {
   writeLocal(VIEW_KEY, { ...readLocal(VIEW_KEY, {}), [viewKey(space)]: viewId });
 }
 
-// ---- メモ欄の上の「チップ」と「ビューのタブ」 ----
+// ---- メモ欄の上: 「チップ」の行と、ビューの1行(タブ・絞り込み・並べ替え・検索・新規) ----
+// 「メモ」もデータベースも同じ形にして、切り替えても画面の高さや位置がずれないようにする。
 
-/** 欄の切り替えチップ(メモ・各データベース・＋)と、その欄のビューのタブのHTML。 */
-export function renderSpaceHeader(space) {
+/** 小さな線のアイコン(Notionの表の右上と同じ意味の形)。 */
+const toolIcon = path => `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">${path}</svg>`;
+const TOOL_ICONS = {
+  filter: toolIcon('<path d="M2.5 4h11M4.5 8h7M6.5 12h3"/>'),
+  sort: toolIcon('<path d="M5 3v10M2.8 5.2 5 3l2.2 2.2M11 13V3M8.8 10.8 11 13l2.2-2.2"/>'),
+  search: toolIcon('<circle cx="7" cy="7" r="4.3"/><path d="m10.2 10.2 3.3 3.3"/>'),
+  graph: toolIcon('<circle cx="4" cy="4.5" r="1.6"/><circle cx="12" cy="4" r="1.6"/><circle cx="8" cy="12" r="1.6"/><path d="M5.5 5.2 7 10.6M10.6 5 9 10.6M5.6 4.4h4.8"/>'),
+  more: toolIcon('<circle cx="3.5" cy="8" r=".7"/><circle cx="8" cy="8" r=".7"/><circle cx="12.5" cy="8" r=".7"/>'),
+};
+
+/**
+ * チップの行(メモ・各データベース・＋)と、ビューの1行のHTML。
+ * search はその欄の検索語(入っていれば検索欄を開いたまま出す)。
+ */
+export function renderSpaceHeader(space, { search = '' } = {}) {
   const activeId = space.kind === 'memos' ? MEMO_SPACE : space.id;
   const current = activeView(space);
   /** チップ1つ。 */
   const chip = (id, label) => `<button class="db-space-chip${id === activeId ? ' active' : ''}" type="button" data-space="${esc(id)}" aria-pressed="${id === activeId}">${esc(label)}</button>`;
+  /** 右側の小さなアイコンのボタン。on は「設定中」(青くする)。 */
+  const tool = (name, label, on = false) => `<button class="db-tool-btn${on ? ' is-on' : ''}" type="button" data-tool="${name}" aria-label="${label}" title="${label}">${TOOL_ICONS[name]}</button>`;
   return `
     <div class="db-space-header">
-      <div class="db-space-bar" aria-label="メモとデータベースの切り替え">
+      <div class="db-space-bar" aria-label="メモとデータベースの切り替え(データベースは右クリック・長押しで名前の変更と削除)">
         ${chip(MEMO_SPACE, 'メモ')}
         ${getDatabases().map(db => chip(db.id, db.name)).join('')}
         <button class="db-space-chip db-space-add" type="button" data-space-add aria-label="データベースを作る">＋</button>
       </div>
-      <div class="db-view-tabs" aria-label="ビュー">
-        ${spaceViews(space).map(view => `<button class="db-view-tab${view.id === current.id ? ' active' : ''}" type="button" data-view-id="${esc(view.id)}">${esc(view.name)}</button>`).join('')}
-        <button class="db-view-tab db-view-add" type="button" data-view-add aria-label="ビューを追加">＋</button>
-        <span class="db-view-tools">
-          <button class="btn btn-ghost btn-sm" type="button" data-view-edit>ビュー編集</button>
-        </span>
+      <div class="db-view-bar">
+        <div class="db-view-tabs" aria-label="ビュー">
+          ${spaceViews(space).map(view => `<button class="db-view-tab${view.id === current.id ? ' active' : ''}" type="button" data-view-id="${esc(view.id)}">${esc(view.name)}</button>`).join('')}
+          <button class="db-view-tab db-view-add" type="button" data-view-add aria-label="ビューを追加">＋</button>
+        </div>
+        <div class="db-view-tools">
+          <input class="db-search-input${search ? ' is-open' : ''}" id="space-search" type="search" placeholder="検索" value="${esc(search)}" aria-label="検索">
+          ${tool('search', '検索', !!search)}
+          ${tool('filter', 'フィルター', current.filters?.length > 0)}
+          ${tool('sort', '並べ替え', !!current.sort && !(space.kind === 'memos' && current.sort.prop === '__updated' && current.sort.dir === 'desc'))}
+          ${space.kind === 'memos' ? tool('graph', '知識グラフ') : ''}
+          ${tool('more', 'その他')}
+          <button class="db-new-btn" type="button" data-tool="new">新規</button>
+        </div>
       </div>
     </div>`;
 }
 
-/** チップとタブを動くようにする。切り替えたらメモ欄を描き直す。 */
-export function wireSpaceHeader(container, space) {
-  container.querySelector('.db-space-header')?.addEventListener('click', event => {
+/**
+ * チップの行とビューの1行を動くようにする。onSearch は検索語が変わった時、onNew は「新規」の時に呼ぶ
+ * (「メモ」とデータベースで中身が違うので、呼ぶ側が決める)。
+ */
+export function wireSpaceHeader(container, space, { onSearch, onNew } = {}) {
+  const header = container.querySelector('.db-space-header');
+  if (!header) return;
+  let suppressClick = false;
+  header.addEventListener('click', event => {
+    if (suppressClick) { suppressClick = false; return; }
     const chip = event.target.closest('[data-space]');
     if (chip) { setActiveSpaceId(chip.dataset.space); refreshMemoSpace(); return; }
     if (event.target.closest('[data-space-add]')) { openCreateDatabaseSheet(); return; }
     const tab = event.target.closest('[data-view-id]');
     if (tab) { setActiveView(space, tab.dataset.viewId); refreshMemoSpace(); return; }
     if (event.target.closest('[data-view-add]')) { openViewEditor(space, null); return; }
-    if (event.target.closest('[data-view-edit]')) openViewEditor(space, activeView(space).id);
+    const button = event.target.closest('[data-tool]');
+    if (!button) return;
+    const name = button.dataset.tool;
+    if (name === 'search') {
+      const input = header.querySelector('#space-search');
+      input.classList.add('is-open');
+      input.focus();
+    } else if (name === 'filter') openFilterPopover(button, space);
+    else if (name === 'sort') openSortPopover(button, space);
+    else if (name === 'graph') nav('knowledge-graph');
+    else if (name === 'more') openMoreMenu(button, space);
+    else if (name === 'new') onNew?.();
+  });
+  // 検索欄は、空のまま離れたら閉じる(アイコンだけに戻る)。
+  const input = header.querySelector('#space-search');
+  input?.addEventListener('blur', () => { if (!input.value) input.classList.remove('is-open'); });
+  if (onSearch) onSearch(input);
+
+  // データベースのチップは、右クリック(スマホは長押し)で「名前を変更」「削除」のメニュー。
+  // 間違って消さないよう、削除はここからだけにする。
+  const bar = header.querySelector('.db-space-bar');
+  /** そのチップのデータベース(「メモ」と「＋」はメニューなし)。 */
+  const chipDb = target => {
+    const id = target.closest('[data-space]')?.dataset.space;
+    return id && id !== MEMO_SPACE ? getDatabase(id) : null;
+  };
+  bar.addEventListener('contextmenu', event => {
+    const db = chipDb(event.target);
+    if (!db) return;
+    event.preventDefault();
+    openDatabaseMenu(db, event.clientX, event.clientY);
+  });
+  let pressTimer = null;
+  bar.addEventListener('pointerdown', event => {
+    if (event.pointerType !== 'touch') return;
+    const db = chipDb(event.target);
+    if (!db) return;
+    const { clientX, clientY } = event;
+    pressTimer = setTimeout(() => { suppressClick = true; openDatabaseMenu(db, clientX, clientY); }, 550);
+  });
+  ['pointerup', 'pointercancel', 'pointermove'].forEach(type => bar.addEventListener(type, () => clearTimeout(pressTimer)));
+}
+
+// ---- 小さな選択窓(ポップオーバー)。表示中は1つだけ ----
+
+let closeActivePopover = null;
+
+/**
+ * ボタン(または画面上の位置)の下に小さな窓を出す。外を押す・Escで閉じる。
+ * 窓は body の直下に置くので、中身を描き直しても閉じない。中身を入れた後に位置を整える。
+ * @returns {HTMLElement} 中身を入れる窓
+ */
+function openPopover(anchor, className = '') {
+  closeActivePopover?.();
+  const pop = document.createElement('div');
+  pop.className = `db-pop ${className}`;
+  document.body.append(pop);
+  const rect = anchor instanceof Element ? anchor.getBoundingClientRect() : { left: anchor.x, right: anchor.x, bottom: anchor.y };
+  /** 画面からはみ出さない位置に置き直す(中身の大きさが変わった時にも呼ぶ)。 */
+  pop.place = () => {
+    const width = pop.offsetWidth;
+    pop.style.left = `${Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8, rect.left))}px`;
+    pop.style.top = `${Math.min(rect.bottom + 4, window.innerHeight - pop.offsetHeight - 8)}px`;
+  };
+  /** 外を押したら閉じる。 */
+  const outside = event => { if (!pop.contains(event.target)) close(); };
+  /** Escで閉じる。 */
+  const onKey = event => { if (event.key === 'Escape') { event.stopPropagation(); close(); } };
+  /** 窓と監視を片付ける。 */
+  function close() {
+    document.removeEventListener('pointerdown', outside, true);
+    window.removeEventListener('keydown', onKey, true);
+    pop.remove();
+    closeActivePopover = null;
+  }
+  setTimeout(() => document.addEventListener('pointerdown', outside, true), 0);
+  window.addEventListener('keydown', onKey, true);
+  closeActivePopover = close;
+  pop.close = close;
+  return pop;
+}
+
+/** 最新の欄(「メモ」の設定かデータベース)を読み直す。 */
+const freshSpace = space => (space.kind === 'memos' ? getMemoSpace() : getDatabase(space.id)) || space;
+
+/** 今のビューを書き換えて保存し、メモ欄を描き直す(窓は開いたまま)。 */
+function updateActiveView(space, change) {
+  const target = freshSpace(space);
+  const view = JSON.parse(JSON.stringify(activeView(target)));
+  change(view);
+  const views = spaceViews(target);
+  saveDatabase({ ...target, views: views.some(item => item.id === view.id) ? views.map(item => (item.id === view.id ? view : item)) : [...views, view] });
+  setActiveView(target, view.id);
+  refreshMemoSpace();
+}
+
+/**
+ * 列を選ぶ一覧(上に絞り込み用の入力欄)。Notionの「並べ替え基準…」と同じ形。onPick に選んだ列を渡す。
+ */
+function propertyPicker(pop, space, placeholder, onPick) {
+  const props = viewProperties(freshSpace(space));
+  pop.innerHTML = `
+    <input class="db-pop-search" placeholder="${esc(placeholder)}" aria-label="${esc(placeholder)}">
+    <div class="db-pop-list">${props.map(prop => `
+      <button class="db-pop-item" type="button" data-pick="${esc(prop.id)}">${propIcon(prop.type === 'text' && prop.id === '__title' ? 'title' : prop.type)}<span>${esc(prop.name)}</span></button>`).join('')}
+    </div>`;
+  const input = pop.querySelector('.db-pop-search');
+  input.addEventListener('input', () => {
+    const q = input.value.trim().toLowerCase();
+    pop.querySelectorAll('[data-pick]').forEach(item => { item.hidden = !!q && !item.textContent.toLowerCase().includes(q); });
+  });
+  pop.querySelector('.db-pop-list').addEventListener('click', event => {
+    const id = event.target.closest('[data-pick]')?.dataset.pick;
+    if (id) onPick(props.find(prop => prop.id === id));
+  });
+  // 窓そのものに描いた時だけ位置を整える(並べ替えの窓は、下に入れてから窓の側で整える)。
+  pop.place?.();
+  input.focus();
+}
+
+/**
+ * 並べ替えの窓。並べ替え中なら「列・向き・外す」を出し、その下で別の列を選べる。
+ * 選んだ時点で今のビューに保存して、表がすぐ並び替わる。
+ */
+function openSortPopover(button, space) {
+  const pop = openPopover(button, 'db-pop--sort');
+  /** 今の並べ替えで窓を描き直す。 */
+  const draw = () => {
+    const target = freshSpace(space);
+    const sort = activeView(target).sort;
+    const props = viewProperties(target);
+    const prop = sort && props.find(item => item.id === sort.prop);
+    const holder = document.createElement('div');
+    propertyPicker(holder, space, '並べ替え基準…', picked => {
+      updateActiveView(space, view => { view.sort = { prop: picked.id, dir: view.sort?.prop === picked.id ? view.sort.dir : 'asc' }; });
+      draw();
+    });
+    pop.innerHTML = prop ? `
+      <div class="db-pop-rule">
+        ${propIcon(prop.id === '__title' ? 'title' : prop.type)}<span class="db-pop-rule-name">${esc(prop.name)}</span>
+        <select class="select db-pop-select" data-sort-dir aria-label="向き">
+          <option value="asc"${sort.dir !== 'desc' ? ' selected' : ''}>昇順</option>
+          <option value="desc"${sort.dir === 'desc' ? ' selected' : ''}>降順</option>
+        </select>
+        <button class="db-pop-x" type="button" data-sort-clear aria-label="並べ替えを外す">×</button>
+      </div>` : '';
+    pop.append(holder);
+    pop.querySelector('[data-sort-dir]')?.addEventListener('change', event => {
+      updateActiveView(space, view => { view.sort = { ...view.sort, dir: event.target.value }; });
+    });
+    pop.querySelector('[data-sort-clear]')?.addEventListener('click', () => {
+      updateActiveView(space, view => { view.sort = null; });
+      draw();
+    });
+    pop.place();
+  };
+  draw();
+}
+
+/**
+ * フィルターの窓。今のビューの絞り込み条件を並べ、値はその場で変えられる(すぐ表に反映)。
+ * 「＋ フィルターを追加」で列を選ぶと、その列の条件が1つ増える。
+ */
+function openFilterPopover(button, space) {
+  const pop = openPopover(button, 'db-pop--filter');
+  let typingTimer = null;
+  /** 今の条件で窓を描き直す。 */
+  const draw = () => {
+    const target = freshSpace(space);
+    const props = viewProperties(target);
+    const filters = activeView(target).filters || [];
+    pop.innerHTML = `
+      ${filters.map((filter, index) => {
+        const prop = props.find(item => item.id === filter.prop);
+        return prop ? `<div class="db-pop-rule" data-filter="${index}">
+          ${propIcon(prop.id === '__title' ? 'title' : prop.type)}<span class="db-pop-rule-name">${esc(prop.name)}</span>
+          ${filterValueInput(prop, filter.value)}
+          <button class="db-pop-x" type="button" data-filter-remove aria-label="この条件を外す">×</button>
+        </div>` : '';
+      }).join('') || '<p class="db-pop-empty">絞り込みはありません</p>'}
+      <button class="db-pop-add" type="button" data-filter-add>＋ フィルターを追加</button>
+      <datalist id="db-tag-list">${[...new Set(getKnowledgeMemos().flatMap(memo => memo.tags || []))].map(tag => `<option value="${esc(tag)}"></option>`).join('')}</datalist>`;
+    pop.place();
+  };
+  /** 入力欄の今の値を、条件の値の形にする(日付は期間、チェックは真偽)。 */
+  const readValue = (row, prop) => (prop?.type === 'date'
+    ? { from: row.querySelector('[data-filter-from]').value, to: row.querySelector('[data-filter-to]').value }
+    : prop?.type === 'checkbox' ? row.querySelector('[data-filter-value]').value === 'true' : row.querySelector('[data-filter-value]').value);
+  /** 1つの条件の値を保存する。 */
+  const saveRow = row => {
+    const index = Number(row.dataset.filter);
+    updateActiveView(space, view => {
+      const prop = viewProperties(freshSpace(space)).find(item => item.id === view.filters[index]?.prop);
+      if (view.filters[index]) view.filters[index].value = readValue(row, prop);
+    });
+  };
+  pop.addEventListener('input', event => {
+    const row = event.target.closest('[data-filter]');
+    if (!row) return;
+    // 文字を打っている間は少し待ってから反映する(1文字ごとに表を描き直さない)。
+    clearTimeout(typingTimer);
+    typingTimer = setTimeout(() => saveRow(row), 250);
+  });
+  pop.addEventListener('change', event => {
+    const row = event.target.closest('[data-filter]');
+    if (row) { clearTimeout(typingTimer); saveRow(row); }
+  });
+  pop.addEventListener('click', event => {
+    if (event.target.closest('[data-filter-remove]')) {
+      const index = Number(event.target.closest('[data-filter]').dataset.filter);
+      updateActiveView(space, view => { view.filters.splice(index, 1); });
+      draw();
+    } else if (event.target.closest('[data-filter-add]')) {
+      propertyPicker(pop, space, 'フィルター対象…', picked => {
+        updateActiveView(space, view => { view.filters = [...(view.filters || []), { prop: picked.id, value: picked.type === 'checkbox' ? true : '' }]; });
+        draw();
+        pop.querySelector('[data-filter]:last-of-type input')?.focus();
+      });
+    }
+  });
+  draw();
+}
+
+/** 「…」のメニュー: ビューの設定(名前・表示の形)と、データベースなら列の編集。 */
+function openMoreMenu(button, space) {
+  const pop = openPopover(button, 'db-pop--menu');
+  pop.innerHTML = `
+    <button class="db-pop-item" type="button" data-menu="view">ビューの設定…</button>
+    ${space.kind === 'memos' ? '' : '<button class="db-pop-item" type="button" data-menu="columns">列を編集…</button>'}`;
+  pop.place();
+  pop.addEventListener('click', event => {
+    const item = event.target.closest('[data-menu]')?.dataset.menu;
+    if (!item) return;
+    pop.close();
+    if (item === 'view') openViewEditor(space, activeView(space).id);
+    else openSchemaEditor(space.id, refreshMemoSpace);
+  });
+}
+
+/** データベースのチップの右クリック(長押し)メニュー: 名前を変更・削除(確認あり)。 */
+function openDatabaseMenu(db, x, y) {
+  const pop = openPopover({ x, y }, 'db-pop--menu');
+  pop.innerHTML = `
+    <button class="db-pop-item" type="button" data-menu="rename">名前を変更</button>
+    <button class="db-pop-item db-delete" type="button" data-menu="delete">削除</button>`;
+  pop.place();
+  pop.addEventListener('click', async event => {
+    const item = event.target.closest('[data-menu]')?.dataset.menu;
+    if (!item) return;
+    pop.close();
+    if (item === 'delete') { confirmDeleteDatabase(db); return; }
+    const name = await window.AppNav.prompt('データベースの名前', { value: db.name, okLabel: '変更' });
+    const fresh = getDatabase(db.id);
+    if (name && fresh) { saveDatabase({ ...fresh, name }); refreshMemoSpace(); }
   });
 }
 
@@ -123,10 +407,12 @@ function openCreateDatabaseSheet() {
   });
 }
 
-/** 空のデータベース(「URL」「ID」の2列)を作って開く。メモの「新規」から呼ぶ。 */
-export function createEmptyDatabase() {
+/** 名前を付けて、空のデータベース(「URL」「ID」の2列)を作って開く。名前を入れずにやめたら作らない。 */
+export async function createEmptyDatabase() {
+  const name = await window.AppNav.prompt('新しいデータベースの名前', { placeholder: '例: 就活', okLabel: '作る' });
+  if (!name) return;
   const db = createDatabase({
-    name: '新しいデータベース',
+    name,
     properties: [{ id: generateId(), name: 'URL', type: 'url' }, { id: generateId(), name: 'ID', type: 'text' }],
   });
   if (db) openDatabase(db.id);
@@ -318,36 +604,26 @@ export function mountDatabaseSpace(container, db) {
       : renderNotionTable(fresh, rows);
     const wrap = target.querySelector('.nt-wrap');
     if (wrap) wrap.scrollLeft = scrollLeft;
-    container.querySelector('#db-count').textContent = `${rows.length}件`;
     renderPeek(container, db.id, renderBody);
   };
 
+  // 上はチップの行とビューの1行だけ(「メモ」と同じ形)。データベースの削除はチップの右クリックから。
   container.innerHTML = `
     <div class="db-page" data-space-id="${esc(db.id)}">
-      ${renderSpaceHeader(db)}
-      <!-- Notionのように控えめな1行: 検索・件数・列の編集・削除。行の追加は表の下の「＋ 新規」(リストの時は「＋」)。 -->
-      <div class="db-toolbar">
-        <input class="input db-search" id="db-search" type="search" placeholder="検索" value="${esc(searchQuery)}">
-        <span class="db-count" id="db-count"></span>
-        <button class="db-tool" id="db-add-row" type="button" aria-label="行を追加" title="行を追加">＋</button>
-        <button class="db-tool" id="db-edit" type="button">列を編集</button>
-        <button class="db-tool db-delete" id="db-delete-db" type="button" aria-label="データベースを削除">削除</button>
-      </div>
+      ${renderSpaceHeader(db, { search: searchQuery })}
       <div id="db-body"></div>
     </div>`;
   renderBody();
-  wireSpaceHeader(container, db);
-
-  container.querySelector('#db-search').addEventListener('input', event => { searchQuery = event.target.value; renderBody(); });
-  container.querySelector('#db-add-row').addEventListener('click', () => {
+  wireSpaceHeader(container, db, {
+    onSearch: input => input.addEventListener('input', () => { searchQuery = input.value; renderBody(); }),
     // 表の時は表の下の「＋ 新規」と同じ(その場で名前を書く)。リストの時は新しい行のページを開く。
-    const inlineAdd = container.querySelector('[data-nt-add]');
-    if (inlineAdd) { inlineAdd.click(); return; }
-    const id = addDatabaseRow(db.id, '新しい項目');
-    if (id) openKnowledgeMemo(id);
+    onNew: () => {
+      const inlineAdd = container.querySelector('[data-nt-add]');
+      if (inlineAdd) { inlineAdd.click(); return; }
+      const id = addDatabaseRow(db.id, '新しい項目');
+      if (id) openKnowledgeMemo(id);
+    },
   });
-  container.querySelector('#db-edit').addEventListener('click', () => openSchemaEditor(db.id, refreshMemoSpace));
-  container.querySelector('#db-delete-db').addEventListener('click', () => confirmDeleteDatabase(db));
 
   const body = container.querySelector('#db-body');
   // カード・表の行を押したらページを開く。リンク・コピー・入力欄は、押してもページを開かない。
@@ -411,7 +687,7 @@ function openSchemaEditor(dbId, onSaved) {
         </div>`).join('')}
       <button class="btn btn-ghost btn-sm" id="db-col-add" type="button">＋ 列を追加</button>
       <div class="db-schema-footer">
-        <button class="btn btn-ghost btn-sm db-delete" id="db-delete" type="button">データベースを削除</button>
+        <span></span>
         <button class="btn btn-primary" id="db-edit-save" type="button">保存</button>
       </div>`;
   };
@@ -444,9 +720,6 @@ function openSchemaEditor(dbId, onSaved) {
       collect();
       columns.push({ id: generateId(), name: `列${columns.length + 1}`, type: 'text' });
       render();
-    } else if (event.target.closest('#db-delete')) {
-      close?.();
-      confirmDeleteDatabase(db);
     } else if (event.target.closest('#db-edit-save')) {
       collect();
       const before = new Map(db.properties.map(prop => [prop.id, prop]));

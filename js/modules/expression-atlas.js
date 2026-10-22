@@ -271,7 +271,7 @@ function markGeneratorBusy(formSelector, message) {
 /** 詳細履歴、一覧、アプリ全体の順に一段ずつ戻る。 */
 export function backFromExpressionAtlas() {
   if (!state.container) {
-    nav('memo');
+    nav('knowledge');
     return;
   }
   if (state.screen === 'generate' || state.screen === 'translate') {
@@ -347,7 +347,7 @@ export function backFromExpressionAtlas() {
     scrollMainToTop();
     return;
   }
-  nav('memo');
+  nav('knowledge');
 }
 
 /** 現在のモードと選択状態から、必要な画面だけを描画する。 */

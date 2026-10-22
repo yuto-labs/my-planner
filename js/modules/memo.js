@@ -722,33 +722,9 @@ function renderList() {
 
   container.innerHTML = `
     <div class="kn-list-page">
-      <!-- Search + new -->
-      <div class="kn-search-bar">
-        <div class="kn-search-wrap">
-          <svg class="kn-search-icon" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
-          </svg>
-          <input class="kn-search-input" id="kn-search" placeholder="検索…" value="${esc(search)}" type="search">
-        </div>
-        <button class="btn btn-ghost btn-sm kn-atlas-entry-btn" id="kn-atlas-btn" type="button" title="NUANCE ATLASを開く">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-            <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v16H6.5A2.5 2.5 0 0 0 4 21.5v-16Z"/>
-            <path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H13v16h4.5a2.5 2.5 0 0 1 2.5 2.5v-16Z"/>
-          </svg>
-          表現帳
-        </button>
-        <button class="btn btn-ghost btn-sm" id="kn-graph-btn" title="知識グラフ" style="flex-shrink:0;padding:6px 10px">
-          🕸️
-        </button>
-
-        <button class="btn btn-primary btn-sm" id="kn-new-btn">
-          <svg viewBox="0 0 24 24" fill="currentColor" style="width:14px;height:14px"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-          新規
-        </button>
-      </div>
-
-      <!-- メモ・各データベースの切り替えと、ビューのタブ(タグでの絞り込みはビューで作る) -->
-      ${renderSpaceHeader(space)}
+      <!-- データベースと同じ形の上部: チップの行と、ビュー・検索・絞り込み・並べ替え・新規の1行。
+           表現帳はKnowledgeの画面から開く(メモとデータベースで上の高さをそろえるため)。 -->
+      ${renderSpaceHeader(space, { search })}
 
       <!-- Memo list -->
       <div class="kn-memo-list">
@@ -775,47 +751,37 @@ function renderList() {
     </div>
   `;
 
-  // Wire search (IME-safe: avoid rerendering on every composition keystroke)
-  const searchEl = container.querySelector('#kn-search');
-  let searchTimer = null;
-  let composing = false;
-  /** 入力中の検索語でメモ索引を絞り込み、一覧だけを再描画する。 */
-  const applySearch = () => {
-    if (!searchEl) return;
-    listState.search = searchEl.value;
-    listState.visibleCount = MEMO_LIST_PAGE_SIZE;
-    renderList();
-    requestAnimationFrame(() => {
-      const next = container.querySelector('#kn-search');
-      if (!next) return;
-      next.focus();
-      const end = next.value.length;
-      try { next.setSelectionRange(end, end); } catch {}
+  // 検索(日本語入力中は1文字ごとに描き直さない)。描き直した後も検索欄に入力を続けられるようにする。
+  /** 検索欄をつないで、入力の区切りで一覧を描き直す。 */
+  const wireSearch = searchEl => {
+    let searchTimer = null;
+    let composing = false;
+    /** 入力中の検索語でメモ索引を絞り込み、一覧を描き直す。 */
+    const applySearch = () => {
+      listState.search = searchEl.value;
+      listState.visibleCount = MEMO_LIST_PAGE_SIZE;
+      renderList();
+      requestAnimationFrame(() => {
+        const next = container.querySelector('#space-search');
+        if (!next) return;
+        next.focus();
+        const end = next.value.length;
+        try { next.setSelectionRange(end, end); } catch {}
+      });
+    };
+    searchEl.addEventListener('compositionstart', () => { composing = true; });
+    searchEl.addEventListener('compositionend', () => {
+      composing = false;
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(applySearch, 0);
+    });
+    searchEl.addEventListener('input', () => {
+      if (composing) return;
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(applySearch, 120);
     });
   };
-  searchEl?.addEventListener('compositionstart', () => {
-    composing = true;
-  });
-  searchEl?.addEventListener('compositionend', () => {
-    composing = false;
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(applySearch, 0);
-  });
-  searchEl?.addEventListener('input', () => {
-    if (composing) return;
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(applySearch, 120);
-  });
-
-  // Wire graph navigation
-  container.querySelector('#kn-graph-btn')?.addEventListener('click', () => nav('knowledge-graph'));
-
-  // Wire expression atlas navigation
-  container.querySelector('#kn-atlas-btn')?.addEventListener('click', () => nav('expression-atlas'));
-
-  // Wire new
-  container.querySelector('#kn-new-btn')?.addEventListener('click', () => startNewMemo(null));
-  wireSpaceHeader(container, space);
+  wireSpaceHeader(container, space, { onSearch: wireSearch, onNew: () => startNewMemo(null) });
 
   container.querySelector('#kn-load-more')?.addEventListener('click', () => {
     listState.visibleCount += MEMO_LIST_PAGE_SIZE;

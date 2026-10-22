@@ -132,6 +132,15 @@ function renderLibrary(container) {
 
   container.innerHTML = `
     <div class="learning-page">
+      <!-- 表現帳(英語の表現・英訳)の入口。メモの画面から移した(メモとデータベースの上の形をそろえるため)。 -->
+      <button class="learning-atlas-entry" id="learning-atlas-btn" type="button">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+          <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v16H6.5A2.5 2.5 0 0 0 4 21.5v-16Z"/>
+          <path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H13v16h4.5a2.5 2.5 0 0 1 2.5 2.5v-16Z"/>
+        </svg>
+        <span class="learning-atlas-entry-text"><strong>表現帳</strong><small>NUANCE ATLAS ・ 英語の表現と英訳</small></span>
+        <span class="learning-atlas-entry-arrow" aria-hidden="true">›</span>
+      </button>
       <section class="learning-ask">
         <div class="learning-ask-copy">
           <span class="learning-eyebrow">QUESTION LIBRARY</span>
@@ -176,6 +185,7 @@ function renderLibrary(container) {
     </div>
   `;
 
+  container.querySelector('#learning-atlas-btn')?.addEventListener('click', () => nav('expression-atlas'));
   container.querySelector('#learning-question-form')?.addEventListener('submit', event => {
     event.preventDefault();
     createLearningEntry(container);

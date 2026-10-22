@@ -70,11 +70,10 @@ const MODULES = {
   'learning-detail': { title: 'Knowledge',  init: initLearningDetail, back: 'knowledge', backAction: backFromLearningDetail, navRoot: 'knowledge' },
   'knowledge-detail':{ title: 'Note',       init: initKnowledgeDetail, back: 'memo', backAction: backFromKnowledgeDetail, navRoot: 'memo' },
   'knowledge-graph': { title: 'Memo Map', init: initKnowledgeGraph, back: 'memo', navRoot: 'memo' },
-  // Notion風データベース。メモ一覧に1件として並び、開くとここで中身を見せる。
-  // 表現帳は大きいので、初めて開いた時に読み込む(atlas-loader.js)。
-  'expression-atlas':{ title: 'NUANCE ATLAS', init: initExpressionAtlasLazily, back: 'memo',
-    backAction: () => { const atlas = loadedAtlasModule(); if (atlas) atlas.backFromExpressionAtlas(); else navigate('memo'); },
-    navRoot: 'memo' },
+  // 表現帳はKnowledge(下のタブ)の中から開く。大きいので、初めて開いた時に読み込む(atlas-loader.js)。
+  'expression-atlas':{ title: 'NUANCE ATLAS', init: initExpressionAtlasLazily, back: 'knowledge',
+    backAction: () => { const atlas = loadedAtlasModule(); if (atlas) atlas.backFromExpressionAtlas(); else navigate('knowledge'); },
+    navRoot: 'knowledge' },
   analytics:         { title: 'Task Analytics', init: initAnalytics, back: 'tasks', navRoot: 'tasks' },
   review:            { title: '復習セッション', init: initReview, back: 'home' },
   archive:           { title: 'Trash',      init: initArchive,         back: 'tasks', backAction: backFromArchive },
@@ -623,6 +622,59 @@ export function confirm(message, opts = {}) {
   });
 }
 
+/**
+ * 名前などを1つ入力してもらう、画面の真ん中の小さな窓(confirm と同じ見た目)。
+ * Enterで決定、Esc・背景・「やめる」で取り消し。空のまま決定した時も取り消し扱い。
+ * @returns {Promise<string|null>} 入力した文字(前後の空白は除く)。取り消しならnull
+ */
+export function prompt(message, opts = {}) {
+  return new Promise(resolve => {
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML = `
+      <form class="confirm-dialog" role="dialog" aria-modal="true">
+        <label class="confirm-message" for="app-prompt-input"></label>
+        <input class="input confirm-input" id="app-prompt-input" autocomplete="off">
+        <div class="confirm-actions">
+          <button class="btn btn-ghost btn-sm" type="button" data-answer="no">やめる</button>
+          <button class="btn btn-primary btn-sm" type="submit"></button>
+        </div>
+      </form>`;
+    const input = overlay.querySelector('input');
+    overlay.querySelector('.confirm-message').textContent = String(message || '');
+    overlay.querySelector('[type="submit"]').textContent = opts.okLabel || '決定';
+    input.value = opts.value || '';
+    input.placeholder = opts.placeholder || '';
+
+    /** 答えを返して窓を消す。 */
+    const finish = answer => {
+      window.removeEventListener('keydown', onKey, true);
+      overlay.remove();
+      previouslyFocused?.focus?.({ preventScroll: true });
+      resolve(answer);
+    };
+    /** Escで取り消し。下の画面のEscまで届かないよう、ここで止める。 */
+    const onKey = event => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      finish(null);
+    };
+    overlay.querySelector('form').addEventListener('submit', event => {
+      event.preventDefault();
+      finish(input.value.trim() || null);
+    });
+    overlay.addEventListener('click', event => {
+      if (event.target.closest('[data-answer="no"]') || event.target === overlay) finish(null);
+    });
+    window.addEventListener('keydown', onKey, true);
+    document.body.append(overlay);
+    input.focus();
+    input.select();
+  });
+}
+
 // ---- Theme management ----
 
 // スマホのステータスバーなど、アプリの外枠の色。上下の帯と同じ色にそろえる。
@@ -994,7 +1046,7 @@ async function setupServiceWorkerAutoUpdate() {
 
 // Expose to global for modules without introducing circular imports.
 window.AppNav = {
-  navigate, refreshCurrentView, showToast, showUndoToast, openSearch, closeSearch, openModal, mountModal, closeModal, confirm,
+  navigate, refreshCurrentView, showToast, showUndoToast, openSearch, closeSearch, openModal, mountModal, closeModal, confirm, prompt,
   refreshDesktopContext: options => refreshDesktopWorkspace(currentView, options),
 };
 window.AppTheme = { apply: applyTheme };

@@ -25,6 +25,11 @@ const ICONS = {
   date: svg('<rect x="2.6" y="3.4" width="10.8" height="9.8" rx="1.6"/><path d="M2.6 6.6h10.8M5.6 2v2.6M10.4 2v2.6"/>'),
 };
 
+/** 列の種類のアイコン(並べ替え・絞り込みの一覧でも使う)。「メモ」のタグ列(tags)はタグと同じ形。 */
+export function propIcon(type) {
+  return ICONS[type === 'tags' ? 'multi_select' : type] || ICONS.text;
+}
+
 /** タグ1つの色付きラベル。 */
 const tagHtml = tag => `<span class="nt-tag" data-c="${tagColor(tag)}">${esc(tag)}</span>`;
 
