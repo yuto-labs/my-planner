@@ -6,7 +6,7 @@
 // JS/CSSの動作を変更したときはCACHE_VERも進め、古い端末キャッシュを更新する。
 // ============================================================
 
-const CACHE_VER  = 'v445';
+const CACHE_VER  = 'v446';
 const APP_CACHE  = `my-planner-app-${CACHE_VER}`;
 // 外部ライブラリ(KaTeX・Supabase)は版を固定したURLなので、アプリを更新しても中身は変わらない。
 // 以前はアプリの版名を付けていたため、更新のたびに捨てられ、次の起動で回線から取り直していた。
@@ -20,7 +20,7 @@ const APP_ASSETS = [
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
-  './css/style.css?v=321',
+  './css/style.css?v=322',
   './css/responsive.css?v=8',
   './js/app.js',
   './js/desktop-workspace.js',
@@ -79,6 +79,7 @@ const APP_ASSETS = [
   './js/modules/review.js',
   './js/modules/tags.js',
   './js/modules/database.js',
+  './js/modules/notion-table.js',
   './js/supabase.js',
   './js/sync.js',
   './js/shared-calendar.js',

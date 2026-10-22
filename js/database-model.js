@@ -6,8 +6,24 @@
 // パスワードらしい列は、同期で平文のままクラウドへ送られるため既定では取り込まない。
 // ============================================================
 
-export const PROPERTY_TYPES = Object.freeze(['text', 'url', 'number', 'checkbox', 'date']);
-export const PROPERTY_TYPE_LABELS = Object.freeze({ text: '文字', url: 'URL', number: '数値', checkbox: 'チェック', date: '日付' });
+export const PROPERTY_TYPES = Object.freeze(['text', 'multi_select', 'url', 'number', 'checkbox', 'date']);
+export const PROPERTY_TYPE_LABELS = Object.freeze({ text: '文字', multi_select: 'タグ', url: 'URL', number: '数値', checkbox: 'チェック', date: '日付' });
+
+// タグの色(Notionと同じ9色)。色は保存せず、タグの名前から毎回同じ色を選ぶ(同じ名前は必ず同じ色)。
+export const TAG_COLOR_COUNT = 9;
+/** タグの名前から色の番号(0〜8)を決める。 */
+export function tagColor(name) {
+  let hash = 0;
+  for (const ch of String(name)) hash = (hash * 31 + ch.codePointAt(0)) >>> 0;
+  return hash % TAG_COLOR_COUNT;
+}
+
+// 表の列の幅(px)の既定値。ドラッグで変えた幅は列ごとに保存する(prop.width / db.titleWidth)。
+const DEFAULT_WIDTHS = { title: 280, text: 280, multi_select: 180, url: 220, number: 110, checkbox: 90, date: 150 };
+/** 列の表示幅。保存した幅があればそれ、なければ種類ごとの既定値。 */
+export function columnWidth(prop) {
+  return Math.max(80, Number(prop?.width) || DEFAULT_WIDTHS[prop?.type] || 200);
+}
 
 /**
  * CSVの文字列を行と列の二次元配列にする。引用符で囲んだ値の中のカンマ・改行・""(引用符)にも対応する。
@@ -71,6 +87,11 @@ export function inferType(values) {
 
 /** 文字のCSV値を、種類に合った保存用の値にする。 */
 export function convertValue(type, raw) {
+  // タグは「あるある, 来世ハック」のようなカンマ区切り(Notionの書き出しの形)を、重複なしの配列にする。
+  if (type === 'multi_select') {
+    const parts = Array.isArray(raw) ? raw : String(raw ?? '').split(/[,、]/);
+    return [...new Set(parts.map(part => String(part).trim()).filter(Boolean))];
+  }
   const value = String(raw ?? '').trim();
   if (type === 'checkbox') return /^(yes|true|はい|1)$/i.test(value);
   if (type === 'number') return value === '' ? null : Number(value);
@@ -99,7 +120,7 @@ export function formatValue(type, value) {
   if (value === null || value === undefined || value === '') return '';
   if (type === 'checkbox') return value ? '✓' : '';
   if (type === 'date') return value?.start ? `${String(value.start).slice(0, 10)}${value.end ? ` → ${value.end}` : ''}` : '';
-  if (type === 'tags') return Array.isArray(value) ? value.join(', ') : '';
+  if (type === 'tags' || type === 'multi_select') return Array.isArray(value) ? value.join(', ') : '';
   return String(value);
 }
 
@@ -124,7 +145,7 @@ export function viewProperties(space) {
 
 /** ビューが1つも保存されていない時に使う「すべて」。メモは更新の新しい順、データベースは並び順のまま。 */
 export function defaultView(space) {
-  return { id: 'all', name: 'すべて', filters: [], sort: space?.kind === 'memos' ? { prop: '__updated', dir: 'desc' } : null, columns: [] };
+  return { id: 'all', name: 'すべて', filters: [], sort: space?.kind === 'memos' ? { prop: '__updated', dir: 'desc' } : null, columns: [], layout: 'table' };
 }
 
 /** 保存済みのビュー(なければ「すべて」1つ)を返す。 */
@@ -148,7 +169,7 @@ export function rowPassesFilter(row, filter, prop) {
   const value = cellValue(row, prop.id);
   const wanted = filter.value;
   if (prop.type === 'checkbox') return wanted === undefined || wanted === '' || !!value === (wanted === true || wanted === 'true');
-  if (prop.type === 'tags') return !wanted || (Array.isArray(value) && value.includes(wanted));
+  if (prop.type === 'tags' || prop.type === 'multi_select') return !wanted || (Array.isArray(value) && value.includes(wanted));
   if (prop.type === 'date') {
     const { from = '', to = '' } = wanted || {};
     if (!from && !to) return true;

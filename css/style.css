@@ -11655,10 +11655,12 @@ button.atlas-nuance-map-row:focus-visible {
 /* ---- Notion風データベース(js/modules/database.js) ----
    スマホは1行1枚のカード、PCは表。行のページには列の値の欄を出す。 */
 .db-page { padding: 12px 16px 96px; max-width: 1100px; margin: 0 auto; }
-.db-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
 .db-delete { color: var(--danger); }
-.db-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-.db-toolbar .input { flex: 1; }
+.db-toolbar { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
+.db-toolbar .db-search { flex: 1; min-width: 0; height: 32px; padding: 4px 10px; font-size: 14px; }
+/* 表の上の小さな文字ボタン(Notionの表の右上のような控えめな見た目)。 */
+.db-tool { flex-shrink: 0; padding: 5px 8px; border: 0; border-radius: 6px; background: none; color: var(--text-dim); font-size: 13px; white-space: nowrap; }
+.db-tool:hover { background: var(--bg-hover); }
 .db-count { color: var(--text-dim); font-size: 13px; white-space: nowrap; }
 .db-card-label { color: var(--text-dim); font-size: 12px; flex-shrink: 0; }
 /* スマホの一覧: 普通のデータベースのように1行1件(名前と主な列1つ)。タップで詳細ページ。 */
@@ -11666,7 +11668,6 @@ button.atlas-nuance-map-row:focus-visible {
 /* 名前 | ビューで選んだ列(0〜2つ) | URLを開くリンク。列の数は database.js が --db-cols で渡す。 */
 .db-list-head, .db-list-row { display: grid; grid-template-columns: var(--db-cols, minmax(0, 1fr) auto 3.5em); gap: 12px; padding: 11px 14px; align-items: center; }
 .db-open-link { color: var(--accent); font-size: 13px; white-space: nowrap; text-decoration: none; padding: 4px 0; }
-.db-table-url { display: flex; align-items: center; gap: 6px; }
 .db-list-head { color: var(--text-dim); font-size: 12px; background: var(--bg-hover); }
 .db-list-row { border-top: 1px solid var(--border); cursor: pointer; font-size: 14px; }
 .db-list-row:active { background: var(--bg-active); }
@@ -11676,14 +11677,80 @@ button.atlas-nuance-map-row:focus-visible {
   margin-left: auto; flex-shrink: 0; padding: 3px 10px; font-size: 12px; border-radius: 8px;
   border: 1px solid var(--border); background: transparent; color: var(--text-muted);
 }
-.db-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
-.db-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.db-table th, .db-table td { padding: 9px 12px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
-.db-table th { color: var(--text-dim); font-weight: 500; background: var(--bg-hover); }
-.db-table tbody tr:hover { background: var(--bg-hover); }
-.db-table-title { display: flex; align-items: center; gap: 4px; min-width: 180px; }
-.db-table td .input { min-width: 120px; padding: 6px 8px; font-size: 13px; }
-.db-open-page { flex-shrink: 0; padding: 4px 8px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--text-muted); }
+/* ---- Notionのような表(js/modules/notion-table.js) ----
+   細い罫線だけの表。文字は折り返して全部見せ、列の幅は <col> で決める(横にはみ出したら横スクロール)。 */
+.nt-wrap { overflow-x: auto; margin: 0 -16px; padding: 0 16px; }
+.nt { border-collapse: collapse; table-layout: fixed; font-size: 14px; }
+.nt th {
+  position: relative; height: 34px; padding: 0 8px; text-align: left; font-weight: 400;
+  color: var(--text-dim); border: 1px solid var(--border); border-left: 0; cursor: pointer;
+}
+.nt th:last-child, .nt td:last-child { border-right: 0; }
+.nt th:hover { background: var(--bg-hover); }
+.nt-th { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.nt-th svg { flex-shrink: 0; }
+.nt-th-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nt-ico-text { flex-shrink: 0; width: 14px; text-align: center; font-size: 12px; }
+/* 見出しの右端の細い帯。ドラッグで列の幅を変える。 */
+.nt-resize { position: absolute; top: 0; right: -3px; z-index: 1; width: 6px; height: 100%; cursor: col-resize; touch-action: none; }
+.nt-resize:hover { background: var(--primary-border); }
+.nt td { position: relative; padding: 0; vertical-align: top; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); }
+.nt tbody tr:hover { background: var(--bg-hover); }
+.nt-cell { min-height: 34px; padding: 7px 8px; line-height: 1.5; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; }
+.nt-td--title .nt-cell { font-weight: 500; }
+.nt-td--number .nt-cell { text-align: right; }
+.nt-td--checkbox .nt-cell { cursor: default; }
+.nt-url { color: var(--text); text-decoration: underline; text-decoration-color: var(--text-dim); }
+/* 名前のセルの「開く」「削除」。マウスで指した時だけ出す(スマホは名前を押すとページが開く)。 */
+.nt-row-actions { position: absolute; top: 6px; right: 6px; display: none; gap: 4px; }
+.nt tr:hover .nt-row-actions { display: flex; }
+.nt-action { padding: 1px 7px; font-size: 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-card); color: var(--text-muted); }
+.nt-editing .nt-cell { padding: 0; }
+.nt-editor {
+  display: block; width: 100%; min-height: 34px; padding: 7px 8px; border: 0; resize: none;
+  font: inherit; line-height: 1.5; color: var(--text); background: var(--bg-card);
+  box-shadow: inset 0 0 0 2px var(--primary); outline: none;
+}
+.nt-add { display: block; width: 100%; padding: 8px; border: 0; border-bottom: 1px solid var(--border); background: none; color: var(--text-dim); font-size: 14px; text-align: left; }
+.nt-add:hover { background: var(--bg-hover); }
+/* タグ(Notionと同じ9色)。色は名前から決まる(tagColor)。 */
+.nt-tag {
+  display: inline-flex; align-items: center; gap: 2px; margin: 0 4px 4px 0; padding: 0 6px;
+  border-radius: 3px; font-size: 13px; line-height: 20px; white-space: nowrap;
+  background: var(--tag-bg); color: var(--tag-fg);
+}
+.nt-tag[data-c="0"] { --tag-bg: #E3E2E0; --tag-fg: #32302C; }
+.nt-tag[data-c="1"] { --tag-bg: #EEE0DA; --tag-fg: #442A1E; }
+.nt-tag[data-c="2"] { --tag-bg: #FADEC9; --tag-fg: #49290E; }
+.nt-tag[data-c="3"] { --tag-bg: #FDECC8; --tag-fg: #402C1B; }
+.nt-tag[data-c="4"] { --tag-bg: #DBEDDB; --tag-fg: #1C3829; }
+.nt-tag[data-c="5"] { --tag-bg: #D3E5EF; --tag-fg: #183347; }
+.nt-tag[data-c="6"] { --tag-bg: #E8DEEE; --tag-fg: #412454; }
+.nt-tag[data-c="7"] { --tag-bg: #F5E0E9; --tag-fg: #4C2337; }
+.nt-tag[data-c="8"] { --tag-bg: #FFE2DD; --tag-fg: #5D1715; }
+[data-theme="dark"] .nt-tag { --tag-fg: rgba(255, 255, 255, 0.88); }
+[data-theme="dark"] .nt-tag[data-c="0"] { --tag-bg: #373737; }
+[data-theme="dark"] .nt-tag[data-c="1"] { --tag-bg: #5C3B23; }
+[data-theme="dark"] .nt-tag[data-c="2"] { --tag-bg: #854C1D; }
+[data-theme="dark"] .nt-tag[data-c="3"] { --tag-bg: #89632A; }
+[data-theme="dark"] .nt-tag[data-c="4"] { --tag-bg: #2B593F; }
+[data-theme="dark"] .nt-tag[data-c="5"] { --tag-bg: #28456C; }
+[data-theme="dark"] .nt-tag[data-c="6"] { --tag-bg: #492F64; }
+[data-theme="dark"] .nt-tag[data-c="7"] { --tag-bg: #69314C; }
+[data-theme="dark"] .nt-tag[data-c="8"] { --tag-bg: #6E3630; }
+.nt-tag button { padding: 0 0 0 2px; border: 0; background: none; color: inherit; opacity: 0.6; }
+/* タグを選ぶ小さな窓。表の横スクロールで切れないよう、画面に対して置く。 */
+.nt-tag-pop {
+  position: fixed; z-index: 1000; width: 280px; max-height: 300px; overflow: auto;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow);
+}
+.nt-tag-selected { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px 8px; background: var(--bg-hover); }
+.nt-tag-selected .nt-tag { margin: 0; }
+.nt-tag-input { flex: 1; min-width: 90px; padding: 4px 0; border: 0; outline: none; background: none; font: inherit; font-size: 14px; color: var(--text); }
+.nt-tag-options { display: flex; flex-direction: column; padding: 4px; }
+.nt-tag-option { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border: 0; border-radius: 4px; background: none; color: var(--text-muted); font-size: 13px; text-align: left; }
+.nt-tag-option:hover, .nt-tag-option.is-on { background: var(--bg-hover); }
+.nt-tag-option .nt-tag { margin: 0; }
 .db-schema-col { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto auto; gap: 6px; align-items: center; }
 .db-schema-footer { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; }
 .db-import { display: grid; gap: 10px; }

@@ -1338,6 +1338,8 @@ function recordToDatabase(record) {
     rows: data.rows && typeof data.rows === 'object' ? data.rows : {},
     order: Array.isArray(data.order) ? data.order : [],
     views: Array.isArray(data.views) ? data.views : [],
+    // 表の「名前」の列の幅(ドラッグで変えた時だけ入る)。
+    titleWidth: Number(data.titleWidth) || undefined,
     // 'memos' は「メモ」欄そのものの設定(自分で足した列・その値・ビュー)。普通のデータベースは 'table'。
     kind: data.kind === 'memos' ? 'memos' : 'table',
     deleted: !!data.deleted,

@@ -8,7 +8,7 @@
 // ============================================================
 import {
   addDatabaseRow, createDatabase, deleteDatabase, deleteKnowledgeMemo, findDatabaseForRow, getDatabase, getDatabases,
-  getKnowledgeMemos, getMemoSpace, moveMemoToSpace, saveDatabase, updateDatabaseRow, updateKnowledgeMemo,
+  getKnowledgeMemos, getMemoSpace, moveMemoToSpace, saveDatabase, updateDatabaseRow,
 } from '../storage.js';
 import {
   PROPERTY_TYPE_LABELS, PROPERTY_TYPES, applyView, carryValues, convertValue, formatValue, parseCsv, planCsvImport,
@@ -17,6 +17,7 @@ import {
 import { normalizeMemoUrl } from '../memo-model.js';
 import { esc, generateId } from '../utils.js';
 import { openKnowledgeMemo, refreshMemoSpace } from './memo.js';
+import { renderNotionTable, wireNotionTable } from './notion-table.js';
 
 /** `toast`: 短い通知メッセージを画面へ表示する。 */
 const toast = (message, type = 'info') => window.AppNav?.showToast(message, type);
@@ -24,9 +25,6 @@ const toast = (message, type = 'info') => window.AppNav?.showToast(message, type
 const nav = view => window.AppNav?.navigate(view);
 
 let searchQuery = '';
-
-/** PCの幅なら表、スマホならカードで見せる。 */
-const wideScreen = () => window.matchMedia?.('(min-width: 768px)')?.matches;
 
 // ---- 今どのデータベース・どのビューを見ているか ----
 // 端末ごとの「前回の続き」なので、同期せずにこの端末(localStorage)にだけ覚える。
@@ -256,6 +254,8 @@ function propertyInput(prop, value, rowId = '') {
   if (prop.type === 'checkbox') return `<input type="checkbox" ${attrs}${value ? ' checked' : ''}>`;
   if (prop.type === 'number') return `<input class="input" type="number" ${attrs} value="${value ?? ''}">`;
   if (prop.type === 'date') return `<input class="input" type="date" ${attrs} value="${esc(value?.start || '')}">`;
+  // タグはカンマ区切りで入力する(保存する時に配列へ直す)。
+  if (prop.type === 'multi_select') return `<input class="input" ${attrs} value="${esc(formatValue(prop.type, value))}" placeholder="タグをカンマ区切りで">`;
   return `<input class="input" ${attrs} value="${esc(value || '')}"${prop.type === 'url' ? ' inputmode="url"' : ''}>`;
 }
 
@@ -267,28 +267,10 @@ function inputValue(input) {
   return convertValue(type, input.value);
 }
 
-/** PCの表。ページを開かずにセルを直接書き換えられる。名前の横の↗でページを開く。 */
-function renderTable(db, rows) {
-  return `
-    <div class="db-table-wrap">
-      <table class="db-table">
-        <thead><tr><th>名前</th>${db.properties.map(prop => `<th>${esc(prop.name)}</th>`).join('')}</tr></thead>
-        <tbody>${rows.map(row => `
-          <tr>
-            <td class="db-table-title">
-              <input class="input" data-title-row="${esc(row.id)}" value="${esc(row.title)}" aria-label="名前">
-              <button class="db-open-page" type="button" data-row-open="${esc(row.id)}" aria-label="ページを開く">↗</button>
-              <button class="db-open-page db-delete" type="button" data-row-delete="${esc(row.id)}" aria-label="この行を削除">削除</button>
-            </td>
-            ${db.properties.map(prop => `<td${prop.type === 'url' ? ' class="db-table-url"' : ''}>${propertyInput(prop, row.values[prop.id], row.id)}${prop.type === 'url' ? openLinkHtml(row.values[prop.id], '↗') : ''}</td>`).join('')}
-          </tr>`).join('')}</tbody>
-      </table>
-    </div>`;
-}
-
 /**
  * メモ欄で、チップがデータベースを選んでいる時の中身。上にチップとビューのタブ、
- * その下に検索欄と、表(PC)または一覧(スマホ)を描く。行はビューで絞り込み・並べ替えてから出す。
+ * その下に検索欄と、Notionのような表(または、ビューで選んだ時はリスト)を描く。
+ * 行はビューで絞り込み・並べ替えてから出す。
  */
 export function mountDatabaseSpace(container, db) {
   /** 検索語で絞り込んだ結果だけを描き直す(検索欄は作り直さないので入力が途切れない)。 */
@@ -297,23 +279,27 @@ export function mountDatabaseSpace(container, db) {
     const view = activeView(fresh);
     const rows = applyView(collectRows(fresh), view, viewProperties(fresh))
       .filter(row => rowMatches(row, fresh.properties, searchQuery));
-    container.querySelector('#db-body').innerHTML = rows.length
-      ? (wideScreen() ? renderTable(fresh, rows) : renderList(fresh, rows, view))
-      : '<div class="empty-state"><div class="empty-state-text">該当なし</div></div>';
+    const target = container.querySelector('#db-body');
+    // 書き換えのたびに表を描き直すので、横にスクロールしていた位置を保つ。
+    const scrollLeft = target.querySelector('.nt-wrap')?.scrollLeft || 0;
+    target.innerHTML = view.layout === 'list'
+      ? (rows.length ? renderList(fresh, rows, view) : '<div class="empty-state"><div class="empty-state-text">該当なし</div></div>')
+      : renderNotionTable(fresh, rows);
+    const wrap = target.querySelector('.nt-wrap');
+    if (wrap) wrap.scrollLeft = scrollLeft;
     container.querySelector('#db-count').textContent = `${rows.length}件`;
   };
 
   container.innerHTML = `
     <div class="db-page" data-space-id="${esc(db.id)}">
       ${renderSpaceHeader(db)}
+      <!-- Notionのように控えめな1行: 検索・件数・列の編集・削除。行の追加は表の下の「＋ 新規」(リストの時は「＋」)。 -->
       <div class="db-toolbar">
-        <input class="input" id="db-search" type="search" placeholder="名前やIDで検索" value="${esc(searchQuery)}">
+        <input class="input db-search" id="db-search" type="search" placeholder="検索" value="${esc(searchQuery)}">
         <span class="db-count" id="db-count"></span>
-      </div>
-      <div class="db-actions">
-        <button class="btn btn-primary btn-sm" id="db-add-row" type="button">＋ 追加</button>
-        <button class="btn btn-ghost btn-sm" id="db-edit" type="button">編集（名前・列）</button>
-        <button class="btn btn-ghost btn-sm db-delete" id="db-delete-db" type="button" aria-label="データベースを削除">削除</button>
+        <button class="db-tool" id="db-add-row" type="button" aria-label="行を追加" title="行を追加">＋</button>
+        <button class="db-tool" id="db-edit" type="button">列を編集</button>
+        <button class="db-tool db-delete" id="db-delete-db" type="button" aria-label="データベースを削除">削除</button>
       </div>
       <div id="db-body"></div>
     </div>`;
@@ -322,6 +308,9 @@ export function mountDatabaseSpace(container, db) {
 
   container.querySelector('#db-search').addEventListener('input', event => { searchQuery = event.target.value; renderBody(); });
   container.querySelector('#db-add-row').addEventListener('click', () => {
+    // 表の時は表の下の「＋ 新規」と同じ(その場で名前を書く)。リストの時は新しい行のページを開く。
+    const inlineAdd = container.querySelector('[data-nt-add]');
+    if (inlineAdd) { inlineAdd.click(); return; }
     const id = addDatabaseRow(db.id, '新しい項目');
     if (id) openKnowledgeMemo(id);
   });
@@ -350,12 +339,11 @@ export function mountDatabaseSpace(container, db) {
     const row = event.target.closest('[data-row-open]');
     if (row) openKnowledgeMemo(row.dataset.rowOpen);
   });
-  // PCの表で書き換えたセルは、入力し終えた時点で保存する。名前はメモの題名として保存する。
-  body.addEventListener('change', event => {
-    const titleInput = event.target.closest('[data-title-row]');
-    if (titleInput) { updateKnowledgeMemo(titleInput.dataset.titleRow, { title: titleInput.value.trim() || '無題' }); return; }
-    const input = event.target.closest('[data-prop][data-row]');
-    if (input) updateDatabaseRow(db.id, input.dataset.row, { [input.dataset.prop]: inputValue(input) });
+  // 表のセルの書き換え・タグ・列の幅・行の追加(notion-table.js)。見出しを押すと列の編集を開く。
+  wireNotionTable(body, db.id, {
+    refresh: renderBody,
+    onHeader: () => openSchemaEditor(db.id, refreshMemoSpace),
+    onOpenRow: openKnowledgeMemo,
   });
 }
 
@@ -506,7 +494,7 @@ function openViewEditor(space, viewId) {
   const original = spaceViews(space).find(view => view.id === viewId);
   const draft = original
     ? JSON.parse(JSON.stringify(original))
-    : { id: generateId(), name: `ビュー${spaceViews(space).length + 1}`, filters: [], sort: null, columns: [] };
+    : { id: generateId(), name: `ビュー${spaceViews(space).length + 1}`, filters: [], sort: null, columns: [], layout: 'table' };
   const tags = space.kind === 'memos' ? [...new Set(getKnowledgeMemos().flatMap(memo => memo.tags || []))].sort() : [];
   // 「メモ」は題名・1行目・タグ・更新日だけの固定の形なので、一覧に出す列は選ばない(カードの形のまま)。
   const columnChoices = space.kind === 'memos' ? [] : space.properties.filter(prop => prop.type !== 'url');
@@ -540,8 +528,14 @@ function openViewEditor(space, viewId) {
           <option value="desc"${draft.sort?.dir === 'desc' ? ' selected' : ''}>新しい・大きい順</option>
         </select>
       </div>
+      ${space.kind !== 'memos' ? `
+        <label class="form-label">表示の形</label>
+        <select class="select" id="view-layout" aria-label="表示の形">
+          <option value="table"${draft.layout !== 'list' ? ' selected' : ''}>表（Notionのように全部の列）</option>
+          <option value="list"${draft.layout === 'list' ? ' selected' : ''}>リスト（名前と選んだ列だけ）</option>
+        </select>` : ''}
       ${columnChoices.length ? `
-        <label class="form-label">一覧に出す列（2つまで）</label>
+        <label class="form-label">リストに出す列（2つまで）</label>
         ${columnChoices.map(prop => `<label class="db-view-column"><input type="checkbox" data-view-column="${esc(prop.id)}"${draft.columns.includes(prop.id) ? ' checked' : ''}> ${esc(prop.name)}</label>`).join('')}` : ''}
       <div class="db-schema-footer">
         ${original && spaceViews(space).length > 1 ? '<button class="btn btn-ghost btn-sm db-delete" id="view-delete" type="button">このビューを削除</button>' : '<span></span>'}
@@ -561,6 +555,7 @@ function openViewEditor(space, viewId) {
     const sortProp = body.querySelector('#view-sort-prop').value;
     draft.sort = sortProp ? { prop: sortProp, dir: body.querySelector('#view-sort-dir').value } : null;
     draft.columns = [...body.querySelectorAll('[data-view-column]:checked')].map(input => input.dataset.viewColumn).slice(0, 2);
+    draft.layout = body.querySelector('#view-layout')?.value || draft.layout || 'table';
   };
   /** ビューの一覧を保存し、メモ欄を描き直す。 */
   const commit = views => {
