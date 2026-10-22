@@ -43,6 +43,10 @@ export async function serviceSelect(path) {
   // Authorizationに入れると拒否される。apikeyだけで管理者として読める。
   const headers = { apikey: key, ...(key.startsWith('eyJ') ? { Authorization: `Bearer ${key}` } : {}) };
   const response = await fetch(`${supabaseConfig().url}/rest/v1/${path}`, { headers });
-  if (!response.ok) throw Object.assign(new Error(`データを読めませんでした (${response.status})`), { status: 502 });
+  if (!response.ok) {
+    // Supabaseが返した理由(権限不足・鍵の形式違いなど)を添えて、原因を追えるようにする。鍵そのものは含まれない。
+    const reason = (await response.text().catch(() => '')).slice(0, 300);
+    throw Object.assign(new Error(`データを読めませんでした (${response.status}) ${reason}`), { status: 502 });
+  }
   return response.json();
 }
