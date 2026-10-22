@@ -8,7 +8,7 @@
 // ============================================================
 import {
   addDatabaseRow, createDatabase, deleteDatabase, deleteKnowledgeMemo, findDatabaseForRow, getDatabase, getDatabases,
-  getKnowledgeMemos, getMemoSpace, moveMemoToSpace, saveDatabase, updateDatabaseRow,
+  getKnowledgeMemos, getMemoSpace, moveMemoToSpace, saveDatabase,
 } from '../storage.js';
 import {
   PROPERTY_TYPE_LABELS, PROPERTY_TYPES, applyView, carryValues, convertValue, formatValue, parseCsv, planCsvImport,
@@ -16,8 +16,8 @@ import {
 } from '../database-model.js';
 import { normalizeMemoUrl } from '../memo-model.js';
 import { esc, generateId } from '../utils.js';
-import { openKnowledgeMemo, refreshMemoSpace } from './memo.js';
-import { renderNotionTable, wireNotionTable } from './notion-table.js';
+import { openKnowledgeMemo, refreshMemoSpace, renderBlocksView } from './memo.js';
+import { renderNotionTable, renderPropertyList, wireNotionTable, wirePropertyList } from './notion-table.js';
 
 /** `toast`: 短い通知メッセージを画面へ表示する。 */
 const toast = (message, type = 'info') => window.AppNav?.showToast(message, type);
@@ -248,23 +248,54 @@ function renderList(db, rows, view) {
     </div>`;
 }
 
-/** 種類に合った入力欄を1つ作る(表のセルと、行のページの欄で共用)。 */
-function propertyInput(prop, value, rowId = '') {
-  const attrs = `data-prop="${esc(prop.id)}" data-prop-type="${prop.type}"${rowId ? ` data-row="${esc(rowId)}"` : ''} aria-label="${esc(prop.name)}"`;
-  if (prop.type === 'checkbox') return `<input type="checkbox" ${attrs}${value ? ' checked' : ''}>`;
-  if (prop.type === 'number') return `<input class="input" type="number" ${attrs} value="${value ?? ''}">`;
-  if (prop.type === 'date') return `<input class="input" type="date" ${attrs} value="${esc(value?.start || '')}">`;
-  // タグはカンマ区切りで入力する(保存する時に配列へ直す)。
-  if (prop.type === 'multi_select') return `<input class="input" ${attrs} value="${esc(formatValue(prop.type, value))}" placeholder="タグをカンマ区切りで">`;
-  return `<input class="input" ${attrs} value="${esc(value || '')}"${prop.type === 'url' ? ' inputmode="url"' : ''}>`;
-}
+// ---- PCのサイドピーク(Notionのように、表の右側に行のページを開く) ----
 
-/** 入力欄の今の値を、列の種類に合った保存用の値にする。 */
-function inputValue(input) {
-  const type = input.dataset.propType;
-  if (type === 'checkbox') return input.checked;
-  if (type === 'date') return input.value ? { start: input.value, end: null } : null;
-  return convertValue(type, input.value);
+let peekRowId = null;
+
+/** サイドピークで開ける画面か(広い画面でマウスがある時)。スマホはページを全画面で開く。 */
+const canPeek = () => window.matchMedia?.('(min-width: 1000px) and (hover: hover)')?.matches;
+
+/**
+ * サイドピークを描く(peekRowId が無ければ閉じる)。題名と列の値はその場で書き換えられ、
+ * 本文は読むだけ(「本文を編集」でいつものページを開く)。refreshTable は表を描き直す関数。
+ */
+function renderPeek(container, dbId, refreshTable) {
+  const page = container.querySelector('.db-page');
+  if (!page) return;
+  let peek = page.querySelector('.nt-peek');
+  const db = getDatabase(dbId);
+  const memo = peekRowId && getKnowledgeMemos().find(item => item.id === peekRowId);
+  if (!db || !memo || !(peekRowId in db.rows)) {
+    peekRowId = null;
+    peek?.remove();
+    page.classList.remove('nt-peek-open');
+    return;
+  }
+  if (!peek) {
+    peek = document.createElement('aside');
+    peek.className = 'nt-peek';
+    page.append(peek);
+    // 書き換えたら表を描き直す(表を描き直すとサイドピークも描き直される)。
+    wirePropertyList(peek, dbId, refreshTable, toast);
+    peek.addEventListener('click', event => {
+      if (event.target.closest('[data-peek-close]')) { peekRowId = null; renderPeek(container, dbId, refreshTable); }
+      else if (event.target.closest('[data-peek-full]')) { const id = peekRowId; peekRowId = null; openKnowledgeMemo(id); }
+    });
+  }
+  // 上の帯(ヘッダー)の下から画面の下までに置く。
+  peek.style.top = `${Math.round(document.getElementById('app-header')?.getBoundingClientRect().bottom || 0)}px`;
+  peek.innerHTML = `
+    <div class="nt-peek-bar">
+      <button class="db-tool" type="button" data-peek-close aria-label="閉じる" title="閉じる">»</button>
+      <button class="db-tool" type="button" data-peek-full>全画面で開く</button>
+    </div>
+    <div class="nt-peek-body">
+      <div class="nt-peek-title" data-row="${esc(memo.id)}"><div data-edit="__title"><div class="nt-cell">${esc(memo.title || '無題')}</div></div></div>
+      ${renderPropertyList(db, memo.id)}
+      <div class="nt-peek-content kn-view-content">${renderBlocksView(memo.blocks || [])}</div>
+      <button class="db-tool" type="button" data-peek-full>本文を編集</button>
+    </div>`;
+  page.classList.add('nt-peek-open');
 }
 
 /**
@@ -288,6 +319,7 @@ export function mountDatabaseSpace(container, db) {
     const wrap = target.querySelector('.nt-wrap');
     if (wrap) wrap.scrollLeft = scrollLeft;
     container.querySelector('#db-count').textContent = `${rows.length}件`;
+    renderPeek(container, db.id, renderBody);
   };
 
   container.innerHTML = `
@@ -337,7 +369,10 @@ export function mountDatabaseSpace(container, db) {
       return;
     }
     const row = event.target.closest('[data-row-open]');
-    if (row) openKnowledgeMemo(row.dataset.rowOpen);
+    if (!row) return;
+    // PCでは表の右側にページを開く(サイドピーク)。スマホはいつものページを全画面で開く。
+    if (canPeek()) { peekRowId = row.dataset.rowOpen; renderPeek(container, db.id, renderBody); }
+    else openKnowledgeMemo(row.dataset.rowOpen);
   });
   // 表のセルの書き換え・タグ・列の幅・行の追加(notion-table.js)。見出しを押すと列の編集を開く。
   wireNotionTable(body, db.id, {
@@ -629,32 +664,23 @@ export function openMoveSheet(memoId, onMoved) {
 // ---- 行のページの上に出す欄 ----
 
 /**
- * メモがデータベースの行なら、閲覧画面の上に「列の値」の欄を出す。値は入力し終えた時点で保存する。
- * URLは開くボタン、文字はコピーボタンを横に付ける。普通のメモには列が無いので何も出さない。
+ * メモがデータベースの行なら、題名のすぐ下に、Notionと同じ「アイコン・列名・値」の並びで列の値を出す。
+ * 値は押すとその場で書き換えられる。普通のメモには列が無いので何も出さない。
  */
 export function renderDatabaseRowPanel(container, memoId) {
   const found = memoId ? findDatabaseForRow(memoId) : null;
   const page = container.querySelector('.kn-view-page');
   if (!found || !page || !found.db.properties.length) return;
-  const { db, values } = found;
   const panel = document.createElement('div');
   panel.className = 'db-row-panel';
-  panel.innerHTML = `
-    <p class="db-row-panel-db">${esc(db.name)}</p>
-    ${db.properties.map(prop => `
-      <div class="db-row-field">
-        <label class="db-card-label">${esc(prop.name)}</label>
-        ${propertyInput(prop, values[prop.id])}
-        ${prop.type === 'url' ? openLinkHtml(values[prop.id]) : ''}
-        ${prop.type === 'text' && values[prop.id] ? `<button class="db-copy" type="button" data-copy="${esc(values[prop.id])}">コピー</button>` : ''}
-      </div>`).join('')}`;
-  page.prepend(panel);
-  panel.addEventListener('change', event => {
-    const input = event.target.closest('[data-prop]');
-    if (input) updateDatabaseRow(db.id, memoId, { [input.dataset.prop]: inputValue(input) });
-  });
-  panel.addEventListener('click', event => {
-    const copy = event.target.closest('[data-copy]');
-    if (copy) navigator.clipboard?.writeText(copy.dataset.copy).then(() => toast('コピーしました', 'success')).catch(() => {});
-  });
+  /** 最新の値で列の欄を描き直す(書き換えた後にも呼ぶ)。 */
+  const draw = () => {
+    const db = getDatabase(found.db.id);
+    if (db) panel.innerHTML = `<p class="db-row-panel-db">${esc(db.name)}</p>${renderPropertyList(db, memoId)}`;
+  };
+  draw();
+  const title = page.querySelector('.kn-view-title');
+  if (title) title.after(panel);
+  else page.prepend(panel);
+  wirePropertyList(panel, found.db.id, draw, toast);
 }

@@ -1,7 +1,7 @@
 // メモ欄が「データベースの集まり」として動くことを確かめる。架空のデータを使う。
 // 上のチップで「メモ」と各データベースを切り替え、ビュー(絞り込み・並べ替え)を保存でき、
 // メモをデータベースへ移せる。CSV取り込み・行のページ・列の編集・PCの表での直接編集も通す。
-import { test, expect } from '@playwright/test';
+import { test, expect, devices } from '@playwright/test';
 
 const CSV = '名前,URL,ID,password\n'
   + 'サンプル電機,https://example.com/a,AB123,hidden-1\n'
@@ -46,8 +46,8 @@ test('a database opens from its chip as a list, and its rows open as pages', asy
   await page.locator('.nt-td--title').click();
   await expect(page.locator('#main-content')).toHaveAttribute('data-view', 'knowledge-detail');
   // 詳細ページに全部の項目(URLは開くボタン付き)が出て、復習の対象にはならない。
-  await expect(page.locator('.db-row-panel input[data-prop-type="text"]')).toHaveValue('ZX987');
-  await expect(page.locator('.db-row-panel a', { hasText: '開く' })).toHaveAttribute('href', 'https://example.com/b');
+  await expect(page.locator('.db-row-panel .nt-prop-value', { hasText: 'ZX987' })).toBeVisible();
+  await expect(page.locator('.db-row-panel a.nt-url')).toHaveAttribute('href', 'https://example.com/b');
   await expect(page.locator('.kn-learned-action')).toHaveCount(0);
   await page.locator('#kn-edit-btn').click();
   await expect(page.locator('#kn-review-enabled')).toHaveCount(0);
@@ -157,4 +157,25 @@ test('table cells are edited in place, tags get colors, and new rows are typed i
   await page.locator('.nt-editor').press('Enter');
   await expect(page.locator('.nt tbody tr')).toHaveCount(3);
   await expect(page.locator('.nt tbody tr').last()).toContainText('新しい会社');
+});
+
+test.describe('on a PC', () => {
+  // マウスのあるPCとして開く(タッチ端末だとサイドピークではなく全画面でページが開く)。
+  test.use({ hasTouch: false, isMobile: false, viewport: { width: 1400, height: 900 }, userAgent: devices['Desktop Chrome'].userAgent });
+
+  test('a row opens in a side peek next to the table, and its values can be edited there', async ({ page }) => {
+    await openMemoList(page);
+    await importCsv(page);
+    await page.locator('.nt tbody tr').first().hover();
+    await page.locator('.nt tbody tr').first().locator('[data-row-open]').click();
+    await expect(page.locator('.nt-peek')).toBeVisible();
+    await expect(page.locator('.nt-peek-title')).toContainText('サンプル電機');
+    // 列の値を押してその場で書き換えると、表にも反映される。
+    await page.locator('.nt-peek .nt-prop-value', { hasText: 'AB123' }).click();
+    await page.locator('.nt-peek .nt-editor').fill('AB999');
+    await page.locator('.nt-peek .nt-editor').press('Enter');
+    await expect(page.locator('.nt tbody tr').first()).toContainText('AB999');
+    await page.locator('[data-peek-close]').click();
+    await expect(page.locator('.nt-peek')).toHaveCount(0);
+  });
 });

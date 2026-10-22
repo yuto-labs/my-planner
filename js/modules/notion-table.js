@@ -87,7 +87,7 @@ export function wireNotionTable(body, dbId, { refresh, onHeader, onOpenRow }) {
       const id = addDatabaseRow(dbId, '');
       refresh();
       const td = body.querySelector(`tr[data-row="${CSS.escape(id || '')}"] [data-edit="${TITLE.id}"]`);
-      if (td) startEdit(td, { blank: true });
+      if (td) startEdit(td, dbId, refresh, { blank: true });
       return;
     }
     const th = event.target.closest('th[data-col]');
@@ -95,15 +95,9 @@ export function wireNotionTable(body, dbId, { refresh, onHeader, onOpenRow }) {
     const td = event.target.closest('td[data-edit]');
     if (!td) return;
     if (td.dataset.edit === TITLE.id && touchOnly()) { onOpenRow(td.closest('tr').dataset.row); return; }
-    startEdit(td);
+    startEdit(td, dbId, refresh);
   });
-
-  // チェックは押した時点で保存する。
-  body.addEventListener('change', event => {
-    const check = event.target.closest('[data-check]');
-    if (!check) return;
-    updateDatabaseRow(dbId, check.closest('tr').dataset.row, { [check.closest('td').dataset.edit]: check.checked });
-  });
+  wireCheckboxes(body, dbId);
 
   // 見出しの右端をドラッグして列の幅を変える。離した時に幅を保存する。
   body.addEventListener('pointerdown', event => {
@@ -137,57 +131,105 @@ export function wireNotionTable(body, dbId, { refresh, onHeader, onOpenRow }) {
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up, { once: true });
   });
+}
 
-  /** セルをその場の入力欄に変える。確定したら保存して表を描き直す。 */
-  function startEdit(td, { blank = false } = {}) {
-    const db = getDatabase(dbId);
-    const rowId = td.closest('tr').dataset.row;
-    const prop = td.dataset.edit === TITLE.id ? TITLE : db?.properties.find(item => item.id === td.dataset.edit);
-    if (!db || !prop || prop.type === 'checkbox') return;
-    const current = prop === TITLE ? td.querySelector('.nt-cell').textContent : db.rows[rowId]?.[prop.id];
-    if (prop.type === 'multi_select') { openTagEditor(td, db, rowId, prop, refresh); return; }
+/** チェックを押した時点で保存する(表とページの列の欄で共通)。 */
+function wireCheckboxes(root, dbId) {
+  root.addEventListener('change', event => {
+    const check = event.target.closest('[data-check]');
+    if (!check) return;
+    updateDatabaseRow(dbId, check.closest('[data-row]').dataset.row, { [check.closest('[data-edit]').dataset.edit]: check.checked });
+  });
+}
 
-    const editor = document.createElement(prop.type === 'date' ? 'input' : 'textarea');
-    editor.className = 'nt-editor';
-    if (prop.type === 'date') { editor.type = 'date'; editor.value = current?.start || ''; }
-    else { editor.rows = 1; editor.value = blank ? '' : prop === TITLE ? current : prop.type === 'number' ? (current ?? '') : (current || ''); }
-    /** 中身に合わせて入力欄の高さを伸ばす(長い文も全部見える)。 */
-    const fit = () => { if (editor.tagName === 'TEXTAREA') { editor.style.height = 'auto'; editor.style.height = `${editor.scrollHeight}px`; } };
-    td.classList.add('nt-editing');
-    td.querySelector('.nt-cell').replaceChildren(editor);
-    fit();
-    editor.focus();
-    editor.select?.();
+/**
+ * セル(または、ページの列の欄の値)をその場の入力欄に変える。確定したら保存して refresh で描き直す。
+ * el は data-edit(列ID)を持ち、祖先に data-row(行=ページのID)がある要素。
+ */
+function startEdit(el, dbId, refresh, { blank = false } = {}) {
+  const db = getDatabase(dbId);
+  const rowId = el.closest('[data-row]').dataset.row;
+  const prop = el.dataset.edit === TITLE.id ? TITLE : db?.properties.find(item => item.id === el.dataset.edit);
+  if (!db || !prop || prop.type === 'checkbox') return;
+  const current = prop === TITLE ? el.querySelector('.nt-cell').textContent : db.rows[rowId]?.[prop.id];
+  if (prop.type === 'multi_select') { openTagEditor(el, db, rowId, prop, refresh); return; }
 
-    let done = false;
-    /** 確定(save=true)か取り消し。変わっていなければ保存しない(同期を無駄に起こさない)。 */
-    const finish = save => {
-      if (done) return;
-      done = true;
-      if (save) {
-        const raw = editor.value;
-        if (prop === TITLE) {
-          if (raw.trim() !== current || blank) updateKnowledgeMemo(rowId, { title: raw.trim() || '無題' });
-        } else {
-          const next = prop.type === 'date' ? (raw ? { start: raw, end: current?.end || null } : null) : convertValue(prop.type, raw);
-          if (JSON.stringify(next) !== JSON.stringify(current ?? (prop.type === 'number' || prop.type === 'date' ? null : ''))) {
-            updateDatabaseRow(dbId, rowId, { [prop.id]: next });
-          }
+  const editor = document.createElement(prop.type === 'date' ? 'input' : 'textarea');
+  editor.className = 'nt-editor';
+  if (prop.type === 'date') { editor.type = 'date'; editor.value = current?.start || ''; }
+  else { editor.rows = 1; editor.value = blank ? '' : prop === TITLE ? current : prop.type === 'number' ? (current ?? '') : (current || ''); }
+  /** 中身に合わせて入力欄の高さを伸ばす(長い文も全部見える)。 */
+  const fit = () => { if (editor.tagName === 'TEXTAREA') { editor.style.height = 'auto'; editor.style.height = `${editor.scrollHeight}px`; } };
+  el.classList.add('nt-editing');
+  el.querySelector('.nt-cell').replaceChildren(editor);
+  fit();
+  editor.focus();
+  editor.select?.();
+
+  let done = false;
+  /** 確定(save=true)か取り消し。変わっていなければ保存しない(同期を無駄に起こさない)。 */
+  const finish = save => {
+    if (done) return;
+    done = true;
+    if (save) {
+      const raw = editor.value;
+      if (prop === TITLE) {
+        if (raw.trim() !== current || blank) updateKnowledgeMemo(rowId, { title: raw.trim() || '無題' });
+      } else {
+        const next = prop.type === 'date' ? (raw ? { start: raw, end: current?.end || null } : null) : convertValue(prop.type, raw);
+        if (JSON.stringify(next) !== JSON.stringify(current ?? (prop.type === 'number' || prop.type === 'date' ? null : ''))) {
+          updateDatabaseRow(dbId, rowId, { [prop.id]: next });
         }
       }
-      refresh();
-    };
-    editor.addEventListener('input', fit);
-    editor.addEventListener('keydown', event => {
-      // 日本語の変換を確定するEnterでは保存しない。
-      if (event.isComposing || event.keyCode === 229) return;
-      if (event.key === 'Escape') { event.preventDefault(); finish(false); }
-      // 改行できるのは「文字」の列だけ(Shift+Enter)。ほかの列はEnterで確定。
-      if (event.key === 'Enter' && !(event.shiftKey && prop.type === 'text')) { event.preventDefault(); finish(true); }
-    });
-    editor.addEventListener('blur', () => finish(true));
-    if (prop.type === 'date') editor.addEventListener('change', () => finish(true));
-  }
+    }
+    refresh();
+  };
+  editor.addEventListener('input', fit);
+  editor.addEventListener('keydown', event => {
+    // 日本語の変換を確定するEnterでは保存しない。
+    if (event.isComposing || event.keyCode === 229) return;
+    if (event.key === 'Escape') { event.preventDefault(); finish(false); }
+    // 改行できるのは「文字」の列だけ(Shift+Enter)。ほかの列はEnterで確定。
+    if (event.key === 'Enter' && !(event.shiftKey && prop.type === 'text')) { event.preventDefault(); finish(true); }
+  });
+  editor.addEventListener('blur', () => finish(true));
+  if (prop.type === 'date') editor.addEventListener('change', () => finish(true));
+}
+
+// ---- 行のページの「列の欄」(Notionのページ上部の、アイコン・列名・値の並び) ----
+
+/** ページの上に出す列の一覧のHTML。値は表と同じ見せ方で、押すとその場で書き換えられる。 */
+export function renderPropertyList(db, rowId) {
+  const values = db.rows[rowId] || {};
+  return `
+    <div class="nt-props" data-row="${esc(rowId)}">
+      ${db.properties.map(prop => `
+        <div class="nt-prop">
+          <div class="nt-prop-name">${ICONS[prop.type] || ICONS.text}<span>${esc(prop.name)}</span></div>
+          <div class="nt-prop-value nt-td--${prop.type}" data-edit="${esc(prop.id)}">
+            <div class="nt-cell">${cellHtml(prop, values[prop.id]) || '<span class="nt-empty">未入力</span>'}</div>
+            ${prop.type === 'text' && values[prop.id] ? `<button class="nt-copy" type="button" data-copy="${esc(values[prop.id])}">コピー</button>` : ''}
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
+
+/**
+ * 列の一覧(とサイドピークの題名)を動くようにする。値を押すと書き換え、チェックは押すだけで保存、
+ * 「コピー」は値をクリップボードへ。notify は通知を出す関数。
+ */
+export function wirePropertyList(root, dbId, refresh, notify) {
+  root.addEventListener('click', event => {
+    const copy = event.target.closest('[data-copy]');
+    if (copy) {
+      navigator.clipboard?.writeText(copy.dataset.copy).then(() => notify?.('コピーしました', 'success')).catch(() => {});
+      return;
+    }
+    if (event.target.closest('a, button, input, textarea, .nt-tag-pop')) return;
+    const value = event.target.closest('[data-edit]');
+    if (value) startEdit(value, dbId, refresh);
+  });
+  wireCheckboxes(root, dbId);
 }
 
 /**
