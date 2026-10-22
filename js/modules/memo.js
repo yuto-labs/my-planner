@@ -32,7 +32,7 @@ import {
   MEMO_SPACE, activeView, getActiveSpaceId, mountDatabaseSpace, openMoveSheet, renderDatabaseRowPanel,
   renderSpaceHeader, returnToDatabaseFromRow, wireSpaceHeader,
 } from './database.js';
-import { applyView, formatValue, viewProperties } from '../database-model.js';
+import { applyView, viewProperties } from '../database-model.js';
 import { captureHorizontalTableScroll, restoreHorizontalTableScroll } from '../horizontal-scroll-state.js';
 import {
   markdownBlockShortcut,
@@ -701,7 +701,7 @@ function renderList() {
     id: memo.id,
     title: memo.title || '',
     memo,
-    values: { ...space.rows[memo.id], __first: memoFirstLine(memo), __tags: memo.tags || [], __updated: { start: memo.updatedAt || memo.createdAt || '' } },
+    values: { __first: memoFirstLine(memo), __tags: memo.tags || [], __updated: { start: memo.updatedAt || memo.createdAt || '' } },
   }));
   const viewed = applyView(rows, view, viewProperties(space)).map(row => row.memo);
   // 星付きを上にまとめる(ビューの並び順は星の中・星以外の中でそのまま保つ)。
@@ -711,12 +711,8 @@ function renderList() {
 
   const q = search.toLowerCase();
   const filtered = q ? memos.filter(memo => memoSearchText(memo).includes(q)) : memos;
-  // ビューで「一覧に出す列」を選んでいれば、カードにその値も出す。
-  const shownColumns = space.properties.filter(prop => (view.columns || []).includes(prop.id)).slice(0, 2);
-  /** 一覧の1件(メモのカード)。選んだ列の値があれば添える。 */
-  const renderListItem = memo => renderMemoCard(memo, shownColumns
-    .map(prop => [prop.name, formatValue(prop.type, space.rows[memo.id]?.[prop.id])])
-    .filter(([, value]) => value));
+  /** 一覧の1件(メモのカード)。 */
+  const renderListItem = memo => renderMemoCard(memo);
 
   const orderedMemos = filtered;
   const visibleMemos = orderedMemos.slice(0, listState.visibleCount);
@@ -850,11 +846,8 @@ function renderList() {
   });
 }
 
-/**
- * 一覧用に、題名・タグ・更新日・星と一行プレビューのカードHTMLを作る。
- * extras は [列名, 値] の配列で、ビューで「一覧に出す」と選んだ自分の列を添える。
- */
-export function renderMemoCard(m, extras = []) {
+/** 一覧用に、題名・タグ・更新日・星と一行プレビューのカードHTMLを作る。 */
+export function renderMemoCard(m) {
   const preview = renderMemoCardPreview(m.blocks || [], 1);
   const dateStr = formatDate(m.updatedAt || m.createdAt, 'ymd-padded');
   const tags = Array.isArray(m.tags) ? m.tags : [];
@@ -881,7 +874,6 @@ export function renderMemoCard(m, extras = []) {
         ${m.pendingAI ? '<span class="kn-pending-badge">AI処理待ち</span>' : ''}
         <div class="kn-memo-preview">${preview || '<span class="kn-memo-preview-empty">本文なし</span>'}</div>
       </div>
-      ${extras.length ? `<div class="kn-memo-card-props">${extras.map(([name, value]) => `<span>${esc(name)}: ${esc(value)}</span>`).join('')}</div>` : ''}
     </div>
   `;
 }

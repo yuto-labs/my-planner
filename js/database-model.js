@@ -107,7 +107,8 @@ export function formatValue(type, value) {
 //
 // メモ欄の「メモ」も「就活」も同じデータベースとして扱い、どちらにもビューを保存できる。
 // 行は { id, title, values } の形。名前は列ID「__title」として、ほかの列と同じに絞り込み・並べ替えできる。
-// 「メモ」には決まった列(1行目・タグ・更新日)があり、値はメモ本体から作る(__first / __tags / __updated)。
+// 「メモ」には決まった列(1行目・タグ・更新日)だけがあり、値はメモ本体から作る(__first / __tags / __updated)。
+// 「メモ」は文章を書く場所なので自分の列は足さない。列が欲しくなったものはデータベースへ移す。
 
 export const TITLE_PROPERTY = Object.freeze({ id: '__title', name: '名前', type: 'text' });
 export const MEMO_BUILTIN_PROPERTIES = Object.freeze([
@@ -116,9 +117,9 @@ export const MEMO_BUILTIN_PROPERTIES = Object.freeze([
   { id: '__updated', name: '更新日', type: 'date' },
 ]);
 
-/** そのデータベースで、絞り込み・並べ替えに使える列の一覧(名前 + 決まった列 + 自分で足した列)。 */
+/** 絞り込み・並べ替えに使える列の一覧。「メモ」は名前と決まった列、データベースは名前と自分で作った列。 */
 export function viewProperties(space) {
-  return [TITLE_PROPERTY, ...(space?.kind === 'memos' ? MEMO_BUILTIN_PROPERTIES : []), ...(space?.properties || [])];
+  return [TITLE_PROPERTY, ...(space?.kind === 'memos' ? MEMO_BUILTIN_PROPERTIES : space?.properties || [])];
 }
 
 /** ビューが1つも保存されていない時に使う「すべて」。メモは更新の新しい順、データベースは並び順のまま。 */

@@ -92,23 +92,19 @@ test('a saved view filters and sorts the rows, and is remembered', async ({ page
   await expect(page.locator('.db-list-row')).toHaveCount(1);
 });
 
-test('a memo can get its own columns and be moved into a database', async ({ page }) => {
+test('a plain memo has no columns and can be moved into a database', async ({ page }) => {
   await openMemoList(page);
   await importCsv(page);
-  await page.locator('[data-space="memos"]').click();
-  // 「メモ」に自分の列(状態)を足す。
-  await page.locator('[data-columns-edit]').click();
-  await page.locator('#db-col-add').click();
-  await page.locator('.db-schema-col').last().locator('[data-col-name]').fill('状態');
-  await page.locator('#db-edit-save').click();
-  // 普通のメモを作り、列に値を入れてから「就活」へ移す。
+  // 「メモ」は文章を書く場所なので、列を足すボタンも列の欄も無い。
   await page.evaluate(async () => {
     const s = await import('/js/storage.js');
     s.addKnowledgeMemo({ title: '移すメモ', blocks: [{ id: 'b1', type: 'paragraph', text: '本文' }], tags: [], url: '', starred: false, summary: '' });
   });
   await page.locator('[data-space="memos"]').click();
+  await expect(page.locator('[data-columns-edit]')).toHaveCount(0);
   await page.locator('.kn-memo-card', { hasText: '移すメモ' }).click();
-  await expect(page.locator('.db-row-panel-db')).toHaveText('メモの列');
+  await expect(page.locator('.db-row-panel')).toHaveCount(0);
+  // 列が欲しくなったらデータベースへ移す。移すとそのデータベースの列の欄が出る。
   await page.locator('#kn-move-btn').click();
   await page.locator('[data-move-to]', { hasText: '就活' }).click();
   await expect(page.locator('.db-row-panel-db')).toHaveText('就活');

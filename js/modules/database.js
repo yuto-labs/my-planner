@@ -90,7 +90,6 @@ export function renderSpaceHeader(space) {
         <button class="db-view-tab db-view-add" type="button" data-view-add aria-label="ビューを追加">＋</button>
         <span class="db-view-tools">
           <button class="btn btn-ghost btn-sm" type="button" data-view-edit>ビュー編集</button>
-          ${space.kind === 'memos' ? '<button class="btn btn-ghost btn-sm" type="button" data-columns-edit>列</button>' : ''}
         </span>
       </div>
     </div>`;
@@ -105,8 +104,7 @@ export function wireSpaceHeader(container, space) {
     const tab = event.target.closest('[data-view-id]');
     if (tab) { setActiveView(space, tab.dataset.viewId); refreshMemoSpace(); return; }
     if (event.target.closest('[data-view-add]')) { openViewEditor(space, null); return; }
-    if (event.target.closest('[data-view-edit]')) { openViewEditor(space, activeView(space).id); return; }
-    if (event.target.closest('[data-columns-edit]')) openSchemaEditor(MEMO_SPACE, refreshMemoSpace);
+    if (event.target.closest('[data-view-edit]')) openViewEditor(space, activeView(space).id);
   });
 }
 
@@ -366,11 +364,8 @@ export function mountDatabaseSpace(container, db) {
  * 種類を変えた列は、入っている値も新しい種類へ変換する(例: 文字→日付で「2026年8月24日」を日付に)。
  */
 function openSchemaEditor(dbId, onSaved) {
-  // 「メモ」欄は、まだ一度も保存していないとIDが決まっていないので、固定の名前 MEMO_SPACE で受け取る。
-  const db = dbId === MEMO_SPACE ? getMemoSpace() : getDatabase(dbId);
+  const db = getDatabase(dbId);
   if (!db) return;
-  // 「メモ」欄は名前を変えたり消したりしない。題名・1行目・タグ・更新日の決まった列に、自分の列を足すだけ。
-  const isMemos = db.kind === 'memos';
   let columns = db.properties.map(prop => ({ ...prop }));
   const body = document.createElement('div');
   body.className = 'db-import';
@@ -378,10 +373,9 @@ function openSchemaEditor(dbId, onSaved) {
   /** 列の一覧を、今の編集中の状態で描き直す。 */
   const render = () => {
     body.innerHTML = `
-      ${isMemos ? '<p class="db-import-note">題名・1行目・タグ・更新日はいつもあります。ここでは自分の列を足せます。</p>' : `
       <label class="form-label">データベースの名前</label>
-      <input class="input" id="db-edit-name" value="${esc(body.querySelector('#db-edit-name')?.value ?? db.name)}">`}
-      <label class="form-label">${isMemos ? '自分で足した列' : '列（1列目の「名前」は各ページの題名です）'}</label>
+      <input class="input" id="db-edit-name" value="${esc(body.querySelector('#db-edit-name')?.value ?? db.name)}">
+      <label class="form-label">列（1列目の「名前」は各ページの題名です）</label>
       ${columns.map((column, index) => `
         <div class="db-schema-col" data-col="${index}">
           <input class="input" data-col-name value="${esc(column.name)}" aria-label="列の名前">
@@ -394,7 +388,7 @@ function openSchemaEditor(dbId, onSaved) {
         </div>`).join('')}
       <button class="btn btn-ghost btn-sm" id="db-col-add" type="button">＋ 列を追加</button>
       <div class="db-schema-footer">
-        ${isMemos ? '<span></span>' : '<button class="btn btn-ghost btn-sm db-delete" id="db-delete" type="button">データベースを削除</button>'}
+        <button class="btn btn-ghost btn-sm db-delete" id="db-delete" type="button">データベースを削除</button>
         <button class="btn btn-primary" id="db-edit-save" type="button">保存</button>
       </div>`;
   };
@@ -407,7 +401,7 @@ function openSchemaEditor(dbId, onSaved) {
     });
   };
   render();
-  const close = window.AppNav.openModal({ title: isMemos ? 'メモの列' : 'データベースの編集', body, autoFocus: false });
+  const close = window.AppNav.openModal({ title: 'データベースの編集', body, autoFocus: false });
 
   body.addEventListener('click', event => {
     const row = event.target.closest('[data-col]');
@@ -442,7 +436,7 @@ function openSchemaEditor(dbId, onSaved) {
           return [propId, old && next && old.type !== next.type ? convertValue(next.type, formatValue(old.type, value)) : value];
         }),
       )]));
-      saveDatabase({ ...db, name: body.querySelector('#db-edit-name')?.value.trim() || db.name, properties: columns, rows });
+      saveDatabase({ ...db, name: body.querySelector('#db-edit-name').value.trim() || db.name, properties: columns, rows });
       close?.();
       toast('保存しました', 'success');
       onSaved?.();
@@ -514,7 +508,8 @@ function openViewEditor(space, viewId) {
     ? JSON.parse(JSON.stringify(original))
     : { id: generateId(), name: `ビュー${spaceViews(space).length + 1}`, filters: [], sort: null, columns: [] };
   const tags = space.kind === 'memos' ? [...new Set(getKnowledgeMemos().flatMap(memo => memo.tags || []))].sort() : [];
-  const columnChoices = space.properties.filter(prop => prop.type !== 'url');
+  // 「メモ」は題名・1行目・タグ・更新日だけの固定の形なので、一覧に出す列は選ばない(カードの形のまま)。
+  const columnChoices = space.kind === 'memos' ? [] : space.properties.filter(prop => prop.type !== 'url');
   const body = document.createElement('div');
   body.className = 'db-import db-view-editor';
 
@@ -639,19 +634,18 @@ export function openMoveSheet(memoId, onMoved) {
 // ---- 行のページの上に出す欄 ----
 
 /**
- * データベースの行(または、自分の列を足した「メモ」のページ)なら、閲覧画面の上に「列の値」の欄を出す。
- * 値は入力し終えた時点で保存する。URLは開くボタン、文字はコピーボタンを横に付ける。
+ * メモがデータベースの行なら、閲覧画面の上に「列の値」の欄を出す。値は入力し終えた時点で保存する。
+ * URLは開くボタン、文字はコピーボタンを横に付ける。普通のメモには列が無いので何も出さない。
  */
 export function renderDatabaseRowPanel(container, memoId) {
-  const memoSpace = getMemoSpace();
-  const found = memoId ? findDatabaseForRow(memoId) || { db: memoSpace, values: memoSpace.rows[memoId] || {} } : null;
+  const found = memoId ? findDatabaseForRow(memoId) : null;
   const page = container.querySelector('.kn-view-page');
   if (!found || !page || !found.db.properties.length) return;
   const { db, values } = found;
   const panel = document.createElement('div');
   panel.className = 'db-row-panel';
   panel.innerHTML = `
-    <p class="db-row-panel-db">${esc(db.kind === 'memos' ? 'メモの列' : db.name)}</p>
+    <p class="db-row-panel-db">${esc(db.name)}</p>
     ${db.properties.map(prop => `
       <div class="db-row-field">
         <label class="db-card-label">${esc(prop.name)}</label>

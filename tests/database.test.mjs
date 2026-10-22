@@ -99,9 +99,9 @@ test('views filter by checkbox and date range, and sort with empty values last',
   assert.deepEqual(ids({ filters: [{ prop: 'gone', value: 'x' }], sort: { prop: 'gone', dir: 'asc' } }), ['a', 'b', 'c']);
 });
 
-test('the memo space has built-in columns and a default newest-first view', () => {
+test('the memo space only has its fixed columns and a default newest-first view', () => {
   const space = { kind: 'memos', properties: [{ id: 's', name: '状態', type: 'text' }] };
-  assert.deepEqual(model.viewProperties(space).map(prop => prop.name), ['名前', '1行目', 'タグ', '更新日', '状態']);
+  assert.deepEqual(model.viewProperties(space).map(prop => prop.name), ['名前', '1行目', 'タグ', '更新日']);
   assert.deepEqual(model.spaceViews(space)[0].sort, { prop: '__updated', dir: 'desc' });
   assert.equal(model.rowPassesFilter({ values: { __tags: ['就活'] } }, { value: '就活' }, { id: '__tags', type: 'tags' }), true);
 });
