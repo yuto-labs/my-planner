@@ -7,6 +7,7 @@
 - [ファイルの役割](file-map.md)
 - [保存と同期](data-and-sync.md)
 - [AI生成と保存](ai-flow.md)
+- [Claudeに予定やメモを読ませる](claude-connector.md)
 - [データベースのセットアップ](../supabase/README.md)
 
 ## コードを学びながら読む方へ

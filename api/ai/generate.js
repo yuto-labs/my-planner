@@ -3,6 +3,7 @@
 // クライアントへ不完全な回答を返さない一方、軽微な形式差は正規化して救済する。
 
 import { assertAiAllowed } from './_access.js';
+import { supabaseConfig } from '../_supabase.js';
 
 /** Vercelが文字列またはオブジェクトで渡すbodyを一つの形へそろえる。 */
 function readBody(req) {
@@ -1797,8 +1798,6 @@ async function fetchWithTimeout(url, options, timeoutMs) {
   }
 }
 
-const DEFAULT_SUPABASE_URL = 'https://nhgbvlovptelaqcurobv.supabase.co';
-const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5oZ2J2bG92cHRlbGFxY3Vyb2J2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMTY2NzcsImV4cCI6MjA5NjU5MjY3N30.Vgsy9--B3d5FoxoHpvjC00OPPzE2WUwzP8GV2LE4-p4';
 const HANDLER_BUDGET_MS = 285_000;
 const NETWORK_SAFETY_MS = 5_000;
 
@@ -1812,16 +1811,10 @@ function getBearerToken(req) {
 // ---- Supabase JWTの確認 ----
 // ブラウザが送ったBearer tokenからユーザーを検証し、
 // サーバーのGeminiキーを認証済みリクエストにだけ使う。
-function getSupabaseConfig() {
-  return {
-    url: process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL,
-    anonKey: process.env.SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY,
-  };
-}
 
 /** `requireAuthenticatedUser`: Supabaseの認証情報を検証し、ログイン中のユーザーを返す。 */
 async function requireAuthenticatedUser(token, timeoutMs) {
-  const cfg = getSupabaseConfig();
+  const cfg = supabaseConfig();
   if (!token) throw Object.assign(new Error('AIを使うにはログインしてください。'), { status: 401 });
 
   const response = await fetchWithTimeout(`${cfg.url}/auth/v1/user`, {

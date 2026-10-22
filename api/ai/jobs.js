@@ -3,11 +3,10 @@
 // 新しいDB表を要求せず、Supabaseの認証とRLSをそのまま利用できる。
 
 import { assertAiAllowed } from './_access.js';
+import { supabaseConfig } from '../_supabase.js';
 
 export const maxDuration = 300;
 
-const DEFAULT_SUPABASE_URL = 'https://nhgbvlovptelaqcurobv.supabase.co';
-const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5oZ2J2bG92cHRlbGFxY3Vyb2J2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMTY2NzcsImV4cCI6MjA5NjU5MjY3N30.Vgsy9--B3d5FoxoHpvjC00OPPzE2WUwzP8GV2LE4-p4';
 const JOB_TAG = '__ai_generation_job__';
 const JOB_BLOCK_TYPE = 'ai-generation-job';
 const BACKGROUND_ACTIONS = new Set([
@@ -47,14 +46,6 @@ function bearerToken(req) {
 function readBody(req) {
   if (typeof req.body === 'string') return JSON.parse(req.body || '{}');
   return req.body && typeof req.body === 'object' ? req.body : {};
-}
-
-/** サーバー環境変数またはアプリ既定値からSupabase REST接続先を返す。 */
-function supabaseConfig() {
-  return {
-    url: process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL,
-    anonKey: process.env.SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY,
-  };
 }
 
 /** ユーザーJWTでSupabase REST APIを呼び、RLSを保ったままジョブを操作する。 */

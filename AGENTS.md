@@ -32,6 +32,7 @@ The browser keeps a local-first copy. Synchronization must merge remote changes 
 - `mp_knowledge`, `mp_trash`, `mp_task_archive`, and `mp_events` live in IndexedDB through `js/local-store.js`. Read and write them only through `storage.js` or `localStore`; never through `localStorage` directly.
 - Permanently deleting trash must keep the deletion record (`purgeTrashItem`). Sync relies on trash rows to confirm deletions on other devices.
 - Sync backups are full copies of a collection. Write them through `archiveSyncBackup` (IndexedDB, newest three per collection), never into `localStorage`.
+- The Claude connector (`api/mcp.js`, see `docs/claude-connector.md`) is read-only. It reads with the service role key through `serviceSelect` in `api/_supabase.js`, so every query must filter `user_id=eq.<token subject>`. Never add write tools without the owner's request, and never return password-like database columns (`looksSecret`).
 
 ## Sync
 
