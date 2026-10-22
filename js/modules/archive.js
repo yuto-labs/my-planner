@@ -83,10 +83,10 @@ function render(container) {
   });
 
   container.querySelectorAll('[data-trash-delete]').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const item = getRestorableTrashItems().find(entry => entry.id === btn.dataset.trashDelete);
       const title = item?.title?.slice(0, 30) || 'この項目';
-      if (!window.confirm(`「${title}」を Trash から完全削除しますか？この操作は元に戻せません。`)) return;
+      if (!await window.AppNav.confirm(`「${title}」を Trash から完全削除しますか？この操作は元に戻せません。`, { okLabel: '削除', danger: true })) return;
       if (!purgeTrashItem(btn.dataset.trashDelete)) {
         toast('削除できませんでした。項目は保持されています', 'error');
         return;
@@ -97,11 +97,11 @@ function render(container) {
   });
 
   container.querySelectorAll('[data-trash-delete-month]').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const ym = btn.dataset.trashDeleteMonth;
       const count = byMonth[ym]?.length || 0;
       const label = monthLabel(ym);
-      if (!window.confirm(`${label} の ${count} 件を Trash から完全削除しますか？`)) return;
+      if (!await window.AppNav.confirm(`${label} の ${count} 件を Trash から完全削除しますか？`, { okLabel: '削除', danger: true })) return;
       deleteTrashItemsByMonth(ym);
       toast(`${count} 件を削除しました`, 'success');
       render(container);

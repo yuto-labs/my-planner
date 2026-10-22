@@ -1593,8 +1593,8 @@ function renderQuestionDetail() {
     button.addEventListener('click', () => openLinkedExpression(button.dataset.questionAtlasEntry));
   });
   wireCollapsibleDetailSections();
-  state.container.querySelector('#atlas-delete-question')?.addEventListener('click', () => {
-    if (!window.confirm('この質問をTrashへ移動しますか？')) return;
+  state.container.querySelector('#atlas-delete-question')?.addEventListener('click', async () => {
+    if (!await window.AppNav.confirm('この質問をTrashへ移動しますか？', { okLabel: '削除', danger: true })) return;
     if (deleteEnglishQuestion(item.id)) {
       state.questionId = '';
       toast('質問をTrashへ移動しました', 'success');
@@ -2063,8 +2063,8 @@ function renderTranslationDetail() {
     clearTimeout(state.noteTimer);
     state.noteTimer = setTimeout(persistOpenTranslationNote, 500);
   });
-  state.container.querySelector('#atlas-delete-translation')?.addEventListener('click', () => {
-    if (!window.confirm(`「${set.sourceTextJa}」の英訳セットを削除しますか？`)) return;
+  state.container.querySelector('#atlas-delete-translation')?.addEventListener('click', async () => {
+    if (!await window.AppNav.confirm(`「${set.sourceTextJa}」の英訳セットを削除しますか？`, { okLabel: '削除', danger: true })) return;
     persistOpenTranslationNote();
     if (deleteExpressionEntry(set.id)) {
       state.translationId = '';
@@ -2496,8 +2496,8 @@ function renderDetail() {
     clearTimeout(state.noteTimer);
     state.noteTimer = setTimeout(persistOpenPersonalNote, 500);
   });
-  state.container.querySelector('#atlas-delete')?.addEventListener('click', () => {
-    if (!window.confirm(`「${entry.term}」を辞典から削除しますか？`)) return;
+  state.container.querySelector('#atlas-delete')?.addEventListener('click', async () => {
+    if (!await window.AppNav.confirm(`「${entry.term}」を辞典から削除しますか？`, { okLabel: '削除', danger: true })) return;
     persistOpenPersonalNote();
     if (deleteExpressionEntry(entry.id)) {
       state.entryId = '';

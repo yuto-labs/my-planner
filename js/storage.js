@@ -127,13 +127,6 @@ export const DEFAULT_CATEGORIES = [
   { id: 'other',    name: 'その他', color: '#8B83E8' },
 ];
 
-export const DEFAULT_ACCENT_RGB = { r: 255, g: 255, b: 255 };
-export const DEFAULT_THEME_TUNING = {
-  toneLevel: 0,
-  cardContrast: 50,
-  glowIntensity: 35,
-  accentVividness: 45,
-};
 
 // ---- Primitive helpers ----
 
@@ -758,8 +751,6 @@ const DEFAULT_SETTINGS = {
   aiEnabled: true,
   aiVisibilityConfigured: false,
   myScheduleColor: '#60A5FA',
-  accentRgb: DEFAULT_ACCENT_RGB,
-  themeTuning: DEFAULT_THEME_TUNING,
 };
 const DEFAULT_AI_RUNTIME = {
   provider: 'gemini',
@@ -792,10 +783,10 @@ export function saveSettings(s) {
 }
 
 // ---- 端末間で揃える設定 ----
-// 外観(テーマ・アクセント色・背景調整・My Scheduleの色)とカテゴリだけを同期する。
+// 外観(テーマ=ブラック/ホワイト・My Scheduleの色)とカテゴリだけを同期する。
 // リマインダーやAI表示は端末ごとに決めるものなので含めない。
 // 新しい表を作らずに済むよう、同期済みの「画像設定」内部レコードの sharedSettings 欄へ写しを置く。
-const SHARED_SETTING_KEYS = ['theme', 'accentRgb', 'themeTuning', 'myScheduleColor'];
+const SHARED_SETTING_KEYS = ['theme', 'myScheduleColor'];
 const SHARED_SETTINGS_DELAY_MS = 1500;
 let sharedSettingsTimer = null;
 

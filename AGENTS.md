@@ -46,6 +46,8 @@ The browser keeps a local-first copy. Synchronization must merge remote changes 
 - Every named function or arrow function needs a `/** */` comment; `npm run build` fails otherwise.
 - CSS: change the existing rule instead of appending a later rule with the same selector that overrides it. `npm run build` fails on such dead declarations (`npm run css:check`); `npm run css:fix` removes them safely.
 - Modals: build the modal element and show it with `window.AppNav.mountModal` (or `openModal`); do not manipulate `#modal-overlay` directly.
+- Yes/no questions (for example "削除しますか？") use `await window.AppNav.confirm(message, { okLabel, danger })`, which shows a centered dialog that can sit on top of an open modal. Do not use `window.confirm` in click handlers.
+- Themes: there are only two, black (`data-theme="dark"`) and white (`data-theme="light"`), modeled on Notion. Every color comes from the tokens at the top of `css/style.css`; do not hard-code colors or set theme colors from JavaScript. Translucent accent fills use `rgba(var(--primary-rgb), alpha)`, and accent-colored text uses `--primary-light` / `--primary-dark`, which are tuned to stay readable on both themes.
 
 ## Tests
 

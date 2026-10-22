@@ -658,7 +658,7 @@ async function handleNLInput(input, btn, container) {
       if (deletion.ambiguous) {
         throw new Error(`候補が複数あります: ${deletion.matches.map(item => item.title).slice(0, 3).join('、')}`);
       }
-      if (!window.confirm(`「${deletion.item.title}」を削除しますか？`)) {
+      if (!await window.AppNav.confirm(`「${deletion.item.title}」を削除しますか？`, { okLabel: '削除', danger: true })) {
         message = '削除をキャンセルしました';
       } else {
         deletion.remove(deletion.item.id);

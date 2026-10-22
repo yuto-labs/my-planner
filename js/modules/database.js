@@ -351,7 +351,7 @@ export function mountDatabaseSpace(container, db) {
 
   const body = container.querySelector('#db-body');
   // カード・表の行を押したらページを開く。リンク・コピー・入力欄は、押してもページを開かない。
-  body.addEventListener('click', event => {
+  body.addEventListener('click', async event => {
     if (event.target.closest('[data-link]')) return;
     const copy = event.target.closest('[data-copy]');
     if (copy) {
@@ -364,7 +364,7 @@ export function mountDatabaseSpace(container, db) {
     if (remove) {
       const memoId = remove.dataset.rowDelete;
       const title = getKnowledgeMemos().find(memo => memo.id === memoId)?.title || 'この行';
-      if (!window.confirm(`「${title}」を削除しますか？ ごみ箱から戻せます。`)) return;
+      if (!await window.AppNav.confirm(`「${title}」を削除しますか？ ごみ箱から戻せます。`, { okLabel: '削除', danger: true })) return;
       if (deleteKnowledgeMemo(memoId)) { toast('ごみ箱へ移しました', 'success'); renderBody(); }
       return;
     }
@@ -426,7 +426,7 @@ function openSchemaEditor(dbId, onSaved) {
   render();
   const close = window.AppNav.openModal({ title: 'データベースの編集', body, autoFocus: false });
 
-  body.addEventListener('click', event => {
+  body.addEventListener('click', async event => {
     const row = event.target.closest('[data-col]');
     if (event.target.closest('[data-col-move]') && row) {
       collect();
@@ -437,7 +437,7 @@ function openSchemaEditor(dbId, onSaved) {
     } else if (event.target.closest('[data-col-remove]') && row) {
       collect();
       const column = columns[Number(row.dataset.col)];
-      if (!window.confirm(`列「${column.name}」を削除しますか？ この列の値も消えます。`)) return;
+      if (!await window.AppNav.confirm(`列「${column.name}」を削除しますか？ この列の値も消えます。`, { okLabel: '削除', danger: true })) return;
       columns.splice(Number(row.dataset.col), 1);
       render();
     } else if (event.target.closest('#db-col-add')) {
@@ -612,7 +612,7 @@ function openViewEditor(space, viewId) {
       render();
     }
   });
-  body.addEventListener('click', event => {
+  body.addEventListener('click', async event => {
     if (event.target.closest('#view-filter-add')) {
       collect();
       draft.filters.push({ prop: props[0].id, value: '' });
@@ -622,7 +622,7 @@ function openViewEditor(space, viewId) {
       draft.filters.splice(Number(event.target.closest('[data-filter]').dataset.filter), 1);
       render();
     } else if (event.target.closest('#view-delete')) {
-      if (!window.confirm(`ビュー「${draft.name}」を削除しますか？ 中のメモや行は消えません。`)) return;
+      if (!await window.AppNav.confirm(`ビュー「${draft.name}」を削除しますか？ 中のメモや行は消えません。`, { okLabel: '削除', danger: true })) return;
       commit(spaceViews(fresh()).filter(view => view.id !== draft.id));
     } else if (event.target.closest('#view-save')) {
       collect();

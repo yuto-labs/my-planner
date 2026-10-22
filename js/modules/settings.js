@@ -7,7 +7,7 @@
 
 import {
   getSettings, saveSettings, getCategories, saveCategories,
-  exportBackup, importBackup, clearAiCache, DEFAULT_CATEGORIES, DEFAULT_ACCENT_RGB, DEFAULT_THEME_TUNING,
+  exportBackup, importBackup, clearAiCache, DEFAULT_CATEGORIES,
   getPendingAIQueue, clearPendingAIQueue, getAiRuntime,
   clearUserContentLocal, hasUserContentLocal,
   preserveUserContentSnapshot,
@@ -60,27 +60,22 @@ export function initAISettings(container) {
 function renderMainSettings(container) {
   const settings = getSettings();
   const categories = getCategories();
-  const accent = normalizeAccentRgb(settings.accentRgb);
-  const tuning = normalizeThemeTuning(settings.themeTuning);
+  // テーマはブラックとホワイトの2つだけ(以前の「自動」はブラック/ホワイトのどちらかに置き換え済み)。
+  const themeMode = settings.theme === 'light' ? 'light' : 'dark';
 
   container.innerHTML = `
     <div class="settings-page">
       <div class="settings-section">
-        <div class="settings-heading">Accent Color</div>
-        <div class="accent-preview-card" id="accent-preview-card"
-          style="--accent-preview: rgb(${accent.r}, ${accent.g}, ${accent.b})">
-          <div class="accent-preview-swatch"></div>
-          <div class="accent-preview-text">
-            <strong>RGB ${accent.r}, ${accent.g}, ${accent.b}</strong>
-            <span>Buttons, highlights, and the top and bottom bars</span>
-          </div>
-          <button class="btn btn-ghost btn-sm" id="accent-reset-btn" type="button">Reset</button>
-        </div>
-
-        <div class="accent-rgb-grid">
-          ${renderRgbSlider('R', 'accent-r', accent.r)}
-          ${renderRgbSlider('G', 'accent-g', accent.g)}
-          ${renderRgbSlider('B', 'accent-b', accent.b)}
+        <div class="settings-heading">テーマ</div>
+        <div class="theme-choice">
+          <button class="theme-choice-btn${themeMode === 'dark' ? ' active' : ''}" data-theme-mode="dark" type="button" aria-pressed="${themeMode === 'dark'}">
+            <span class="theme-choice-swatch theme-choice-swatch--dark" aria-hidden="true"><span></span></span>
+            ブラック
+          </button>
+          <button class="theme-choice-btn${themeMode === 'light' ? ' active' : ''}" data-theme-mode="light" type="button" aria-pressed="${themeMode === 'light'}">
+            <span class="theme-choice-swatch theme-choice-swatch--light" aria-hidden="true"><span></span></span>
+            ホワイト
+          </button>
         </div>
       </div>
 
@@ -115,45 +110,6 @@ function renderMainSettings(container) {
         <p class="text-sm text-muted" style="margin-top:8px">
           共有画面では予定を保存せず、個人カレンダーの共有対象だけをまとめて表示します。
         </p>
-      </div>
-
-      <div class="settings-section">
-        <div class="settings-heading">背景と表示</div>
-
-        <div class="theme-tuning-card">
-          <div class="theme-tuning-top">
-            <div>
-              <strong>背景モード</strong>
-              <p class="text-sm text-muted">白またはダークを選び、背景の明るさとカードの見え方を調整できます。</p>
-            </div>
-            <button class="btn btn-ghost btn-sm" id="theme-tuning-reset-btn" type="button">Reset</button>
-          </div>
-
-          <div class="batch-mode-select batch-mode-select--three" style="margin-bottom:14px">
-            <button class="batch-mode-btn${settings.theme === 'light' ? ' active' : ''}" data-theme-mode="light" type="button">
-              <div class="batch-mode-icon">White</div>
-              <div class="batch-mode-label">White</div>
-              <div class="batch-mode-sub">明るい背景で表示します。</div>
-            </button>
-            <button class="batch-mode-btn${settings.theme === 'dark' ? ' active' : ''}" data-theme-mode="dark" type="button">
-              <div class="batch-mode-icon">Dark</div>
-              <div class="batch-mode-label">Dark</div>
-              <div class="batch-mode-sub">暗い背景で表示します。</div>
-            </button>
-            <button class="batch-mode-btn${settings.theme === 'auto' ? ' active' : ''}" data-theme-mode="auto" type="button">
-              <div class="batch-mode-icon">Auto</div>
-              <div class="batch-mode-label">Auto</div>
-              <div class="batch-mode-sub">端末のライト/ダーク設定に合わせます。</div>
-            </button>
-          </div>
-
-          <div class="accent-rgb-grid">
-            ${renderThemeSlider('背景の濃さ', 'tune-tone-level', tuning.toneLevel)}
-            ${renderThemeSlider('カードの差', 'tune-card-contrast', tuning.cardContrast)}
-            ${renderThemeSlider('光の強さ', 'tune-glow-intensity', tuning.glowIntensity)}
-            ${renderThemeSlider('色の鮮やかさ', 'tune-accent-vividness', tuning.accentVividness)}
-          </div>
-        </div>
       </div>
 
       <div class="settings-section">
@@ -524,7 +480,7 @@ function formatSyncTime(value) {
   return date.toLocaleString();
 }
 
-/** テーマ、RGBアクセント、背景調整の各入力を保存と即時プレビューへ接続する。 */
+/** テーマ(ブラック/ホワイト)と自分の予定の色の入力を、保存とその場の反映へ接続する。 */
 function wireAppearance(container) {
   container.querySelector('#my-schedule-color-input')?.addEventListener('input', e => {
     const color = e.target.value || '#60A5FA';
@@ -533,170 +489,18 @@ function wireAppearance(container) {
     if (preview) preview.style.setProperty('--schedule-color', color);
   });
 
-  const rgbInputs = ['accent-r', 'accent-g', 'accent-b']
-    .map(id => container.querySelector(`#${id}`))
-    .filter(Boolean);
-  const tuneInputs = [
-    'tune-tone-level',
-    'tune-card-contrast',
-    'tune-glow-intensity',
-    'tune-accent-vividness',
-  ].map(id => container.querySelector(`#${id}`)).filter(Boolean);
-
-  /** RGB値を設定画面の色見本と各数値ラベルへ反映する。 */
-  const syncAccentPreview = (rgb) => {
-    const safe = normalizeAccentRgb(rgb);
-    const preview = container.querySelector('#accent-preview-card');
-    if (preview) preview.style.setProperty('--accent-preview', `rgb(${safe.r}, ${safe.g}, ${safe.b})`);
-    const text = preview?.querySelector('strong');
-    if (text) text.textContent = `RGB ${safe.r}, ${safe.g}, ${safe.b}`;
-    const rVal = container.querySelector('#accent-r-value');
-    const gVal = container.querySelector('#accent-g-value');
-    const bVal = container.querySelector('#accent-b-value');
-    if (rVal) rVal.textContent = String(safe.r);
-    if (gVal) gVal.textContent = String(safe.g);
-    if (bVal) bVal.textContent = String(safe.b);
-  };
-
-  /** RGB値を設定へ保存し、全体テーマと設定画面の見本を更新する。 */
-  const applyAccent = (rgb) => {
-    const safe = normalizeAccentRgb(rgb);
-    saveSettings({ accentRgb: safe });
-    window.AppTheme?.apply(getSettings().theme || 'auto');
-    syncAccentPreview(safe);
-  };
-
-  /** 背景の濃さ・カード差・光彩・鮮やかさの現在値を設定画面へ表示する。 */
-  const syncThemeTuningPreview = (tuning) => {
-    const safe = normalizeThemeTuning(tuning);
-    const items = [
-      ['#tune-tone-level-value', safe.toneLevel],
-      ['#tune-card-contrast-value', safe.cardContrast],
-      ['#tune-glow-intensity-value', safe.glowIntensity],
-      ['#tune-accent-vividness-value', safe.accentVividness],
-    ];
-    items.forEach(([selector, value]) => {
-      const el = container.querySelector(selector);
-      if (el) el.textContent = String(value);
-    });
-  };
-
-  /** テーマ微調整値を保存し、CSSテーマと設定画面を即時更新する。 */
-  const applyThemeTuning = (tuning) => {
-    const safe = normalizeThemeTuning(tuning);
-    saveSettings({ themeTuning: safe });
-    window.AppTheme?.apply(getSettings().theme || 'dark');
-    syncThemeTuningPreview(safe);
-  };
-
-  rgbInputs.forEach(input => {
-    input.addEventListener('input', () => {
-      applyAccent({
-        r: container.querySelector('#accent-r')?.value,
-        g: container.querySelector('#accent-g')?.value,
-        b: container.querySelector('#accent-b')?.value,
-      });
-    });
-  });
-
-  tuneInputs.forEach(input => {
-    input.addEventListener('input', () => {
-      applyThemeTuning({
-        toneLevel: container.querySelector('#tune-tone-level')?.value,
-        cardContrast: container.querySelector('#tune-card-contrast')?.value,
-        glowIntensity: container.querySelector('#tune-glow-intensity')?.value,
-        accentVividness: container.querySelector('#tune-accent-vividness')?.value,
-      });
-    });
-  });
-
-  container.querySelector('#accent-reset-btn')?.addEventListener('click', () => {
-    const safe = normalizeAccentRgb(DEFAULT_ACCENT_RGB);
-    container.querySelector('#accent-r').value = String(safe.r);
-    container.querySelector('#accent-g').value = String(safe.g);
-    container.querySelector('#accent-b').value = String(safe.b);
-    applyAccent(safe);
-    toast('Accent color reset.', 'info');
-  });
-
-  container.querySelector('#theme-tuning-reset-btn')?.addEventListener('click', () => {
-    const safe = normalizeThemeTuning(DEFAULT_THEME_TUNING);
-    container.querySelector('#tune-tone-level').value = String(safe.toneLevel);
-    container.querySelector('#tune-card-contrast').value = String(safe.cardContrast);
-    container.querySelector('#tune-glow-intensity').value = String(safe.glowIntensity);
-    container.querySelector('#tune-accent-vividness').value = String(safe.accentVividness);
-    applyThemeTuning(safe);
-    toast('Theme tuning reset.', 'info');
-  });
-
   container.querySelectorAll('[data-theme-mode]').forEach(btn => {
     btn.addEventListener('click', () => {
-      const mode = ['light', 'dark', 'auto'].includes(btn.dataset.themeMode) ? btn.dataset.themeMode : 'dark';
+      const mode = btn.dataset.themeMode === 'light' ? 'light' : 'dark';
       saveSettings({ theme: mode });
       window.AppTheme?.apply(mode);
       container.querySelectorAll('[data-theme-mode]').forEach(other => {
-        other.classList.toggle('active', other.dataset.themeMode === mode);
+        const active = other.dataset.themeMode === mode;
+        other.classList.toggle('active', active);
+        other.setAttribute('aria-pressed', String(active));
       });
-      toast(`Theme changed to ${mode}.`, 'info');
     });
   });
-}
-
-/** 0〜255のRGB一成分を調整するラベル付きスライダーHTMLを返す。 */
-function renderRgbSlider(label, id, value) {
-  return `
-    <label class="accent-rgb-item" for="${id}">
-      <span class="accent-rgb-head">
-        <span class="accent-rgb-label">${label}</span>
-        <span class="accent-rgb-value" id="${id}-value">${value}</span>
-      </span>
-      <input class="accent-rgb-slider" id="${id}" type="range" min="0" max="255" value="${value}">
-    </label>
-  `;
-}
-
-/** 0〜100のテーマ微調整値を操作するラベル付きスライダーHTMLを返す。 */
-function renderThemeSlider(label, id, value) {
-  return `
-    <label class="accent-rgb-item" for="${id}">
-      <span class="accent-rgb-head">
-        <span class="accent-rgb-label">${label}</span>
-        <span class="accent-rgb-value" id="${id}-value">${value}</span>
-      </span>
-      <input class="accent-rgb-slider${id === 'tune-tone-level' ? ' tone-slider' : ''}" id="${id}" type="range" min="0" max="100" value="${value}">
-    </label>
-  `;
-}
-
-/** RGB各成分を整数0〜255へ収め、欠損値を既定色で補う。 */
-function normalizeAccentRgb(rgb) {
-  /** RGB一成分を整数0〜255へ収め、数値でなければ既定値を返す。 */
-  const clamp = (v, fallback) => {
-    const n = Number(v);
-    if (!Number.isFinite(n)) return fallback;
-    return Math.max(0, Math.min(255, Math.round(n)));
-  };
-  return {
-    r: clamp(rgb?.r, DEFAULT_ACCENT_RGB.r),
-    g: clamp(rgb?.g, DEFAULT_ACCENT_RGB.g),
-    b: clamp(rgb?.b, DEFAULT_ACCENT_RGB.b),
-  };
-}
-
-/** テーマ微調整の各値を整数0〜100へ収め、欠損値を既定値で補う。 */
-function normalizeThemeTuning(tuning) {
-  /** 微調整値を整数0〜100へ収め、数値でなければ既定値を返す。 */
-  const clamp = (v, fallback) => {
-    const n = Number(v);
-    if (!Number.isFinite(n)) return fallback;
-    return Math.max(0, Math.min(100, Math.round(n)));
-  };
-  return {
-    toneLevel: clamp(tuning?.toneLevel, DEFAULT_THEME_TUNING.toneLevel),
-    cardContrast: clamp(tuning?.cardContrast, DEFAULT_THEME_TUNING.cardContrast),
-    glowIntensity: clamp(tuning?.glowIntensity, DEFAULT_THEME_TUNING.glowIntensity),
-    accentVividness: clamp(tuning?.accentVividness, DEFAULT_THEME_TUNING.accentVividness),
-  };
 }
 
 /** 予定カテゴリの追加・名称変更・色変更・削除をまとめて保存処理へ接続する。 */

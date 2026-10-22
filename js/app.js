@@ -10,8 +10,7 @@ import {
   getSettings, getPendingAIQueue, autoArchiveTasks, purgeExpiredTrashPayloads, isAiAvailable,
   getEvents, getTasks, applySharedSettingsFromSync, ensureSharedSettings, extendRecurringSeries,
   clearUserContentLocal, hasUserContentLocal,
-  preserveUserContentSnapshot, restoreUserContentSnapshot,
-  DEFAULT_ACCENT_RGB, DEFAULT_THEME_TUNING,
+  preserveUserContentSnapshot, restoreUserContentSnapshot, saveSettings,
 } from './storage.js';
 import { processBatchQueue, refreshAiRuntimeStatus } from './ai.js';
 import { backfillLocalEvents, initSync, pullAll, pullIfStale, pullIfRemoteChanged, startRealtimeSync, hasPendingSyncWork, flushPendingSync, resetSyncForUserSwitch } from './sync.js';
@@ -575,323 +574,74 @@ export function closeModal() {
 
 // ---- Confirm dialog ----
 /**
- * 共通モーダルで二択の確認画面を表示する。
- * @returns {Promise<boolean>} OKならtrue、キャンセルならfalse
+ * 「削除しますか？」のような二択の確認を、画面の真ん中の小さな窓で出す。
+ * ブラウザの window.confirm は画面の上の方に出て、見た目もアプリと揃わないため、こちらを使う。
+ * 共通モーダルとは別の重ね板に出すので、編集画面(モーダル)の上に重ねても下の画面は閉じない。
+ * 背景を押す・Escは「やめる」と同じ扱い。message は文字としてそのまま表示する(HTMLとしては読まない)。
+ * @returns {Promise<boolean>} 実行するならtrue、やめるならfalse
  */
 export function confirm(message, opts = {}) {
-  return new Promise((resolve) => {
-    const body = document.createElement('div');
-    body.innerHTML = `<p style="font-size:15px;line-height:1.6">${message}</p>`;
+  return new Promise(resolve => {
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML = `
+      <div class="confirm-dialog" role="alertdialog" aria-modal="true">
+        <p class="confirm-message"></p>
+        <div class="confirm-actions">
+          <button class="btn btn-ghost btn-sm" type="button" data-answer="no"></button>
+          <button class="btn btn-sm ${opts.danger ? 'btn-danger' : 'btn-primary'}" type="button" data-answer="yes"></button>
+        </div>
+      </div>`;
+    overlay.querySelector('.confirm-message').textContent = String(message || '');
+    overlay.querySelector('[data-answer="no"]').textContent = opts.cancelLabel || 'やめる';
+    overlay.querySelector('[data-answer="yes"]').textContent = opts.okLabel || 'OK';
 
-    const footer = document.createElement('div');
-    footer.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;width:100%';
-
-    const cancelBtn = document.createElement('button');
-    cancelBtn.className = 'btn btn-ghost btn-sm';
-    cancelBtn.textContent = opts.cancelLabel || 'Cancel';
-
-    const okBtn = document.createElement('button');
-    okBtn.className = 'btn btn-primary btn-sm';
-    okBtn.textContent = opts.okLabel || 'OK';
-    if (opts.danger) okBtn.className = 'btn btn-danger btn-sm';
-
-    footer.appendChild(cancelBtn);
-    footer.appendChild(okBtn);
-
-    const close = openModal({ title: opts.title || 'Confirm', body, footer });
-
-    cancelBtn.onclick = () => { close(); resolve(false); };
-    okBtn.onclick = () => { close(); resolve(true); };
+    /** 答えを返して窓を消す。 */
+    const finish = answer => {
+      window.removeEventListener('keydown', onKey, true);
+      overlay.remove();
+      previouslyFocused?.focus?.({ preventScroll: true });
+      resolve(answer);
+    };
+    /** Escで「やめる」。下の編集画面のEsc(閉じる)まで届かないよう、ここで止める。 */
+    const onKey = event => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      finish(false);
+    };
+    overlay.addEventListener('click', event => {
+      const button = event.target.closest('[data-answer]');
+      if (button) finish(button.dataset.answer === 'yes');
+      else if (event.target === overlay) finish(false);
+    });
+    window.addEventListener('keydown', onKey, true);
+    document.body.append(overlay);
+    // 誤って消さないよう、最初は「やめる」にフォーカスを置く(Enterだけでは削除されない)。
+    overlay.querySelector('[data-answer="no"]').focus();
   });
 }
 
 // ---- Theme management ----
 
-/** 保存済み設定から背景テーマとアクセント色をまとめて適用する。 */
+// スマホのステータスバーなど、アプリの外枠の色。上下の帯と同じ色にそろえる。
+const THEME_BAND_COLORS = { light: '#F7F7F5', dark: '#191919' };
+
+/** 保存値を 'light'(ホワイト)か 'dark'(ブラック)にそろえる。以前の「自動」は端末の設定で決める。 */
+function resolveThemeMode(theme) {
+  if (theme === 'light' || theme === 'dark') return theme;
+  return window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ? 'dark' : 'light';
+}
+
+/**
+ * テーマ(ブラック/ホワイト)を適用する。色はすべて style.css の [data-theme] に決めてあるので、
+ * ここでは html に data-theme を付けて、外枠の色を合わせるだけ。
+ */
 function applyTheme(theme) {
-  const html = document.documentElement;
-  const settings = getSettings();
-  const tuning = settings.themeTuning || DEFAULT_THEME_TUNING;
-  // 'auto' は端末のダークモード設定に合わせる。
-  const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)')?.matches;
-  const mode = theme === 'auto' ? (prefersDark ? 'dark' : 'light') : theme === 'light' ? 'light' : 'dark';
-  html.setAttribute('data-theme', mode);
-  applySurfaceTheme(mode, tuning);
-  applyAccentTheme(settings.accentRgb || DEFAULT_ACCENT_RGB, tuning);
-}
-
-/** RGBの一要素を0〜255の整数へ収める。 */
-function clampRgb(value, fallback) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(0, Math.min(255, Math.round(n)));
-}
-
-/** 不完全なアクセント色設定を、安全なRGBオブジェクトへ補正する。 */
-function normalizeAccentRgb(rgb) {
-  return {
-    r: clampRgb(rgb?.r, DEFAULT_ACCENT_RGB.r),
-    g: clampRgb(rgb?.g, DEFAULT_ACCENT_RGB.g),
-    b: clampRgb(rgb?.b, DEFAULT_ACCENT_RGB.b),
-  };
-}
-
-/** 設定値を0〜100%へ収め、数値でなければ既定値を返す。 */
-function clampPercent(value, fallback) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(0, Math.min(100, Math.round(n)));
-}
-
-/** 背景・コントラスト・鮮やかさの設定を使用可能な範囲へ正規化する。 */
-function normalizeThemeTuning(tuning) {
-  const fallbackTone = Math.round(((Number(tuning?.blackLevel) || DEFAULT_THEME_TUNING.toneLevel) + (100 - (Number(tuning?.whiteLevel) || 45))) / 2);
-  return {
-    toneLevel: clampPercent(tuning?.toneLevel, fallbackTone || DEFAULT_THEME_TUNING.toneLevel),
-    cardContrast: clampPercent(tuning?.cardContrast, DEFAULT_THEME_TUNING.cardContrast),
-    glowIntensity: clampPercent(tuning?.glowIntensity, DEFAULT_THEME_TUNING.glowIntensity),
-    accentVividness: clampPercent(tuning?.accentVividness, DEFAULT_THEME_TUNING.accentVividness),
-  };
-}
-
-/** 二つのRGB色をratioの割合で混ぜ、新しいRGB色を返す。 */
-function mixRgb(a, b, ratio) {
-  const t = Math.max(0, Math.min(1, ratio));
-  return {
-    r: Math.round(a.r + (b.r - a.r) * t),
-    g: Math.round(a.g + (b.g - a.g) * t),
-    b: Math.round(a.b + (b.b - a.b) * t),
-  };
-}
-
-/** RGB色を、色相・彩度・明度で調整しやすいHSL形式へ変換する。 */
-function rgbToHsl(rgb) {
-  const r = normalizeAccentRgb(rgb).r / 255;
-  const g = normalizeAccentRgb(rgb).g / 255;
-  const b = normalizeAccentRgb(rgb).b / 255;
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  let h;
-  let s;
-  const l = (max + min) / 2;
-
-  if (max === min) {
-    h = 0;
-    s = 0;
-  } else {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    switch (max) {
-      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-      case g: h = (b - r) / d + 2; break;
-      default: h = (r - g) / d + 4; break;
-    }
-    h /= 6;
-  }
-  return { h, s, l };
-}
-
-/** HSL形式の色を、CSSで扱いやすいRGBへ戻す。 */
-function hslToRgb(h, s, l) {
-  let r;
-  let g;
-  let b;
-  if (s === 0) {
-    r = g = b = l;
-  } else {
-    /** `hue2rgb`: HSL色の色相区間をRGB成分へ変換する。 */
-    const hue2rgb = (p, q, t) => {
-      let tt = t;
-      if (tt < 0) tt += 1;
-      if (tt > 1) tt -= 1;
-      if (tt < 1 / 6) return p + (q - p) * 6 * tt;
-      if (tt < 1 / 2) return q;
-      if (tt < 2 / 3) return p + (q - p) * (2 / 3 - tt) * 6;
-      return p;
-    };
-    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-    const p = 2 * l - q;
-    r = hue2rgb(p, q, h + 1 / 3);
-    g = hue2rgb(p, q, h);
-    b = hue2rgb(p, q, h - 1 / 3);
-  }
-  return {
-    r: Math.round(r * 255),
-    g: Math.round(g * 255),
-    b: Math.round(b * 255),
-  };
-}
-
-/** RGBオブジェクトをCSSのrgb()/rgba()文字列へ変換する。 */
-function rgbToCss(rgb, alpha = 1) {
-  const c = normalizeAccentRgb(rgb);
-  if (alpha >= 1) return `rgb(${c.r}, ${c.g}, ${c.b})`;
-  return `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`;
-}
-
-/** 背景色の明るさに応じて、読みやすい黒または白の文字色を返す。 */
-function contrastTextForRgb(rgb) {
-  /** `channelLuminance`: RGBの一成分を相対輝度計算用の線形値へ変換する。 */
-  const channelLuminance = value => {
-    const normalized = value / 255;
-    return normalized <= 0.04045
-      ? normalized / 12.92
-      : ((normalized + 0.055) / 1.055) ** 2.4;
-  };
-  const color = normalizeAccentRgb(rgb);
-  const luminance =
-    0.2126 * channelLuminance(color.r) +
-    0.7152 * channelLuminance(color.g) +
-    0.0722 * channelLuminance(color.b);
-  const darkLuminance = channelLuminance(13);
-  const darkContrast = (luminance + 0.05) / (darkLuminance + 0.05);
-  const lightContrast = 1.05 / (luminance + 0.05);
-  return darkContrast >= lightContrast ? '#0D0D15' : '#FFFFFF';
-}
-
-/** PWAやモバイルブラウザの外枠も、アプリ内の上下帯と同じ色へ揃える。 */
-function updateBrowserThemeColor(rgb) {
-  const color = rgbToCss(rgb);
-  document.querySelectorAll('meta[name="theme-color"]').forEach(meta => {
-    meta.setAttribute('content', color);
-  });
-}
-
-/**
- * ライト・ダークと調整値から、背景、カード、文字、境界線などのCSS変数を設定する。
- * 設定画面で背景を調整した時に、画面全体が同じ規則で変化する中心処理です。
- */
-function applySurfaceTheme(mode, tuningInput) {
-  const root = document.documentElement;
-  const tuning = normalizeThemeTuning(tuningInput);
-  const tone = tuning.toneLevel / 100;
-  const contrastStrength = tuning.cardContrast / 100;
-  const glowAlpha = 0.04 + (tuning.glowIntensity / 100) * 0.22;
-  let bgLight;
-  let cardLight;
-  let inputLight;
-  let textLight;
-  let textMutedAlpha;
-  let textDimAlpha;
-  let hoverAlpha;
-  let activeAlpha;
-  let borderAlpha;
-  let borderLightAlpha;
-  let shadowAlpha;
-  let scrollbarAlpha;
-  let glassAlpha;
-
-  if (mode === 'light') {
-    bgLight = 100 - tone * 12;
-    cardLight = Math.max(90, Math.min(100, bgLight + 2.2 + contrastStrength * 3.4));
-    inputLight = Math.max(84, bgLight - (4.2 + contrastStrength * 3.2));
-    textLight = Math.max(14, 19 + tone * 10);
-    textMutedAlpha = 0.72 + contrastStrength * 0.14;
-    textDimAlpha = 0.62 + contrastStrength * 0.16;
-    hoverAlpha = 0.035 + contrastStrength * 0.03;
-    activeAlpha = 0.065 + contrastStrength * 0.04;
-    borderAlpha = 0.06 + contrastStrength * 0.05;
-    borderLightAlpha = 0.035 + contrastStrength * 0.035;
-    shadowAlpha = 0.07 + contrastStrength * 0.09;
-    scrollbarAlpha = 0.14 + contrastStrength * 0.08;
-    glassAlpha = 0.84 + contrastStrength * 0.08;
-
-    root.style.setProperty('--bg', `hsl(240 24% ${bgLight.toFixed(1)}%)`);
-    root.style.setProperty('--bg-card', `hsl(0 0% ${cardLight.toFixed(1)}%)`);
-    root.style.setProperty('--bg-input', `hsl(242 26% ${inputLight.toFixed(1)}%)`);
-    root.style.setProperty('--text', `hsl(250 28% ${textLight.toFixed(1)}%)`);
-    root.style.setProperty('--text-muted', `rgba(26, 24, 48, ${textMutedAlpha.toFixed(3)})`);
-    root.style.setProperty('--text-dim', `rgba(26, 24, 48, ${textDimAlpha.toFixed(3)})`);
-    root.style.setProperty('--bg-hover', `rgba(142, 201, 187, ${hoverAlpha.toFixed(3)})`);
-    root.style.setProperty('--bg-active', `rgba(142, 201, 187, ${activeAlpha.toFixed(3)})`);
-    root.style.setProperty('--border', `rgba(0, 0, 0, ${borderAlpha.toFixed(3)})`);
-    root.style.setProperty('--border-light', `rgba(0, 0, 0, ${borderLightAlpha.toFixed(3)})`);
-    root.style.setProperty('--shadow', `0 8px 32px rgba(40, 54, 68, ${shadowAlpha.toFixed(3)})`);
-    root.style.setProperty('--shadow-sm', `0 2px 12px rgba(40, 54, 68, ${(shadowAlpha * 0.72).toFixed(3)})`);
-    root.style.setProperty('--scrollbar', `rgba(142, 201, 187, ${scrollbarAlpha.toFixed(3)})`);
-    root.style.setProperty('--surface-glass', `rgba(242, 241, 253, ${glassAlpha.toFixed(3)})`);
-  } else {
-    bgLight = 18 - tone * 13.5;
-    cardLight = Math.max(8, Math.min(27, bgLight + 5.2 + contrastStrength * 5.2));
-    inputLight = Math.max(3, bgLight - (1.2 + contrastStrength * 1.8));
-    textLight = Math.min(96, 88 + contrastStrength * 8 - tone * 3);
-    textMutedAlpha = 0.56 + contrastStrength * 0.18;
-    textDimAlpha = 0.32 + contrastStrength * 0.16;
-    hoverAlpha = 0.032 + contrastStrength * 0.03;
-    activeAlpha = 0.06 + contrastStrength * 0.04;
-    borderAlpha = 0.055 + contrastStrength * 0.045;
-    borderLightAlpha = 0.035 + contrastStrength * 0.03;
-    shadowAlpha = 0.34 + contrastStrength * 0.20 + tone * 0.10;
-    scrollbarAlpha = 0.09 + contrastStrength * 0.08;
-    glassAlpha = 0.82 + contrastStrength * 0.10;
-
-    root.style.setProperty('--bg', `hsl(240 24% ${bgLight.toFixed(1)}%)`);
-    root.style.setProperty('--bg-card', `hsl(241 28% ${cardLight.toFixed(1)}%)`);
-    root.style.setProperty('--bg-input', `hsl(242 26% ${inputLight.toFixed(1)}%)`);
-    root.style.setProperty('--text', `hsl(250 32% ${textLight.toFixed(1)}%)`);
-    root.style.setProperty('--text-muted', `rgba(237, 236, 249, ${textMutedAlpha.toFixed(3)})`);
-    root.style.setProperty('--text-dim', `rgba(237, 236, 249, ${textDimAlpha.toFixed(3)})`);
-    root.style.setProperty('--bg-hover', `rgba(255, 255, 255, ${hoverAlpha.toFixed(3)})`);
-    root.style.setProperty('--bg-active', `rgba(255, 255, 255, ${activeAlpha.toFixed(3)})`);
-    root.style.setProperty('--border', `rgba(255, 255, 255, ${borderAlpha.toFixed(3)})`);
-    root.style.setProperty('--border-light', `rgba(255, 255, 255, ${borderLightAlpha.toFixed(3)})`);
-    root.style.setProperty('--shadow', `0 8px 32px rgba(0, 0, 0, ${shadowAlpha.toFixed(3)})`);
-    root.style.setProperty('--shadow-sm', `0 2px 12px rgba(0, 0, 0, ${(shadowAlpha * 0.72).toFixed(3)})`);
-    root.style.setProperty('--scrollbar', `rgba(255, 255, 255, ${scrollbarAlpha.toFixed(3)})`);
-    root.style.setProperty('--surface-glass', `rgba(13, 13, 21, ${glassAlpha.toFixed(3)})`);
-  }
-
-  root.style.setProperty('--home-glow', `rgba(190,230,216,${glowAlpha.toFixed(3)})`);
-}
-
-/**
- * 選択したアクセント色から、ボタン、淡い背景、成功色、グラデーションを派生させる。
- * 白に近い色でもライト背景上で見えなくならないよう明度を補正します。
- */
-function applyAccentTheme(rgb, tuningInput) {
-  const root = document.documentElement;
-  const tuning = normalizeThemeTuning(tuningInput);
-  const hsl = rgbToHsl(normalizeAccentRgb(rgb));
-  const vividness = tuning.accentVividness / 100;
-  const neutralness = Math.max(0, 1 - (hsl.s / 0.28));
-  const lightnessLift = 0.16 - vividness * 0.12 - neutralness * 0.12;
-  const isDark = root.getAttribute('data-theme') === 'dark';
-  // Near-white accents need a darker UI rendering on light surfaces to stay legible.
-  const maxBaseLightness = isDark ? 0.8 : 0.8 - neutralness * 0.34;
-  const adjustedBase = hslToRgb(
-    hsl.h,
-    Math.max(0.04, Math.min(0.92, hsl.s * (0.62 + vividness * 0.85))),
-    Math.max(0.16, Math.min(maxBaseLightness, hsl.l + lightnessLift)),
-  );
-  const lighter = mixRgb(adjustedBase, { r: 255, g: 255, b: 255 }, 0.34 - vividness * 0.16 - neutralness * 0.18);
-  const lightest = mixRgb(adjustedBase, { r: 255, g: 255, b: 255 }, 0.58 - vividness * 0.18 - neutralness * 0.28);
-  const darker = mixRgb(adjustedBase, { r: 20, g: 24, b: 36 }, 0.16 + vividness * 0.07 + neutralness * 0.08);
-  const successTarget = neutralness > 0.45 ? { r: 168, g: 176, b: 186 } : { r: 130, g: 220, b: 235 };
-  const success = mixRgb(adjustedBase, successTarget, 0.15 + vividness * 0.16 - neutralness * 0.08);
-  // Header/footer bands deliberately follow the accent. Keep enough of the neutral
-  // surface so text and icons remain readable even with a vivid custom color.
-  const bandBase = isDark ? { r: 13, g: 13, b: 21 } : { r: 242, g: 241, b: 253 };
-  const bandColor = mixRgb(bandBase, adjustedBase, isDark ? 0.22 : 0.18);
-  const bandBorder = mixRgb(bandBase, adjustedBase, isDark ? 0.48 : 0.38);
-  const bandAlpha = isDark
-    ? 0.82 + (tuning.cardContrast / 100) * 0.10
-    : 0.84 + (tuning.cardContrast / 100) * 0.08;
-
-  root.style.setProperty('--primary', rgbToCss(adjustedBase));
-  root.style.setProperty('--on-primary', contrastTextForRgb(adjustedBase));
-  root.style.setProperty('--primary-dark', rgbToCss(darker));
-  root.style.setProperty('--primary-light', rgbToCss(lightest));
-  root.style.setProperty('--success', rgbToCss(success));
-  root.style.setProperty('--accent', rgbToCss(lighter));
-  root.style.setProperty('--gradient', `linear-gradient(135deg, ${rgbToCss(lighter)} 0%, ${rgbToCss(success)} 100%)`);
-  root.style.setProperty('--gradient-h', `linear-gradient(90deg, ${rgbToCss(lighter)} 0%, ${rgbToCss(success)} 100%)`);
-  root.style.setProperty('--primary-bg', rgbToCss(adjustedBase, 0.12 + vividness * 0.05 - neutralness * 0.04));
-  root.style.setProperty('--primary-border', rgbToCss(adjustedBase, 0.18 + vividness * 0.10 - neutralness * 0.05));
-  root.style.setProperty('--success-bg', rgbToCss(success, 0.12 - neutralness * 0.03));
-  root.style.setProperty('--success-border', rgbToCss(success, 0.22 - neutralness * 0.05));
-  root.style.setProperty('--app-band', rgbToCss(bandColor, bandAlpha));
-  root.style.setProperty('--app-band-border', rgbToCss(bandBorder, isDark ? 0.48 : 0.34));
-  updateBrowserThemeColor(bandColor);
+  const mode = resolveThemeMode(theme);
+  document.documentElement.setAttribute('data-theme', mode);
+  document.querySelectorAll('meta[name="theme-color"]').forEach(meta => meta.setAttribute('content', THEME_BAND_COLORS[mode]));
 }
 
 // ---- App init ----
@@ -995,13 +745,10 @@ async function init() {
   // 保持期限を過ぎたごみ箱の中身を捨てる。同期用の削除記録は残る。
   try { purgeExpiredTrashPayloads(); } catch {}
 
-  // Apply saved theme
+  // 保存したテーマを適用する。以前の「自動」は、今の端末の設定でブラック/ホワイトに決めて保存し直す。
   const settings = getSettings();
-  applyTheme(settings.theme || 'auto');
-  // 「自動」の時は、端末のライト/ダーク切替に合わせてその場で塗り直す。
-  window.matchMedia?.('(prefers-color-scheme: dark)')?.addEventListener?.('change', () => {
-    if (getSettings().theme === 'auto') applyTheme('auto');
-  });
+  if (settings.theme !== 'light' && settings.theme !== 'dark') saveSettings({ theme: resolveThemeMode(settings.theme) });
+  applyTheme(getSettings().theme);
 
   // Register service worker (relative path works whether served from root or subdirectory)
   if ('serviceWorker' in navigator) {
@@ -1247,7 +994,7 @@ async function setupServiceWorkerAutoUpdate() {
 
 // Expose to global for modules without introducing circular imports.
 window.AppNav = {
-  navigate, refreshCurrentView, showToast, showUndoToast, openSearch, closeSearch, openModal, mountModal, closeModal,
+  navigate, refreshCurrentView, showToast, showUndoToast, openSearch, closeSearch, openModal, mountModal, closeModal, confirm,
   refreshDesktopContext: options => refreshDesktopWorkspace(currentView, options),
 };
 window.AppTheme = { apply: applyTheme };

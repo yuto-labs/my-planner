@@ -622,8 +622,8 @@ export function initLearningDetail(container) {
   wireReviewToggles(container, toast);
   container.querySelector('#learning-follow-up-btn')?.addEventListener('click', () => openFollowUpSheet(entry));
   container.querySelector('#learning-title-edit')?.addEventListener('click', () => editTitle(container, entry));
-  container.querySelector('#learning-delete-btn')?.addEventListener('click', () => {
-    if (!window.confirm(`「${entry.title}」をTrashへ移動しますか？`)) return;
+  container.querySelector('#learning-delete-btn')?.addEventListener('click', async () => {
+    if (!await window.AppNav.confirm(`「${entry.title}」をTrashへ移動しますか？`, { okLabel: '削除', danger: true })) return;
     if (!deleteLearningEntry(entry.id)) {
       toast('削除できませんでした。元のデータは残っています。', 'error');
       return;

@@ -178,4 +178,26 @@ test.describe('on a PC', () => {
     await page.locator('[data-peek-close]').click();
     await expect(page.locator('.nt-peek')).toHaveCount(0);
   });
+  test('deleting asks in a dialog at the center of the screen, over the editor without closing it', async ({ page }) => {
+    await openMemoList(page);
+    await importCsv(page);
+    // 列の削除: 確認の窓が出ても、下の「データベースの編集」は閉じない。「やめる」で何も消えない。
+    await page.locator('#db-edit').click();
+    await page.locator('.db-schema-col').first().locator('[data-col-remove]').click();
+    const dialog = page.locator('.confirm-dialog');
+    await expect(dialog).toBeVisible();
+    const box = await dialog.boundingBox();
+    const view = page.viewportSize();
+    expect(Math.abs(box.y + box.height / 2 - view.height / 2)).toBeLessThan(40);
+    expect(Math.abs(box.x + box.width / 2 - view.width / 2)).toBeLessThan(40);
+    await page.locator('.confirm-dialog [data-answer="no"]').click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator('.db-schema-col')).toHaveCount(2);
+    await page.keyboard.press('Escape');
+    // 行の削除: 「削除」で行がごみ箱へ移る。
+    await page.locator('.nt tbody tr').first().hover();
+    await page.locator('.nt tbody tr').first().locator('[data-row-delete]').click();
+    await page.locator('.confirm-dialog [data-answer="yes"]').click();
+    await expect(page.locator('.nt tbody tr')).toHaveCount(1);
+  });
 });

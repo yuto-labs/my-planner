@@ -8,8 +8,18 @@
   -->
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: dark)">
-  <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#F7F7F5">
+  <!-- 保存したテーマ(ブラック/ホワイト)を、画面を描く前に付ける。JSの読み込みを待つと、
+       ブラックでも起動の一瞬だけ白い画面が出てしまうため。 -->
+  <script>
+    try {
+      var savedTheme = JSON.parse(localStorage.getItem('mp_settings') || '{}').theme;
+      // 以前の「自動」だけは端末の設定で決める(app.js がブラック/ホワイトに置き換えて保存し直す)。
+      var darkTheme = savedTheme === 'dark' || (savedTheme === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.setAttribute('data-theme', darkTheme ? 'dark' : 'light');
+      document.querySelector('meta[name="theme-color"]').setAttribute('content', darkTheme ? '#191919' : '#F7F7F5');
+    } catch (e) {}
+  </script>
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -22,7 +32,7 @@
   <link rel="apple-touch-icon" href="icon-192.png">
 
   <!-- style.cssが基本、responsive.cssがタブレット・PC向けの上書きです。 -->
-  <link rel="stylesheet" href="css/style.css?v=323">
+  <link rel="stylesheet" href="css/style.css?v=324">
   <link rel="stylesheet" href="css/responsive.css?v=8">
 
   <!-- メモ内の数式を表示する外部ライブラリKaTeX。deferによりHTML解析後に実行します。
