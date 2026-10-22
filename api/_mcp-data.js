@@ -158,7 +158,8 @@ async function loadMemoSpace(userId) {
   const databases = records
     .filter(record => record.tags?.includes(DATABASE_TAG))
     .map(record => ({ id: record.id, ...(record.blocks?.find(block => block?.type === DATABASE_BLOCK_TYPE)?.data || {}) }))
-    .filter(db => !db.deleted)
+    // kind: 'memos' は「メモ」欄のビューや列の設定で、データベースではないので除く。
+    .filter(db => !db.deleted && db.kind !== 'memos')
     .map(db => ({ ...db, name: db.name || '無題のデータベース', properties: db.properties || [], rows: db.rows || {}, order: db.order || [] }));
   // 行のページのID → どのデータベースのどの値か。
   const rowOf = new Map(databases.flatMap(db => db.order.map(id => [id, { db, values: db.rows[id] }])));

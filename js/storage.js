@@ -1337,20 +1337,37 @@ function recordToDatabase(record) {
     properties: Array.isArray(data.properties) ? data.properties : [],
     rows: data.rows && typeof data.rows === 'object' ? data.rows : {},
     order: Array.isArray(data.order) ? data.order : [],
+    views: Array.isArray(data.views) ? data.views : [],
+    // 'memos' は「メモ」欄そのものの設定(自分で足した列・その値・ビュー)。普通のデータベースは 'table'。
+    kind: data.kind === 'memos' ? 'memos' : 'table',
     deleted: !!data.deleted,
     starred: !!data.starred,
     updatedAt: record.updatedAt,
   };
 }
 
-/** 削除していないデータベースの一覧を返す。 */
-export function getDatabases() {
+/** 削除していない全データベース(「メモ」欄の設定も含む)。 */
+function allDatabases() {
   return getAllKnowledgeRecords().filter(isDatabaseRecord).map(recordToDatabase).filter(db => !db.deleted);
 }
 
-/** IDでデータベースを1つ返す。 */
+/** 削除していない、自分で作ったデータベースの一覧を返す(「メモ」欄の設定は含まない)。 */
+export function getDatabases() {
+  return allDatabases().filter(db => db.kind !== 'memos');
+}
+
+/** IDでデータベースを1つ返す(「メモ」欄の設定もIDで引ける)。 */
 export function getDatabase(id) {
-  return getDatabases().find(db => db.id === id) || null;
+  return allDatabases().find(db => db.id === id) || null;
+}
+
+/**
+ * 「メモ」欄の設定(自分で足した列・その値・ビュー)。まだ無ければ空の設定を返し、初めて保存した時に作られる。
+ * 2台の端末で別々に作られた場合は、新しく保存された方を使う。
+ */
+export function getMemoSpace() {
+  const saved = allDatabases().filter(db => db.kind === 'memos').sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))[0];
+  return saved || { id: generateId(), kind: 'memos', name: 'メモ', properties: [], rows: {}, order: [], views: [] };
 }
 
 /** データベースを内部レコードとして保存し(なければ追加)、同期を予約する。 */
@@ -1407,8 +1424,31 @@ export function addDatabaseRow(dbId, title) {
 /** 行の値を一部だけ書き換える。 */
 export function updateDatabaseRow(dbId, memoId, patch) {
   const db = getDatabase(dbId);
-  if (!db || !(memoId in db.rows)) return false;
+  // 「メモ」欄はすべての普通のメモが行なので、まだ値の無いメモにも書ける。
+  if (!db || (db.kind !== 'memos' && !(memoId in db.rows))) return false;
   return saveDatabase({ ...db, rows: { ...db.rows, [memoId]: { ...db.rows[memoId], ...patch } } });
+}
+
+/**
+ * メモを別のデータベースへ移す。targetId が null なら普通のメモ(「メモ」欄)に戻す。
+ * 値は名前と種類が同じ列だけ引き継ぐ(carryValues)。データベースの行は復習しないので、復習も外す。
+ * carryValues は database-model.js の関数を呼び出し側から渡してもらう(保存の層を画面の部品から独立させるため)。
+ */
+export function moveMemoToSpace(memoId, targetId, carryValues) {
+  const memoSpace = getMemoSpace();
+  const source = findDatabaseForRow(memoId)?.db || memoSpace;
+  const target = targetId ? getDatabase(targetId) : memoSpace;
+  if (!target || target.id === source.id) return false;
+  const values = carryValues(source.rows[memoId] || {}, source.properties, target.properties);
+  const { [memoId]: _removed, ...sourceRows } = source.rows;
+  const sourceOk = !(memoId in source.rows) || saveDatabase({ ...source, rows: sourceRows, order: source.order.filter(id => id !== memoId) });
+  const targetOk = saveDatabase({
+    ...target,
+    rows: { ...target.rows, [memoId]: values },
+    order: target.kind === 'memos' ? target.order : [...target.order.filter(id => id !== memoId), memoId],
+  });
+  if (target.kind !== 'memos') setMemoReviewEnabled(memoId, false);
+  return sourceOk && targetOk;
 }
 
 /** そのメモがどれかのデータベースの行なら、{ db, values } を返す。 */

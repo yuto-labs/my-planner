@@ -54,7 +54,7 @@ test('range selection leaves text unselected until drag and restores editing', (
   }
 });
 
-test('memo list uses two rows with creation date and right-aligned star', () => {
+test('memo list uses two rows with the updated date and right-aligned star', () => {
   const html = renderMemoCard({
     id: 'memo-1',
     title: '研究メモ',
@@ -68,7 +68,7 @@ test('memo list uses two rows with creation date and right-aligned star', () => 
     ],
   });
   assert.match(html, /研究メモ/);
-  assert.match(html, /2026\/10\/09/);
+  assert.match(html, /2026\/10\/10/);
   assert.match(html, /kn-memo-card-tags/);
   assert.match(html, /資料/);
   assert.match(html, /研究/);
@@ -76,7 +76,7 @@ test('memo list uses two rows with creation date and right-aligned star', () => 
   assert.ok(html.indexOf('kn-memo-card-tags') < html.indexOf('kn-memo-date'));
   assert.match(html, /kn-star-btn starred/);
   assert.match(html, /最初の文章/);
-  assert.doesNotMatch(html, /2026\/10\/10|次の文章/);
+  assert.doesNotMatch(html, /2026\/10\/09|次の文章/);
   assert.ok(html.indexOf('kn-memo-title') < html.indexOf('kn-memo-date'));
   assert.ok(html.indexOf('kn-memo-date') < html.indexOf('kn-star-btn'));
   assert.ok(html.indexOf('kn-star-btn') < html.indexOf('kn-memo-card-sub'));

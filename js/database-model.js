@@ -98,8 +98,104 @@ export function planCsvImport(table) {
 export function formatValue(type, value) {
   if (value === null || value === undefined || value === '') return '';
   if (type === 'checkbox') return value ? '✓' : '';
-  if (type === 'date') return value?.start ? `${value.start}${value.end ? ` → ${value.end}` : ''}` : '';
+  if (type === 'date') return value?.start ? `${String(value.start).slice(0, 10)}${value.end ? ` → ${value.end}` : ''}` : '';
+  if (type === 'tags') return Array.isArray(value) ? value.join(', ') : '';
   return String(value);
+}
+
+// ---- ビュー(絞り込み・並べ替え・一覧に出す列の組み合わせ) ----
+//
+// メモ欄の「メモ」も「就活」も同じデータベースとして扱い、どちらにもビューを保存できる。
+// 行は { id, title, values } の形。名前は列ID「__title」として、ほかの列と同じに絞り込み・並べ替えできる。
+// 「メモ」には決まった列(1行目・タグ・更新日)があり、値はメモ本体から作る(__first / __tags / __updated)。
+
+export const TITLE_PROPERTY = Object.freeze({ id: '__title', name: '名前', type: 'text' });
+export const MEMO_BUILTIN_PROPERTIES = Object.freeze([
+  { id: '__first', name: '1行目', type: 'text' },
+  { id: '__tags', name: 'タグ', type: 'tags' },
+  { id: '__updated', name: '更新日', type: 'date' },
+]);
+
+/** そのデータベースで、絞り込み・並べ替えに使える列の一覧(名前 + 決まった列 + 自分で足した列)。 */
+export function viewProperties(space) {
+  return [TITLE_PROPERTY, ...(space?.kind === 'memos' ? MEMO_BUILTIN_PROPERTIES : []), ...(space?.properties || [])];
+}
+
+/** ビューが1つも保存されていない時に使う「すべて」。メモは更新の新しい順、データベースは並び順のまま。 */
+export function defaultView(space) {
+  return { id: 'all', name: 'すべて', filters: [], sort: space?.kind === 'memos' ? { prop: '__updated', dir: 'desc' } : null, columns: [] };
+}
+
+/** 保存済みのビュー(なければ「すべて」1つ)を返す。 */
+export function spaceViews(space) {
+  return space?.views?.length ? space.views : [defaultView(space)];
+}
+
+/** 行の、ある列の値。名前だけは行の title から読む。 */
+const cellValue = (row, propId) => (propId === TITLE_PROPERTY.id ? row.title : row.values?.[propId]);
+
+/** 比べやすい形(全角半角・大文字小文字をそろえた文字)にする。 */
+const fold = value => String(value ?? '').normalize('NFKC').toLowerCase();
+
+/**
+ * 1つの絞り込み条件に行が合うか。条件の形は列の種類で決まる:
+ * 文字・URL・数値は「含む」、タグは「このタグがある」、チェックは「付いている/いない」、
+ * 日付は「from〜to の間」(片方だけでもよい)。値が空の条件は「条件なし」として通す。
+ */
+export function rowPassesFilter(row, filter, prop) {
+  if (!prop) return true;
+  const value = cellValue(row, prop.id);
+  const wanted = filter.value;
+  if (prop.type === 'checkbox') return wanted === undefined || wanted === '' || !!value === (wanted === true || wanted === 'true');
+  if (prop.type === 'tags') return !wanted || (Array.isArray(value) && value.includes(wanted));
+  if (prop.type === 'date') {
+    const { from = '', to = '' } = wanted || {};
+    if (!from && !to) return true;
+    const day = String(value?.start || '').slice(0, 10);
+    return !!day && (!from || day >= from) && (!to || day <= to);
+  }
+  return !wanted || fold(formatValue(prop.type, value)).includes(fold(wanted));
+}
+
+/** 並べ替え用に、列の値を比べられる形(数値・文字)にする。空は null。 */
+function sortKey(row, prop) {
+  const value = cellValue(row, prop.id);
+  if (prop.type === 'number') return Number.isFinite(value) ? value : null;
+  if (prop.type === 'checkbox') return value ? 1 : 0;
+  if (prop.type === 'date') return value?.start || null;
+  const text = formatValue(prop.type, value);
+  return text === '' ? null : text;
+}
+
+/**
+ * 行の一覧にビューを当てる(絞り込み → 並べ替え)。並べ替えなしなら元の順のまま。
+ * 空の値は、昇順・降順どちらでも最後に回す(未入力の行が先頭を埋めないように)。
+ */
+export function applyView(rows, view, properties) {
+  const byId = new Map(properties.map(prop => [prop.id, prop]));
+  const kept = rows.filter(row => (view?.filters || []).every(filter => rowPassesFilter(row, filter, byId.get(filter.prop))));
+  const prop = byId.get(view?.sort?.prop);
+  if (!prop) return kept;
+  const direction = view.sort.dir === 'desc' ? -1 : 1;
+  return kept
+    .map(row => ({ row, key: sortKey(row, prop) }))
+    .sort((left, right) => {
+      if (left.key === null || right.key === null) return (left.key === null) - (right.key === null);
+      if (typeof left.key === 'number' && typeof right.key === 'number') return (left.key - right.key) * direction;
+      return String(left.key).localeCompare(String(right.key), 'ja') * direction;
+    })
+    .map(item => item.row);
+}
+
+/**
+ * ほかのデータベースへ移す時に、値を引き継ぐ。名前と種類が同じ列の値だけ持っていく
+ * (違う意味の列に値が紛れ込まないように)。
+ */
+export function carryValues(values, fromProperties, toProperties) {
+  const target = new Map(toProperties.map(prop => [`${prop.name}\u0000${prop.type}`, prop.id]));
+  return Object.fromEntries(fromProperties
+    .map(prop => [target.get(`${prop.name}\u0000${prop.type}`), values?.[prop.id]])
+    .filter(([id, value]) => id && value !== undefined && value !== null && value !== ''));
 }
 
 /** 名前と全列の文字に、検索語(大文字小文字・全角半角を無視)が含まれるか。 */

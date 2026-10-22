@@ -2242,27 +2242,38 @@ h1, h2, h3, h4, h5, h6,
   box-shadow: 0 0 0 3px var(--primary-bg);
 }
 
-.kn-tag-filters {
-  display: flex; gap: 6px; overflow-x: auto;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--border);
-}
-.kn-tag-filters::-webkit-scrollbar { display: none; }
-.kn-tag-filter-btn {
-  padding: 4px 13px;
+/* メモ欄の上: 「メモ・各データベース」の切り替えチップと、ビューのタブ(js/modules/database.js)。
+   どちらも横にはみ出したら横スクロール(画面全体は横に動かない)。 */
+.db-space-header { padding: 10px 16px 0; border-bottom: 1px solid var(--border); }
+.db-page > .db-space-header { margin: -12px -16px 10px; }
+.db-space-bar, .db-view-tabs { display: flex; gap: 6px; overflow-x: auto; align-items: center; }
+.db-space-bar::-webkit-scrollbar, .db-view-tabs::-webkit-scrollbar { display: none; }
+.db-space-chip {
+  padding: 5px 14px;
   border-radius: 100px;
   border: 1px solid var(--border);
   background: none;
   color: var(--text-muted);
-  font-size: 12px; font-weight: 700;
+  font-size: 13px; font-weight: 700;
   white-space: nowrap;
   transition: all var(--transition);
 }
-.kn-tag-filter-btn.active {
+.db-space-chip.active {
   background: var(--primary-bg);
   border-color: var(--primary-border);
   color: var(--primary);
 }
+.db-view-tabs { margin-top: 6px; gap: 14px; }
+.db-view-tab {
+  padding: 8px 0 7px; border: 0; border-bottom: 2px solid transparent; background: none;
+  color: var(--text-muted); font-size: 13px; white-space: nowrap;
+}
+.db-view-tab.active { color: var(--text); border-bottom-color: var(--text); font-weight: 700; }
+.db-view-tools { margin-left: auto; display: flex; gap: 2px; flex-shrink: 0; }
+.db-filter-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.db-filter-row .input, .db-filter-row .select { flex: 1 1 120px; min-width: 0; }
+.db-view-column { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+.kn-memo-card-props { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; color: var(--text-muted); font-size: 12px; }
 
 .kn-memo-list { flex: 1; display: flex; flex-direction: column; }
 .kn-list-section-label {
@@ -11653,8 +11664,8 @@ button.atlas-nuance-map-row:focus-visible {
 .db-card-label { color: var(--text-dim); font-size: 12px; flex-shrink: 0; }
 /* スマホの一覧: 普通のデータベースのように1行1件(名前と主な列1つ)。タップで詳細ページ。 */
 .db-list { border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); overflow: hidden; }
-/* 名前 | 主な列(ID) | URLを開くリンク。リンクの列は値が無くても幅をそろえる。 */
-.db-list-head, .db-list-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 3.5em; gap: 12px; padding: 11px 14px; align-items: center; }
+/* 名前 | ビューで選んだ列(0〜2つ) | URLを開くリンク。列の数は database.js が --db-cols で渡す。 */
+.db-list-head, .db-list-row { display: grid; grid-template-columns: var(--db-cols, minmax(0, 1fr) auto 3.5em); gap: 12px; padding: 11px 14px; align-items: center; }
 .db-open-link { color: var(--accent); font-size: 13px; white-space: nowrap; text-decoration: none; padding: 4px 0; }
 .db-table-url { display: flex; align-items: center; gap: 6px; }
 .db-list-head { color: var(--text-dim); font-size: 12px; background: var(--bg-hover); }
@@ -11676,7 +11687,6 @@ button.atlas-nuance-map-row:focus-visible {
 .db-open-page { flex-shrink: 0; padding: 4px 8px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--text-muted); }
 .db-schema-col { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto auto; gap: 6px; align-items: center; }
 .db-schema-footer { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; }
-.db-memo-icon { margin-right: 6px; color: var(--primary-dark); }
 .db-import { display: grid; gap: 10px; }
 .db-import-note { margin: 0; color: var(--text-dim); font-size: 13px; }
 .db-import-col { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 14px; }

@@ -13,7 +13,7 @@ import {
   addToPendingAIQueue, removeFromPendingAIQueue,
   pushUndo, applyUndo, addReviewLog, getReviewLog,
   getTags, addTag,
-  normalizeMemoBlockIds, archiveLocalSyncBackups, getDatabaseRowIds, getDatabases, findDatabaseForRow,
+  normalizeMemoBlockIds, archiveLocalSyncBackups, getDatabaseRowIds, getDatabase, getMemoSpace, findDatabaseForRow,
 } from '../storage.js';
 import {
   suggestKnowledgeTags, explainTerm, summarizeAndTagText,
@@ -29,9 +29,10 @@ import {
 import { flushPendingSync } from '../sync.js';
 import { clearMemoDraft, getMemoDraft, saveMemoDraft } from '../memo-draft.js';
 import {
-  createEmptyDatabase, openDatabase, renderDatabaseListCard, renderDatabaseRowPanel,
-  returnToDatabaseFromRow, startCsvImport, toggleDatabaseStar,
+  MEMO_SPACE, activeView, getActiveSpaceId, mountDatabaseSpace, openMoveSheet, renderDatabaseRowPanel,
+  renderSpaceHeader, returnToDatabaseFromRow, wireSpaceHeader,
 } from './database.js';
+import { applyView, formatValue, viewProperties } from '../database-model.js';
 import { captureHorizontalTableScroll, restoreHorizontalTableScroll } from '../horizontal-scroll-state.js';
 import {
   markdownBlockShortcut,
@@ -48,7 +49,6 @@ import {
   normalizeMemoTable as normalizeTableData,
   normalizeMemoTableCell, memoTableCellToMarkdown, parsePastedMemoTable,
   normalizeMemoUrl, splitMemoTextUrls,
-  sortMemosForList,
   trimMemoEdgeEmptyBlocks,
 } from '../memo-model.js';
 
@@ -598,10 +598,22 @@ const MEMO_LIST_PAGE_SIZE = 40;
 const memoSearchIndex = new Map();
 let listState = {
   search: '',
-  filterTag: null,
   container: null,
   visibleCount: MEMO_LIST_PAGE_SIZE,
 };
+
+/** メモ欄を今の状態(選んでいる欄・ビュー)で描き直す。チップやビューを切り替えた時に database.js から呼ぶ。 */
+export function refreshMemoSpace() {
+  if (!listState.container?.isConnected || listState.container.dataset.view !== 'memo') return;
+  listState.visibleCount = MEMO_LIST_PAGE_SIZE;
+  renderList();
+}
+
+/** メモの「1行目」(本文の最初の、文字のあるブロック)。ビューの絞り込み・並べ替えに使う。 */
+function memoFirstLine(memo) {
+  const block = (memo.blocks || []).find(item => String(item?.text || '').replace(/<[^>]*>/g, '').trim());
+  return block ? String(block.text).replace(/<[^>]*>/g, '').trim() : '';
+}
 
 /** メモ一覧を描画し、検索・タグ・ごみ箱・新規作成を接続する。 */
 export function initKnowledge(container) {
@@ -670,29 +682,41 @@ function restoreKnowledgeListPosition() {
   });
 }
 
-/** 星付き優先・更新順でメモカードを再描画する。 */
+/**
+ * メモ欄を描く。上のチップでデータベースを選んでいればその中身を、「メモ」なら普通のメモの一覧を出す。
+ * 普通のメモにも選んでいるビュー(絞り込み・並べ替え)を当て、星付きは今までどおり上にまとめる。
+ */
 function renderList() {
-  const { container, search, filterTag } = listState;
-  // データベースの行のページは、データベースの中で見るものなので一覧には出さない。
+  const { container, search } = listState;
+  const spaceId = getActiveSpaceId();
+  if (spaceId !== MEMO_SPACE) { mountDatabaseSpace(container, getDatabase(spaceId)); return; }
+
+  const space = getMemoSpace();
+  const view = activeView(space);
+  // データベースの行のページは、データベースの中で見るものなので「メモ」には出さない。
   const databaseRowIds = getDatabaseRowIds();
   const plainMemos = getKnowledgeMemos().filter(memo => !databaseRowIds.has(memo.id));
-  // データベースもメモと同じ一覧に「1件」として並べる(星・更新順も同じ規則)。
-  const databases = getDatabases().map(db => ({ ...db, title: db.name, __database: true }));
-  const memos = sortMemosForList([...plainMemos, ...databases]);
-  const allTags = [...new Set(plainMemos.flatMap(m => m.tags || []))].sort();
+  // ビューは { id, title, values } の行に当てる。決まった列(1行目・タグ・更新日)の値はメモ本体から作る。
+  const rows = plainMemos.map(memo => ({
+    id: memo.id,
+    title: memo.title || '',
+    memo,
+    values: { ...space.rows[memo.id], __first: memoFirstLine(memo), __tags: memo.tags || [], __updated: { start: memo.updatedAt || memo.createdAt || '' } },
+  }));
+  const viewed = applyView(rows, view, viewProperties(space)).map(row => row.memo);
+  // 星付きを上にまとめる(ビューの並び順は星の中・星以外の中でそのまま保つ)。
+  const memos = [...viewed.filter(memo => memo.starred), ...viewed.filter(memo => !memo.starred)];
   if (search) pruneMemoSearchIndex(plainMemos);
   else memoSearchIndex.clear();
 
-  const filtered = memos.filter(m => {
-    const q = search.toLowerCase();
-    // データベースは名前と列名で検索に当たる。タグはないので、タグで絞り込んだ時は出さない。
-    if (m.__database) return !filterTag && (!q || [m.name, ...m.properties.map(prop => prop.name)].join(' ').toLowerCase().includes(q));
-    const matchSearch = !q || memoSearchText(m).includes(q);
-    const matchTag = !filterTag || (m.tags || []).includes(filterTag);
-    return matchSearch && matchTag;
-  });
-  /** 一覧の1件を、メモならメモのカード、データベースならデータベースのカードで描く。 */
-  const renderListItem = item => (item.__database ? renderDatabaseListCard(item) : renderMemoCard(item));
+  const q = search.toLowerCase();
+  const filtered = q ? memos.filter(memo => memoSearchText(memo).includes(q)) : memos;
+  // ビューで「一覧に出す列」を選んでいれば、カードにその値も出す。
+  const shownColumns = space.properties.filter(prop => (view.columns || []).includes(prop.id)).slice(0, 2);
+  /** 一覧の1件(メモのカード)。選んだ列の値があれば添える。 */
+  const renderListItem = memo => renderMemoCard(memo, shownColumns
+    .map(prop => [prop.name, formatValue(prop.type, space.rows[memo.id]?.[prop.id])])
+    .filter(([, value]) => value));
 
   const orderedMemos = filtered;
   const visibleMemos = orderedMemos.slice(0, listState.visibleCount);
@@ -721,23 +745,14 @@ function renderList() {
           🕸️
         </button>
 
-        <button class="btn btn-ghost btn-sm" id="kn-new-db-btn" type="button" title="データベースを作る" aria-label="データベースを作る" style="flex-shrink:0;padding:6px 10px">▦＋</button>
-
         <button class="btn btn-primary btn-sm" id="kn-new-btn">
           <svg viewBox="0 0 24 24" fill="currentColor" style="width:14px;height:14px"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
           新規
         </button>
       </div>
 
-      <!-- Tag filters -->
-      ${allTags.length ? `
-        <div class="kn-tag-filters">
-          <button class="kn-tag-filter-btn${!filterTag ? ' active' : ''}" data-filter-tag="">すべて</button>
-          ${allTags.map(t => `
-            <button class="kn-tag-filter-btn${filterTag === t ? ' active' : ''}" data-filter-tag="${esc(t)}">${esc(t)}</button>
-          `).join('')}
-        </div>
-      ` : ''}
+      <!-- メモ・各データベースの切り替えと、ビューのタブ(タグでの絞り込みはビューで作る) -->
+      ${renderSpaceHeader(space)}
 
       <!-- Memo list -->
       <div class="kn-memo-list">
@@ -756,7 +771,7 @@ function renderList() {
         ${!filtered.length ? `
           <div class="empty-state">
             <div class="empty-state-icon">📝</div>
-            <div class="empty-state-text">${search || filterTag ? '該当なし' : 'メモがありません'}</div>
+            <div class="empty-state-text">${search || plainMemos.length ? '該当なし' : 'メモがありません'}</div>
             <div class="empty-state-sub">右上から新しいメモを作れます</div>
           </div>
         ` : ''}
@@ -804,31 +819,7 @@ function renderList() {
 
   // Wire new
   container.querySelector('#kn-new-btn')?.addEventListener('click', () => startNewMemo(null));
-  // データベースは「空から作る」か「CSVから取り込む」かを選ぶ。作ったものはこの一覧に並ぶ。
-  container.querySelector('#kn-new-db-btn')?.addEventListener('click', () => {
-    const body = document.createElement('div');
-    body.className = 'kn-template-grid';
-    body.innerHTML = `
-      <button class="kn-template-btn" type="button" data-new-db="empty"><span class="kn-template-icon">▦</span><span class="kn-template-label">空のデータベース</span></button>
-      <button class="kn-template-btn" type="button" data-new-db="csv"><span class="kn-template-icon">⇪</span><span class="kn-template-label">CSVから取り込む</span></button>`;
-    const close = window.AppNav?.openModal({ title: 'データベースを作る', body, autoFocus: false });
-    body.addEventListener('click', event => {
-      const choice = event.target.closest('[data-new-db]')?.dataset.newDb;
-      if (!choice) return;
-      close?.();
-      if (choice === 'csv') startCsvImport();
-      else createEmptyDatabase();
-    });
-  });
-
-  // Wire tag filters
-  container.querySelectorAll('[data-filter-tag]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      listState.filterTag = btn.dataset.filterTag || null;
-      listState.visibleCount = MEMO_LIST_PAGE_SIZE;
-      renderList();
-    });
-  });
+  wireSpaceHeader(container, space);
 
   container.querySelector('#kn-load-more')?.addEventListener('click', () => {
     listState.visibleCount += MEMO_LIST_PAGE_SIZE;
@@ -849,21 +840,6 @@ function renderList() {
     });
   });
 
-  // データベースのカード: 押すと開き、星はピン留めの切り替え。
-  container.querySelectorAll('[data-db-id]').forEach(card => {
-    card.addEventListener('click', e => {
-      if (e.target.closest('[data-star-db]')) return;
-      openDatabase(card.dataset.dbId);
-    });
-  });
-  container.querySelectorAll('[data-star-db]').forEach(btn => {
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      toggleDatabaseStar(btn.dataset.starDb);
-      renderList();
-    });
-  });
-
   // Wire star buttons
   container.querySelectorAll('[data-star-id]').forEach(btn => {
     btn.addEventListener('click', e => {
@@ -874,10 +850,13 @@ function renderList() {
   });
 }
 
-/** 一覧用に、題名・作成日・星と一行プレビューだけのカードHTMLを作る。 */
-export function renderMemoCard(m) {
+/**
+ * 一覧用に、題名・タグ・更新日・星と一行プレビューのカードHTMLを作る。
+ * extras は [列名, 値] の配列で、ビューで「一覧に出す」と選んだ自分の列を添える。
+ */
+export function renderMemoCard(m, extras = []) {
   const preview = renderMemoCardPreview(m.blocks || [], 1);
-  const dateStr = formatDate(m.createdAt || m.updatedAt, 'ymd-padded');
+  const dateStr = formatDate(m.updatedAt || m.createdAt, 'ymd-padded');
   const tags = Array.isArray(m.tags) ? m.tags : [];
 
   return `
@@ -891,7 +870,7 @@ export function renderMemoCard(m) {
           ${tags.slice(0, 2).map(tag => `<span class="kn-tag-chip kn-tag-chip--sm">${esc(tag)}</span>`).join('')}
           ${tags.length > 2 ? `<span class="kn-tag-chip kn-tag-chip--more">+${tags.length - 2}</span>` : ''}
         </div>` : ''}
-        <span class="kn-memo-date" title="作成日">${dateStr}</span>
+        <span class="kn-memo-date" title="更新日">${dateStr}</span>
         <button class="kn-star-btn${m.starred ? ' starred' : ''}" data-star-id="${esc(m.id)}" aria-label="${m.starred ? 'スター解除' : 'スター'}">
           ${m.starred
             ? '<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>'
@@ -902,6 +881,7 @@ export function renderMemoCard(m) {
         ${m.pendingAI ? '<span class="kn-pending-badge">AI処理待ち</span>' : ''}
         <div class="kn-memo-preview">${preview || '<span class="kn-memo-preview-empty">本文なし</span>'}</div>
       </div>
+      ${extras.length ? `<div class="kn-memo-card-props">${extras.map(([name, value]) => `<span>${esc(name)}: ${esc(value)}</span>`).join('')}</div>` : ''}
     </div>
   `;
 }
@@ -1599,6 +1579,7 @@ function renderViewMode(container) {
             : '<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z"/></svg>'}
         </button>
         <button class="btn btn-ghost btn-sm" id="kn-edit-btn">✏️ 編集</button>
+        ${id ? '<button class="btn btn-ghost btn-sm" id="kn-move-btn" type="button">移動</button>' : ''}
         <button class="btn btn-icon kn-delete-action" id="kn-delete-btn" aria-label="このメモを削除" title="削除">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
         </button>
@@ -1735,6 +1716,13 @@ function renderViewMode(container) {
   container.querySelector('#kn-delete-btn')?.addEventListener('click', () => {
     if (!edState.id) { nav('memo'); return; }
     confirmDelete(edState.id, container);
+  });
+  // 「移動」: 普通のメモ⇄データベースを移す。移したら列の欄と復習の欄が変わるので描き直す。
+  container.querySelector('#kn-move-btn')?.addEventListener('click', () => {
+    openMoveSheet(edState.id, () => {
+      edState.reviewEnabled = isMemoReviewEnabled(edState.id) && !isDatabaseRow(edState.id);
+      renderDetail(container, { preserveScroll: true });
+    });
   });
 
   container.querySelectorAll('.kn-rate-btn').forEach(btn => {

@@ -38,7 +38,6 @@ import {
 } from './modules/memo.js';
 import { initReview } from './modules/review.js';
 import { initKnowledgeGraph } from './modules/memo-graph.js';
-import { initDatabase } from './modules/database.js';
 import { initExpressionAtlasLazily, loadedAtlasModule } from './atlas-loader.js';
 import { initAnalytics } from './modules/analytics.js';
 import {
@@ -73,7 +72,6 @@ const MODULES = {
   'knowledge-detail':{ title: 'Note',       init: initKnowledgeDetail, back: 'memo', backAction: backFromKnowledgeDetail, navRoot: 'memo' },
   'knowledge-graph': { title: 'Memo Map', init: initKnowledgeGraph, back: 'memo', navRoot: 'memo' },
   // Notion風データベース。メモ一覧に1件として並び、開くとここで中身を見せる。
-  database:          { title: 'Database', init: initDatabase, back: 'memo', navRoot: 'memo' },
   // 表現帳は大きいので、初めて開いた時に読み込む(atlas-loader.js)。
   'expression-atlas':{ title: 'NUANCE ATLAS', init: initExpressionAtlasLazily, back: 'memo',
     backAction: () => { const atlas = loadedAtlasModule(); if (atlas) atlas.backFromExpressionAtlas(); else navigate('memo'); },
@@ -1357,7 +1355,7 @@ function setupFAB() {
 
   // Show/hide based on view
   const updateFab = () => {
-    const hidden = ['home', 'settings', 'ai-settings', 'analytics', 'knowledge', 'learning-detail', 'knowledge-graph', 'knowledge-detail', 'expression-atlas', 'goals', 'review', 'archive', 'database'];
+    const hidden = ['home', 'settings', 'ai-settings', 'analytics', 'knowledge', 'learning-detail', 'knowledge-graph', 'knowledge-detail', 'expression-atlas', 'goals', 'review', 'archive'];
     fab.classList.toggle('hidden', hidden.includes(currentView));
     if (currentView === 'tasks') {
       fab.setAttribute('aria-label', 'Open AI planner');

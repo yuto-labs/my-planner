@@ -1,55 +1,130 @@
 // ============================================================
-// database.js - Notion風データベースの画面
+// database.js - メモ欄の「データベース」まわりの画面
 //
-// データベースは「メモ一覧に並ぶ1件」で、開くとスマホはカード、PCは表で中身を見せる。
+// メモ欄は「データベースの集まり」。いちばん上のチップで「メモ」(普通のメモ)と、
+// 自分で作ったデータベース(就活など)を切り替える。どれにも「ビュー」(絞り込み・並べ替え・
+// 一覧に出す列の組み合わせ)を保存でき、チップの下のタブで切り替える。
 // 各行はいつものメモ(ページ)で、行の値はページ上部の欄やPCの表で直す。
-// 「編集」で名前と列(追加・名前・種類・並び・削除)を変えられる。
 // ============================================================
 import {
-  addDatabaseRow, createDatabase, deleteDatabase, deleteKnowledgeMemo, findDatabaseForRow, getDatabase,
-  getKnowledgeMemos, saveDatabase, updateDatabaseRow, updateKnowledgeMemo,
+  addDatabaseRow, createDatabase, deleteDatabase, deleteKnowledgeMemo, findDatabaseForRow, getDatabase, getDatabases,
+  getKnowledgeMemos, getMemoSpace, moveMemoToSpace, saveDatabase, updateDatabaseRow, updateKnowledgeMemo,
 } from '../storage.js';
 import {
-  PROPERTY_TYPE_LABELS, PROPERTY_TYPES, convertValue, formatValue, parseCsv, planCsvImport, rowMatches,
+  PROPERTY_TYPE_LABELS, PROPERTY_TYPES, applyView, carryValues, convertValue, formatValue, parseCsv, planCsvImport,
+  rowMatches, spaceViews, viewProperties,
 } from '../database-model.js';
 import { normalizeMemoUrl } from '../memo-model.js';
 import { esc, generateId } from '../utils.js';
-import { openKnowledgeMemo } from './memo.js';
+import { openKnowledgeMemo, refreshMemoSpace } from './memo.js';
 
 /** `toast`: 短い通知メッセージを画面へ表示する。 */
 const toast = (message, type = 'info') => window.AppNav?.showToast(message, type);
 /** `nav`: 指定した画面へ移動する。 */
 const nav = view => window.AppNav?.navigate(view);
 
-let currentDbId = null;
 let searchQuery = '';
-// 行のページから戻る時に、開いていたデータベースへ戻すための印。
-let returnDbId = null;
 
 /** PCの幅なら表、スマホならカードで見せる。 */
 const wideScreen = () => window.matchMedia?.('(min-width: 768px)')?.matches;
 
-// ---- メモ一覧との接続 ----
+// ---- 今どのデータベース・どのビューを見ているか ----
+// 端末ごとの「前回の続き」なので、同期せずにこの端末(localStorage)にだけ覚える。
 
-/** メモ一覧に並べるデータベースのカード。開くと中身(カード/表)を見せる。 */
-export function renderDatabaseListCard(db) {
+export const MEMO_SPACE = 'memos';
+const SPACE_KEY = 'mp_memo_space';
+const VIEW_KEY = 'mp_space_views';
+
+/** 端末に覚えた値を読む。読めない環境(プライベートモード等)では既定値を返す。 */
+function readLocal(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
+}
+/** 端末に値を覚える。書けない環境では何もしない(表示は既定に戻るだけ)。 */
+function writeLocal(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+}
+
+/** 今開いている欄のID。「メモ」なら MEMO_SPACE。消えたデータベースを覚えていたら「メモ」に戻す。 */
+export function getActiveSpaceId() {
+  const id = readLocal(SPACE_KEY, MEMO_SPACE);
+  return id === MEMO_SPACE || getDatabases().some(db => db.id === id) ? id : MEMO_SPACE;
+}
+
+/** 欄を切り替える(検索語は欄ごとに持ち越さない)。 */
+function setActiveSpaceId(id) {
+  writeLocal(SPACE_KEY, id);
+  searchQuery = '';
+}
+
+/** ビューの選択を覚えるキー(「メモ」欄は端末で別々のIDになり得るので固定名にする)。 */
+const viewKey = space => (space.kind === 'memos' ? MEMO_SPACE : space.id);
+
+/** その欄で今選んでいるビュー(覚えたものが消えていたら最初のビュー)。 */
+export function activeView(space) {
+  const views = spaceViews(space);
+  return views.find(view => view.id === readLocal(VIEW_KEY, {})[viewKey(space)]) || views[0];
+}
+
+/** ビューを選んだことを覚える。 */
+function setActiveView(space, viewId) {
+  writeLocal(VIEW_KEY, { ...readLocal(VIEW_KEY, {}), [viewKey(space)]: viewId });
+}
+
+// ---- メモ欄の上の「チップ」と「ビューのタブ」 ----
+
+/** 欄の切り替えチップ(メモ・各データベース・＋)と、その欄のビューのタブのHTML。 */
+export function renderSpaceHeader(space) {
+  const activeId = space.kind === 'memos' ? MEMO_SPACE : space.id;
+  const current = activeView(space);
+  /** チップ1つ。 */
+  const chip = (id, label) => `<button class="db-space-chip${id === activeId ? ' active' : ''}" type="button" data-space="${esc(id)}" aria-pressed="${id === activeId}">${esc(label)}</button>`;
   return `
-    <div class="kn-memo-card db-memo-card" data-db-id="${esc(db.id)}" role="group" tabindex="0" aria-label="${esc(db.name)}を開く">
-      <div class="kn-memo-card-top">
-        <div class="kn-memo-heading">
-          <span class="kn-memo-title"><span class="db-memo-icon" aria-hidden="true">▦</span>${esc(db.name)}</span>
-        </div>
-        <span class="kn-memo-date">${db.order.length}件</span>
-        <button class="kn-star-btn${db.starred ? ' starred' : ''}" data-star-db="${esc(db.id)}" aria-label="${db.starred ? 'ピン留めを外す' : 'ピン留め'}">${db.starred ? '★' : '☆'}</button>
+    <div class="db-space-header">
+      <div class="db-space-bar" aria-label="メモとデータベースの切り替え">
+        ${chip(MEMO_SPACE, 'メモ')}
+        ${getDatabases().map(db => chip(db.id, db.name)).join('')}
+        <button class="db-space-chip db-space-add" type="button" data-space-add aria-label="データベースを作る">＋</button>
       </div>
-      <div class="kn-memo-card-sub"><div class="kn-memo-preview">データベース・${esc(db.properties.map(prop => prop.name).join('・') || '列なし')}</div></div>
+      <div class="db-view-tabs" aria-label="ビュー">
+        ${spaceViews(space).map(view => `<button class="db-view-tab${view.id === current.id ? ' active' : ''}" type="button" data-view-id="${esc(view.id)}">${esc(view.name)}</button>`).join('')}
+        <button class="db-view-tab db-view-add" type="button" data-view-add aria-label="ビューを追加">＋</button>
+        <span class="db-view-tools">
+          <button class="btn btn-ghost btn-sm" type="button" data-view-edit>ビュー編集</button>
+          ${space.kind === 'memos' ? '<button class="btn btn-ghost btn-sm" type="button" data-columns-edit>列</button>' : ''}
+        </span>
+      </div>
     </div>`;
 }
 
-/** データベースのピン留めを切り替える(メモの星と同じ扱いで一覧の上に出る)。 */
-export function toggleDatabaseStar(id) {
-  const db = getDatabase(id);
-  return db ? saveDatabase({ ...db, starred: !db.starred }) : false;
+/** チップとタブを動くようにする。切り替えたらメモ欄を描き直す。 */
+export function wireSpaceHeader(container, space) {
+  container.querySelector('.db-space-header')?.addEventListener('click', event => {
+    const chip = event.target.closest('[data-space]');
+    if (chip) { setActiveSpaceId(chip.dataset.space); refreshMemoSpace(); return; }
+    if (event.target.closest('[data-space-add]')) { openCreateDatabaseSheet(); return; }
+    const tab = event.target.closest('[data-view-id]');
+    if (tab) { setActiveView(space, tab.dataset.viewId); refreshMemoSpace(); return; }
+    if (event.target.closest('[data-view-add]')) { openViewEditor(space, null); return; }
+    if (event.target.closest('[data-view-edit]')) { openViewEditor(space, activeView(space).id); return; }
+    if (event.target.closest('[data-columns-edit]')) openSchemaEditor(MEMO_SPACE, refreshMemoSpace);
+  });
+}
+
+/** 「＋」: データベースを「空から作る」か「CSVから取り込む」かを選ぶ。 */
+function openCreateDatabaseSheet() {
+  const body = document.createElement('div');
+  body.className = 'kn-template-grid';
+  body.innerHTML = `
+    <button class="kn-template-btn" type="button" data-new-db="empty"><span class="kn-template-icon">▦</span><span class="kn-template-label">空のデータベース</span></button>
+    <button class="kn-template-btn" type="button" data-new-db="csv"><span class="kn-template-icon">⇪</span><span class="kn-template-label">CSVから取り込む</span></button>`;
+  const close = window.AppNav?.openModal({ title: 'データベースを作る', body, autoFocus: false });
+  body.addEventListener('click', event => {
+    const choice = event.target.closest('[data-new-db]')?.dataset.newDb;
+    if (!choice) return;
+    close?.();
+    if (choice === 'csv') startCsvImport();
+    else createEmptyDatabase();
+  });
 }
 
 /** 空のデータベース(「URL」「ID」の2列)を作って開く。メモの「新規」から呼ぶ。 */
@@ -73,11 +148,11 @@ export function startCsvImport() {
   input.click();
 }
 
-/** 指定したデータベースを開く。 */
+/** 指定したデータベースをメモ欄で開く(チップをそのデータベースに切り替える)。 */
 export function openDatabase(id) {
-  currentDbId = id;
-  searchQuery = '';
-  nav('database');
+  setActiveSpaceId(id);
+  if (document.getElementById('main-content')?.dataset.view === 'memo') refreshMemoSpace();
+  else nav('memo');
 }
 
 /**
@@ -147,20 +222,31 @@ function openLinkHtml(value, label = '開く ↗') {
 }
 
 /**
- * スマホの一覧。普通のデータベースのように1行1件で「名前」と主な列を1つ並べる。
- * 主な列は、URL以外で最初の列(就活ならID)。URLの列があれば、右端にそのまま飛べる「開く」を付ける。
- * 全部の項目は行をタップした詳細ページで見る。
+ * ビューで「一覧に出す列」に選んだ列(最大2つ)。選んでいなければ、URL以外で最初の列(就活ならID)。
+ * URLの列はここに入れず、右端の「開く」リンクで別に出す。
  */
-function renderList(db, rows) {
-  const main = db.properties.find(prop => prop.type !== 'url');
+export function listColumns(space, view) {
+  const props = space.properties.filter(prop => prop.type !== 'url');
+  const chosen = (view?.columns || []).map(id => props.find(prop => prop.id === id)).filter(Boolean);
+  return (chosen.length ? chosen : props.slice(0, 1)).slice(0, 2);
+}
+
+/**
+ * スマホの一覧。普通のデータベースのように1行1件で「名前」と、ビューで選んだ列を並べる。
+ * URLの列があれば、右端にそのまま飛べる「開く」を付ける。全部の項目は行をタップした詳細ページで見る。
+ */
+function renderList(db, rows, view) {
+  const columns = listColumns(db, view);
   const link = db.properties.find(prop => prop.type === 'url');
+  // 列の数が変わっても見出しと行がそろうよう、列の幅の決まりを1つにまとめて両方に使う。
+  const grid = `style="--db-cols: minmax(0, 1fr) ${columns.map(() => 'auto').join(' ')} 3.5em"`;
   return `
     <div class="db-list">
-      <div class="db-list-head"><span>名前</span><span>${esc(main?.name || '')}</span><span>${esc(link?.name || '')}</span></div>
+      <div class="db-list-head" ${grid}><span>名前</span>${columns.map(prop => `<span>${esc(prop.name)}</span>`).join('')}<span>${esc(link?.name || '')}</span></div>
       ${rows.map(row => `
-        <div class="db-list-row" data-row-open="${esc(row.id)}" role="button" tabindex="0">
+        <div class="db-list-row" ${grid} data-row-open="${esc(row.id)}" role="button" tabindex="0">
           <span class="db-list-title">${esc(row.title)}</span>
-          <span class="db-list-value">${main ? esc(formatValue(main.type, row.values[main.id])) : ''}</span>
+          ${columns.map(prop => `<span class="db-list-value">${esc(formatValue(prop.type, row.values[prop.id]))}</span>`).join('')}
           <span>${link ? openLinkHtml(row.values[link.id]) : ''}</span>
         </div>`).join('')}
     </div>`;
@@ -202,25 +288,26 @@ function renderTable(db, rows) {
     </div>`;
 }
 
-/** 1つのデータベースを、検索欄つきで表(PC)またはカード(スマホ)として描く。 */
-export function initDatabase(container) {
-  const db = currentDbId ? getDatabase(currentDbId) : null;
-  if (!db) { nav('memo'); return; }
-  const titleEl = document.getElementById('page-title');
-  if (titleEl) titleEl.textContent = db.name;
-
+/**
+ * メモ欄で、チップがデータベースを選んでいる時の中身。上にチップとビューのタブ、
+ * その下に検索欄と、表(PC)または一覧(スマホ)を描く。行はビューで絞り込み・並べ替えてから出す。
+ */
+export function mountDatabaseSpace(container, db) {
   /** 検索語で絞り込んだ結果だけを描き直す(検索欄は作り直さないので入力が途切れない)。 */
   const renderBody = () => {
     const fresh = getDatabase(db.id) || db;
-    const rows = collectRows(fresh).filter(row => rowMatches(row, fresh.properties, searchQuery));
+    const view = activeView(fresh);
+    const rows = applyView(collectRows(fresh), view, viewProperties(fresh))
+      .filter(row => rowMatches(row, fresh.properties, searchQuery));
     container.querySelector('#db-body').innerHTML = rows.length
-      ? (wideScreen() ? renderTable(fresh, rows) : renderList(fresh, rows))
+      ? (wideScreen() ? renderTable(fresh, rows) : renderList(fresh, rows, view))
       : '<div class="empty-state"><div class="empty-state-text">該当なし</div></div>';
     container.querySelector('#db-count').textContent = `${rows.length}件`;
   };
 
   container.innerHTML = `
-    <div class="db-page">
+    <div class="db-page" data-space-id="${esc(db.id)}">
+      ${renderSpaceHeader(db)}
       <div class="db-toolbar">
         <input class="input" id="db-search" type="search" placeholder="名前やIDで検索" value="${esc(searchQuery)}">
         <span class="db-count" id="db-count"></span>
@@ -233,13 +320,14 @@ export function initDatabase(container) {
       <div id="db-body"></div>
     </div>`;
   renderBody();
+  wireSpaceHeader(container, db);
 
   container.querySelector('#db-search').addEventListener('input', event => { searchQuery = event.target.value; renderBody(); });
   container.querySelector('#db-add-row').addEventListener('click', () => {
     const id = addDatabaseRow(db.id, '新しい項目');
-    if (id) openRow(db.id, id);
+    if (id) openKnowledgeMemo(id);
   });
-  container.querySelector('#db-edit').addEventListener('click', () => openSchemaEditor(db.id, () => initDatabase(container)));
+  container.querySelector('#db-edit').addEventListener('click', () => openSchemaEditor(db.id, refreshMemoSpace));
   container.querySelector('#db-delete-db').addEventListener('click', () => confirmDeleteDatabase(db));
 
   const body = container.querySelector('#db-body');
@@ -262,7 +350,7 @@ export function initDatabase(container) {
       return;
     }
     const row = event.target.closest('[data-row-open]');
-    if (row) openRow(db.id, row.dataset.rowOpen);
+    if (row) openKnowledgeMemo(row.dataset.rowOpen);
   });
   // PCの表で書き換えたセルは、入力し終えた時点で保存する。名前はメモの題名として保存する。
   body.addEventListener('change', event => {
@@ -278,8 +366,11 @@ export function initDatabase(container) {
  * 種類を変えた列は、入っている値も新しい種類へ変換する(例: 文字→日付で「2026年8月24日」を日付に)。
  */
 function openSchemaEditor(dbId, onSaved) {
-  const db = getDatabase(dbId);
+  // 「メモ」欄は、まだ一度も保存していないとIDが決まっていないので、固定の名前 MEMO_SPACE で受け取る。
+  const db = dbId === MEMO_SPACE ? getMemoSpace() : getDatabase(dbId);
   if (!db) return;
+  // 「メモ」欄は名前を変えたり消したりしない。題名・1行目・タグ・更新日の決まった列に、自分の列を足すだけ。
+  const isMemos = db.kind === 'memos';
   let columns = db.properties.map(prop => ({ ...prop }));
   const body = document.createElement('div');
   body.className = 'db-import';
@@ -287,9 +378,10 @@ function openSchemaEditor(dbId, onSaved) {
   /** 列の一覧を、今の編集中の状態で描き直す。 */
   const render = () => {
     body.innerHTML = `
+      ${isMemos ? '<p class="db-import-note">題名・1行目・タグ・更新日はいつもあります。ここでは自分の列を足せます。</p>' : `
       <label class="form-label">データベースの名前</label>
-      <input class="input" id="db-edit-name" value="${esc(body.querySelector('#db-edit-name')?.value ?? db.name)}">
-      <label class="form-label">列（1列目の「名前」は各ページの題名です）</label>
+      <input class="input" id="db-edit-name" value="${esc(body.querySelector('#db-edit-name')?.value ?? db.name)}">`}
+      <label class="form-label">${isMemos ? '自分で足した列' : '列（1列目の「名前」は各ページの題名です）'}</label>
       ${columns.map((column, index) => `
         <div class="db-schema-col" data-col="${index}">
           <input class="input" data-col-name value="${esc(column.name)}" aria-label="列の名前">
@@ -302,7 +394,7 @@ function openSchemaEditor(dbId, onSaved) {
         </div>`).join('')}
       <button class="btn btn-ghost btn-sm" id="db-col-add" type="button">＋ 列を追加</button>
       <div class="db-schema-footer">
-        <button class="btn btn-ghost btn-sm db-delete" id="db-delete" type="button">データベースを削除</button>
+        ${isMemos ? '<span></span>' : '<button class="btn btn-ghost btn-sm db-delete" id="db-delete" type="button">データベースを削除</button>'}
         <button class="btn btn-primary" id="db-edit-save" type="button">保存</button>
       </div>`;
   };
@@ -315,7 +407,7 @@ function openSchemaEditor(dbId, onSaved) {
     });
   };
   render();
-  const close = window.AppNav.openModal({ title: 'データベースの編集', body, autoFocus: false });
+  const close = window.AppNav.openModal({ title: isMemos ? 'メモの列' : 'データベースの編集', body, autoFocus: false });
 
   body.addEventListener('click', event => {
     const row = event.target.closest('[data-col]');
@@ -350,7 +442,7 @@ function openSchemaEditor(dbId, onSaved) {
           return [propId, old && next && old.type !== next.type ? convertValue(next.type, formatValue(old.type, value)) : value];
         }),
       )]));
-      saveDatabase({ ...db, name: body.querySelector('#db-edit-name').value.trim() || db.name, properties: columns, rows });
+      saveDatabase({ ...db, name: body.querySelector('#db-edit-name')?.value.trim() || db.name, properties: columns, rows });
       close?.();
       toast('保存しました', 'success');
       onSaved?.();
@@ -377,40 +469,189 @@ function confirmDeleteDatabase(db) {
     deleteDatabase(db.id);
     close?.();
     toast('データベースを削除しました', 'success');
-    nav('memo');
+    openDatabase(MEMO_SPACE);
   });
 }
 
-/** 行のページ(メモ画面)を開き、戻った時にこのデータベースへ戻れるよう覚えておく。 */
-function openRow(dbId, memoId) {
-  returnDbId = dbId;
-  openKnowledgeMemo(memoId);
+/**
+ * メモ画面の「戻る」で、データベースの行のページなら、そのデータベースを開いたメモ欄へ戻す。戻したらtrue。
+ * 普通のメモは今までどおりの戻り方(一覧の位置の復元など)に任せる。
+ */
+export function returnToDatabaseFromRow(memoId) {
+  const found = memoId ? findDatabaseForRow(memoId) : null;
+  if (!found) return false;
+  setActiveSpaceId(found.db.id);
+  nav('memo');
+  return true;
 }
 
-/** メモ画面の「戻る」で、データベースから開いたページならデータベースへ戻す。戻したらtrue。 */
-export function returnToDatabaseFromRow(memoId) {
-  if (!returnDbId || !findDatabaseForRow(memoId)) return false;
-  currentDbId = returnDbId;
-  returnDbId = null;
-  nav('database');
-  return true;
+// ---- ビューの編集 ----
+
+/** 絞り込み1つの「値」の入力欄。列の種類で形を変える(日付は期間、チェックは付いている/いない)。 */
+function filterValueInput(prop, value) {
+  if (prop?.type === 'checkbox') {
+    return `<select class="select" data-filter-value>
+      <option value="true"${value !== false && value !== 'false' ? ' selected' : ''}>付いている</option>
+      <option value="false"${value === false || value === 'false' ? ' selected' : ''}>付いていない</option></select>`;
+  }
+  if (prop?.type === 'date') {
+    return `<input class="input" type="date" data-filter-from value="${esc(value?.from || '')}" aria-label="から">
+      <input class="input" type="date" data-filter-to value="${esc(value?.to || '')}" aria-label="まで">`;
+  }
+  return `<input class="input" data-filter-value value="${esc(value || '')}" placeholder="${prop?.type === 'tags' ? 'タグ名' : '含む文字'}"${prop?.type === 'tags' ? ' list="db-tag-list"' : ''}>`;
+}
+
+/**
+ * ビューを作る・直す画面。名前、絞り込み(いくつでも。すべてに合う行だけ出す)、並べ替え、
+ * 一覧に出す列(2つまで)を決める。viewId が null なら新しいビューを作る。
+ */
+function openViewEditor(space, viewId) {
+  /** 保存の直前に最新の状態を読み直す(編集中に他の端末から同期されても上書きしないため)。 */
+  const fresh = () => (space.kind === 'memos' ? getMemoSpace() : getDatabase(space.id));
+  const props = viewProperties(space);
+  const original = spaceViews(space).find(view => view.id === viewId);
+  const draft = original
+    ? JSON.parse(JSON.stringify(original))
+    : { id: generateId(), name: `ビュー${spaceViews(space).length + 1}`, filters: [], sort: null, columns: [] };
+  const tags = space.kind === 'memos' ? [...new Set(getKnowledgeMemos().flatMap(memo => memo.tags || []))].sort() : [];
+  const columnChoices = space.properties.filter(prop => prop.type !== 'url');
+  const body = document.createElement('div');
+  body.className = 'db-import db-view-editor';
+
+  /** 編集中の内容で画面を描き直す。 */
+  const render = () => {
+    body.innerHTML = `
+      <label class="form-label">ビューの名前</label>
+      <input class="input" id="view-name" value="${esc(draft.name)}">
+      <label class="form-label">絞り込み（すべてに合うものだけ出します）</label>
+      ${draft.filters.map((filter, index) => `
+        <div class="db-filter-row" data-filter="${index}">
+          <select class="select" data-filter-prop aria-label="列">
+            ${props.map(prop => `<option value="${esc(prop.id)}"${prop.id === filter.prop ? ' selected' : ''}>${esc(prop.name)}</option>`).join('')}
+          </select>
+          ${filterValueInput(props.find(prop => prop.id === filter.prop), filter.value)}
+          <button class="btn btn-ghost btn-sm db-delete" type="button" data-filter-remove aria-label="この絞り込みを外す">外す</button>
+        </div>`).join('')}
+      <button class="btn btn-ghost btn-sm" id="view-filter-add" type="button">＋ 絞り込みを追加</button>
+      <datalist id="db-tag-list">${tags.map(tag => `<option value="${esc(tag)}"></option>`).join('')}</datalist>
+      <label class="form-label">並べ替え</label>
+      <div class="db-filter-row">
+        <select class="select" id="view-sort-prop" aria-label="並べ替える列">
+          <option value="">${space.kind === 'memos' ? 'なし' : 'なし（追加順）'}</option>
+          ${props.map(prop => `<option value="${esc(prop.id)}"${prop.id === draft.sort?.prop ? ' selected' : ''}>${esc(prop.name)}</option>`).join('')}
+        </select>
+        <select class="select" id="view-sort-dir" aria-label="向き">
+          <option value="asc"${draft.sort?.dir !== 'desc' ? ' selected' : ''}>古い・小さい順</option>
+          <option value="desc"${draft.sort?.dir === 'desc' ? ' selected' : ''}>新しい・大きい順</option>
+        </select>
+      </div>
+      ${columnChoices.length ? `
+        <label class="form-label">一覧に出す列（2つまで）</label>
+        ${columnChoices.map(prop => `<label class="db-view-column"><input type="checkbox" data-view-column="${esc(prop.id)}"${draft.columns.includes(prop.id) ? ' checked' : ''}> ${esc(prop.name)}</label>`).join('')}` : ''}
+      <div class="db-schema-footer">
+        ${original && spaceViews(space).length > 1 ? '<button class="btn btn-ghost btn-sm db-delete" id="view-delete" type="button">このビューを削除</button>' : '<span></span>'}
+        <button class="btn btn-primary" id="view-save" type="button">保存</button>
+      </div>`;
+  };
+  /** 入力中の内容を draft へ取り込む(列を変えて描き直す前・保存の前に呼ぶ)。 */
+  const collect = () => {
+    draft.name = body.querySelector('#view-name').value.trim() || draft.name;
+    draft.filters = [...body.querySelectorAll('[data-filter]')].map(row => {
+      const prop = props.find(item => item.id === row.querySelector('[data-filter-prop]').value);
+      const value = prop?.type === 'date'
+        ? { from: row.querySelector('[data-filter-from]').value, to: row.querySelector('[data-filter-to]').value }
+        : row.querySelector('[data-filter-value]').value;
+      return { prop: prop?.id, value: prop?.type === 'checkbox' ? value === 'true' : value };
+    });
+    const sortProp = body.querySelector('#view-sort-prop').value;
+    draft.sort = sortProp ? { prop: sortProp, dir: body.querySelector('#view-sort-dir').value } : null;
+    draft.columns = [...body.querySelectorAll('[data-view-column]:checked')].map(input => input.dataset.viewColumn).slice(0, 2);
+  };
+  /** ビューの一覧を保存し、メモ欄を描き直す。 */
+  const commit = views => {
+    const target = fresh();
+    if (!target) return;
+    saveDatabase({ ...target, views });
+    close?.();
+    refreshMemoSpace();
+  };
+
+  render();
+  const close = window.AppNav.openModal({ title: original ? 'ビューの編集' : 'ビューを追加', body, autoFocus: false });
+  // 列を選び直したら、値の入力欄をその列の種類に合わせて作り直す。
+  body.addEventListener('change', event => {
+    if (event.target.closest('[data-filter-prop]')) {
+      collect();
+      const row = draft.filters[Number(event.target.closest('[data-filter]').dataset.filter)];
+      row.value = '';
+      render();
+    }
+  });
+  body.addEventListener('click', event => {
+    if (event.target.closest('#view-filter-add')) {
+      collect();
+      draft.filters.push({ prop: props[0].id, value: '' });
+      render();
+    } else if (event.target.closest('[data-filter-remove]')) {
+      collect();
+      draft.filters.splice(Number(event.target.closest('[data-filter]').dataset.filter), 1);
+      render();
+    } else if (event.target.closest('#view-delete')) {
+      if (!window.confirm(`ビュー「${draft.name}」を削除しますか？ 中のメモや行は消えません。`)) return;
+      commit(spaceViews(fresh()).filter(view => view.id !== draft.id));
+    } else if (event.target.closest('#view-save')) {
+      collect();
+      const views = spaceViews(fresh());
+      const next = views.some(view => view.id === draft.id) ? views.map(view => (view.id === draft.id ? draft : view)) : [...views, draft];
+      setActiveView(space, draft.id);
+      commit(next);
+    }
+  });
+}
+
+// ---- メモを別のデータベースへ移す ----
+
+/**
+ * 「移動」の選択画面。普通のメモ⇄データベース、データベース⇄データベースを移せる。
+ * 値は名前と種類が同じ列だけ引き継ぐ。移したら onMoved を呼ぶ(詳細画面を描き直すため)。
+ */
+export function openMoveSheet(memoId, onMoved) {
+  const current = findDatabaseForRow(memoId)?.db.id || MEMO_SPACE;
+  const targets = [{ id: MEMO_SPACE, name: 'メモ' }, ...getDatabases()];
+  const body = document.createElement('div');
+  body.className = 'db-import';
+  body.innerHTML = `
+    <p class="db-import-note">名前と種類が同じ列の値は引き継ぎます。データベースに入れたページは復習の対象から外れます。</p>
+    ${targets.map(target => `<button class="btn btn-ghost" type="button" data-move-to="${esc(target.id)}"${target.id === current ? ' disabled' : ''}>
+      ${esc(target.name)}${target.id === current ? '（今ここ）' : ''}</button>`).join('')}`;
+  const close = window.AppNav.openModal({ title: '移動先', body, autoFocus: false });
+  body.addEventListener('click', event => {
+    const id = event.target.closest('[data-move-to]')?.dataset.moveTo;
+    if (!id) return;
+    const target = targets.find(item => item.id === id);
+    if (!moveMemoToSpace(memoId, id === MEMO_SPACE ? null : id, carryValues)) { toast('移動できませんでした', 'error'); return; }
+    close?.();
+    toast(`「${target.name}」へ移動しました`, 'success');
+    onMoved?.();
+  });
 }
 
 // ---- 行のページの上に出す欄 ----
 
 /**
- * メモがデータベースの行なら、閲覧画面の上に「列の値」の欄を出す。値は入力し終えた時点で保存する。
- * URLは開くボタン、文字はコピーボタンを横に付ける。
+ * データベースの行(または、自分の列を足した「メモ」のページ)なら、閲覧画面の上に「列の値」の欄を出す。
+ * 値は入力し終えた時点で保存する。URLは開くボタン、文字はコピーボタンを横に付ける。
  */
 export function renderDatabaseRowPanel(container, memoId) {
-  const found = memoId ? findDatabaseForRow(memoId) : null;
+  const memoSpace = getMemoSpace();
+  const found = memoId ? findDatabaseForRow(memoId) || { db: memoSpace, values: memoSpace.rows[memoId] || {} } : null;
   const page = container.querySelector('.kn-view-page');
   if (!found || !page || !found.db.properties.length) return;
   const { db, values } = found;
   const panel = document.createElement('div');
   panel.className = 'db-row-panel';
   panel.innerHTML = `
-    <p class="db-row-panel-db">${esc(db.name)}</p>
+    <p class="db-row-panel-db">${esc(db.kind === 'memos' ? 'メモの列' : db.name)}</p>
     ${db.properties.map(prop => `
       <div class="db-row-field">
         <label class="db-card-label">${esc(prop.name)}</label>
