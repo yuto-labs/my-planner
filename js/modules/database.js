@@ -12,6 +12,7 @@ import {
 import {
   PROPERTY_TYPE_LABELS, PROPERTY_TYPES, convertValue, formatValue, parseCsv, planCsvImport, rowMatches,
 } from '../database-model.js';
+import { normalizeMemoUrl } from '../memo-model.js';
 import { esc, generateId } from '../utils.js';
 import { openKnowledgeMemo } from './memo.js';
 
@@ -137,18 +138,30 @@ function collectRows(db) {
 }
 
 /**
+ * URLの値を、新しいタブで開くリンクにする。http/https以外(javascript:など)はリンクにしない。
+ * data-link があると、一覧の行を押した扱い(ページを開く)にならない。
+ */
+function openLinkHtml(value, label = '開く ↗') {
+  const href = normalizeMemoUrl(value);
+  return href ? `<a class="db-open-link" data-link href="${esc(href)}" target="_blank" rel="noopener noreferrer">${label}</a>` : '';
+}
+
+/**
  * スマホの一覧。普通のデータベースのように1行1件で「名前」と主な列を1つ並べる。
- * 主な列は、URL以外で最初の列(就活ならID)。全部の項目は行をタップした詳細ページで見る。
+ * 主な列は、URL以外で最初の列(就活ならID)。URLの列があれば、右端にそのまま飛べる「開く」を付ける。
+ * 全部の項目は行をタップした詳細ページで見る。
  */
 function renderList(db, rows) {
   const main = db.properties.find(prop => prop.type !== 'url');
+  const link = db.properties.find(prop => prop.type === 'url');
   return `
     <div class="db-list">
-      <div class="db-list-head"><span>名前</span><span>${esc(main?.name || '')}</span></div>
+      <div class="db-list-head"><span>名前</span><span>${esc(main?.name || '')}</span><span>${esc(link?.name || '')}</span></div>
       ${rows.map(row => `
         <div class="db-list-row" data-row-open="${esc(row.id)}" role="button" tabindex="0">
           <span class="db-list-title">${esc(row.title)}</span>
           <span class="db-list-value">${main ? esc(formatValue(main.type, row.values[main.id])) : ''}</span>
+          <span>${link ? openLinkHtml(row.values[link.id]) : ''}</span>
         </div>`).join('')}
     </div>`;
 }
@@ -183,7 +196,7 @@ function renderTable(db, rows) {
               <button class="db-open-page" type="button" data-row-open="${esc(row.id)}" aria-label="ページを開く">↗</button>
               <button class="db-open-page db-delete" type="button" data-row-delete="${esc(row.id)}" aria-label="この行を削除">削除</button>
             </td>
-            ${db.properties.map(prop => `<td>${propertyInput(prop, row.values[prop.id], row.id)}</td>`).join('')}
+            ${db.properties.map(prop => `<td${prop.type === 'url' ? ' class="db-table-url"' : ''}>${propertyInput(prop, row.values[prop.id], row.id)}${prop.type === 'url' ? openLinkHtml(row.values[prop.id], '↗') : ''}</td>`).join('')}
           </tr>`).join('')}</tbody>
       </table>
     </div>`;
@@ -402,7 +415,7 @@ export function renderDatabaseRowPanel(container, memoId) {
       <div class="db-row-field">
         <label class="db-card-label">${esc(prop.name)}</label>
         ${propertyInput(prop, values[prop.id])}
-        ${prop.type === 'url' && values[prop.id] ? `<a class="btn btn-ghost btn-sm" href="${esc(values[prop.id])}" target="_blank" rel="noopener noreferrer">開く ↗</a>` : ''}
+        ${prop.type === 'url' ? openLinkHtml(values[prop.id]) : ''}
         ${prop.type === 'text' && values[prop.id] ? `<button class="db-copy" type="button" data-copy="${esc(values[prop.id])}">コピー</button>` : ''}
       </div>`).join('')}`;
   page.prepend(panel);

@@ -1629,7 +1629,8 @@ function renderViewMode(container) {
       ${id ? (() => {
         const todayStr   = new Date().toISOString().slice(0, 10);
         const srsEntry   = getReviewEntry(id);
-        if (srsEntry?.stage === REVIEW_DISABLED_STAGE) {
+        // データベースの行は復習予定が無くても「初めての復習」に見えてしまうので、欄ごと出さない。
+        if (srsEntry?.stage === REVIEW_DISABLED_STAGE || isDatabaseRow(id)) {
           return '';
         }
         const stage      = srsEntry?.stage ?? 0;

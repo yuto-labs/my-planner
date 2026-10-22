@@ -37,6 +37,8 @@ test('a database lives in the memo list, opens as a list, and its rows open as p
   await expect(page.locator('.db-list-row')).toHaveCount(2);
   await expect(page.locator('.db-list-row').first()).toContainText('AB123');
   await expect(page.locator('#main-content')).not.toContainText('hidden-1');
+  // 一覧からURLへそのまま飛べる(リンクを押しても行のページは開かない)。
+  await expect(page.locator('.db-list-row').first().locator('a[data-link]')).toHaveAttribute('href', 'https://example.com/a');
 
   await page.locator('#db-search').fill('zx9');
   await expect(page.locator('.db-list-row')).toHaveCount(1);
@@ -45,6 +47,8 @@ test('a database lives in the memo list, opens as a list, and its rows open as p
   // 詳細ページに全部の項目(URLは開くボタン付き)が出て、復習の対象にはならない。
   await expect(page.locator('.db-row-panel input[data-prop-type="text"]')).toHaveValue('ZX987');
   await expect(page.locator('.db-row-panel a', { hasText: '開く' })).toHaveAttribute('href', 'https://example.com/b');
+  // 閲覧画面に復習の進み具合・評価ボタンが出ない。
+  await expect(page.locator('.kn-learned-action')).toHaveCount(0);
   await page.locator('#kn-edit-btn').click();
   await expect(page.locator('#kn-review-enabled')).toHaveCount(0);
   await page.locator('#kn-save-btn').click();
