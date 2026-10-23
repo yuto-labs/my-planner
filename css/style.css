@@ -11609,13 +11609,80 @@ button.atlas-nuance-map-row:focus-visible {
 .nt-copy { position: absolute; top: 5px; right: 4px; display: none; padding: 1px 7px; font-size: 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-card); color: var(--text-muted); }
 .nt-prop-value:hover .nt-copy { display: block; }
 @media (hover: none) { .nt-copy { display: block; } }
-/* PCのサイドピーク: 表の右側に行のページを開く。開いている間は表の右側を空けて隠れないようにする。 */
-.db-page.nt-peek-open { padding-right: calc(min(560px, 45vw) + 16px); }
+/* 行のページ。PCは表の右側(サイドピーク)、それより狭い画面はデータベースの上に全画面で開く。
+   PCでは開いている間、表の右側を空けて隠れないようにする。 */
 .nt-peek {
-  position: fixed; right: 0; bottom: 0; z-index: 50; width: min(560px, 45vw); overflow-y: auto;
-  background: var(--bg-card); border-left: 1px solid var(--border); box-shadow: var(--shadow-sm);
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 60; overflow-y: auto; overscroll-behavior: contain;
+  background: var(--bg-card);
 }
-.nt-peek-bar { position: sticky; top: 0; display: flex; justify-content: space-between; padding: 8px 12px; background: var(--bg-card); }
-.nt-peek-body { padding: 8px 32px 48px; }
-.nt-peek-title .nt-cell, .nt-peek-title .nt-editor { min-height: 0; padding: 4px 0 12px; font-size: 28px; font-weight: 700; line-height: 1.25; }
-.nt-peek-content { margin: 16px 0; padding-top: 16px; border-top: 1px solid var(--border); }
+.nt-peek-close-wide { display: none; }
+@media (min-width: 1000px) {
+  .db-page.nt-peek-open { padding-right: calc(min(560px, 45vw) + 16px); }
+  .nt-peek { left: auto; z-index: 50; width: min(560px, 45vw); border-left: 1px solid var(--border); box-shadow: var(--shadow-sm); }
+  .nt-peek-close-wide { display: inline; }
+  .nt-peek-close-narrow { display: none; }
+}
+.nt-peek-bar { position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; padding: 8px 12px; background: var(--bg-card); }
+.nt-peek-body { padding: 8px 20px calc(96px + env(safe-area-inset-bottom)); }
+@media (min-width: 1000px) { .nt-peek-body { padding: 8px 32px 48px; } }
+.nt-peek-title .nt-cell, .nt-peek-title .nt-editor { min-height: 0; padding: 4px 0 12px; font-size: 26px; font-weight: 700; line-height: 1.25; }
+.nt-peek-content { margin: 16px 0; padding-top: 12px; border-top: 1px solid var(--border); }
+/* 行のページの本文エディタ(js/modules/page-editor.js)。行ごとに押して書ける。 */
+.pe { display: flex; flex-direction: column; gap: 2px; font-size: 15px; line-height: 1.7; }
+.pe-block { display: flex; align-items: flex-start; gap: 6px; padding-left: calc(var(--pe-depth, 0) * 22px); }
+.pe-text { flex: 1; min-width: 0; min-height: 1.7em; padding: 2px 2px; border-radius: 4px; outline: none; color: var(--text); overflow-wrap: anywhere; }
+.pe-text:focus { background: var(--bg-hover); }
+.pe-text:empty::before { content: attr(data-placeholder); color: var(--text-dim); }
+.pe-mark { flex-shrink: 0; min-width: 1.2em; padding-top: 2px; color: var(--text-dim); text-align: right; }
+.pe-check { flex-shrink: 0; margin-top: 7px; }
+.pe-block.is-checked .pe-text { color: var(--text-dim); text-decoration: line-through; }
+.pe-h1 .pe-text { font-size: 24px; font-weight: 700; line-height: 1.35; }
+.pe-h2 .pe-text { font-size: 20px; font-weight: 700; line-height: 1.4; }
+.pe-h3 .pe-text { font-size: 17px; font-weight: 700; }
+.pe-quote .pe-text { padding-left: 12px; border-left: 3px solid var(--text-dim); border-radius: 0; }
+.pe-static { display: block; opacity: 0.92; }
+/* 「ビューの設定」の窓(Notionの右上の設定と同じ並び)。 */
+.db-pop--settings { width: min(320px, calc(100vw - 16px)); }
+.db-pop-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 4px 8px; font-size: 14px; }
+.db-pop-label { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.db-pop-label small { color: var(--text-dim); font-size: 12px; }
+.db-pop-value { color: var(--text-dim); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
+.db-pop-arrow, .db-pop-check { color: var(--text-dim); }
+.db-pop-item.is-current { background: var(--bg-hover); }
+.db-pop-back { width: 100%; padding: 6px 8px; border: 0; border-radius: 6px; background: none; color: var(--text-dim); font-size: 13px; text-align: left; }
+.db-pop-section { margin: 8px 8px 2px; padding-top: 8px; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 12px; }
+.db-pop-eye { color: var(--text-muted); }
+.db-pop-eye.is-off { color: var(--text-dim); opacity: 0.6; }
+/* メモ欄のAI(js/modules/space-ai.js)。PCは右下に浮かぶ窓、スマホは下から出るシート。
+   NotionのAIの横長の欄とは違い、表を隠さない小さな窓にして、答えの中の名前から行を開ける。 */
+.sai {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 220; display: flex; flex-direction: column;
+  height: min(80dvh, 640px); background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px 16px 0 0;
+  box-shadow: var(--shadow);
+}
+@media (min-width: 700px) {
+  .sai { left: auto; right: 24px; bottom: 24px; width: 400px; height: min(620px, 75vh); border-radius: 14px; }
+}
+@media (min-width: 1000px) { .has-peek .sai { right: calc(min(560px, 45vw) + 24px); } }
+.sai-open #fab { display: none; }
+.sai-head { display: flex; align-items: center; gap: 8px; padding: 12px 12px 10px 16px; border-bottom: 1px solid var(--border); }
+.sai-spark { color: var(--primary); }
+.sai-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+.sai-icon { width: 30px; height: 30px; border: 0; border-radius: 6px; background: none; color: var(--text-dim); font-size: 16px; }
+.sai-icon:hover { background: var(--bg-hover); }
+.sai-log { flex: 1; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; }
+.sai-note { margin: 0; color: var(--text-muted); font-size: 14px; line-height: 1.6; }
+.sai-suggest { display: flex; flex-wrap: wrap; gap: 6px; }
+.sai-chip { padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px; background: none; color: var(--text); font-size: 13px; }
+.sai-chip:hover { background: var(--bg-hover); }
+.sai-msg { max-width: 88%; padding: 9px 12px; border-radius: 12px; font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }
+.sai-msg--user { align-self: flex-end; background: var(--primary); color: var(--on-primary); border-bottom-right-radius: 4px; }
+.sai-msg--ai { align-self: flex-start; background: var(--bg-hover); color: var(--text); border-bottom-left-radius: 4px; }
+.sai-msg--ai.is-error { color: var(--danger); }
+.sai-msg a { color: var(--primary-light); text-decoration: underline; }
+.sai-cite { display: inline; margin: 0 1px; padding: 0 6px; border: 1px solid var(--primary-border); border-radius: 6px; background: var(--primary-bg); color: var(--primary-light); font: inherit; font-size: 13px; cursor: pointer; }
+.sai-typing { color: var(--text-dim); }
+.sai-form { display: flex; align-items: flex-end; gap: 8px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); }
+.sai-input { flex: 1; min-width: 0; max-height: 120px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 18px; background: var(--bg-input); color: var(--text); font: inherit; font-size: 15px; line-height: 1.4; resize: none; outline: none; }
+.sai-input:focus { border-color: var(--primary); }
+.sai-send { flex-shrink: 0; width: 36px; height: 36px; border: 0; border-radius: 50%; background: var(--primary); color: var(--on-primary); font-size: 18px; }

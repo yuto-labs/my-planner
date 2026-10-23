@@ -30,6 +30,8 @@ const ACTION_LIMITS = Object.freeze({
   batch_tags: 2200,
   planner_action: 1400,
   task_schedule: 4000,
+  // メモ欄のAI: 開いているデータベース(またはメモ)の中身について答える。
+  database_chat: 2400,
 });
 const MAX_SYSTEM_CHARS = 32_000;
 const MAX_USER_CHARS = 120_000;
@@ -1902,13 +1904,18 @@ export default async function handler(req, res) {
 
   // Search groundingはGemini無料枠の通常APIでは利用できない。明示的に有効化した
   // 有料プロジェクトだけで使い、無料枠の初回質問が429になるのを防ぐ。
-  const searchGroundingEnabled = body.actionType === 'knowledge_answer'
+  const searchGroundingEnabled = ['knowledge_answer', 'database_chat'].includes(body.actionType)
     && process.env.GEMINI_ENABLE_SEARCH_GROUNDING === 'true';
   const knowledgeEvidenceInstruction = body.actionType === 'knowledge_answer'
     ? (searchGroundingEnabled
       ? '\nGoogle Search is available. Verify central factual claims and rely only on provider grounding metadata for source URLs.'
       : '\nGoogle Search is not enabled for this request. Answer from established knowledge, clearly mark uncertainty, never claim that you browsed or verified a live source, and leave source evidence empty.')
-    : '';
+    : body.actionType === 'database_chat'
+      // データベースの答えは中身が最優先。ネットの補足は、検索が使える時だけ出典付きで、使えない時は「一般的な知識」と明記させる。
+      ? (searchGroundingEnabled
+        ? '\nGoogle Search is available for short, reliable supplements. Never invent URLs; sources are attached automatically.'
+        : '\nWeb search is not available. If you add general knowledge beyond the database, label it as 一般的な知識, keep it brief, and never invent URLs or claim you checked a website.')
+      : '';
   const effectiveSystemText = `${String(body.systemText || '')}${knowledgeEvidenceInstruction}`.trim();
   if (searchGroundingEnabled) {
     payload.tools = [{ google_search: {} }];
@@ -2176,6 +2183,11 @@ The previous response was incomplete. Return a grounded title and at least one n
       return;
     }
 
+    // メモ欄のAIでネット検索を使った時は、検索で実際に参照したページだけを末尾に添える(AIが作ったURLは使わない)。
+    if (body.actionType === 'database_chat') {
+      const { sources } = extractKnowledgeGrounding(data);
+      if (sources.length) text = `${text}\n\nネットで確かめた情報:\n${sources.map(source => `- ${source.title} ${source.url}`).join('\n')}`;
+    }
     // Report the model that actually produced the response. This matters when
     // the primary route was rate-limited and the request completed via fallback.
     res.status(200).json({ text, model: activeModel });

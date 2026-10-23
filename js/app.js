@@ -33,8 +33,8 @@ import { initToday }    from './modules/today.js';
 import {
   initKnowledge, initKnowledgeDetail, openKnowledgeMemo, backFromKnowledgeDetail,
   hasUnsavedKnowledgeChanges, confirmDiscardKnowledgeChanges, isKnowledgeEditorOpen,
-  openKnowledgeAiOrganizer,
 } from './modules/memo.js';
+import { openSpaceAI } from './modules/space-ai.js';
 import { initReview } from './modules/review.js';
 import { initKnowledgeGraph } from './modules/memo-graph.js';
 import { initExpressionAtlasLazily, loadedAtlasModule } from './atlas-loader.js';
@@ -1161,8 +1161,9 @@ function setupFAB() {
       fab.title = 'Open AI planner';
       fab.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M7 2v2H5c-1.1 0-2 .9-2 2v13c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-2V2h-2v2H9V2H7zm12 8H5V8h14v2zm-8 3h2v2h-2v-2zm4 0h2v2h-2v-2zm-8 0h2v2H7v-2z"/></svg>';
     } else if (currentView === 'memo') {
-      fab.setAttribute('aria-label', 'AI整理');
-      fab.title = 'AI整理';
+      // メモ欄では、開いているデータベース(またはメモ)についてAIに聞く(文章の整理もその中から使える)。
+      fab.setAttribute('aria-label', 'AIに聞く');
+      fab.title = 'AIに聞く';
       fab.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="25" height="25" aria-hidden="true"><path d="m12 3 1.15 3.35L16.5 7.5l-3.35 1.15L12 12l-1.15-3.35L7.5 7.5l3.35-1.15L12 3Z"/><path d="m18.5 12 1 2.5L22 15.5l-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1 1-2.5Z"/><path d="M4 14v6h8"/></svg>';
     } else {
       fab.setAttribute('aria-label', '追加');
@@ -1180,7 +1181,7 @@ function setupFAB() {
         openCalendarAddFlow();
         break;
       case 'memo':
-        openKnowledgeAiOrganizer();
+        openSpaceAI();
         break;
       default:
         navigate('tasks');

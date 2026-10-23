@@ -44,12 +44,15 @@ function cellHtml(prop, value) {
   return esc(formatValue(prop.type, value));
 }
 
-/** 表の列(名前 + データベースの列)。名前の列の幅はデータベースに保存した titleWidth を使う。 */
-const tableColumns = db => [{ ...TITLE, width: db.titleWidth }, ...db.properties];
+/**
+ * 表の列(名前 + データベースの列)。名前の列の幅はデータベースに保存した titleWidth を使う。
+ * ビューで隠した列(view.hidden)は出さない。名前の列は隠せない。
+ */
+const tableColumns = (db, view) => [{ ...TITLE, width: db.titleWidth }, ...db.properties.filter(prop => !(view?.hidden || []).includes(prop.id))];
 
 /** Notionのような表のHTML。列の幅は <col> で決め、表全体の幅は列の合計にする(横にはみ出したら横スクロール)。 */
-export function renderNotionTable(db, rows) {
-  const columns = tableColumns(db);
+export function renderNotionTable(db, rows, view) {
+  const columns = tableColumns(db, view);
   const widths = columns.map(columnWidth);
   return `
     <div class="nt-wrap">
@@ -289,15 +292,20 @@ function openTagEditor(td, db, rowId, prop, refresh) {
     if (event.key === 'Backspace' && !event.target.value && selected.size) { selected.delete([...selected].pop()); save(); render(); }
   });
 
+  let closed = false;
   /** 欄の外を押したら閉じる。 */
   const outside = event => { if (!pop.contains(event.target)) close(); };
-  /** 閉じて表を描き直す。 */
+  /** 閉じて表を描き直す(2回目以降は何もしない)。 */
   function close() {
+    if (closed) return;
+    closed = true;
     document.removeEventListener('pointerdown', outside, true);
     pop.remove();
     refresh();
   }
   document.body.append(pop);
   render();
-  setTimeout(() => document.addEventListener('pointerdown', outside, true), 0);
+  // 開いた時の押下で閉じないよう、外の押下の見張りは一拍おいて始める。
+  // その一拍の間に閉じていたら始めない(始めると見張りが残り、次の押下で表が描き直されて操作が消える)。
+  setTimeout(() => { if (!closed) document.addEventListener('pointerdown', outside, true); }, 0);
 }

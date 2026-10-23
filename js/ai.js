@@ -379,6 +379,27 @@ export async function generateAnalyticsSummary(monthStr, data) {
   return text.trim();
 }
 
+// ---- メモ欄のAI(開いているデータベース・メモについて聞く) ----
+
+/**
+ * 開いているデータベース(またはメモ)の中身について答えてもらう。context は行ごとの本文
+ * (「【名前】 列: 値 …」の形)、history は直前のやり取り [{ role: 'user'|'ai', text }]。
+ * 答えでは行の名前を【】で囲ませ、画面側でその行を開くボタンに変える。
+ */
+export async function askSpaceAI({ spaceName, kind, context, question, history = [] }) {
+  const system = [
+    `あなたは、ユーザー本人の${kind === 'memos' ? 'メモ' : `データベース「${spaceName}」`}の中身に詳しい案内役です。日本語で、結論から短く答えてください。`,
+    '- まず「データ」の中から答える。使った行やメモは、名前を【】でそのまま囲んで示す(例: 【日立製作所】)。名前は一字も変えない。',
+    '- 行にURLがあれば、そのまま書いて案内する。',
+    '- データに見当たらない時は「データには見当たりません」と先に言い、必要なら一般的な知識で短く補足する。',
+    '- 見出しや箇条書きは最小限。パスワードなどの秘密は書かない。',
+  ].join('\n');
+  const recent = history.slice(-6).map(item => `${item.role === 'user' ? 'ユーザー' : 'AI'}: ${item.text}`).join('\n');
+  const user = `データ:\n${context || '(空)'}\n\n${recent ? `これまでのやり取り:\n${recent}\n\n` : ''}質問: ${question}`;
+  const text = await callAPI(QUALITY_MODEL, system, user, 1600, 'text', 'database_chat');
+  return String(text || '').trim();
+}
+
 // ---- 通常メモのAI補助 ----
 // 保存はmemo.js / storage.jsが担当し、ここではタグ・用語解説・整理結果を作る。
 export async function suggestKnowledgeTags(title, textPreview) {

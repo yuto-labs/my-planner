@@ -16,7 +16,8 @@ import {
 } from '../database-model.js';
 import { normalizeMemoUrl } from '../memo-model.js';
 import { esc, generateId } from '../utils.js';
-import { openKnowledgeMemo, refreshMemoSpace, renderBlocksView } from './memo.js';
+import { openKnowledgeMemo, refreshMemoSpace } from './memo.js';
+import { renderPageEditor, wirePageEditor } from './page-editor.js';
 import { propIcon, renderNotionTable, renderPropertyList, wireNotionTable, wirePropertyList } from './notion-table.js';
 
 /** `toast`: 短い通知メッセージを画面へ表示する。 */
@@ -78,7 +79,11 @@ const TOOL_ICONS = {
   sort: toolIcon('<path d="M5 3v10M2.8 5.2 5 3l2.2 2.2M11 13V3M8.8 10.8 11 13l2.2-2.2"/>'),
   search: toolIcon('<circle cx="7" cy="7" r="4.3"/><path d="m10.2 10.2 3.3 3.3"/>'),
   graph: toolIcon('<circle cx="4" cy="4.5" r="1.6"/><circle cx="12" cy="4" r="1.6"/><circle cx="8" cy="12" r="1.6"/><path d="M5.5 5.2 7 10.6M10.6 5 9 10.6M5.6 4.4h4.8"/>'),
-  more: toolIcon('<circle cx="3.5" cy="8" r=".7"/><circle cx="8" cy="8" r=".7"/><circle cx="12.5" cy="8" r=".7"/>'),
+  more: toolIcon('<path d="M2.5 4.5h6M11.5 4.5h2M2.5 11.5h2M7.5 11.5h6"/><circle cx="10" cy="4.5" r="1.5"/><circle cx="6" cy="11.5" r="1.5"/>'),
+  table: toolIcon('<rect x="2.5" y="3" width="11" height="10" rx="1.5"/><path d="M2.5 6.5h11M6.5 6.5V13"/>'),
+  list: toolIcon('<path d="M5.5 4.5h8M5.5 8h8M5.5 11.5h8"/><circle cx="3" cy="4.5" r=".6"/><circle cx="3" cy="8" r=".6"/><circle cx="3" cy="11.5" r=".6"/>'),
+  eye: toolIcon('<path d="M1.8 8s2.3-4.2 6.2-4.2S14.2 8 14.2 8 11.9 12.2 8 12.2 1.8 8 1.8 8Z"/><circle cx="8" cy="8" r="1.8"/>'),
+  eyeOff: toolIcon('<path d="M1.8 8s2.3-4.2 6.2-4.2S14.2 8 14.2 8 11.9 12.2 8 12.2 1.8 8 1.8 8Z"/><path d="m3 13 10-10"/>'),
 };
 
 /**
@@ -110,7 +115,7 @@ export function renderSpaceHeader(space, { search = '' } = {}) {
           ${tool('filter', 'フィルター', current.filters?.length > 0)}
           ${tool('sort', '並べ替え', !!current.sort && !(space.kind === 'memos' && current.sort.prop === '__updated' && current.sort.dir === 'desc'))}
           ${space.kind === 'memos' ? tool('graph', '知識グラフ') : ''}
-          ${tool('more', 'その他')}
+          ${tool('more', 'ビューの設定')}
           <button class="db-new-btn" type="button" data-tool="new">新規</button>
         </div>
       </div>
@@ -128,7 +133,8 @@ export function wireSpaceHeader(container, space, { onSearch, onNew } = {}) {
   header.addEventListener('click', event => {
     if (suppressClick) { suppressClick = false; return; }
     const chip = event.target.closest('[data-space]');
-    if (chip) { setActiveSpaceId(chip.dataset.space); refreshMemoSpace(); return; }
+    // 別の欄へ切り替えたら、開いていた行のページは閉じる。
+    if (chip) { peekRowId = null; setActiveSpaceId(chip.dataset.space); refreshMemoSpace(); return; }
     if (event.target.closest('[data-space-add]')) { openCreateDatabaseSheet(); return; }
     const tab = event.target.closest('[data-view-id]');
     if (tab) { setActiveView(space, tab.dataset.viewId); refreshMemoSpace(); return; }
@@ -143,7 +149,7 @@ export function wireSpaceHeader(container, space, { onSearch, onNew } = {}) {
     } else if (name === 'filter') openFilterPopover(button, space);
     else if (name === 'sort') openSortPopover(button, space);
     else if (name === 'graph') nav('knowledge-graph');
-    else if (name === 'more') openMoreMenu(button, space);
+    else if (name === 'more') openViewSettings(button, space);
     else if (name === 'new') onNew?.();
   });
   // 検索欄は、空のまま離れたら閉じる(アイコンだけに戻る)。
@@ -186,11 +192,12 @@ let closeActivePopover = null;
  * @returns {HTMLElement} 中身を入れる窓
  */
 function openPopover(anchor, className = '') {
+  // 位置は、前の窓を閉じる前に読む(前の窓の中のボタンから開く時、閉じると位置が分からなくなるため)。
+  const rect = anchor instanceof Element ? anchor.getBoundingClientRect() : { left: anchor.x, right: anchor.x, bottom: anchor.y };
   closeActivePopover?.();
   const pop = document.createElement('div');
   pop.className = `db-pop ${className}`;
   document.body.append(pop);
-  const rect = anchor instanceof Element ? anchor.getBoundingClientRect() : { left: anchor.x, right: anchor.x, bottom: anchor.y };
   /** 画面からはみ出さない位置に置き直す(中身の大きさが変わった時にも呼ぶ)。 */
   pop.place = () => {
     const width = pop.offsetWidth;
@@ -201,14 +208,18 @@ function openPopover(anchor, className = '') {
   const outside = event => { if (!pop.contains(event.target)) close(); };
   /** Escで閉じる。 */
   const onKey = event => { if (event.key === 'Escape') { event.stopPropagation(); close(); } };
-  /** 窓と監視を片付ける。 */
+  let closed = false;
+  /** 窓と監視を片付ける(2回目以降は何もしない)。 */
   function close() {
+    if (closed) return;
+    closed = true;
     document.removeEventListener('pointerdown', outside, true);
     window.removeEventListener('keydown', onKey, true);
     pop.remove();
-    closeActivePopover = null;
+    if (closeActivePopover === close) closeActivePopover = null;
   }
-  setTimeout(() => document.addEventListener('pointerdown', outside, true), 0);
+  // 開いた時の押下で閉じないよう、外の押下の見張りは一拍おいて始める(その間に閉じていたら始めない)。
+  setTimeout(() => { if (!closed) document.addEventListener('pointerdown', outside, true); }, 0);
   window.addEventListener('keydown', onKey, true);
   closeActivePopover = close;
   pop.close = close;
@@ -356,20 +367,89 @@ function openFilterPopover(button, space) {
   draw();
 }
 
-/** 「…」のメニュー: ビューの設定(名前・表示の形)と、データベースなら列の編集。 */
-function openMoreMenu(button, space) {
-  const pop = openPopover(button, 'db-pop--menu');
-  pop.innerHTML = `
-    <button class="db-pop-item" type="button" data-menu="view">ビューの設定…</button>
-    ${space.kind === 'memos' ? '' : '<button class="db-pop-item" type="button" data-menu="columns">列を編集…</button>'}`;
-  pop.place();
-  pop.addEventListener('click', event => {
-    const item = event.target.closest('[data-menu]')?.dataset.menu;
-    if (!item) return;
-    pop.close();
-    if (item === 'view') openViewEditor(space, activeView(space).id);
-    else openSchemaEditor(space.id, refreshMemoSpace);
+/**
+ * 「…」の「ビューの設定」(Notionの右上の設定と同じ並び)。ビューの名前・レイアウト・列の表示/非表示・
+ * フィルター・並べ替えと、データベースの列の編集・ビューの削除をここにまとめる。変更はすぐ保存して表に出す。
+ * 「レイアウト」「列の表示/非表示」は、同じ窓の中で次の画面に切り替わる(‹ で戻る)。
+ */
+function openViewSettings(button, space) {
+  const pop = openPopover(button, 'db-pop--settings');
+  const isDb = space.kind !== 'memos';
+  let screen = 'main';
+  let nameTimer = null;
+  /** 「›」付きの項目1つ。 */
+  const item = (key, icon, label, value = '') => `<button class="db-pop-item" type="button" data-set="${key}">${icon}<span class="db-pop-label">${label}</span><span class="db-pop-value">${esc(value)}</span><span class="db-pop-arrow" aria-hidden="true">›</span></button>`;
+  /** 今の画面を描き直す(保存のたびに最新の内容で)。 */
+  const draw = () => {
+    const target = freshSpace(space);
+    const view = activeView(target);
+    const props = viewProperties(target);
+    const sortProp = view.sort && props.find(prop => prop.id === view.sort.prop);
+    const hidden = new Set(view.hidden || []);
+    const back = '<button class="db-pop-back" type="button" data-set="main">‹ ビューの設定</button>';
+    if (screen === 'layout') {
+      pop.innerHTML = `${back}
+        ${[['table', 'テーブル', 'Notionのように全部の列'], ['list', 'リスト', '名前と選んだ列だけ']].map(([key, label, sub]) => `
+          <button class="db-pop-item${(view.layout || 'table') === key ? ' is-current' : ''}" type="button" data-layout="${key}">
+            ${TOOL_ICONS[key === 'table' ? 'table' : 'list']}<span class="db-pop-label">${label}<small>${sub}</small></span>${(view.layout || 'table') === key ? '<span class="db-pop-check">✓</span>' : ''}
+          </button>`).join('')}`;
+    } else if (screen === 'props') {
+      pop.innerHTML = `${back}
+        ${target.properties.map(prop => `
+          <button class="db-pop-item" type="button" data-toggle-prop="${esc(prop.id)}">
+            ${propIcon(prop.type)}<span class="db-pop-label">${esc(prop.name)}</span>
+            <span class="db-pop-eye${hidden.has(prop.id) ? ' is-off' : ''}" aria-label="${hidden.has(prop.id) ? '隠している' : '表示中'}">${TOOL_ICONS[hidden.has(prop.id) ? 'eyeOff' : 'eye']}</span>
+          </button>`).join('') || '<p class="db-pop-empty">列がありません</p>'}`;
+    } else {
+      pop.innerHTML = `
+        <div class="db-pop-head"><strong>ビューの設定</strong><button class="db-pop-x" type="button" data-set="close" aria-label="閉じる">×</button></div>
+        <input class="db-pop-search" data-view-name value="${esc(view.name)}" placeholder="ビュー名" aria-label="ビュー名">
+        ${isDb ? item('layout', TOOL_ICONS.table, 'レイアウト', view.layout === 'list' ? 'リスト' : 'テーブル') : ''}
+        ${isDb ? item('props', TOOL_ICONS.eye, 'プロパティの表示/非表示', String(target.properties.length - hidden.size)) : ''}
+        ${item('filter', TOOL_ICONS.filter, 'フィルター', view.filters?.length ? `${view.filters.length}件` : '')}
+        ${item('sort', TOOL_ICONS.sort, '並べ替え', sortProp ? `${sortProp.name} ${view.sort.dir === 'desc' ? '降順' : '昇順'}` : '')}
+        ${isDb ? `<div class="db-pop-section">データの設定</div>${item('columns', TOOL_ICONS.list, 'プロパティを編集')}` : ''}
+        ${spaceViews(target).length > 1 ? '<button class="db-pop-item db-delete" type="button" data-set="delete-view">このビューを削除</button>' : ''}`;
+    }
+    pop.place();
+  };
+  pop.addEventListener('input', event => {
+    if (!event.target.matches('[data-view-name]')) return;
+    const name = event.target.value.trim();
+    clearTimeout(nameTimer);
+    nameTimer = setTimeout(() => { if (name) updateActiveView(space, view => { view.name = name; }); }, 400);
   });
+  pop.addEventListener('click', async event => {
+    const layout = event.target.closest('[data-layout]')?.dataset.layout;
+    if (layout) { updateActiveView(space, view => { view.layout = layout; }); draw(); return; }
+    const propId = event.target.closest('[data-toggle-prop]')?.dataset.toggleProp;
+    if (propId) {
+      updateActiveView(space, view => {
+        const hidden = new Set(view.hidden || []);
+        if (hidden.has(propId)) hidden.delete(propId); else hidden.add(propId);
+        view.hidden = [...hidden];
+      });
+      draw();
+      return;
+    }
+    const target = event.target.closest('[data-set]');
+    const key = target?.dataset.set;
+    if (!key) return;
+    if (key === 'close') pop.close();
+    else if (key === 'main' || key === 'layout' || key === 'props') { screen = key; draw(); }
+    else if (key === 'filter') openFilterPopover(target, space);
+    else if (key === 'sort') openSortPopover(target, space);
+    else if (key === 'columns') { pop.close(); openSchemaEditor(space.id, refreshMemoSpace); }
+    else if (key === 'delete-view') {
+      const fresh = freshSpace(space);
+      const current = activeView(fresh);
+      pop.close();
+      if (!await window.AppNav.confirm(`ビュー「${current.name}」を削除しますか？ 中のメモや行は消えません。`, { okLabel: '削除', danger: true })) return;
+      saveDatabase({ ...fresh, views: spaceViews(fresh).filter(view => view.id !== current.id) });
+      refreshMemoSpace();
+    }
+  });
+  draw();
 }
 
 /** データベースのチップの右クリック(長押し)メニュー: 名前を変更・削除(確認あり)。 */
@@ -534,16 +614,16 @@ function renderList(db, rows, view) {
     </div>`;
 }
 
-// ---- PCのサイドピーク(Notionのように、表の右側に行のページを開く) ----
+// ---- 行のページ(サイドピーク) ----
+// PCは表の右側に、スマホはデータベースの上に全画面で、行のページを開く。メモ画面へは移らず、
+// 題名・列の値・本文をその場で書き換えられる(表・画像などの複雑な本文は「全画面で開く」で直す)。
 
 let peekRowId = null;
 
-/** サイドピークで開ける画面か(広い画面でマウスがある時)。スマホはページを全画面で開く。 */
-const canPeek = () => window.matchMedia?.('(min-width: 1000px) and (hover: hover)')?.matches;
-
 /**
- * サイドピークを描く(peekRowId が無ければ閉じる)。題名と列の値はその場で書き換えられ、
- * 本文は読むだけ(「本文を編集」でいつものページを開く)。refreshTable は表を描き直す関数。
+ * 行のページを描く(peekRowId が無ければ閉じる)。refreshTable は表を描き直す関数。
+ * 上(題名と列の値)は表を描き直すたびに新しくし、本文のエディタは行ごとに1回だけ作る
+ * (打っている途中の本文を、描き直しで消さないため)。
  */
 function renderPeek(container, dbId, refreshTable) {
   const page = container.querySelector('.db-page');
@@ -555,14 +635,21 @@ function renderPeek(container, dbId, refreshTable) {
     peekRowId = null;
     peek?.remove();
     page.classList.remove('nt-peek-open');
+    document.body.classList.remove('has-peek');
     return;
   }
   if (!peek) {
     peek = document.createElement('aside');
     peek.className = 'nt-peek';
+    peek.innerHTML = `
+      <div class="nt-peek-bar">
+        <button class="db-tool" type="button" data-peek-close aria-label="閉じる" title="閉じる"><span class="nt-peek-close-wide">»</span><span class="nt-peek-close-narrow">‹ 戻る</span></button>
+        <button class="db-tool" type="button" data-peek-full>全画面で開く</button>
+      </div>
+      <div class="nt-peek-body"><div class="nt-peek-head"></div><div class="nt-peek-content"></div></div>`;
     page.append(peek);
-    // 書き換えたら表を描き直す(表を描き直すとサイドピークも描き直される)。
-    wirePropertyList(peek, dbId, refreshTable, toast);
+    // 題名・列の値を書き換えたら表を描き直す(表を描き直すと、ここの上の部分も新しくなる)。
+    wirePropertyList(peek.querySelector('.nt-peek-head'), dbId, refreshTable, toast);
     peek.addEventListener('click', event => {
       if (event.target.closest('[data-peek-close]')) { peekRowId = null; renderPeek(container, dbId, refreshTable); }
       else if (event.target.closest('[data-peek-full]')) { const id = peekRowId; peekRowId = null; openKnowledgeMemo(id); }
@@ -570,18 +657,36 @@ function renderPeek(container, dbId, refreshTable) {
   }
   // 上の帯(ヘッダー)の下から画面の下までに置く。
   peek.style.top = `${Math.round(document.getElementById('app-header')?.getBoundingClientRect().bottom || 0)}px`;
-  peek.innerHTML = `
-    <div class="nt-peek-bar">
-      <button class="db-tool" type="button" data-peek-close aria-label="閉じる" title="閉じる">»</button>
-      <button class="db-tool" type="button" data-peek-full>全画面で開く</button>
-    </div>
-    <div class="nt-peek-body">
-      <div class="nt-peek-title" data-row="${esc(memo.id)}"><div data-edit="__title"><div class="nt-cell">${esc(memo.title || '無題')}</div></div></div>
-      ${renderPropertyList(db, memo.id)}
-      <div class="nt-peek-content kn-view-content">${renderBlocksView(memo.blocks || [])}</div>
-      <button class="db-tool" type="button" data-peek-full>本文を編集</button>
-    </div>`;
+  peek.querySelector('.nt-peek-head').innerHTML = `
+    <div class="nt-peek-title" data-row="${esc(memo.id)}"><div data-edit="__title"><div class="nt-cell">${esc(memo.title || '無題')}</div></div></div>
+    ${renderPropertyList(db, memo.id)}`;
+  const content = peek.querySelector('.nt-peek-content');
+  if (content.dataset.row !== memo.id) {
+    content.dataset.row = memo.id;
+    content.innerHTML = renderPageEditor(memo);
+    wirePageEditor(content, memo.id);
+    peek.scrollTop = 0;
+  }
   page.classList.add('nt-peek-open');
+  // 右下のAIの窓を、開いた行のページと重ならない位置へずらすための印(PCだけ効く)。
+  document.body.classList.add('has-peek');
+}
+
+/** 行のページを開く(PCは表の右、スマホは全画面)。 */
+function openPeek(container, dbId, rowId, refreshTable) {
+  peekRowId = rowId;
+  renderPeek(container, dbId, refreshTable);
+}
+
+/**
+ * AIの答えに出た名前から開く。データベースの行なら、そのデータベースを開いて行のページを出す。
+ * 普通のメモなら、いつものメモの画面で開く。
+ */
+export function openRowFromAI(memoId) {
+  const found = findDatabaseForRow(memoId);
+  if (!found) { openKnowledgeMemo(memoId); return; }
+  peekRowId = memoId;
+  openDatabase(found.db.id);
 }
 
 /**
@@ -601,7 +706,7 @@ export function mountDatabaseSpace(container, db) {
     const scrollLeft = target.querySelector('.nt-wrap')?.scrollLeft || 0;
     target.innerHTML = view.layout === 'list'
       ? (rows.length ? renderList(fresh, rows, view) : '<div class="empty-state"><div class="empty-state-text">該当なし</div></div>')
-      : renderNotionTable(fresh, rows);
+      : renderNotionTable(fresh, rows, view);
     const wrap = target.querySelector('.nt-wrap');
     if (wrap) wrap.scrollLeft = scrollLeft;
     renderPeek(container, db.id, renderBody);
@@ -621,7 +726,7 @@ export function mountDatabaseSpace(container, db) {
       const inlineAdd = container.querySelector('[data-nt-add]');
       if (inlineAdd) { inlineAdd.click(); return; }
       const id = addDatabaseRow(db.id, '新しい項目');
-      if (id) openKnowledgeMemo(id);
+      if (id) { renderBody(); openPeek(container, db.id, id, renderBody); }
     },
   });
 
@@ -645,16 +750,14 @@ export function mountDatabaseSpace(container, db) {
       return;
     }
     const row = event.target.closest('[data-row-open]');
-    if (!row) return;
-    // PCでは表の右側にページを開く(サイドピーク)。スマホはいつものページを全画面で開く。
-    if (canPeek()) { peekRowId = row.dataset.rowOpen; renderPeek(container, db.id, renderBody); }
-    else openKnowledgeMemo(row.dataset.rowOpen);
+    // 行のページは、メモ画面へ移らずにここで開く(PCは右側、スマホは全画面)。
+    if (row) openPeek(container, db.id, row.dataset.rowOpen, renderBody);
   });
   // 表のセルの書き換え・タグ・列の幅・行の追加(notion-table.js)。見出しを押すと列の編集を開く。
   wireNotionTable(body, db.id, {
     refresh: renderBody,
     onHeader: () => openSchemaEditor(db.id, refreshMemoSpace),
-    onOpenRow: openKnowledgeMemo,
+    onOpenRow: rowId => openPeek(container, db.id, rowId, renderBody),
   });
 }
 

@@ -43,12 +43,16 @@ test('a database opens from its chip as a list, and its rows open as pages', asy
   await page.locator('[data-tool="search"]').click();
   await page.locator('#space-search').fill('zx9');
   await expect(page.locator('.nt tbody tr')).toHaveCount(1);
-  // スマホ(タッチ)では名前を押すと行のページが開く。
+  // スマホ(タッチ)では名前を押すと、メモ画面へ移らずに行のページが全画面で開く。
   await page.locator('.nt-td--title').click();
+  await expect(page.locator('.nt-peek')).toBeVisible();
+  await expect(page.locator('#main-content')).toHaveAttribute('data-view', 'memo');
+  await expect(page.locator('.nt-peek .nt-prop-value', { hasText: 'ZX987' })).toBeVisible();
+  await expect(page.locator('.nt-peek a.nt-url')).toHaveAttribute('href', 'https://example.com/b');
+  // 「全画面で開く」でいつものページ。全部の項目が出て、復習の対象にはならない。
+  await page.locator('.nt-peek [data-peek-full]').click();
   await expect(page.locator('#main-content')).toHaveAttribute('data-view', 'knowledge-detail');
-  // 詳細ページに全部の項目(URLは開くボタン付き)が出て、復習の対象にはならない。
   await expect(page.locator('.db-row-panel .nt-prop-value', { hasText: 'ZX987' })).toBeVisible();
-  await expect(page.locator('.db-row-panel a.nt-url')).toHaveAttribute('href', 'https://example.com/b');
   await expect(page.locator('.kn-learned-action')).toHaveCount(0);
   await page.locator('#kn-edit-btn').click();
   await expect(page.locator('#kn-review-enabled')).toHaveCount(0);
@@ -94,9 +98,9 @@ test('a saved view filters and sorts the rows, and is remembered', async ({ page
   await expect(page.locator('.nt tbody tr')).toHaveCount(1);
   // ビューを「リスト」にすると、名前と主な列だけの一覧になる。
   await page.locator('[data-tool="more"]').click();
-  await page.locator('[data-menu="view"]').click();
-  await page.locator('#view-layout').selectOption('list');
-  await page.locator('#view-save').click();
+  await page.locator('[data-set="layout"]').click();
+  await page.locator('[data-layout="list"]').click();
+  await page.keyboard.press('Escape');
   await expect(page.locator('.db-list-row')).toHaveCount(1);
   await expect(page.locator('.nt')).toHaveCount(0);
 });
@@ -147,7 +151,7 @@ test('table cells are edited in place, tags get colors, and new rows are typed i
 
   // 列の種類を「タグ」にして、色付きのタグを付ける。
   await page.locator('[data-tool="more"]').click();
-  await page.locator('[data-menu="columns"]').click();
+  await page.locator('[data-set="columns"]').click();
   await page.locator('.db-schema-col').filter({ has: page.locator('[data-col-name][value="ID"]') }).locator('[data-col-type]').selectOption('multi_select');
   await page.locator('#db-edit-save').click();
   await page.locator('.nt tbody tr').nth(1).locator('.nt-td--multi_select').click();
@@ -202,6 +206,45 @@ test('sort and filter from the one-line toolbar change the table right away', as
   await expect(page.locator('.nt tbody tr')).toContainText('サンプル電機');
 });
 
+test('a row page body is edited in place without leaving the database', async ({ page }) => {
+  await openMemoList(page);
+  await importCsv(page);
+  await page.locator('.nt-td--title').first().click();
+  await expect(page.locator('.nt-peek')).toBeVisible();
+  // 本文を押してそのまま書く。Enterで次の行。離れた時に保存される。
+  await page.locator('.nt-peek .pe-text').first().click();
+  await page.keyboard.type('ESの締切は来週');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('面接の準備');
+  await page.locator('.nt-peek-title').click();
+  await expect.poll(async () => page.evaluate(async () => {
+    const s = await import('/js/storage.js');
+    const memo = s.getKnowledgeMemos().find(item => item.title === 'サンプル電機');
+    return (memo?.blocks || []).map(block => block.text);
+  })).toEqual(['ESの締切は来週', '面接の準備']);
+  // 閉じても、データベースの画面のまま。
+  await page.locator('[data-peek-close]').click();
+  await expect(page.locator('.nt-peek')).toHaveCount(0);
+  await expect(page.locator('.db-space-chip.active')).toHaveText('就活');
+});
+
+test('view settings hide columns, and the AI button opens a panel about the open database', async ({ page }) => {
+  await openMemoList(page);
+  await importCsv(page);
+  await page.locator('[data-tool="more"]').click();
+  await expect(page.locator('.db-pop--settings')).toContainText('ビューの設定');
+  await page.locator('[data-set="props"]').click();
+  await page.locator('[data-toggle-prop]', { hasText: 'URL' }).click();
+  await expect(page.locator('.nt thead')).not.toContainText('URL');
+  await page.keyboard.press('Escape');
+  // 右下のAIは、開いているデータベースについて聞く窓を開く(このテストではAIは使えない状態)。
+  await page.locator('#fab').click();
+  await expect(page.locator('.sai-title')).toHaveText('就活について聞く');
+  await expect(page.locator('.sai-log')).toContainText('AI');
+  await page.locator('[data-sai-close]').click();
+  await expect(page.locator('.sai')).toHaveCount(0);
+});
+
 test.describe('on a PC', () => {
   // マウスのあるPCとして開く(タッチ端末だとサイドピークではなく全画面でページが開く)。
   test.use({ hasTouch: false, isMobile: false, viewport: { width: 1400, height: 900 }, userAgent: devices['Desktop Chrome'].userAgent });
@@ -226,7 +269,7 @@ test.describe('on a PC', () => {
     await importCsv(page);
     // 列の削除: 確認の窓が出ても、下の「データベースの編集」は閉じない。「やめる」で何も消えない。
     await page.locator('[data-tool="more"]').click();
-  await page.locator('[data-menu="columns"]').click();
+  await page.locator('[data-set="columns"]').click();
     await page.locator('.db-schema-col').first().locator('[data-col-remove]').click();
     const dialog = page.locator('.confirm-dialog');
     await expect(dialog).toBeVisible();
