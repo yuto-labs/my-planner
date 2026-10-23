@@ -321,4 +321,32 @@ test.describe('on a PC', () => {
     await page.locator('.confirm-dialog [data-answer="yes"]').click();
     await expect(page.locator('.nt tbody tr')).toHaveCount(1);
   });
+  test('the top bar is gone on main screens, tools sit in the sidebar, and the AI window can be dragged', async ({ page }) => {
+    await openMemoList(page);
+    await importCsv(page);
+    // 主な画面では上の帯が無く、検索・ごみ箱・設定は左の帯の下にある。
+    await expect(page.locator('#app-header')).toBeHidden();
+    await expect(page.locator('#nav-settings-btn')).toBeVisible();
+    await page.locator('#nav-trash-btn').click();
+    // 戻る先のある画面(ごみ箱)では、戻るボタンのある上の帯が出る。
+    await expect(page.locator('#app-header')).toBeVisible();
+    await expect(page.locator('#back-btn')).toBeVisible();
+    await page.evaluate(() => window.AppNav.navigate('memo'));
+    await expect(page.locator('#app-header')).toBeHidden();
+    // AIの窓は上の帯をドラッグして動かせ、開き直しても同じ位置に出る。
+    await page.locator('#fab').click();
+    const head = page.locator('.sai-head');
+    const before = await page.locator('.sai').boundingBox();
+    await head.hover({ position: { x: 60, y: 20 } });
+    await page.mouse.down();
+    await page.mouse.move(before.x + 60 - 300, before.y + 20 - 200, { steps: 5 });
+    await page.mouse.up();
+    const after = await page.locator('.sai').boundingBox();
+    expect(Math.abs(before.x - after.x - 300)).toBeLessThan(3);
+    expect(Math.abs(before.y - after.y - 200)).toBeLessThan(3);
+    await page.locator('[data-sai-close]').click();
+    await page.locator('#fab').click();
+    const reopened = await page.locator('.sai').boundingBox();
+    expect(Math.abs(reopened.x - after.x)).toBeLessThan(3);
+  });
 });

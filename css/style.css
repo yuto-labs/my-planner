@@ -211,6 +211,8 @@ h1, h2, h3, h4, h5, h6,
   border: none;
 }
 .nav-btn svg { width: 23px; height: 23px; transition: transform var(--transition); }
+/* 検索・ごみ箱・設定の小さなボタンはPCの左の帯だけで使う(スマホは上の帯にある)。 */
+.nav-utilities { display: none; }
 .nav-btn:active svg { transform: scale(0.86); }
 
 /* ============================================================
@@ -11675,12 +11677,21 @@ button.atlas-nuance-map-row:focus-visible {
   height: min(80dvh, 640px); background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px 16px 0 0;
   box-shadow: var(--shadow);
 }
+/* PCは浮かぶ窓。上の帯で動かせ、右下の角で大きさを変えられる(space-ai.js が位置を覚える)。 */
 @media (min-width: 700px) {
-  .sai { left: auto; right: 24px; bottom: 24px; width: 400px; height: min(620px, 75vh); border-radius: 14px; }
+  .sai {
+    left: auto; right: 24px; bottom: 24px; width: 400px; height: min(620px, 75vh); border-radius: 14px;
+    min-width: 300px; min-height: 320px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px);
+    resize: both; overflow: hidden;
+  }
+  .sai-head { cursor: move; }
 }
 @media (min-width: 1000px) { .has-peek .sai { right: calc(min(560px, 45vw) + 24px); } }
 .sai-open #fab { display: none; }
-.sai-head { display: flex; align-items: center; gap: 8px; padding: 12px 12px 10px 16px; border-bottom: 1px solid var(--border); }
+.sai-head { position: relative; display: flex; align-items: center; gap: 8px; padding: 14px 12px 10px 16px; border-bottom: 1px solid var(--border); touch-action: none; user-select: none; }
+/* スマホのシートの上の小さなつまみ(上下に引いて高さを変える)。 */
+.sai-head::before { content: ""; position: absolute; top: 5px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--border); }
+@media (min-width: 700px) { .sai-head::before { display: none; } }
 .sai-spark { color: var(--primary); }
 .sai-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
 .sai-icon { width: 30px; height: 30px; border: 0; border-radius: 6px; background: none; color: var(--text-dim); font-size: 16px; }

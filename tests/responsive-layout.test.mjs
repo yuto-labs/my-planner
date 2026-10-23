@@ -29,7 +29,8 @@ test('installed tablet app supports both orientations', () => {
 
 test('responsive stylesheet loads after the established design stylesheet', () => {
   const baseIndex = indexHtml.search(/css\/style\.css\?v=\d+/);
-  const responsiveIndex = indexHtml.indexOf('css/responsive.css?v=8');
+  // 版の番号は更新のたびに変わるので、番号は問わずに順番だけ確かめる。
+  const responsiveIndex = indexHtml.search(/css\/responsive\.css\?v=\d+/);
 
   assert.ok(baseIndex >= 0);
   assert.ok(responsiveIndex > baseIndex);
@@ -37,7 +38,7 @@ test('responsive stylesheet loads after the established design stylesheet', () =
 
 test('offline cache includes the responsive stylesheet', () => {
   assert.match(serviceWorker, /const CACHE_VER\s*=\s*'v\d+'/);
-  assert.match(serviceWorker, /'\.\/css\/responsive\.css\?v=8'/);
+  assert.match(serviceWorker, /'\.\/css\/responsive\.css\?v=\d+'/);
   assert.match(serviceWorker, /'\.\/js\/desktop-workspace\.js'/);
   assert.match(serviceWorker, /'\.\/js\/planning-time\.js'/);
   assert.match(serviceWorker, /'\.\/js\/calendar-gesture\.js'/);

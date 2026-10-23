@@ -18,6 +18,17 @@ import { openKnowledgeAiOrganizer } from './memo.js';
 const histories = new Map();   // 欄ごとのやり取り(アプリを閉じるまで)
 let panel = null;
 
+/**
+ * 1件ぶんの「AIへ渡す文」を2つの長さで作る。text は短い形(本文は冒頭だけ)、full は本文を省略しない形。
+ * 質問に特に近い行だけ full を渡し(答えの正確さのため)、それ以外は text で渡す(全体を見渡すため)。
+ */
+function docOf(memo, head) {
+  const title = memo.title || '無題';
+  /** 本文を、指定の長さで区切った「 / 本文: …」(本文が無ければ空)。 */
+  const body = limit => { const text = memoBlocksToText(memo.blocks || [], limit); return text ? ` / 本文: ${text}` : ''; };
+  return { id: memo.id, title, text: `【${title}】 ${head}${body(240)}`, full: `【${title}】 ${head}${body(4000)}` };
+}
+
 /** 今の欄の名前・種類と、AIへ渡す「行ごとの文」の一覧を作る。パスワードらしい列は渡さない。 */
 function collectDocs() {
   const spaceId = getActiveSpaceId();
@@ -29,22 +40,18 @@ function collectDocs() {
       const props = db.properties.filter(prop => !looksSecret(prop.name));
       return {
         key: db.id, name: db.name, kind: 'table',
-        docs: db.order.map(id => byId.get(id)).filter(Boolean).map(memo => {
-          const values = props.map(prop => [prop.name, formatValue(prop.type, db.rows[memo.id]?.[prop.id])]).filter(([, value]) => value);
-          const body = memoBlocksToText(memo.blocks || [], 800);
-          return { id: memo.id, title: memo.title || '無題', text: `【${memo.title || '無題'}】 ${values.map(([name, value]) => `${name}: ${value}`).join(' / ')}${body ? ` / 本文: ${body}` : ''}` };
-        }),
+        docs: db.order.map(id => byId.get(id)).filter(Boolean).map(memo => docOf(memo, props
+          .map(prop => [prop.name, formatValue(prop.type, db.rows[memo.id]?.[prop.id])])
+          .filter(([, value]) => value)
+          .map(([name, value]) => `${name}: ${value}`).join(' / '))),
       };
     }
   }
   const rowIds = getDatabaseRowIds();
   return {
     key: MEMO_SPACE, name: 'メモ', kind: 'memos',
-    docs: memos.filter(memo => !rowIds.has(memo.id)).map(memo => ({
-      id: memo.id,
-      title: memo.title || '無題',
-      text: `【${memo.title || '無題'}】 タグ: ${(memo.tags || []).join(', ') || 'なし'} / 更新: ${String(memo.updatedAt || '').slice(0, 10)} / 本文: ${memoBlocksToText(memo.blocks || [], 600)}`,
-    })),
+    docs: memos.filter(memo => !rowIds.has(memo.id))
+      .map(memo => docOf(memo, `タグ: ${(memo.tags || []).join(', ') || 'なし'} / 更新: ${String(memo.updatedAt || '').slice(0, 10)}`)),
   };
 }
 
@@ -98,6 +105,86 @@ async function ask(question) {
   drawLog();
 }
 
+// ---- 窓の位置と大きさ(この端末にだけ覚える) ----
+const POS_KEY = 'mp_sai_pos';
+/** 広い画面(浮かぶ窓)か。狭い画面は下から出るシート。 */
+const isWide = () => window.matchMedia?.('(min-width: 700px)')?.matches;
+/** 覚えた位置を読む(読めない環境では無し)。 */
+function readPos() {
+  try { return JSON.parse(localStorage.getItem(POS_KEY)) || {}; } catch { return {}; }
+}
+/** 位置を覚える(書けない環境では何もしない)。 */
+function writePos(patch) {
+  try { localStorage.setItem(POS_KEY, JSON.stringify({ ...readPos(), ...patch })); } catch {}
+}
+
+/** 覚えた位置・大きさを当てる。画面からはみ出す位置は、見える範囲へ戻す。 */
+function applyPos() {
+  const pos = readPos();
+  if (!isWide()) {
+    if (pos.sheet) panel.style.height = `${pos.sheet}dvh`;
+    return;
+  }
+  if (pos.width) panel.style.width = `${Math.min(pos.width, window.innerWidth - 16)}px`;
+  if (pos.height) panel.style.height = `${Math.min(pos.height, window.innerHeight - 16)}px`;
+  if (pos.left === undefined) return;
+  const rect = panel.getBoundingClientRect();
+  panel.style.left = `${Math.max(8, Math.min(pos.left, window.innerWidth - rect.width - 8))}px`;
+  panel.style.top = `${Math.max(8, Math.min(pos.top, window.innerHeight - rect.height - 8))}px`;
+  panel.style.right = 'auto';
+  panel.style.bottom = 'auto';
+}
+
+/**
+ * 上の帯をドラッグして動かす。PCは窓ごと好きな位置へ、スマホはシートの高さを変える。
+ * 離した時に位置を覚える。PCは右下の角で大きさも変えられ、その大きさも覚える。
+ */
+function wireMove() {
+  const head = panel.querySelector('.sai-head');
+  head.addEventListener('pointerdown', event => {
+    if (event.target.closest('button')) return;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const rect = panel.getBoundingClientRect();
+    const wide = isWide();
+    head.setPointerCapture(event.pointerId);
+    /** 指やマウスの動きに合わせて、位置(PC)か高さ(スマホ)を変える。 */
+    const move = moveEvent => {
+      if (wide) {
+        panel.style.left = `${Math.max(8, Math.min(rect.left + moveEvent.clientX - startX, window.innerWidth - rect.width - 8))}px`;
+        panel.style.top = `${Math.max(8, Math.min(rect.top + moveEvent.clientY - startY, window.innerHeight - rect.height - 8))}px`;
+        panel.style.right = 'auto';
+        panel.style.bottom = 'auto';
+      } else {
+        const height = Math.max(window.innerHeight * 0.35, Math.min(rect.height - (moveEvent.clientY - startY), window.innerHeight * 0.92));
+        panel.style.height = `${height}px`;
+      }
+    };
+    /** 離したら覚える。 */
+    const up = () => {
+      head.removeEventListener('pointermove', move);
+      const now = panel.getBoundingClientRect();
+      if (wide) writePos({ left: Math.round(now.left), top: Math.round(now.top) });
+      else writePos({ sheet: Math.round((now.height / window.innerHeight) * 100) });
+    };
+    head.addEventListener('pointermove', move);
+    head.addEventListener('pointerup', up, { once: true });
+    head.addEventListener('pointercancel', up, { once: true });
+  });
+  // PCで右下の角を引いて大きさを変えたら、その大きさを覚える。
+  if (isWide() && window.ResizeObserver) {
+    let timer = null;
+    new ResizeObserver(() => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (!panel || !isWide()) return;
+        const rect = panel.getBoundingClientRect();
+        writePos({ width: Math.round(rect.width), height: Math.round(rect.height) });
+      }, 300);
+    }).observe(panel);
+  }
+}
+
 /** パネルを閉じる。 */
 export function closeSpaceAI() {
   panel?.remove();
@@ -125,6 +212,8 @@ export function openSpaceAI() {
     </form>`;
   document.body.append(panel);
   document.body.classList.add('sai-open');
+  applyPos();
+  wireMove();
   const input = panel.querySelector('.sai-input');
   /** 入力に合わせて高さを伸ばす(4行まで)。 */
   const fit = () => { input.style.height = 'auto'; input.style.height = `${Math.min(input.scrollHeight, 120)}px`; };

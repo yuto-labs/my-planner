@@ -347,6 +347,8 @@ export function navigate(view, options = {}) {
 
   // Show / hide back button for sub-pages
   const backBtn = document.getElementById('back-btn');
+  // PCでは、戻る先のある画面(設定・詳細など)だけ上の帯を出す。主な画面では帯を消して広く使う(CSS側で判定)。
+  document.body.classList.toggle('has-back', !!MODULES[view].back);
   if (backBtn) {
     const backTarget = MODULES[view].back;
     if (backTarget) {
@@ -831,14 +833,10 @@ async function init() {
     });
   });
 
-  // Wire search button in header
-  document.getElementById('header-search-btn')?.addEventListener('click', openSearch);
-
-  // Wire settings gear button in header
-  document.getElementById('header-settings-btn')?.addEventListener('click', () => navigate('settings'));
-
-  // Wire trash button in header
-  document.getElementById('header-trash-btn')?.addEventListener('click', () => navigate('archive'));
+  // 検索・設定・ごみ箱。スマホは上の帯のボタン、PCは左の帯の下の小さなボタン(どちらも同じ動き)。
+  ['header-search-btn', 'nav-search-btn'].forEach(id => document.getElementById(id)?.addEventListener('click', openSearch));
+  ['header-settings-btn', 'nav-settings-btn'].forEach(id => document.getElementById(id)?.addEventListener('click', () => navigate('settings')));
+  ['header-trash-btn', 'nav-trash-btn'].forEach(id => document.getElementById(id)?.addEventListener('click', () => navigate('archive')));
 
   // FAB
   setupFAB();

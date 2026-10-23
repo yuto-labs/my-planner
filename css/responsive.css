@@ -220,9 +220,24 @@
   }
   #bottom-nav .nav-btn:hover { background: var(--bg-hover); }
 
-  body.knowledge-editor-open #app {
+  /* 検索・ごみ箱・設定は左の帯の下に小さく置く。上の帯のボタンは出さない。 */
+  #bottom-nav .nav-utilities { display: flex; flex-direction: column; align-items: center; gap: 2px; margin-top: auto; }
+  .nav-utility {
+    display: grid; place-items: center; width: 40px; height: 36px; padding: 0;
+    border: 0; border-radius: 6px; background: none; color: var(--text-dim);
+  }
+  .nav-utility:hover { background: var(--bg-hover); color: var(--text); }
+  .nav-utility svg { width: 19px; height: 19px; }
+  #header-settings-btn, #header-trash-btn, #header-search-btn { display: none; }
+
+  /* 主な画面(戻る先が無い画面)では上の帯を消して、中身を上まで使う。 */
+  body:not(.has-back) #app-header { display: none; }
+  body.knowledge-editor-open #app,
+  body:not(.has-back) #app {
     grid-template-rows: 0 minmax(0, 1fr);
   }
+  /* 上の帯が無い分、ホームの日付や「写真」ボタンが画面の端にくっつかないよう上に余白を足す。 */
+  body:not(.has-back) #main-content[data-view="home"] { padding-top: 20px; }
 
   .desktop-context-toggle { display: inline-flex; }
   #desktop-context-toggle { align-items: center; justify-content: center; flex: 0 0 40px; }
@@ -419,6 +434,8 @@
   .cal-day-sheet--open .cal-day-sheet-panel { transform: translateX(0); }
   .cal-day-sheet-handle { display: none; }
 
+  /* 左右に余白を取り、追加の欄が左の帯にくっついたり、右のボタンが端で切れたりしないようにする。 */
+  #main-content[data-view="tasks"] { padding-inline: 20px; }
   #main-content[data-view="tasks"] > * { max-width: 1440px; margin-inline: auto; }
   #main-content[data-view="tasks"] .tasks-top-controls,
   #main-content[data-view="tasks"] .tasks-add,

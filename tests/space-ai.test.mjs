@@ -17,6 +17,17 @@ test('rows close to the question go first, and the budget is respected', () => {
   assert.equal(pickContext(DOCS, '工場の夜中', 40), '【夜中の呼び出し】 工場の管理者は夜中に呼ばれる');
 });
 
+test('matching ignores kana and width differences, and close rows are sent in full', () => {
+  const docs = [
+    { id: 'x', title: '別の話', text: '【別の話】 短い', full: '【別の話】 短い' },
+    { id: 'y', title: 'ﾗｼﾞｵ体操', text: '【ﾗｼﾞｵ体操】 本文: 朝…', full: '【ﾗｼﾞｵ体操】 本文: 朝に全員でやる。事務員も参加。' },
+  ];
+  // ひらがなで聞いても、半角カタカナの名前の行が先に、本文を省略せずに入る。
+  const context = pickContext(docs, 'らじお体操ってなんだっけ');
+  assert.ok(context.startsWith('【ﾗｼﾞｵ体操】 本文: 朝に全員でやる。事務員も参加。'));
+  assert.ok(context.includes('【別の話】 短い'));
+});
+
 test('answers are escaped, link only http(s) URLs, and cite only existing rows', () => {
   const html = renderAnswer('【経営の語源】 を見て <script>alert(1)</script> https://example.com/a?b=1&c=2 javascript:alert(1) 【ない行】 **大事**', DOCS);
   assert.ok(!html.includes('<script>'));
