@@ -1419,7 +1419,8 @@ export function updateDatabaseRow(dbId, memoId, patch) {
   const db = getDatabase(dbId);
   // 「メモ」欄はすべての普通のメモが行なので、まだ値の無いメモにも書ける。
   if (!db || (db.kind !== 'memos' && !(memoId in db.rows))) return false;
-  return saveDatabase({ ...db, rows: { ...db.rows, [memoId]: { ...db.rows[memoId], ...patch } } });
+  // __edited は「最終更新日時」の列に使う、値を直した時刻(列としては表に出ない)。
+  return saveDatabase({ ...db, rows: { ...db.rows, [memoId]: { ...db.rows[memoId], ...patch, __edited: new Date().toISOString() } } });
 }
 
 /**

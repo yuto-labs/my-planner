@@ -6,7 +6,7 @@
 // 見出しの右端をドラッグすると列の幅を変えられ、幅はデータベースに保存する(他の端末でも同じ幅)。
 // ============================================================
 import { addDatabaseRow, getDatabase, saveDatabase, updateDatabaseRow, updateKnowledgeMemo } from '../storage.js';
-import { columnWidth, convertValue, formatValue, tagColor } from '../database-model.js';
+import { COMPUTED_TYPES, STATUS_OPTIONS, columnWidth, convertValue, formatValue, optionColor, rowValues } from '../database-model.js';
 import { normalizeMemoUrl } from '../memo-model.js';
 import { esc } from '../utils.js';
 
@@ -23,23 +23,38 @@ const ICONS = {
   number: '<span class="nt-ico-text">#</span>',
   checkbox: svg('<rect x="2.8" y="2.8" width="10.4" height="10.4" rx="2"/><path d="M5.5 8.2l1.8 1.8 3.3-3.6"/>'),
   date: svg('<rect x="2.6" y="3.4" width="10.8" height="9.8" rx="1.6"/><path d="M2.6 6.6h10.8M5.6 2v2.6M10.4 2v2.6"/>'),
+  select: svg('<circle cx="8" cy="8" r="5.6"/><path d="M5.8 7.2L8 9.4l2.2-2.2"/>'),
+  status: svg('<circle cx="8" cy="8" r="5.6" stroke-dasharray="2.2 1.6"/><circle cx="8" cy="8" r="2" fill="currentColor"/>'),
+  email: svg('<circle cx="8" cy="8" r="2.4"/><path d="M10.4 8v1a1.9 1.9 0 0 0 3.2 1.3A5.6 5.6 0 1 0 11 12.8"/>'),
+  phone: svg('<path d="M4.2 2.6h2l1 2.6-1.4 1a7 7 0 0 0 4 4l1-1.4 2.6 1v2a1.4 1.4 0 0 1-1.5 1.4A10.6 10.6 0 0 1 2.8 4.1a1.4 1.4 0 0 1 1.4-1.5z"/>'),
+  created_time: svg('<circle cx="8" cy="8" r="5.6"/><path d="M8 5v3.2l2 1.3"/>'),
+  last_edited_time: svg('<circle cx="8" cy="8" r="5.6"/><path d="M8 5v3.2l2 1.3"/><path d="M12.6 2.6v2.2h-2.2"/>'),
 };
+// 値を書き換えられない列(ページから毎回作る作成日時・最終更新日時)と、1つだけ選ぶ列。
+const READ_ONLY = new Set(COMPUTED_TYPES);
+const SINGLE = new Set(['select', 'status']);
 
 /** 列の種類のアイコン(並べ替え・絞り込みの一覧でも使う)。「メモ」のタグ列(tags)はタグと同じ形。 */
 export function propIcon(type) {
   return ICONS[type === 'tags' ? 'multi_select' : type] || ICONS.text;
 }
 
-/** タグ1つの色付きラベル。 */
-const tagHtml = tag => `<span class="nt-tag" data-c="${tagColor(tag)}">${esc(tag)}</span>`;
+/** タグ1つの色付きラベル(ステータスは決まった3つに決まった色)。 */
+const tagLabel = (tag, type = 'multi_select') => `<span class="nt-tag${type === 'status' ? ' nt-tag--status' : ''}" data-c="${optionColor(type, tag)}">${esc(tag)}</span>`;
 
 /** セルの中身(表示用)。種類ごとに、Notionと同じ見せ方にする。 */
 function cellHtml(prop, value) {
-  if (prop.type === 'multi_select') return (Array.isArray(value) ? value : []).map(tagHtml).join('');
+  if (prop.type === 'multi_select') return (Array.isArray(value) ? value : []).map(tag => tagLabel(tag)).join('');
+  if (SINGLE.has(prop.type)) return value ? tagLabel(String(value), prop.type) : '';
   if (prop.type === 'checkbox') return `<input type="checkbox" data-check${value ? ' checked' : ''} aria-label="${esc(prop.name)}">`;
   if (prop.type === 'url') {
     const href = normalizeMemoUrl(value);
     return href ? `<a class="nt-url" data-link href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(value)}</a>` : esc(value || '');
+  }
+  // メールと電話は、押すとメールアプリ・電話を開くリンクにする(空白や記号だけの値はリンクにしない)。
+  if ((prop.type === 'email' && /^[^\s@]+@[^\s@]+$/.test(value || '')) || (prop.type === 'phone' && /\d/.test(value || ''))) {
+    const href = prop.type === 'email' ? `mailto:${value}` : `tel:${String(value).replace(/[^\d+]/g, '')}`;
+    return `<a class="nt-url" data-link href="${esc(href)}">${esc(value)}</a>`;
   }
   return esc(formatValue(prop.type, value));
 }
@@ -50,22 +65,32 @@ function cellHtml(prop, value) {
  */
 const tableColumns = (db, view) => [{ ...TITLE, width: db.titleWidth }, ...db.properties.filter(prop => !(view?.hidden || []).includes(prop.id))];
 
-/** Notionのような表のHTML。列の幅は <col> で決め、表全体の幅は列の合計にする(横にはみ出したら横スクロール)。 */
+// 見出しの右端の「＋」(列を足す)の列の幅。
+const ADD_COL_WIDTH = 44;
+
+/**
+ * Notionのような表のHTML。列の幅は <col> で決め、表全体の幅は列の合計にする(横にはみ出したら横スクロール)。
+ * ビューの「セルの表示行数」(view.lines)を決めていれば、長い文はその行数で切って「…」にする。
+ * 行の左の「⋮⋮」で順番を動かせる。並べ替え中のビューは順番が列の値で決まるので、つまみを出さない。
+ */
 export function renderNotionTable(db, rows, view) {
   const columns = tableColumns(db, view);
-  const widths = columns.map(columnWidth);
+  const widths = [...columns.map(columnWidth), ADD_COL_WIDTH];
+  const lines = Number(view?.lines) || 0;
   return `
     <div class="nt-wrap">
-      <table class="nt" style="width:${widths.reduce((sum, width) => sum + width, 0)}px">
+      <table class="nt" style="width:${widths.reduce((sum, width) => sum + width, 0)}px${lines ? `;--nt-lines:${lines}` : ''}"${lines ? ' data-lines' : ''}>
         <colgroup>${widths.map(width => `<col style="width:${width}px">`).join('')}</colgroup>
         <thead><tr>${columns.map(col => `
-          <th data-col="${esc(col.id)}" title="押すと列を編集">
+          <th data-col="${esc(col.id)}" title="押すと列を編集${col.id === TITLE.id ? '' : '・ドラッグで移動'}">
             <span class="nt-th">${ICONS[col.type] || ICONS.text}<span class="nt-th-name">${esc(col.name)}</span></span>
             <span class="nt-resize" data-resize="${esc(col.id)}" aria-hidden="true"></span>
-          </th>`).join('')}</tr></thead>
+          </th>`).join('')}
+          <th class="nt-th-add"><button class="nt-col-add" type="button" data-col-add aria-label="列を追加" title="列を追加">＋</button></th></tr></thead>
         <tbody>${rows.map(row => `
           <tr data-row="${esc(row.id)}">${columns.map(col => (col.id === TITLE.id ? `
             <td class="nt-td nt-td--title" data-edit="${TITLE.id}">
+              ${view?.sort ? '' : '<button class="nt-drag" type="button" data-drag-row aria-label="ドラッグで行を移動" title="ドラッグで移動">⋮⋮</button>'}
               <div class="nt-cell">${esc(row.title)}</div>
               <span class="nt-row-actions">
                 <button class="nt-action" type="button" data-row-open="${esc(row.id)}">開く</button>
@@ -73,6 +98,7 @@ export function renderNotionTable(db, rows, view) {
               </span>
             </td>` : `
             <td class="nt-td nt-td--${col.type}" data-edit="${esc(col.id)}"><div class="nt-cell">${cellHtml(col, row.values[col.id])}</div></td>`)).join('')}
+            <td class="nt-td-fill"></td>
           </tr>`).join('')}</tbody>
       </table>
     </div>
@@ -81,14 +107,18 @@ export function renderNotionTable(db, rows, view) {
 
 /**
  * 表を動くようにする。refresh は表を描き直す関数、onHeader は見出しを押した時(列の編集)、
- * onOpenRow は行のページを開く時に呼ぶ。スマホ(マウスで指せない端末)では名前を押すとページを開く。
+ * onOpenRow は行のページを開く時、onAddColumn は見出しの「＋」を押した時に呼ぶ。
+ * onMoveRow / onMoveColumn は、行・列をドラッグして離した時に (動かしたID, 落とした先のID, 後ろか) で呼ぶ。
+ * スマホ(マウスで指せない端末)では名前を押すとページを開く。
  */
-export function wireNotionTable(body, dbId, { refresh, onHeader, onOpenRow }) {
+export function wireNotionTable(body, dbId, { refresh, onHeader, onOpenRow, onAddColumn, onMoveRow, onMoveColumn }) {
   let justResized = false;
   /** マウスで指せない端末(スマホ)か。スマホでは名前を押すとページを開く(書き換えは開いた先で)。 */
   const touchOnly = () => window.matchMedia?.('(hover: none)')?.matches;
 
   body.addEventListener('click', event => {
+    const add = event.target.closest('[data-col-add]');
+    if (add) { onAddColumn?.(add); return; }
     if (event.target.closest('a, button:not([data-nt-add]), input, textarea, .nt-tag-pop')) return;
     if (event.target.closest('[data-nt-add]')) {
       // Notionと同じく、ページを開かずに表の最後へ1行足し、そのまま名前を書けるようにする。
@@ -106,6 +136,30 @@ export function wireNotionTable(body, dbId, { refresh, onHeader, onOpenRow }) {
     startEdit(td, dbId, refresh);
   });
   wireCheckboxes(body, dbId);
+
+  // 行の左の「⋮⋮」をつかむと行を、見出し(名前の列以外)をつかむと列をドラッグで動かせる。
+  // 見出しは少し動かすまでは普通の押下(列の編集)のまま。指の端末では見出しのドラッグは横スクロールと
+  // ぶつかるので使わず、列の順番は「プロパティを編集」の画面で動かす。
+  body.addEventListener('pointerdown', event => {
+    if (event.button !== 0) return;
+    const grip = event.target.closest('[data-drag-row]');
+    if (grip) {
+      event.preventDefault();
+      const rows = [...body.querySelectorAll('tbody tr[data-row]')];
+      startDragSort(event, grip.closest('tr'), rows, {
+        axis: 'y', threshold: 2,
+        onDrop: (target, after) => onMoveRow?.(grip.closest('tr').dataset.row, target.dataset.row, after),
+      });
+      return;
+    }
+    const th = event.target.closest('th[data-col]');
+    if (!th || th.dataset.col === TITLE.id || event.target.closest('[data-resize]') || event.pointerType === 'touch') return;
+    const heads = [...body.querySelectorAll('th[data-col]')].filter(head => head.dataset.col !== TITLE.id);
+    startDragSort(event, th, heads, {
+      axis: 'x', threshold: 6,
+      onDrop: (target, after) => onMoveColumn?.(th.dataset.col, target.dataset.col, after),
+    });
+  });
 
   // 見出しの右端をドラッグして列の幅を変える。離した時に幅を保存する。
   body.addEventListener('pointerdown', event => {
@@ -141,6 +195,53 @@ export function wireNotionTable(body, dbId, { refresh, onHeader, onOpenRow }) {
   });
 }
 
+/**
+ * つかんだ要素(el)を、同じ並び(items)の中でドラッグして動かす。pointerdown の中で呼ぶ。
+ * threshold(px)動くまでは普通の押下のまま(押しただけなら、いつものクリックになる)。
+ * 動かしている間は落とす位置に線を出し、離したら落とした先の要素と「その後ろか」を onDrop へ渡す。
+ * ドラッグした直後のクリックは捨てる(見出しの編集などが開かないように)。
+ */
+export function startDragSort(event, el, items, { axis = 'y', threshold = 4, onDrop }) {
+  /** 動かす向きの、指(マウス)の位置。 */
+  const pos = e => (axis === 'y' ? e.clientY : e.clientX);
+  const start = pos(event);
+  let dragging = false;
+  let target = null;
+  let after = false;
+  /** 落とす位置の線を消す。 */
+  const clear = () => items.forEach(item => item.classList.remove('drop-before', 'drop-after'));
+  /** 指の位置から、どの要素の前・後ろに落とすかを決めて線を出す。 */
+  const move = e => {
+    if (!dragging && Math.abs(pos(e) - start) < threshold) return;
+    if (!dragging) { dragging = true; el.classList.add('is-dragging'); document.body.classList.add('is-drag-sorting'); }
+    e.preventDefault();
+    const p = pos(e);
+    target = items.find(item => p < item.getBoundingClientRect()[axis === 'y' ? 'bottom' : 'right']) || items.at(-1);
+    const rect = target.getBoundingClientRect();
+    after = p > (axis === 'y' ? rect.top + rect.height / 2 : rect.left + rect.width / 2);
+    clear();
+    if (target !== el) target.classList.add(after ? 'drop-after' : 'drop-before');
+  };
+  /** 離した時: 線と印を消し、動かしていたら onDrop を呼ぶ。 */
+  const up = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    window.removeEventListener('pointercancel', up);
+    clear();
+    el.classList.remove('is-dragging');
+    document.body.classList.remove('is-drag-sorting');
+    if (!dragging) return;
+    /** ドラッグの直後に起きるクリックを1回だけ止める。 */
+    const swallow = e => { e.stopPropagation(); e.preventDefault(); };
+    window.addEventListener('click', swallow, { capture: true, once: true });
+    setTimeout(() => window.removeEventListener('click', swallow, true), 0);
+    if (target && target !== el) onDrop(target, after);
+  };
+  window.addEventListener('pointermove', move, { passive: false });
+  window.addEventListener('pointerup', up);
+  window.addEventListener('pointercancel', up);
+}
+
 /** チェックを押した時点で保存する(表とページの列の欄で共通)。 */
 function wireCheckboxes(root, dbId) {
   root.addEventListener('change', event => {
@@ -158,9 +259,9 @@ function startEdit(el, dbId, refresh, { blank = false } = {}) {
   const db = getDatabase(dbId);
   const rowId = el.closest('[data-row]').dataset.row;
   const prop = el.dataset.edit === TITLE.id ? TITLE : db?.properties.find(item => item.id === el.dataset.edit);
-  if (!db || !prop || prop.type === 'checkbox') return;
+  if (!db || !prop || prop.type === 'checkbox' || READ_ONLY.has(prop.type)) return;
   const current = prop === TITLE ? el.querySelector('.nt-cell').textContent : db.rows[rowId]?.[prop.id];
-  if (prop.type === 'multi_select') { openTagEditor(el, db, rowId, prop, refresh); return; }
+  if (prop.type === 'multi_select' || SINGLE.has(prop.type)) { openTagEditor(el, db, rowId, prop, refresh); return; }
 
   const editor = document.createElement(prop.type === 'date' ? 'input' : 'textarea');
   editor.className = 'nt-editor';
@@ -206,9 +307,12 @@ function startEdit(el, dbId, refresh, { blank = false } = {}) {
 
 // ---- 行のページの「列の欄」(Notionのページ上部の、アイコン・列名・値の並び) ----
 
-/** ページの上に出す列の一覧のHTML。値は表と同じ見せ方で、押すとその場で書き換えられる。 */
-export function renderPropertyList(db, rowId) {
-  const values = db.rows[rowId] || {};
+/**
+ * ページの上に出す列の一覧のHTML。値は表と同じ見せ方で、押すとその場で書き換えられる。
+ * memo(行のページ)は、作成日時・最終更新日時の列を作るのに使う。
+ */
+export function renderPropertyList(db, rowId, memo) {
+  const values = rowValues(db.properties, db.rows[rowId], memo);
   return `
     <div class="nt-props" data-row="${esc(rowId)}">
       ${db.properties.map(prop => `
@@ -242,12 +346,18 @@ export function wirePropertyList(root, dbId, refresh, notify) {
 
 /**
  * タグの選択欄。今のタグを外したり、この列で使ったことのあるタグを付けたり、新しく作ったりできる。
+ * 「選択」「ステータス」の列は1つだけ選べる(選ぶと前のものと入れ替わり、欄が閉じる)。
  * 付け外しはその場で保存し、欄の外を押すと閉じて表を描き直す。
  */
 function openTagEditor(td, db, rowId, prop, refresh) {
-  const selected = new Set(Array.isArray(db.rows[rowId]?.[prop.id]) ? db.rows[rowId][prop.id] : []);
-  // この列のタグの候補 = どれかの行で使われているタグ。
-  const options = [...new Set(Object.values(db.rows).flatMap(values => (Array.isArray(values?.[prop.id]) ? values[prop.id] : [])))];
+  const single = SINGLE.has(prop.type);
+  /** 値を配列でそろえる(選択・ステータスは文字1つ、タグは配列で保存している)。 */
+  const asList = value => (Array.isArray(value) ? value : value ? [String(value)] : []);
+  const selected = new Set(asList(db.rows[rowId]?.[prop.id]));
+  // この列の候補 = どれかの行で使われているもの(ステータスは最初からある3つも)。
+  const options = [...new Set([...(prop.type === 'status' ? STATUS_OPTIONS : []), ...Object.values(db.rows).flatMap(values => asList(values?.[prop.id]))])];
+  /** ラベル1つ(この列の種類の色で)。 */
+  const tagHtml = tag => tagLabel(tag, prop.type);
   const pop = document.createElement('div');
   pop.className = 'nt-tag-pop';
   const rect = td.getBoundingClientRect();
@@ -259,7 +369,7 @@ function openTagEditor(td, db, rowId, prop, refresh) {
     const q = query.trim();
     const matches = options.filter(tag => !q || tag.toLowerCase().includes(q.toLowerCase()));
     pop.innerHTML = `
-      <div class="nt-tag-selected">${[...selected].map(tag => `<span class="nt-tag" data-c="${tagColor(tag)}">${esc(tag)}<button type="button" data-tag-remove="${esc(tag)}" aria-label="${esc(tag)}を外す">×</button></span>`).join('')}
+      <div class="nt-tag-selected">${[...selected].map(tag => `<span class="nt-tag" data-c="${optionColor(prop.type, tag)}">${esc(tag)}<button type="button" data-tag-remove="${esc(tag)}" aria-label="${esc(tag)}を外す">×</button></span>`).join('')}
         <input class="nt-tag-input" placeholder="タグを選ぶか、入力してEnter" value="${esc(query)}"></div>
       <div class="nt-tag-options">
         ${matches.map(tag => `<button type="button" class="nt-tag-option${selected.has(tag) ? ' is-on' : ''}" data-tag-toggle="${esc(tag)}">${tagHtml(tag)}</button>`).join('')}
@@ -269,10 +379,16 @@ function openTagEditor(td, db, rowId, prop, refresh) {
     input.focus();
     input.setSelectionRange(input.value.length, input.value.length);
   };
-  /** 選んでいるタグを保存する。 */
-  const save = () => updateDatabaseRow(db.id, rowId, { [prop.id]: [...selected] });
-  /** タグを付ける(なければ候補にも足す)。 */
-  const add = tag => { selected.add(tag); if (!options.includes(tag)) options.push(tag); save(); render(); };
+  /** 選んでいるタグを保存する(選択・ステータスは文字1つで)。 */
+  const save = () => updateDatabaseRow(db.id, rowId, { [prop.id]: single ? [...selected][0] || '' : [...selected] });
+  /** タグを付ける(なければ候補にも足す)。1つだけの列は入れ替えて、そのまま閉じる。 */
+  const add = tag => {
+    if (single) selected.clear();
+    selected.add(tag);
+    if (!options.includes(tag)) options.push(tag);
+    save();
+    if (single) close(); else render();
+  };
 
   pop.addEventListener('click', event => {
     event.stopPropagation();

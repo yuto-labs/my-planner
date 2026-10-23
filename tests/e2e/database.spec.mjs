@@ -349,4 +349,66 @@ test.describe('on a PC', () => {
     const reopened = await page.locator('.sai').boundingBox();
     expect(Math.abs(reopened.x - after.x)).toBeLessThan(3);
   });
+  test('rows and columns move by dragging, and a column is added from the type list', async ({ page }) => {
+    const errors = await openMemoList(page);
+    await importCsv(page);
+    const titles = () => page.locator('.nt tbody .nt-td--title .nt-cell').allInnerTexts();
+    const heads = () => page.locator('.nt thead th[data-col] .nt-th-name').allInnerTexts();
+    /** つかむ要素から落とす要素へ、マウスでゆっくり動かす。 */
+    const drag = async (from, to, dx = 0, dy = 0) => {
+      const a = await from.boundingBox();
+      const b = await to.boundingBox();
+      await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(b.x + b.width / 2 + dx, b.y + b.height / 2 + dy, { steps: 8 });
+      await page.mouse.up();
+    };
+    // 1行目の「⋮⋮」を2行目の下半分へ落とすと、順番が入れ替わる。
+    await page.locator('.nt tbody tr').first().hover();
+    await drag(page.locator('.nt tbody tr').first().locator('[data-drag-row]'), page.locator('.nt tbody tr').nth(1), 0, 8);
+    expect(await titles()).toEqual(['テスト銀行', 'サンプル電機']);
+    // 見出し「ID」を「URL」の左半分へ落とすと、列の順番が変わる(列の編集は開かない)。
+    await drag(page.locator('th[data-col]', { hasText: 'ID' }), page.locator('th[data-col]', { hasText: 'URL' }), -30);
+    expect(await heads()).toEqual(['名前', 'ID', 'URL']);
+    await expect(page.locator('.db-import')).toHaveCount(0);
+
+    // 見出しの「＋」→ 種類の一覧から「ステータス」→ 名前を付けると列が増える。
+    await page.locator('[data-col-add]').click();
+    await expect(page.locator('.db-type-grid [data-type]')).toHaveCount(12);
+    await page.locator('[data-type="status"]').click();
+    await expect(page.locator('#app-prompt-input')).toHaveValue('ステータス');
+    await page.locator('#app-prompt-input').fill('進み具合');
+    await page.locator('#app-prompt-input').press('Enter');
+    await expect(page.locator('.nt thead')).toContainText('進み具合');
+    // ステータスは最初から「未着手・進行中・完了」を選べ、選ぶと1つだけ入る。
+    await page.locator('.nt tbody tr').first().locator('.nt-td--status').click();
+    await page.locator('[data-tag-toggle="完了"]').click();
+    await expect(page.locator('.nt tbody tr').first().locator('.nt-td--status .nt-tag')).toHaveText('完了');
+
+    // ビューの設定の「セルの表示」で1行にすると、表のセルが1行で切れる。
+    await page.locator('[data-tool="more"]').click();
+    await page.locator('[data-set="lines"]').click();
+    await page.locator('[data-lines="1"]').click();
+    await expect(page.locator('.nt')).toHaveAttribute('data-lines', '');
+    expect(errors).toEqual([]);
+  });
+});
+
+test('columns are reordered by dragging in the property editor, also on a phone', async ({ page }) => {
+  await openMemoList(page);
+  await importCsv(page);
+  await page.locator('[data-tool="more"]').click();
+  await page.locator('[data-set="columns"]').click();
+  const grips = page.locator('[data-col-grip]');
+  // スマホの編集画面は縦に長いので、つかむ前に列の並びを画面に出す。
+  await grips.nth(1).scrollIntoViewIfNeeded();
+  const a = await grips.nth(1).boundingBox();
+  const b = await grips.nth(0).boundingBox();
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2, b.y + 4, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.locator('[data-col-name]').first()).toHaveValue('ID');
+  await page.locator('#db-edit-save').click();
+  expect(await page.locator('.nt thead th[data-col] .nt-th-name').allInnerTexts()).toEqual(['名前', 'ID', 'URL']);
 });

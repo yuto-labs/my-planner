@@ -12,7 +12,9 @@ globalThis.localStorage = {
   removeItem(key) { values.delete(key); },
 };
 
-const { convertValue, parseCsv, parseDateValue, planCsvImport, rowMatches } = await import('../js/database-model.js');
+const {
+  applyView, convertValue, formatValue, moveItem, optionColor, parseCsv, parseDateValue, planCsvImport, rowMatches, rowValues, tagColor,
+} = await import('../js/database-model.js');
 const {
   addDatabaseRow, createDatabase, deleteDatabase, findDatabaseForRow, getDatabase, getDatabaseRowIds,
   getDatabases, getKnowledgeMemos, updateDatabaseRow,
@@ -124,4 +126,35 @@ test('moving a memo carries same-named values and makes it a row that is not rev
   assert.ok(storage.moveMemoToSpace(memo.id, null, model.carryValues));
   assert.equal(getDatabaseRowIds().has(memo.id), false);
   assert.deepEqual(storage.getMemoSpace().rows[memo.id], { m1: 'AB1' });
+});
+
+test('ドラッグで動かした行・列は、落とした先の前か後ろに入る', () => {
+  assert.deepEqual(moveItem(['a', 'b', 'c', 'd'], 'a', 'c', true), ['b', 'c', 'a', 'd']);
+  assert.deepEqual(moveItem(['a', 'b', 'c', 'd'], 'd', 'b', false), ['a', 'd', 'b', 'c']);
+  // 列(オブジェクト)は key でIDを取り出して動かす。見つからない時は元のまま。
+  const props = [{ id: 'x' }, { id: 'y' }];
+  assert.deepEqual(moveItem(props, 'y', 'x', false, prop => prop.id).map(prop => prop.id), ['y', 'x']);
+  assert.equal(moveItem(props, 'z', 'x', false, prop => prop.id), props);
+});
+
+test('選択・ステータスは1つの文字、作成日時・最終更新日時は保存せずページから作る', () => {
+  assert.equal(convertValue('select', ['A', 'B']), 'A');
+  assert.equal(convertValue('status', ' 完了 '), '完了');
+  assert.equal(convertValue('created_time', '2026-01-01'), null);
+  assert.equal(optionColor('status', '完了'), 4);
+  assert.equal(optionColor('select', '完了'), tagColor('完了'));
+
+  const props = [{ id: 'c', type: 'created_time' }, { id: 'e', type: 'last_edited_time' }];
+  const memo = { createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-02-01T00:00:00.000Z' };
+  // 列の値を直した時刻(__edited)の方が新しければ、そちらが最終更新になる。
+  const values = rowValues(props, { __edited: '2026-03-01T00:00:00.000Z' }, memo);
+  assert.equal(values.c, memo.createdAt);
+  assert.equal(values.e, '2026-03-01T00:00:00.000Z');
+  assert.match(formatValue('created_time', values.c), /^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}$/);
+
+  // 作成日時でも、期間で絞り込める。
+  const rows = [{ id: '1', title: 'x', values }];
+  const day = formatValue('created_time', values.c).slice(0, 10).replaceAll('/', '-');
+  assert.equal(applyView(rows, { filters: [{ prop: 'c', value: { from: day, to: day } }] }, props).length, 1);
+  assert.equal(applyView(rows, { filters: [{ prop: 'c', value: { from: '2030-01-01' } }] }, props).length, 0);
 });

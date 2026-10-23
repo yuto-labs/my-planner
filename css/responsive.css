@@ -388,7 +388,8 @@
     align-items: start;
   }
   .cal-month { min-width: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
-  .cal-cell { min-height: clamp(88px, 11vh, 128px); padding: 6px; }
+  /* 週の高さはJS(fitMonthRows)が残りの縦幅から決めた値を優先する。 */
+  .cal-cell { min-height: var(--cal-row-h, clamp(88px, 11vh, 128px)); padding: 6px; }
   .cal-desktop-agenda {
     display: block;
     position: sticky;

@@ -96,6 +96,11 @@ export function initCalendar(container) {
   document.addEventListener('visibilitychange', onVisibilityChange);
   document.addEventListener('sync:remote-change', onRemoteChange);
   window.addEventListener('online', refreshSharedData);
+  // 窓の大きさが変わったら、月表示の週の高さを測り直して下端まで広げ直す。PC/スマホの配置の切り替えが
+  // 済んでから測るよう、1コマ待つ。
+  /** 大きさが変わった次の描画で、週の高さを測り直す。 */
+  const onResize = () => requestAnimationFrame(fitMonthRows);
+  window.addEventListener('resize', onResize);
   const sharedRefreshTimer = setInterval(refreshSharedData, SHARED_REFRESH_MS);
   render();
   handleCalendarInviteFromUrl()
@@ -108,6 +113,7 @@ export function initCalendar(container) {
     document.removeEventListener('visibilitychange', onVisibilityChange);
     document.removeEventListener('sync:remote-change', onRemoteChange);
     window.removeEventListener('online', refreshSharedData);
+    window.removeEventListener('resize', onResize);
     clearInterval(sharedRefreshTimer);
     cleanupSwipe?.();
     if (state.container === container) state.container = null;
@@ -305,6 +311,8 @@ function render() {
         ).join('')}
       </div>
     </div>
+    ${state.shareGroups.length ? `
+    <!-- 共有グループがある時だけ、「個人」と各グループを切り替える行を出す(個人しか無ければ選ぶものが無いので出さない)。 -->
     <div class="cal-source-bar" aria-label="カレンダー表示元">
       <button class="cal-source-btn${state.source === 'personal' ? ' active' : ''}" data-source="personal" type="button">個人</button>
       ${state.shareGroups.map(group => `
@@ -312,8 +320,8 @@ function render() {
           ${esc(group.name || '共有')}
         </button>
       `).join('')}
-      ${state.shareGroups.length ? '<button class="cal-source-refresh" id="cal-source-refresh" type="button">更新</button>' : '<span class="cal-source-help">共有グループは設定から作成できます</span>'}
-    </div>
+      <button class="cal-source-refresh" id="cal-source-refresh" type="button">更新</button>
+    </div>` : ''}
     ${state.sharedError ? `<div class="cal-shared-error">${esc(state.sharedError)}</div>` : ''}
     ${state.sharedLoading ? '<div class="cal-shared-loading">共有予定を読み込み中...</div>' : ''}
     <div id="cal-view"></div>
@@ -590,6 +598,24 @@ function renderView() {
 // MONTH VIEW
 // ============================================================
 
+/**
+ * 月表示の6週が画面の下端までちょうど届くよう、1週の高さを残りの縦幅から決める。
+ * 画面が低い時は従来の最小高さ(CSSの既定値)を守り、はみ出す分はスクロールで見る。
+ */
+function fitMonthRows() {
+  const main = state.container;
+  const grid = main?.querySelector('#cal-grid');
+  if (!grid) return;
+  // スクロール中でも同じ結果になるよう、表示位置ではなく内容の先頭からの位置で測る。
+  const top = grid.getBoundingClientRect().top - main.getBoundingClientRect().top + main.scrollTop;
+  const padBottom = parseFloat(getComputedStyle(main.querySelector('#cal-view')).paddingBottom) || 0;
+  const rowH = Math.floor((main.clientHeight - top - padBottom - 8) / 6);
+  grid.style.removeProperty('--cal-row-h');
+  // CSSの最小高さより高くなる時だけ上書きする(低い画面で詰め込みすぎない)。
+  const minH = parseFloat(getComputedStyle(grid.firstElementChild).minHeight) || 0;
+  if (rowH > minH) grid.style.setProperty('--cal-row-h', `${rowH}px`);
+}
+
 /** 6週分の日付セルと、その日に属する予定の短いプレビューを描く。 */
 function renderMonth() {
   const { cursor } = state;
@@ -669,6 +695,7 @@ function renderMonth() {
 
   html += '</div></div><aside class="cal-desktop-agenda" aria-label="選択日の予定"></aside></div>';
   view.innerHTML = html;
+  fitMonthRows();
 
   // PCの右欄は選択日の予定の読み取り専用プレビュー。
   // 日付の再タップで予定一覧を開く既存の操作は変更しない。

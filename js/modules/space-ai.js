@@ -7,7 +7,7 @@
 // PCは右下に浮かぶ小さな窓、スマホは下から出るシート。やり取りは欄ごとに、アプリを閉じるまで覚える。
 // ============================================================
 import { getDatabase, getDatabaseRowIds, getKnowledgeMemos, isAiAvailable } from '../storage.js';
-import { formatValue, looksSecret } from '../database-model.js';
+import { formatValue, looksSecret, rowValues } from '../database-model.js';
 import { memoBlocksToText } from '../memo-model.js';
 import { pickContext, renderAnswer } from '../space-ai-model.js';
 import { askSpaceAI } from '../ai.js';
@@ -41,7 +41,7 @@ function collectDocs() {
       return {
         key: db.id, name: db.name, kind: 'table',
         docs: db.order.map(id => byId.get(id)).filter(Boolean).map(memo => docOf(memo, props
-          .map(prop => [prop.name, formatValue(prop.type, db.rows[memo.id]?.[prop.id])])
+          .map(prop => [prop.name, formatValue(prop.type, rowValues(props, db.rows[memo.id], memo)[prop.id])])
           .filter(([, value]) => value)
           .map(([name, value]) => `${name}: ${value}`).join(' / '))),
       };

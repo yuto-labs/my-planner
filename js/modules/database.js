@@ -11,14 +11,14 @@ import {
   getKnowledgeMemos, getMemoSpace, moveMemoToSpace, saveDatabase,
 } from '../storage.js';
 import {
-  PROPERTY_TYPE_LABELS, PROPERTY_TYPES, applyView, carryValues, convertValue, formatValue, parseCsv, planCsvImport,
-  rowMatches, spaceViews, viewProperties,
+  COMPUTED_TYPES, PROPERTY_TYPE_LABELS, PROPERTY_TYPES, applyView, carryValues, convertValue, formatValue, moveItem,
+  parseCsv, planCsvImport, rowMatches, rowValues, spaceViews, viewProperties,
 } from '../database-model.js';
 import { normalizeMemoUrl } from '../memo-model.js';
 import { esc, generateId } from '../utils.js';
 import { openKnowledgeMemo, refreshMemoSpace } from './memo.js';
 import { renderPageEditor, wirePageEditor } from './page-editor.js';
-import { propIcon, renderNotionTable, renderPropertyList, wireNotionTable, wirePropertyList } from './notion-table.js';
+import { propIcon, renderNotionTable, renderPropertyList, startDragSort, wireNotionTable, wirePropertyList } from './notion-table.js';
 
 /** `toast`: 短い通知メッセージを画面へ表示する。 */
 const toast = (message, type = 'info') => window.AppNav?.showToast(message, type);
@@ -84,7 +84,10 @@ const TOOL_ICONS = {
   list: toolIcon('<path d="M5.5 4.5h8M5.5 8h8M5.5 11.5h8"/><circle cx="3" cy="4.5" r=".6"/><circle cx="3" cy="8" r=".6"/><circle cx="3" cy="11.5" r=".6"/>'),
   eye: toolIcon('<path d="M1.8 8s2.3-4.2 6.2-4.2S14.2 8 14.2 8 11.9 12.2 8 12.2 1.8 8 1.8 8Z"/><circle cx="8" cy="8" r="1.8"/>'),
   eyeOff: toolIcon('<path d="M1.8 8s2.3-4.2 6.2-4.2S14.2 8 14.2 8 11.9 12.2 8 12.2 1.8 8 1.8 8Z"/><path d="m3 13 10-10"/>'),
+  lines: toolIcon('<path d="M2.5 3.5h11M2.5 6.5h11M2.5 9.5h6"/><path d="M11 9.5v4M9.5 12l1.5 1.5 1.5-1.5"/>'),
 };
+// ビューの設定の「セルの表示」: 表のセルに何行まで見せるか(0 = 全部)。
+const CELL_LINES = [[0, 'すべて表示'], [1, '1行'], [2, '2行'], [3, '3行'], [5, '5行']];
 
 /**
  * チップの行(メモ・各データベース・＋)と、ビューの1行のHTML。
@@ -265,6 +268,48 @@ function propertyPicker(pop, space, placeholder, onPick) {
 }
 
 /**
+ * 列を足す時の「種類を選ぶ」窓。Notionと同じく、アプリに用意した種類(テキスト・数値・選択…)を並べ、
+ * 押した種類を onPick に渡す。上の欄に打つと種類を絞り込める。
+ */
+function openTypePicker(anchor, onPick) {
+  const pop = openPopover(anchor, 'db-pop--types');
+  pop.innerHTML = `
+    <input class="db-pop-search" placeholder="プロパティの種類を検索" aria-label="プロパティの種類を検索">
+    <div class="db-pop-section">種類</div>
+    <div class="db-type-grid">${PROPERTY_TYPES.map(type => `
+      <button class="db-pop-item" type="button" data-type="${type}">${propIcon(type)}<span>${esc(PROPERTY_TYPE_LABELS[type])}</span></button>`).join('')}
+    </div>`;
+  const input = pop.querySelector('.db-pop-search');
+  input.addEventListener('input', () => {
+    const q = input.value.trim().toLowerCase();
+    pop.querySelectorAll('[data-type]').forEach(item => { item.hidden = !!q && !item.textContent.toLowerCase().includes(q); });
+  });
+  pop.addEventListener('click', event => {
+    const type = event.target.closest('[data-type]')?.dataset.type;
+    if (!type) return;
+    pop.close();
+    onPick(type);
+  });
+  pop.place();
+  // スマホでは検索欄に自動で入らない(キーボードが出て一覧が隠れるため)。
+  if (!window.matchMedia?.('(hover: none)')?.matches) input.focus();
+}
+
+/** 新しい列の名前の最初の値(種類の名前。タグは「タグ」)。 */
+const defaultColumnName = type => (type === 'multi_select' ? 'タグ' : PROPERTY_TYPE_LABELS[type]);
+
+/** 表の見出しの「＋」: 種類を選び、名前を付けて列を足す。名前を入れずにやめたら足さない。 */
+function addColumnFlow(anchor, dbId, onAdded) {
+  openTypePicker(anchor, async type => {
+    const name = await window.AppNav.prompt('プロパティの名前', { value: defaultColumnName(type), okLabel: '追加' });
+    const db = getDatabase(dbId);
+    if (!name || !db) return;
+    saveDatabase({ ...db, properties: [...db.properties, { id: generateId(), name, type }] });
+    onAdded?.();
+  });
+}
+
+/**
  * 並べ替えの窓。並べ替え中なら「列・向き・外す」を出し、その下で別の列を選べる。
  * 選んだ時点で今のビューに保存して、表がすぐ並び替わる。
  */
@@ -329,7 +374,7 @@ function openFilterPopover(button, space) {
     pop.place();
   };
   /** 入力欄の今の値を、条件の値の形にする(日付は期間、チェックは真偽)。 */
-  const readValue = (row, prop) => (prop?.type === 'date'
+  const readValue = (row, prop) => (row.querySelector('[data-filter-from]')
     ? { from: row.querySelector('[data-filter-from]').value, to: row.querySelector('[data-filter-to]').value }
     : prop?.type === 'checkbox' ? row.querySelector('[data-filter-value]').value === 'true' : row.querySelector('[data-filter-value]').value);
   /** 1つの条件の値を保存する。 */
@@ -393,6 +438,13 @@ function openViewSettings(button, space) {
           <button class="db-pop-item${(view.layout || 'table') === key ? ' is-current' : ''}" type="button" data-layout="${key}">
             ${TOOL_ICONS[key === 'table' ? 'table' : 'list']}<span class="db-pop-label">${label}<small>${sub}</small></span>${(view.layout || 'table') === key ? '<span class="db-pop-check">✓</span>' : ''}
           </button>`).join('')}`;
+    } else if (screen === 'lines') {
+      // 表のセルに何行まで見せるか。0 は「全部」(長い文も折り返して全部見せる)。
+      pop.innerHTML = `${back}
+        ${CELL_LINES.map(([lines, label]) => `
+          <button class="db-pop-item${(Number(view.lines) || 0) === lines ? ' is-current' : ''}" type="button" data-lines="${lines}">
+            <span class="db-pop-label">${label}</span>${(Number(view.lines) || 0) === lines ? '<span class="db-pop-check">✓</span>' : ''}
+          </button>`).join('')}`;
     } else if (screen === 'props') {
       pop.innerHTML = `${back}
         ${target.properties.map(prop => `
@@ -406,6 +458,7 @@ function openViewSettings(button, space) {
         <input class="db-pop-search" data-view-name value="${esc(view.name)}" placeholder="ビュー名" aria-label="ビュー名">
         ${isDb ? item('layout', TOOL_ICONS.table, 'レイアウト', view.layout === 'list' ? 'リスト' : 'テーブル') : ''}
         ${isDb ? item('props', TOOL_ICONS.eye, 'プロパティの表示/非表示', String(target.properties.length - hidden.size)) : ''}
+        ${isDb ? item('lines', TOOL_ICONS.lines, 'セルの表示', CELL_LINES.find(([lines]) => lines === (Number(view.lines) || 0))?.[1] || '') : ''}
         ${item('filter', TOOL_ICONS.filter, 'フィルター', view.filters?.length ? `${view.filters.length}件` : '')}
         ${item('sort', TOOL_ICONS.sort, '並べ替え', sortProp ? `${sortProp.name} ${view.sort.dir === 'desc' ? '降順' : '昇順'}` : '')}
         ${isDb ? `<div class="db-pop-section">データの設定</div>${item('columns', TOOL_ICONS.list, 'プロパティを編集')}` : ''}
@@ -422,6 +475,8 @@ function openViewSettings(button, space) {
   pop.addEventListener('click', async event => {
     const layout = event.target.closest('[data-layout]')?.dataset.layout;
     if (layout) { updateActiveView(space, view => { view.layout = layout; }); draw(); return; }
+    const lines = event.target.closest('[data-lines]')?.dataset.lines;
+    if (lines !== undefined) { updateActiveView(space, view => { view.lines = Number(lines); }); draw(); return; }
     const propId = event.target.closest('[data-toggle-prop]')?.dataset.toggleProp;
     if (propId) {
       updateActiveView(space, view => {
@@ -436,7 +491,7 @@ function openViewSettings(button, space) {
     const key = target?.dataset.set;
     if (!key) return;
     if (key === 'close') pop.close();
-    else if (key === 'main' || key === 'layout' || key === 'props') { screen = key; draw(); }
+    else if (key === 'main' || key === 'layout' || key === 'props' || key === 'lines') { screen = key; draw(); }
     else if (key === 'filter') openFilterPopover(target, space);
     else if (key === 'sort') openSortPopover(target, space);
     else if (key === 'columns') { pop.close(); openSchemaEditor(space.id, refreshMemoSpace); }
@@ -537,7 +592,7 @@ function openImportSheet(fileName, text) {
       <div class="db-import-col">
         <label><input type="checkbox" data-col-include="${column.index}"${column.include ? ' checked' : ''}> ${esc(column.name)}</label>
         <select class="select" data-col-type="${column.index}">
-          ${PROPERTY_TYPES.map(type => `<option value="${type}"${type === column.type ? ' selected' : ''}>${PROPERTY_TYPE_LABELS[type]}</option>`).join('')}
+          ${PROPERTY_TYPES.filter(type => !COMPUTED_TYPES.includes(type)).map(type => `<option value="${type}"${type === column.type ? ' selected' : ''}>${PROPERTY_TYPE_LABELS[type]}</option>`).join('')}
         </select>
         ${column.secret ? '<p class="db-import-warning">パスワードらしい列です。同期でそのままの文字がクラウドに送られるため、既定では取り込みません。iPhoneの「パスワード」アプリでの管理がおすすめです。</p>' : ''}
       </div>`).join('')}
@@ -571,7 +626,7 @@ function collectRows(db) {
   return db.order
     .map(id => ({ id, memo: memos.get(id) }))
     .filter(row => row.memo)
-    .map(({ id, memo }) => ({ id, title: memo.title || '無題', values: db.rows[id] || {} }));
+    .map(({ id, memo }) => ({ id, title: memo.title || '無題', values: rowValues(db.properties, db.rows[id], memo) }));
 }
 
 /**
@@ -659,7 +714,7 @@ function renderPeek(container, dbId, refreshTable) {
   peek.style.top = `${Math.round(document.getElementById('app-header')?.getBoundingClientRect().bottom || 0)}px`;
   peek.querySelector('.nt-peek-head').innerHTML = `
     <div class="nt-peek-title" data-row="${esc(memo.id)}"><div data-edit="__title"><div class="nt-cell">${esc(memo.title || '無題')}</div></div></div>
-    ${renderPropertyList(db, memo.id)}`;
+    ${renderPropertyList(db, memo.id, memo)}`;
   const content = peek.querySelector('.nt-peek-content');
   if (content.dataset.row !== memo.id) {
     content.dataset.row = memo.id;
@@ -754,15 +809,23 @@ export function mountDatabaseSpace(container, db) {
     if (row) openPeek(container, db.id, row.dataset.rowOpen, renderBody);
   });
   // 表のセルの書き換え・タグ・列の幅・行の追加(notion-table.js)。見出しを押すと列の編集を開く。
+  /** ドラッグで動かした行・列の新しい順番を保存して描き直す(最新のデータベースを読み直してから)。 */
+  const reorder = change => {
+    const fresh = getDatabase(db.id);
+    if (fresh && saveDatabase({ ...fresh, ...change(fresh) })) renderBody();
+  };
   wireNotionTable(body, db.id, {
     refresh: renderBody,
     onHeader: () => openSchemaEditor(db.id, refreshMemoSpace),
     onOpenRow: rowId => openPeek(container, db.id, rowId, renderBody),
+    onAddColumn: anchor => addColumnFlow(anchor, db.id, renderBody),
+    onMoveRow: (from, to, after) => reorder(fresh => ({ order: moveItem(fresh.order, from, to, after) })),
+    onMoveColumn: (from, to, after) => reorder(fresh => ({ properties: moveItem(fresh.properties, from, to, after, prop => prop.id) })),
   });
 }
 
 /**
- * 名前と列を編集する画面。列は名前・種類を変えたり、↑↓で並べ替えたり、削除したりできる。
+ * 名前と列を編集する画面。列は名前・種類を変えたり、左の「⋮⋮」のドラッグで並べ替えたり、削除したりできる。
  * 種類を変えた列は、入っている値も新しい種類へ変換する(例: 文字→日付で「2026年8月24日」を日付に)。
  */
 function openSchemaEditor(dbId, onSaved) {
@@ -780,12 +843,11 @@ function openSchemaEditor(dbId, onSaved) {
       <label class="form-label">列（1列目の「名前」は各ページの題名です）</label>
       ${columns.map((column, index) => `
         <div class="db-schema-col" data-col="${index}">
+          <button class="nt-drag db-schema-grip" type="button" data-col-grip aria-label="ドラッグで列の順番を変える" title="ドラッグで移動">⋮⋮</button>
           <input class="input" data-col-name value="${esc(column.name)}" aria-label="列の名前">
           <select class="select" data-col-type aria-label="列の種類">
             ${PROPERTY_TYPES.map(type => `<option value="${type}"${type === column.type ? ' selected' : ''}>${PROPERTY_TYPE_LABELS[type]}</option>`).join('')}
           </select>
-          <button class="btn btn-ghost btn-sm" type="button" data-col-move="-1" aria-label="上へ"${index === 0 ? ' disabled' : ''}>↑</button>
-          <button class="btn btn-ghost btn-sm" type="button" data-col-move="1" aria-label="下へ"${index === columns.length - 1 ? ' disabled' : ''}>↓</button>
           <button class="btn btn-ghost btn-sm db-delete" type="button" data-col-remove aria-label="列を削除">削除</button>
         </div>`).join('')}
       <button class="btn btn-ghost btn-sm" id="db-col-add" type="button">＋ 列を追加</button>
@@ -805,28 +867,43 @@ function openSchemaEditor(dbId, onSaved) {
   render();
   const close = window.AppNav.openModal({ title: 'データベースの編集', body, autoFocus: false });
 
+  // 左の「⋮⋮」をつかんで上下にドラッグすると、列の順番が変わる(指でも使える)。
+  body.addEventListener('pointerdown', event => {
+    const grip = event.target.closest('[data-col-grip]');
+    if (!grip || event.button !== 0) return;
+    event.preventDefault();
+    collect();
+    startDragSort(event, grip.closest('[data-col]'), [...body.querySelectorAll('[data-col]')], {
+      axis: 'y', threshold: 2,
+      onDrop: (target, after) => {
+        const from = columns[Number(grip.closest('[data-col]').dataset.col)].id;
+        columns = moveItem(columns, from, columns[Number(target.dataset.col)].id, after, column => column.id);
+        render();
+      },
+    });
+  });
+
   body.addEventListener('click', async event => {
     const row = event.target.closest('[data-col]');
-    if (event.target.closest('[data-col-move]') && row) {
-      collect();
-      const from = Number(row.dataset.col);
-      const to = from + Number(event.target.closest('[data-col-move]').dataset.colMove);
-      [columns[from], columns[to]] = [columns[to], columns[from]];
-      render();
-    } else if (event.target.closest('[data-col-remove]') && row) {
+    if (event.target.closest('[data-col-remove]') && row) {
       collect();
       const column = columns[Number(row.dataset.col)];
       if (!await window.AppNav.confirm(`列「${column.name}」を削除しますか？ この列の値も消えます。`, { okLabel: '削除', danger: true })) return;
       columns.splice(Number(row.dataset.col), 1);
       render();
     } else if (event.target.closest('#db-col-add')) {
+      // 種類の一覧から選ぶと、その種類の名前で列が足される(名前はこの画面ですぐ直せる)。
       collect();
-      columns.push({ id: generateId(), name: `列${columns.length + 1}`, type: 'text' });
-      render();
+      openTypePicker(event.target.closest('#db-col-add'), type => {
+        columns.push({ id: generateId(), name: defaultColumnName(type), type });
+        render();
+        body.querySelector(`[data-col="${columns.length - 1}"] [data-col-name]`)?.select();
+      });
     } else if (event.target.closest('#db-edit-save')) {
       collect();
       const before = new Map(db.properties.map(prop => [prop.id, prop]));
-      const kept = new Set(columns.map(column => column.id));
+      // 列の値に加えて、最終更新日時に使う __edited も残す。
+      const kept = new Set([...columns.map(column => column.id), '__edited']);
       // 種類を変えた列は値を変換し、削除した列の値は行から取り除く。
       const rows = Object.fromEntries(Object.entries(db.rows).map(([rowId, values]) => [rowId, Object.fromEntries(
         Object.entries(values).filter(([propId]) => kept.has(propId)).map(([propId, value]) => {
@@ -887,7 +964,7 @@ function filterValueInput(prop, value) {
       <option value="true"${value !== false && value !== 'false' ? ' selected' : ''}>付いている</option>
       <option value="false"${value === false || value === 'false' ? ' selected' : ''}>付いていない</option></select>`;
   }
-  if (prop?.type === 'date') {
+  if (prop?.type === 'date' || COMPUTED_TYPES.includes(prop?.type)) {
     return `<input class="input" type="date" data-filter-from value="${esc(value?.from || '')}" aria-label="から">
       <input class="input" type="date" data-filter-to value="${esc(value?.to || '')}" aria-label="まで">`;
   }
@@ -958,7 +1035,8 @@ function openViewEditor(space, viewId) {
     draft.name = body.querySelector('#view-name').value.trim() || draft.name;
     draft.filters = [...body.querySelectorAll('[data-filter]')].map(row => {
       const prop = props.find(item => item.id === row.querySelector('[data-filter-prop]').value);
-      const value = prop?.type === 'date'
+      // 期間の欄(日付・作成日時・最終更新日時)があれば、from〜to の形で読む。
+      const value = row.querySelector('[data-filter-from]')
         ? { from: row.querySelector('[data-filter-from]').value, to: row.querySelector('[data-filter-to]').value }
         : row.querySelector('[data-filter-value]').value;
       return { prop: prop?.id, value: prop?.type === 'checkbox' ? value === 'true' : value };
@@ -1052,7 +1130,7 @@ export function renderDatabaseRowPanel(container, memoId) {
   /** 最新の値で列の欄を描き直す(書き換えた後にも呼ぶ)。 */
   const draw = () => {
     const db = getDatabase(found.db.id);
-    if (db) panel.innerHTML = `<p class="db-row-panel-db">${esc(db.name)}</p>${renderPropertyList(db, memoId)}`;
+    if (db) panel.innerHTML = `<p class="db-row-panel-db">${esc(db.name)}</p>${renderPropertyList(db, memoId, getKnowledgeMemos().find(memo => memo.id === memoId))}`;
   };
   draw();
   const title = page.querySelector('.kn-view-title');

@@ -119,3 +119,18 @@ test('an unsaved memo draft survives a reload and can be restored', async ({ pag
   await expect(page.locator('#kn-edit-title')).toHaveValue('下書きE2E');
   await expect(page.locator('.kn-block-focusable[contenteditable="true"]').first()).toContainText('閉じても残る本文');
 });
+
+test('the month calendar fills the screen and hides the source switch when only the personal calendar exists', async ({ page }) => {
+  await openApp(page);
+  await go(page, 'calendar');
+  // 共有グループが無ければ「個人」しか選べないので、切り替えの行は出さない。
+  await expect(page.locator('.cal-source-bar')).toHaveCount(0);
+  // 6週目の下端が、画面(スクロールする欄)の下端の近くまで届く。
+  const gap = await page.evaluate(() => {
+    const main = document.getElementById('main-content');
+    const last = [...document.querySelectorAll('#cal-grid .cal-cell')].at(-1);
+    return main.getBoundingClientRect().bottom - last.getBoundingClientRect().bottom;
+  });
+  expect(gap).toBeGreaterThanOrEqual(0);
+  expect(gap).toBeLessThan(60);
+});
