@@ -228,6 +228,40 @@ test('a row page body is edited in place without leaving the database', async ({
   await expect(page.locator('.db-space-chip.active')).toHaveText('就活');
 });
 
+test('a row page body supports toggles, headings, and the slash menu like a memo', async ({ page }) => {
+  await openMemoList(page);
+  await importCsv(page);
+  await page.locator('.nt-td--title').first().click();
+  await page.locator('.nt-peek .pe-text').first().click();
+  // 「# 」で見出し、Enterで次の行。
+  await page.keyboard.type('# 会社メモ');
+  await page.keyboard.press('Enter');
+  // 「>> 」でトグル。開いたトグルでEnterを押すと、中身の行になる。
+  await page.keyboard.type('>> 面接で聞かれたこと');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('志望動機');
+  await page.keyboard.press('Enter');
+  // 空の行で「/」→ メニューからチェックリスト。
+  await page.keyboard.type('/');
+  await page.locator('.pe-menu [data-pe-type="checklist"]').click();
+  await page.keyboard.type('お礼メールを送る');
+  await page.locator('.nt-peek-title').click();
+  const blocks = () => page.evaluate(async () => {
+    const s = await import('/js/storage.js');
+    const memo = s.getKnowledgeMemos().find(item => item.title === 'サンプル電機');
+    /** 確かめやすいよう、種類・文字・中身だけにする。 */
+    const pick = list => (list || []).map(block => ({ type: block.type, text: block.text, ...(block.children ? { children: pick(block.children) } : {}) }));
+    return pick(memo?.blocks);
+  });
+  await expect.poll(blocks).toEqual([
+    { type: 'h1', text: '会社メモ' },
+    { type: 'toggle', text: '面接で聞かれたこと', children: [{ type: 'paragraph', text: '志望動機' }, { type: 'checklist', text: 'お礼メールを送る' }] },
+  ]);
+  // ▸ で閉じると、中身が隠れる。
+  await page.locator('.nt-peek [data-toggle-block]').click();
+  await expect(page.locator('.nt-peek .pe-text', { hasText: '志望動機' })).toHaveCount(0);
+});
+
 test('view settings hide columns, and the AI button opens a panel about the open database', async ({ page }) => {
   await openMemoList(page);
   await importCsv(page);

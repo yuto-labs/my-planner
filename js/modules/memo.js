@@ -1862,7 +1862,7 @@ function renderInlineMarkdown(text) {
 }
 
 /** 保存済みrich HTMLがあれば無害化して使い、なければMarkdown文字列から表示HTMLを作る。 */
-function getBlockRichHtml(block) {
+export function getBlockRichHtml(block) {
   if (block.html) return sanitizeBlockHtml(block.html);
   return renderInlineMarkdown(esc(block.text || ''));
 }
@@ -5618,7 +5618,7 @@ function applyMarkdownSourceToBlock(blockId, source) {
 }
 
 /** メモで許可した行内装飾と改行だけを残し、貼り付け由来の危険・不要なHTMLを除去する。 */
-function sanitizeBlockHtml(html) {
+export function sanitizeBlockHtml(html) {
   const template = document.createElement('template');
   template.innerHTML = String(html || '');
   const allowedTags = new Set(['BR', 'DIV', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'SPAN', 'MARK', 'CODE', 'A', 'FONT']);

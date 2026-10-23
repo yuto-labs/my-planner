@@ -11627,20 +11627,35 @@ button.atlas-nuance-map-row:focus-visible {
 @media (min-width: 1000px) { .nt-peek-body { padding: 8px 32px 48px; } }
 .nt-peek-title .nt-cell, .nt-peek-title .nt-editor { min-height: 0; padding: 4px 0 12px; font-size: 26px; font-weight: 700; line-height: 1.25; }
 .nt-peek-content { margin: 16px 0; padding-top: 12px; border-top: 1px solid var(--border); }
-/* 行のページの本文エディタ(js/modules/page-editor.js)。行ごとに押して書ける。 */
+/* 行のページの本文エディタ(js/modules/page-editor.js)。メモと同じ書き方で、行ごとに押して書ける。 */
+.pe-tools {
+  position: sticky; top: 44px; z-index: 1; display: flex; gap: 2px; margin: 0 0 8px; padding: 4px 0;
+  overflow-x: auto; background: var(--bg-card); border-bottom: 1px solid var(--border-light);
+}
+.pe-tool { flex-shrink: 0; min-width: 32px; height: 30px; padding: 0 8px; border: 0; border-radius: 6px; background: none; color: var(--text-muted); font-size: 14px; }
+.pe-tool:hover { background: var(--bg-hover); }
+.pe-tool--type { color: var(--text); }
+.pe-tool-mark { padding: 0 3px; border-radius: 3px; background: rgba(245, 197, 66, 0.45); color: var(--text); }
 .pe { display: flex; flex-direction: column; gap: 2px; font-size: 15px; line-height: 1.7; }
 .pe-block { display: flex; align-items: flex-start; gap: 6px; padding-left: calc(var(--pe-depth, 0) * 22px); }
-.pe-text { flex: 1; min-width: 0; min-height: 1.7em; padding: 2px 2px; border-radius: 4px; outline: none; color: var(--text); overflow-wrap: anywhere; }
+.pe-text { flex: 1; min-width: 0; min-height: 1.7em; padding: 2px; border-radius: 4px; outline: none; color: var(--text); overflow-wrap: anywhere; }
 .pe-text:focus { background: var(--bg-hover); }
-.pe-text:empty::before { content: attr(data-placeholder); color: var(--text-dim); }
+.pe-text:focus:empty::before { content: "「/」で種類を選ぶ"; color: var(--text-dim); }
 .pe-mark { flex-shrink: 0; min-width: 1.2em; padding-top: 2px; color: var(--text-dim); text-align: right; }
 .pe-check { flex-shrink: 0; margin-top: 7px; }
+.pe-toggle-btn { flex-shrink: 0; width: 22px; height: 26px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--text-muted); font-size: 13px; }
+.pe-toggle-btn:hover { background: var(--bg-hover); }
 .pe-block.is-checked .pe-text { color: var(--text-dim); text-decoration: line-through; }
 .pe-h1 .pe-text { font-size: 24px; font-weight: 700; line-height: 1.35; }
 .pe-h2 .pe-text { font-size: 20px; font-weight: 700; line-height: 1.4; }
-.pe-h3 .pe-text { font-size: 17px; font-weight: 700; }
+.pe-h3 .pe-text, .pe-h4 .pe-text, .pe-h5 .pe-text, .pe-h6 .pe-text { font-size: 17px; font-weight: 700; }
 .pe-quote .pe-text { padding-left: 12px; border-left: 3px solid var(--text-dim); border-radius: 0; }
+.pe-divider { padding-top: 8px; padding-bottom: 8px; }
+.pe-divider hr { flex: 1; border: 0; border-top: 1px solid var(--border); }
+.pe-code { margin: 0; padding: 10px 12px; border-radius: 6px; background: var(--bg-input); font-family: ui-monospace, Consolas, monospace; font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
 .pe-static { display: block; opacity: 0.92; }
+.pe-menu { width: 220px; }
+.pe-menu-icon { display: inline-grid; place-items: center; width: 26px; height: 22px; border: 1px solid var(--border); border-radius: 4px; color: var(--text-muted); font-size: 11px; }
 /* 「ビューの設定」の窓(Notionの右上の設定と同じ並び)。 */
 .db-pop--settings { width: min(320px, calc(100vw - 16px)); }
 .db-pop-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 4px 8px; font-size: 14px; }
