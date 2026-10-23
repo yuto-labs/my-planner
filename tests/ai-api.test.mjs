@@ -893,3 +893,13 @@ test('rejects translation variants with too few notes or comparisons', () => {
   ] };
   assert.equal(hasCompleteStructuredResponse('translation_variants', JSON.stringify(response)), false);
 });
+
+test('the memo-space AI and the quick summary are accepted as short text requests', () => {
+  // 先に出す要点は短く(上限700)、メモ欄のAIは文章で返す。どちらもJSONではない。
+  const preview = validateRequestBody({ actionType: 'quick_preview', systemText: 's', userText: 'q', maxTokens: 5000 });
+  assert.equal(preview.maxTokens, 700);
+  assert.equal(preview.responseFormat, 'text');
+  const chat = validateRequestBody({ actionType: 'database_chat', systemText: 's', userText: 'q', maxTokens: 2400 });
+  assert.equal(chat.maxTokens, 2400);
+  assert.equal(chat.responseFormat, 'text');
+});

@@ -14,6 +14,7 @@ import {
   archiveLocalSyncBackups,
 } from '../storage.js';
 import { generateKnowledgeAnswer } from '../ai.js';
+import { startQuickPreview } from '../quick-preview.js';
 import { acknowledgeAIJobAfterSync } from '../ai-jobs.js';
 import { reviewToggleButtonHtml, wireReviewToggles } from '../review-toggle.js';
 import {
@@ -483,6 +484,8 @@ async function createLearningEntry(container) {
   if (button) button.disabled = true;
   const controller = new AbortController();
   generationController = controller;
+  // 詳しい解説を待つ間、速いモデルの要点を先に見せる(解説ができたら消す)。
+  const preview = startQuickPreview(generation, 'knowledge', question);
   try {
     const raw = await generateKnowledgeAnswer(
       question,
@@ -498,6 +501,7 @@ async function createLearningEntry(container) {
     if (raw?.__aiJobId) acknowledgeAIJobAfterSync(raw.__aiJobId).catch(() => {});
     input.value = '';
     questionDraft = '';
+    preview.remove();
     selectedEntryId = saved.id;
     toast('Knowledgeに保存しました。', 'success');
     nav('learning-detail');

@@ -10556,6 +10556,12 @@ button.atlas-nuance-map-row:focus-visible {
   gap: 1px;
 }
 .learning-generation strong { font-size: 12px; font-weight: 600; }
+/* 詳しい解説を待つ間に先に出す要点(js/quick-preview.js)。 */
+.quick-preview { margin-top: 10px; padding: 12px 14px; border: 1px solid var(--primary-border); border-radius: var(--radius-sm); background: var(--primary-bg); }
+.quick-preview-label { margin: 0 0 6px; color: var(--primary-light); font-size: 13px; font-weight: 700; }
+.quick-preview-label span { margin-left: 6px; color: var(--text-dim); font-size: 11px; font-weight: 400; }
+.quick-preview-body { color: var(--text); font-size: 14px; line-height: 1.7; }
+.quick-preview-wait { color: var(--text-dim); }
 .learning-generation span { color: var(--text-muted); font-size: 10px; }
 .learning-generation-spinner {
   width: 17px;

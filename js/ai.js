@@ -405,6 +405,23 @@ export async function askSpaceAI({ spaceName, kind, context, question, history =
   return String(text || '').trim();
 }
 
+// ---- 先に出す短い要点(Knowledge・表現帳) ----
+// 詳しい解説は長い文章を深く考えて作るので時間がかかる。その間に、速いモデルで要点だけを先に作って見せる。
+// 詳しい解説の作り方・質は変えない(要点は表示するだけで、保存しない)。
+
+const QUICK_PREVIEW_PROMPTS = {
+  knowledge: '質問に、日本語で要点だけを3〜5行で答えてください。確実なことだけを書き、不確かな点は「不確か」と書く。前置き・見出しは不要。詳しい解説は別に作られます。',
+  expression: '英語学習者向けに、入力された意味・英語表現について、代表的な英語表現(または意味)とニュアンスの違いを、日本語で3〜5行の要点だけ書いてください。確実なことだけ。前置き・見出しは不要。',
+  translation: '入力された日本語を、自然な英語に1文で訳してください。次の行に、訳す時の注意点を日本語で1行だけ書く。前置きは不要。',
+};
+
+/** 詳しい解説を待つ間に見せる、短い要点を作る(速いモデル)。kind は knowledge / expression / translation。 */
+export async function generateQuickPreview(kind, text, options = {}) {
+  const system = QUICK_PREVIEW_PROMPTS[kind] || QUICK_PREVIEW_PROMPTS.knowledge;
+  const result = await callAPI(FAST_MODEL, system, String(text || '').slice(0, 2000), 500, 'text', 'quick_preview', options);
+  return String(result || '').trim();
+}
+
 // ---- 通常メモのAI補助 ----
 // 保存はmemo.js / storage.jsが担当し、ここではタグ・用語解説・整理結果を作る。
 export async function suggestKnowledgeTags(title, textPreview) {

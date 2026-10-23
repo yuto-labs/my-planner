@@ -32,6 +32,8 @@ const ACTION_LIMITS = Object.freeze({
   task_schedule: 4000,
   // メモ欄のAI: 開いているデータベース(またはメモ)の中身について答える。
   database_chat: 2400,
+  // Knowledge・表現帳で、詳しい解説ができるまでの間に先に見せる短い要点。
+  quick_preview: 700,
 });
 const MAX_SYSTEM_CHARS = 32_000;
 const MAX_USER_CHARS = 120_000;

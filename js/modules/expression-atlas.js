@@ -64,6 +64,7 @@ import {
   getEnglishUsageCoreEntry,
 } from '../data/english-usage-core.js';
 import { esc } from '../utils.js';
+import { startQuickPreview } from '../quick-preview.js';
 
 /** `nav`: 指定したハッシュ画面へ移動し、必要なら遷移元の状態を引き継ぐ。 */
 const nav = view => window.AppNav?.navigate(view);
@@ -1938,6 +1939,8 @@ async function handleTranslationGenerate(event) {
   const taxonomy = collectAtlasTaxonomy();
   state.generating = true;
   state.controller = new AbortController();
+  // 3\u3064\u306e\u8a33\u3068\u89e3\u8aac\u304c\u3067\u304d\u308b\u307e\u3067\u306e\u9593\u3001\u901f\u3044\u30e2\u30c7\u30eb\u306e1\u6587\u306e\u8a33\u3092\u5148\u306b\u898b\u305b\u308b\u3002
+  startQuickPreview(state.container?.querySelector('#atlas-translation-form'), 'translation', state.translationInput.sourceTextJa);
   try {
     markGeneratorBusy('#atlas-translation-form', '\u82f1\u8a33\u3092\u4f5c\u6210\u4e2d\u2026');
     const generated = await generateTranslationVariants({
@@ -2775,6 +2778,8 @@ async function handleGenerate(event) {
 
   state.generating = true;
   state.controller = new AbortController();
+  // \u8a73\u3057\u3044\u89e3\u8aac\u3092\u5f85\u3064\u9593\u3001\u901f\u3044\u30e2\u30c7\u30eb\u306e\u8981\u70b9\u3092\u5165\u529b\u6b04\u306e\u4e0b\u306b\u5148\u306b\u898b\u305b\u308b(\u7d42\u308f\u308b\u3068\u753b\u9762\u306e\u63cf\u304d\u76f4\u3057\u3067\u6d88\u3048\u308b)\u3002
+  startQuickPreview(state.container?.querySelector('#atlas-generator-form'), 'expression', learningTarget);
   try {
     markGeneratorBusy('#atlas-generator-form', '\u8868\u73fe\u30bb\u30c3\u30c8\u3092\u4f5c\u6210\u4e2d\u2026');
     const drafts = await generateNuanceEntries({
